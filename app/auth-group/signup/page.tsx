@@ -38,9 +38,9 @@ const roleOptions = [
     icon: Rocket,
     gradient: 'from-primary-500 to-primary-600',
     shadowColor: 'shadow-primary-500/30',
-    bgColor: 'bg-primary-50',
-    borderColor: 'border-primary-200',
-    hoverBorder: 'hover:border-primary-400',
+    bgColor: 'bg-primary-500/10',
+    borderColor: 'border-zinc-700',
+    hoverBorder: 'hover:border-primary-500/50',
   },
   {
     id: 'vc' as const,
@@ -49,9 +49,9 @@ const roleOptions = [
     icon: TrendingUp,
     gradient: 'from-success-500 to-success-600',
     shadowColor: 'shadow-success-500/30',
-    bgColor: 'bg-success-50',
-    borderColor: 'border-success-200',
-    hoverBorder: 'hover:border-success-400',
+    bgColor: 'bg-success-500/10',
+    borderColor: 'border-zinc-700',
+    hoverBorder: 'hover:border-success-500/50',
   },
 ]
 
@@ -103,7 +103,7 @@ export default function SignupPage() {
   // Success state
   if (success) {
     return (
-      <Card variant="glass" className="backdrop-blur-xl border-white/30 shadow-2xl">
+      <Card variant="glass" className="backdrop-blur-xl border-zinc-700/50 shadow-2xl shadow-black/30">
         <CardContent className="py-12 text-center">
           <motion.div
             className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-success-400 to-success-500 rounded-full flex items-center justify-center shadow-lg shadow-success-500/30"
@@ -118,11 +118,11 @@ export default function SignupPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">
+            <h2 className="text-2xl font-bold text-zinc-100 mb-3">
               이메일을 확인해주세요
             </h2>
-            <p className="text-gray-600 mb-8 leading-relaxed">
-              <span className="font-medium text-primary-600">{email}</span>로<br />
+            <p className="text-zinc-400 mb-8 leading-relaxed">
+              <span className="font-medium text-primary-400">{email}</span>로<br />
               확인 메일을 보냈습니다.<br />
               이메일의 링크를 클릭하여 가입을 완료해주세요.
             </p>
@@ -140,7 +140,7 @@ export default function SignupPage() {
   // Role selection step
   if (step === 'role') {
     return (
-      <Card variant="glass" className="backdrop-blur-xl border-white/30 shadow-2xl">
+      <Card variant="glass" className="backdrop-blur-xl border-zinc-700/50 shadow-2xl shadow-black/30">
         <CardHeader className="text-center space-y-2">
           <CardTitle className="text-2xl font-bold">회원가입</CardTitle>
           <CardDescription>
@@ -155,7 +155,7 @@ export default function SignupPage() {
                 setRole(option.id)
                 setStep('form')
               }}
-              className={`w-full p-5 border-2 rounded-2xl text-left group transition-all duration-300 ${option.borderColor} ${option.hoverBorder} hover:shadow-lg`}
+              className={`w-full p-5 border-2 rounded-2xl text-left group transition-all duration-300 bg-zinc-800/50 ${option.borderColor} ${option.hoverBorder} hover:shadow-lg hover:shadow-black/30`}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
@@ -167,22 +167,22 @@ export default function SignupPage() {
                   <option.icon className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-1 text-lg">{option.title}</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">
+                  <h3 className="font-semibold text-zinc-100 mb-1 text-lg">{option.title}</h3>
+                  <p className="text-sm text-zinc-400 leading-relaxed">
                     {option.description}
                   </p>
                 </div>
-                <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-1 transition-all mt-2" />
+                <ArrowRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 group-hover:translate-x-1 transition-all mt-2" />
               </div>
             </motion.button>
           ))}
         </CardContent>
         <CardFooter className="justify-center">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-zinc-500">
             이미 계정이 있으신가요?{' '}
             <Link
               href="/auth-group/login"
-              className="text-primary-600 hover:text-primary-700 font-semibold transition-colors"
+              className="text-primary-400 hover:text-primary-300 font-semibold transition-colors"
             >
               로그인
             </Link>
@@ -196,7 +196,7 @@ export default function SignupPage() {
   const selectedRole = roleOptions.find(r => r.id === role)!
 
   return (
-    <Card variant="glass" className="backdrop-blur-xl border-white/30 shadow-2xl">
+    <Card variant="glass" className="backdrop-blur-xl border-zinc-700/50 shadow-2xl shadow-black/30">
       <CardHeader className="text-center space-y-3 pb-2">
         <motion.div
           className={`w-14 h-14 mx-auto bg-gradient-to-br ${selectedRole.gradient} rounded-2xl flex items-center justify-center shadow-lg ${selectedRole.shadowColor}`}
@@ -224,9 +224,9 @@ export default function SignupPage() {
                 initial={{ opacity: 0, y: -10, height: 0 }}
                 animate={{ opacity: 1, y: 0, height: 'auto' }}
                 exit={{ opacity: 0, y: -10, height: 0 }}
-                className="flex items-center gap-3 p-4 bg-danger-50 border border-danger-200 rounded-xl text-danger-700 text-sm"
+                className="flex items-center gap-3 p-4 bg-danger-500/10 border border-danger-500/30 rounded-xl text-danger-400 text-sm"
               >
-                <div className="w-8 h-8 rounded-full bg-danger-100 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-danger-500/20 flex items-center justify-center flex-shrink-0">
                   <AlertCircle className="w-4 h-4" />
                 </div>
                 <span>{error}</span>
@@ -298,7 +298,7 @@ export default function SignupPage() {
           <motion.button
             type="button"
             onClick={() => setStep('role')}
-            className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}

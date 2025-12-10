@@ -120,22 +120,22 @@ export default function DashboardPage() {
   const getImpactBadge = (impact?: string) => {
     switch (impact) {
       case 'high':
-        return { bg: 'bg-danger-100', text: 'text-danger-700', label: '높음' }
+        return { bg: 'bg-danger-500/20', text: 'text-danger-400', label: '높음' }
       case 'medium':
-        return { bg: 'bg-warning-100', text: 'text-warning-700', label: '중간' }
+        return { bg: 'bg-warning-500/20', text: 'text-warning-400', label: '중간' }
       default:
-        return { bg: 'bg-gray-100', text: 'text-gray-600', label: '낮음' }
+        return { bg: 'bg-zinc-700', text: 'text-zinc-400', label: '낮음' }
     }
   }
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
       case 'urgent':
-        return { bg: 'bg-danger-100', text: 'text-danger-700', label: '긴급', dot: 'bg-danger-500' }
+        return { bg: 'bg-danger-500/20', text: 'text-danger-400', label: '긴급', dot: 'bg-danger-500' }
       case 'high':
-        return { bg: 'bg-warning-100', text: 'text-warning-700', label: '높음', dot: 'bg-warning-500' }
+        return { bg: 'bg-warning-500/20', text: 'text-warning-400', label: '높음', dot: 'bg-warning-500' }
       default:
-        return { bg: 'bg-gray-100', text: 'text-gray-600', label: '보통', dot: 'bg-gray-400' }
+        return { bg: 'bg-zinc-700', text: 'text-zinc-400', label: '보통', dot: 'bg-zinc-500' }
     }
   }
 
@@ -151,7 +151,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-primary-500 mx-auto" />
-          <p className="text-gray-500">대시보드 데이터를 불러오는 중...</p>
+          <p className="text-zinc-500">대시보드 데이터를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -167,15 +167,15 @@ export default function DashboardPage() {
       {/* Header */}
       <motion.div variants={item} className="flex items-end justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-zinc-100">
             {getGreeting()}, <span className="text-gradient">{user?.name || '사용자'}</span>님
           </h1>
-          <p className="text-gray-500 mt-2 flex items-center gap-2">
+          <p className="text-zinc-500 mt-2 flex items-center gap-2">
             <Activity className="w-4 h-4" />
             오늘의 팀 현황을 확인하세요
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
           <Clock className="w-4 h-4" />
           {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}
         </div>
@@ -229,7 +229,7 @@ export default function DashboardPage() {
                 </div>
                 <CardTitle>최근 커밋</CardTitle>
               </div>
-              <button className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1 font-medium group">
+              <button className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 font-medium group">
                 전체 보기
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
@@ -240,22 +240,22 @@ export default function DashboardPage() {
                 return (
                   <motion.div
                     key={commit.id}
-                    className="flex items-start gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group"
+                    className="flex items-start gap-4 p-4 rounded-xl hover:bg-zinc-800/50 transition-colors cursor-pointer group"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
                   >
-                    <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:from-primary-100 group-hover:to-primary-200 transition-colors">
-                      <GitCommit className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+                    <div className="w-10 h-10 bg-gradient-to-br from-zinc-700 to-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:from-primary-500/20 group-hover:to-primary-600/20 transition-colors">
+                      <GitCommit className="w-5 h-5 text-zinc-400 group-hover:text-primary-400 transition-colors" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 group-hover:text-primary-600 transition-colors">
+                      <p className="text-sm font-medium text-zinc-100 group-hover:text-primary-400 transition-colors">
                         {commit.description}
                       </p>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-xs font-medium text-gray-600">{commit.user_name}</span>
-                        <span className="text-xs text-gray-300">•</span>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs font-medium text-zinc-400">{commit.user_name}</span>
+                        <span className="text-xs text-zinc-600">•</span>
+                        <span className="text-xs text-zinc-500">
                           {formatRelativeTime(commit.created_at)}
                         </span>
                       </div>
@@ -287,7 +287,7 @@ export default function DashboardPage() {
                 return (
                   <motion.div
                     key={task.id}
-                    className="p-4 border border-gray-100 rounded-xl hover:border-gray-200 hover:shadow-sm transition-all cursor-pointer group"
+                    className="p-4 border border-zinc-800 rounded-xl hover:border-zinc-700 hover:bg-zinc-800/50 transition-all cursor-pointer group"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
@@ -296,14 +296,14 @@ export default function DashboardPage() {
                     <div className="flex items-start gap-3">
                       <div className={`w-2 h-2 rounded-full mt-2 ${badge.dot}`} />
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900 group-hover:text-primary-600 transition-colors">
+                        <p className="text-sm font-medium text-zinc-100 group-hover:text-primary-400 transition-colors">
                           {task.title}
                         </p>
                         <div className="flex items-center justify-between mt-2">
                           <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${badge.bg} ${badge.text}`}>
                             {badge.label}
                           </span>
-                          <span className="text-xs text-gray-400">{task.assignee_name}</span>
+                          <span className="text-xs text-zinc-500">{task.assignee_name}</span>
                         </div>
                       </div>
                     </div>
@@ -317,7 +317,7 @@ export default function DashboardPage() {
 
       {/* AI Insights */}
       <motion.div variants={item}>
-        <Card variant="gradient" className="border-2 border-primary-100 overflow-hidden relative">
+        <Card variant="gradient" className="border-2 border-primary-500/20 overflow-hidden relative">
           {/* Background decoration */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-primary-500/10 to-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
 
@@ -337,22 +337,22 @@ export default function DashboardPage() {
                 <Sparkles className="w-7 h-7 text-white" />
               </motion.div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-zinc-100 mb-2 flex items-center gap-2">
                   AI 인사이트
-                  <span className="px-2 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded-full">
+                  <span className="px-2 py-0.5 text-xs font-medium bg-primary-500/20 text-primary-400 rounded-full">
                     New
                   </span>
                 </h3>
-                <p className="text-gray-600 leading-relaxed">
-                  이번 스프린트에서 <span className="font-semibold text-gray-900">결제 시스템 연동</span> 태스크가 예상보다 지연되고 있습니다.
+                <p className="text-zinc-400 leading-relaxed">
+                  이번 스프린트에서 <span className="font-semibold text-zinc-100">결제 시스템 연동</span> 태스크가 예상보다 지연되고 있습니다.
                   현재 진행 속도를 감안하면 마감일까지 완료하기 어려울 수 있습니다.
-                  <span className="font-semibold text-primary-600"> 추가 리소스 배치를 고려해보세요.</span>
+                  <span className="font-semibold text-primary-400"> 추가 리소스 배치를 고려해보세요.</span>
                 </p>
                 <div className="flex gap-3 mt-4">
-                  <button className="px-4 py-2 text-sm font-semibold text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors">
+                  <button className="px-4 py-2 text-sm font-semibold text-primary-400 hover:text-primary-300 hover:bg-primary-500/10 rounded-lg transition-colors">
                     자세히 보기 →
                   </button>
-                  <button className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                  <button className="px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors">
                     다음에 보기
                   </button>
                 </div>

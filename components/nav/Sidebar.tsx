@@ -20,12 +20,14 @@ import {
   Globe,
   Building2,
   Zap,
+  TrendingUp,
 } from 'lucide-react'
 
 const navigation = [
   { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },
-  { name: '프로젝트', href: '/dashboard-group/project', icon: FolderKanban },
+  { name: '스타트업', href: '/dashboard-group/startup', icon: Building2 },
   { name: '태스크', href: '/dashboard-group/tasks', icon: ListTodo },
+  { name: 'KPI', href: '/dashboard-group/kpis', icon: TrendingUp },
   { name: '커밋 기록', href: '/dashboard-group/commits', icon: GitCommit },
   { name: '팀 관리', href: '/dashboard-group/team', icon: Users },
   { name: 'AI 인사이트', href: '/dashboard-group/insights', icon: Sparkles },
@@ -47,13 +49,13 @@ export function Sidebar() {
   return (
     <motion.aside
       className={cn(
-        'fixed left-0 top-0 z-40 h-screen bg-white/80 backdrop-blur-xl border-r border-gray-200/50',
+        'fixed left-0 top-0 z-40 h-screen bg-zinc-900/90 backdrop-blur-xl border-r border-zinc-800',
         'transition-all duration-300 ease-out'
       )}
       animate={{ width: sidebarOpen ? 280 : 80 }}
     >
       {/* Logo */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-100/80">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-zinc-800">
         <Link href="/dashboard-group" className="flex items-center gap-3">
           <motion.div
             className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/25"
@@ -65,7 +67,7 @@ export function Sidebar() {
           <AnimatePresence>
             {sidebarOpen && (
               <motion.span
-                className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent"
+                className="text-lg font-bold bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
@@ -77,7 +79,7 @@ export function Sidebar() {
         </Link>
         <motion.button
           onClick={toggleSidebar}
-          className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          className="p-2 rounded-xl hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
@@ -93,20 +95,20 @@ export function Sidebar() {
       <AnimatePresence>
         {!isVC && sidebarOpen && currentTeam && (
           <motion.div
-            className="px-4 py-4 border-b border-gray-100/80"
+            className="px-4 py-4 border-b border-zinc-800"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
           >
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100/50 border border-gray-100">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-100 to-primary-200 rounded-xl flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-primary-600" />
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-zinc-800/50 to-zinc-800 border border-zinc-700/50">
+              <div className="w-10 h-10 bg-gradient-to-br from-primary-500/20 to-primary-600/20 rounded-xl flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-primary-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">
+                <p className="text-sm font-semibold text-zinc-100 truncate">
                   {currentTeam.name}
                 </p>
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-zinc-500 truncate">
                   {currentTeam.industry || '스타트업'}
                 </p>
               </div>
@@ -133,13 +135,13 @@ export function Sidebar() {
                   'group',
                   isActive
                     ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-lg shadow-primary-500/25'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                 )}
               >
                 <item.icon
                   className={cn(
                     'w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110',
-                    isActive ? 'text-white' : 'text-gray-400 group-hover:text-primary-500'
+                    isActive ? 'text-white' : 'text-zinc-500 group-hover:text-primary-400'
                   )}
                 />
                 <AnimatePresence>
@@ -156,9 +158,9 @@ export function Sidebar() {
                 </AnimatePresence>
                 {/* Tooltip for collapsed state */}
                 {!sidebarOpen && (
-                  <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg">
+                  <div className="absolute left-full ml-2 px-3 py-2 bg-zinc-800 text-zinc-100 text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg border border-zinc-700">
                     {item.name}
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-gray-900 rotate-45" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-zinc-800 rotate-45 border-l border-b border-zinc-700" />
                   </div>
                 )}
               </Link>
@@ -168,17 +170,17 @@ export function Sidebar() {
       </nav>
 
       {/* Settings */}
-      <div className="px-3 py-4 border-t border-gray-100/80">
+      <div className="px-3 py-4 border-t border-zinc-800">
         <Link
           href="/dashboard-group/settings"
           className={cn(
             'flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group',
             pathname === '/dashboard-group/settings'
-              ? 'bg-gray-100 text-gray-900'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              ? 'bg-zinc-800 text-zinc-100'
+              : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300'
           )}
         >
-          <Settings className="w-5 h-5 flex-shrink-0 text-gray-400 group-hover:rotate-90 transition-transform duration-300" />
+          <Settings className="w-5 h-5 flex-shrink-0 text-zinc-500 group-hover:rotate-90 transition-transform duration-300" />
           <AnimatePresence>
             {sidebarOpen && (
               <motion.span

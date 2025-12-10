@@ -51,7 +51,7 @@ export default function LoginPage() {
   }
 
   return (
-    <Card variant="glass" className="backdrop-blur-xl border-white/30 shadow-2xl shadow-gray-200/50">
+    <Card variant="glass" className="backdrop-blur-xl border-zinc-700/50 shadow-2xl shadow-black/30">
       <CardHeader className="text-center space-y-3 pb-2">
         <motion.div
           className="w-14 h-14 mx-auto bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center shadow-lg shadow-primary-500/30"
@@ -77,9 +77,9 @@ export default function LoginPage() {
                 initial={{ opacity: 0, y: -10, height: 0 }}
                 animate={{ opacity: 1, y: 0, height: 'auto' }}
                 exit={{ opacity: 0, y: -10, height: 0 }}
-                className="flex items-center gap-3 p-4 bg-danger-50 border border-danger-200 rounded-xl text-danger-700 text-sm"
+                className="flex items-center gap-3 p-4 bg-danger-500/10 border border-danger-500/30 rounded-xl text-danger-400 text-sm"
               >
-                <div className="w-8 h-8 rounded-full bg-danger-100 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-danger-500/20 flex items-center justify-center flex-shrink-0">
                   <AlertCircle className="w-4 h-4" />
                 </div>
                 <span>{error}</span>
@@ -120,7 +120,7 @@ export default function LoginPage() {
           >
             <Link
               href="/auth-group/forgot-password"
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+              className="text-sm text-primary-400 hover:text-primary-300 font-medium transition-colors"
             >
               비밀번호를 잊으셨나요?
             </Link>
@@ -152,15 +152,15 @@ export default function LoginPage() {
             transition={{ delay: 0.4 }}
           >
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
+              <div className="w-full border-t border-zinc-700" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white/80 px-3 text-gray-400">또는</span>
+              <span className="bg-zinc-900 px-3 text-zinc-500">또는</span>
             </div>
           </motion.div>
 
           <motion.p
-            className="text-sm text-gray-600 text-center"
+            className="text-sm text-zinc-400 text-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
@@ -168,7 +168,7 @@ export default function LoginPage() {
             계정이 없으신가요?{' '}
             <Link
               href="/auth-group/signup"
-              className="text-primary-600 hover:text-primary-700 font-semibold transition-colors"
+              className="text-primary-400 hover:text-primary-300 font-semibold transition-colors"
             >
               회원가입
             </Link>

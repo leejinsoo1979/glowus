@@ -249,6 +249,15 @@ export interface CreateInvestorAccessInput {
   request_message?: string
 }
 
+export interface CreateKpiMetricInput {
+  startup_id: string
+  metric_type: string
+  metric_value: number
+  metric_unit?: string
+  period_start: string
+  period_end: string
+}
+
 export interface RespondInvestorAccessInput {
   status: 'APPROVED' | 'DENIED'
   response_message?: string

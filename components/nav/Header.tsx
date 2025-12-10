@@ -36,7 +36,7 @@ export function Header() {
 
   return (
     <header
-      className={`fixed top-0 right-0 z-30 h-16 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 transition-all duration-300 ${
+      className={`fixed top-0 right-0 z-30 h-16 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800 transition-all duration-300 ${
         sidebarOpen ? 'left-[280px]' : 'left-20'
       }`}
     >
@@ -46,17 +46,17 @@ export function Header() {
           <motion.div
             className={`relative transition-all duration-300 ${searchFocused ? 'scale-[1.02]' : ''}`}
           >
-            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${searchFocused ? 'text-primary-500' : 'text-gray-400'}`} />
+            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${searchFocused ? 'text-primary-400' : 'text-zinc-500'}`} />
             <input
               type="text"
               placeholder="프로젝트, 태스크, 커밋 검색..."
-              className="w-full h-11 pl-12 pr-24 bg-gray-50/80 border-2 border-gray-200/50 rounded-xl text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 transition-all placeholder:text-gray-400"
+              className="w-full h-11 pl-12 pr-24 bg-zinc-800/80 border-2 border-zinc-700/50 rounded-xl text-sm text-zinc-100 focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 transition-all placeholder:text-zinc-500"
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 bg-gray-200/50 rounded-lg">
-              <Command className="w-3 h-3 text-gray-400" />
-              <span className="text-xs text-gray-400 font-medium">K</span>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 bg-zinc-700/50 rounded-lg">
+              <Command className="w-3 h-3 text-zinc-400" />
+              <span className="text-xs text-zinc-400 font-medium">K</span>
             </div>
           </motion.div>
         </div>
@@ -86,19 +86,19 @@ export function Header() {
 
           {/* Notifications */}
           <motion.button
-            className="relative p-2.5 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+            className="relative p-2.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-danger-500 rounded-full border-2 border-white" />
+            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-danger-500 rounded-full border-2 border-zinc-900" />
           </motion.button>
 
           {/* User Menu */}
           <div className="relative">
             <motion.button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-3 p-1.5 pr-3 rounded-xl hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-3 p-1.5 pr-3 rounded-xl hover:bg-zinc-800 transition-colors"
               whileHover={{ scale: 1.02 }}
             >
               <div className="w-9 h-9 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/25">
@@ -110,7 +110,7 @@ export function Header() {
                 animate={{ rotate: showUserMenu ? 180 : 0 }}
                 transition={{ duration: 0.2 }}
               >
-                <ChevronDown className="w-4 h-4 text-gray-400" />
+                <ChevronDown className="w-4 h-4 text-zinc-500" />
               </motion.div>
             </motion.button>
 
@@ -125,14 +125,14 @@ export function Header() {
                     exit={{ opacity: 0 }}
                   />
                   <motion.div
-                    className="absolute right-0 mt-2 w-64 bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200/50 py-2 z-50 overflow-hidden"
+                    className="absolute right-0 mt-2 w-64 bg-zinc-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-700/50 py-2 z-50 overflow-hidden"
                     initial={{ opacity: 0, y: -10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
                   >
                     {/* User Info */}
-                    <div className="px-4 py-3 border-b border-gray-100">
+                    <div className="px-4 py-3 border-b border-zinc-800">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/25">
                           <span className="text-lg font-bold text-white">
@@ -140,10 +140,10 @@ export function Header() {
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">
+                          <p className="text-sm font-semibold text-zinc-100">
                             {user?.name || '사용자'}
                           </p>
-                          <p className="text-xs text-gray-500">{user?.email}</p>
+                          <p className="text-xs text-zinc-500">{user?.email}</p>
                         </div>
                       </div>
                     </div>
@@ -155,9 +155,9 @@ export function Header() {
                           setShowUserMenu(false)
                           router.push('/dashboard-group/profile')
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
                       >
-                        <User className="w-4 h-4 text-gray-400" />
+                        <User className="w-4 h-4 text-zinc-500" />
                         프로필
                       </button>
                       <button
@@ -165,18 +165,18 @@ export function Header() {
                           setShowUserMenu(false)
                           router.push('/dashboard-group/settings')
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
                       >
-                        <Settings className="w-4 h-4 text-gray-400" />
+                        <Settings className="w-4 h-4 text-zinc-500" />
                         설정
                       </button>
                     </div>
 
                     {/* Logout */}
-                    <div className="border-t border-gray-100 pt-2">
+                    <div className="border-t border-zinc-800 pt-2">
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50 transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger-400 hover:bg-danger-500/10 transition-colors"
                       >
                         <LogOut className="w-4 h-4" />
                         로그아웃

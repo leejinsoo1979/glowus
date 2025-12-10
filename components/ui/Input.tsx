@@ -40,14 +40,14 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-gray-700"
+            className="block text-sm font-medium text-zinc-300"
           >
             {label}
           </label>
         )}
         <div className="relative group">
           {leftIcon && (
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary-500 transition-colors">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary-400 transition-colors">
               {leftIcon}
             </div>
           )}
@@ -56,16 +56,16 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             disabled={disabled}
             className={cn(
-              'flex h-12 w-full rounded-xl border-2 bg-white/80 backdrop-blur-sm px-4 py-3 text-sm text-gray-900 transition-all duration-200',
-              'placeholder:text-gray-400',
+              'flex h-12 w-full rounded-xl border-2 bg-zinc-800/80 backdrop-blur-sm px-4 py-3 text-sm text-zinc-100 transition-all duration-200',
+              'placeholder:text-zinc-500',
               'focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10',
-              'hover:border-gray-300',
-              'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60',
+              'hover:border-zinc-600',
+              'disabled:cursor-not-allowed disabled:bg-zinc-900 disabled:opacity-60',
               error
                 ? 'border-danger-500 focus:border-danger-500 focus:ring-danger-500/10'
                 : success
                   ? 'border-success-500 focus:border-success-500 focus:ring-success-500/10'
-                  : 'border-gray-200',
+                  : 'border-zinc-700',
               leftIcon && 'pl-11',
               (rightIcon || (isPasswordType && showPasswordToggle) || error || success) && 'pr-11',
               className
@@ -81,7 +81,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
+                className="text-zinc-500 hover:text-zinc-300 focus:outline-none transition-colors"
                 tabIndex={-1}
               >
                 {showPassword ? (
@@ -92,7 +92,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               </button>
             )}
             {rightIcon && !error && !success && !(isPasswordType && showPasswordToggle) && (
-              <span className="text-gray-400">{rightIcon}</span>
+              <span className="text-zinc-500">{rightIcon}</span>
             )}
           </div>
         </div>
@@ -102,7 +102,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="text-sm text-danger-600 flex items-center gap-1.5"
+              className="text-sm text-danger-400 flex items-center gap-1.5"
             >
               {error}
             </motion.p>
@@ -111,7 +111,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-sm text-gray-500"
+              className="text-sm text-zinc-500"
             >
               {hint}
             </motion.p>
@@ -135,10 +135,10 @@ const FloatingInput = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           placeholder=" "
           className={cn(
-            'peer flex h-14 w-full rounded-xl border-2 bg-white/80 backdrop-blur-sm px-4 pt-5 pb-2 text-sm text-gray-900 transition-all duration-200',
+            'peer flex h-14 w-full rounded-xl border-2 bg-zinc-800/80 backdrop-blur-sm px-4 pt-5 pb-2 text-sm text-zinc-100 transition-all duration-200',
             'placeholder:text-transparent',
             'focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10',
-            error ? 'border-danger-500' : 'border-gray-200',
+            error ? 'border-danger-500' : 'border-zinc-700',
             className
           )}
           ref={ref}
@@ -148,8 +148,8 @@ const FloatingInput = forwardRef<HTMLInputElement, InputProps>(
           <label
             htmlFor={inputId}
             className={cn(
-              'absolute left-4 top-4 text-gray-400 text-sm transition-all duration-200 pointer-events-none origin-left',
-              'peer-focus:top-2 peer-focus:text-xs peer-focus:text-primary-600',
+              'absolute left-4 top-4 text-zinc-500 text-sm transition-all duration-200 pointer-events-none origin-left',
+              'peer-focus:top-2 peer-focus:text-xs peer-focus:text-primary-400',
               'peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:text-xs',
               error && 'text-danger-500 peer-focus:text-danger-500'
             )}
@@ -158,7 +158,7 @@ const FloatingInput = forwardRef<HTMLInputElement, InputProps>(
           </label>
         )}
         {error && (
-          <p className="mt-2 text-sm text-danger-600">{error}</p>
+          <p className="mt-2 text-sm text-danger-400">{error}</p>
         )}
       </div>
     )
