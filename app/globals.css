@@ -1,0 +1,273 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 9 9 11;
+    --foreground: 250 250 250;
+    --card: 24 24 27;
+    --card-foreground: 250 250 250;
+    --primary: 14 165 233;
+    --primary-foreground: 255 255 255;
+    --secondary: 39 39 42;
+    --secondary-foreground: 161 161 170;
+    --muted: 39 39 42;
+    --muted-foreground: 161 161 170;
+    --accent: 39 39 42;
+    --accent-foreground: 250 250 250;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
+    --border: 39 39 42;
+    --input: 39 39 42;
+    --ring: 14 165 233;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-zinc-800;
+  }
+
+  html {
+    @apply scroll-smooth;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Smooth focus rings */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary-500/50 ring-offset-2 ring-offset-zinc-950;
+  }
+}
+
+@layer components {
+  /* Glass morphism effect */
+  .glass {
+    @apply bg-zinc-900/70 backdrop-blur-xl border border-zinc-700/50 shadow-soft;
+  }
+
+  .glass-light {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-soft;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-400 via-primary-500 to-primary-300 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-aurora {
+    @apply bg-aurora bg-clip-text text-transparent;
+  }
+
+  /* Animated gradient border */
+  .gradient-border {
+    position: relative;
+    background: linear-gradient(#18181b, #18181b) padding-box,
+                linear-gradient(135deg, #0ea5e9, #8b5cf6, #ec4899) border-box;
+    border: 2px solid transparent;
+  }
+
+  /* Shimmer loading effect */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
+    animation: shimmer 2s linear infinite;
+    background-size: 200% 100%;
+  }
+
+  /* Card hover effect */
+  .card-hover {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .card-hover:hover {
+    @apply -translate-y-1 shadow-lg shadow-black/30;
+  }
+
+  /* Button press effect */
+  .btn-press {
+    @apply transition-transform duration-100;
+  }
+
+  .btn-press:active {
+    @apply scale-[0.98];
+  }
+
+  /* Glow effect */
+  .glow-primary {
+    box-shadow: 0 0 20px rgba(14, 165, 233, 0.3);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+  }
+
+  /* Animated underline */
+  .animated-underline {
+    @apply relative;
+  }
+
+  .animated-underline::after {
+    content: '';
+    @apply absolute left-0 bottom-0 w-0 h-0.5 bg-primary-500 transition-all duration-300;
+  }
+
+  .animated-underline:hover::after {
+    @apply w-full;
+  }
+
+  /* Status indicators */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot-active {
+    @apply bg-success-500 animate-pulse;
+  }
+
+  .status-dot-warning {
+    @apply bg-warning-500;
+  }
+
+  .status-dot-danger {
+    @apply bg-danger-500;
+  }
+
+  /* Floating label input */
+  .floating-label-input {
+    @apply relative;
+  }
+
+  .floating-label-input input:focus ~ label,
+  .floating-label-input input:not(:placeholder-shown) ~ label {
+    @apply -translate-y-6 scale-75 text-primary-400;
+  }
+
+  /* Dark theme card styles */
+  .card {
+    @apply bg-zinc-900 border border-zinc-800 rounded-xl;
+  }
+
+  .card-elevated {
+    @apply bg-zinc-900/80 border border-zinc-700/50 rounded-xl shadow-xl shadow-black/20;
+  }
+
+  /* Dark theme input styles */
+  .input-dark {
+    @apply bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500;
+  }
+
+  .input-dark:focus {
+    @apply border-primary-500 ring-1 ring-primary-500/30;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Hide scrollbar but allow scroll */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+  }
+
+  /* Backdrop blur variants */
+  .backdrop-blur-xs {
+    backdrop-filter: blur(2px);
+  }
+
+  /* Animation delay utilities */
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  .animation-delay-500 {
+    animation-delay: 500ms;
+  }
+}
+
+/* Custom scrollbar for the entire page */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3f3f46, #27272a);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #52525b, #3f3f46);
+}
+
+/* Selection styling */
+::selection {
+  @apply bg-primary-500/30 text-primary-200;
+}
+
+/* Placeholder styling */
+::placeholder {
+  @apply text-zinc-500;
+}
+
+/* Focus within for form groups */
+.focus-within-ring:focus-within {
+  @apply ring-2 ring-primary-500/20 ring-offset-2 ring-offset-zinc-950;
+}
