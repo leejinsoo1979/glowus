@@ -1,23 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ThemeProvider as NextThemesProvider, useTheme } from 'next-themes'
+import { ThemeProvider as NextThemesProvider } from 'next-themes'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 
-function ThemeSyncProvider({ children }: { children: React.ReactNode }) {
-  const { accentColor, mode } = useThemeStore()
-  const { setTheme, resolvedTheme } = useTheme()
+function AccentColorProvider({ children }: { children: React.ReactNode }) {
+  const { accentColor } = useThemeStore()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  // Sync zustand theme mode with next-themes
-  useEffect(() => {
-    if (!mounted) return
-    setTheme(mode)
-  }, [mode, mounted, setTheme])
 
   // Apply accent color CSS variables
   useEffect(() => {
@@ -40,13 +33,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     <NextThemesProvider
       attribute="class"
       defaultTheme="dark"
-      enableSystem
+      enableSystem={false}
       disableTransitionOnChange
-      storageKey="theme-mode"
     >
-      <ThemeSyncProvider>
+      <AccentColorProvider>
         {children}
-      </ThemeSyncProvider>
+      </AccentColorProvider>
     </NextThemesProvider>
   )
 }

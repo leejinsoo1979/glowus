@@ -81,6 +81,14 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [connecting, setConnecting] = useState<string | null>(null)
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
 
   useEffect(() => {
     if (currentStartup?.id) {
@@ -153,20 +161,20 @@ export default function IntegrationsPage() {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
-          <Link2 className="w-16 h-16 text-zinc-600 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-zinc-200 mb-2">스타트업을 선택해주세요</h2>
-          <p className="text-zinc-400">통합을 설정하려면 먼저 스타트업을 선택하세요</p>
+          <Link2 className={`w-16 h-16 mx-auto mb-4 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
+          <h2 className={`text-xl font-semibold mb-2 ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>스타트업을 선택해주세요</h2>
+          <p className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>통합을 설정하려면 먼저 스타트업을 선택하세요</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-6">
+    <div className={`min-h-screen p-6 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-zinc-100">통합 설정</h1>
-        <p className="text-zinc-400 mt-1">외부 서비스와 연동하여 워크플로우를 자동화하세요</p>
+        <h1 className={`text-2xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>통합 설정</h1>
+        <p className={`mt-1 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>외부 서비스와 연동하여 워크플로우를 자동화하세요</p>
       </div>
 
       {/* Integration Cards */}
@@ -181,7 +189,7 @@ export default function IntegrationsPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden"
+              className={`rounded-xl overflow-hidden border ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}
             >
               {/* Header */}
               <div className={`${integration.color} p-6`}>
@@ -213,10 +221,10 @@ export default function IntegrationsPage() {
               <div className="p-6">
                 {/* Features */}
                 <div className="mb-6">
-                  <p className="text-xs text-zinc-500 mb-3">주요 기능</p>
+                  <p className={`text-xs mb-3 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>주요 기능</p>
                   <ul className="space-y-2">
                     {integration.features.map((feature, i) => (
-                      <li key={i} className="flex items-center gap-2 text-sm text-zinc-300">
+                      <li key={i} className={`flex items-center gap-2 text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
                         <div className="w-1 h-1 bg-accent rounded-full" />
                         {feature}
                       </li>
@@ -226,19 +234,19 @@ export default function IntegrationsPage() {
 
                 {/* Connected Info */}
                 {isConnected && status?.metadata && (
-                  <div className="mb-4 p-3 bg-zinc-800/50 rounded-lg">
-                    <p className="text-xs text-zinc-500 mb-2">연결 정보</p>
+                  <div className={`mb-4 p-3 rounded-lg ${isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'}`}>
+                    <p className={`text-xs mb-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>연결 정보</p>
                     {status.metadata.username && (
-                      <p className="text-sm text-zinc-300">@{status.metadata.username}</p>
+                      <p className={`text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>@{status.metadata.username}</p>
                     )}
                     {status.metadata.team_name && (
-                      <p className="text-sm text-zinc-300">{status.metadata.team_name}</p>
+                      <p className={`text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>{status.metadata.team_name}</p>
                     )}
                     {status.metadata.email && (
-                      <p className="text-sm text-zinc-300">{status.metadata.email}</p>
+                      <p className={`text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>{status.metadata.email}</p>
                     )}
                     {status.connected_at && (
-                      <p className="text-xs text-zinc-500 mt-2">
+                      <p className={`text-xs mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                         {new Date(status.connected_at).toLocaleDateString('ko-KR')}에 연결됨
                       </p>
                     )}
@@ -251,7 +259,11 @@ export default function IntegrationsPage() {
                     <>
                       <button
                         onClick={() => fetchIntegrations()}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-sm"
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm ${
+                          isDark
+                            ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                            : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                        }`}
                       >
                         <RefreshCw className="w-4 h-4" />
                         새로고침
@@ -290,16 +302,16 @@ export default function IntegrationsPage() {
       </div>
 
       {/* Webhook Settings */}
-      <div className="mt-8 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-zinc-100 mb-2">Webhook 설정</h3>
-        <p className="text-sm text-zinc-400 mb-4">
+      <div className={`mt-8 rounded-xl p-6 border ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
+        <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>Webhook 설정</h3>
+        <p className={`text-sm mb-4 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
           외부 서비스에서 GlowUS로 이벤트를 전송할 수 있습니다
         </p>
 
-        <div className="bg-zinc-800/50 rounded-lg p-4">
-          <p className="text-xs text-zinc-500 mb-2">Webhook URL</p>
+        <div className={`rounded-lg p-4 ${isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'}`}>
+          <p className={`text-xs mb-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Webhook URL</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 bg-zinc-900 rounded text-sm text-zinc-300 font-mono overflow-x-auto">
+            <code className={`flex-1 px-3 py-2 rounded text-sm font-mono overflow-x-auto ${isDark ? 'bg-zinc-900 text-zinc-300' : 'bg-white text-zinc-700 border border-zinc-200'}`}>
               {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/{currentStartup?.id}
             </code>
             <button
@@ -307,7 +319,7 @@ export default function IntegrationsPage() {
                 navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/${currentStartup?.id}`)
                 alert('복사되었습니다')
               }}
-              className="px-3 py-2 bg-zinc-700 rounded hover:bg-zinc-600 transition-colors text-sm text-zinc-300"
+              className={`px-3 py-2 rounded transition-colors text-sm ${isDark ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300' : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700'}`}
             >
               복사
             </button>
@@ -316,7 +328,7 @@ export default function IntegrationsPage() {
 
         <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
           <p className="text-sm text-amber-400">
-            💡 Webhook을 사용하려면 환경 변수에 <code className="bg-zinc-800 px-1 rounded">WEBHOOK_SECRET</code>을 설정하세요.
+            💡 Webhook을 사용하려면 환경 변수에 <code className={`px-1 rounded ${isDark ? 'bg-zinc-800' : 'bg-amber-500/20'}`}>WEBHOOK_SECRET</code>을 설정하세요.
           </p>
         </div>
       </div>

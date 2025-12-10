@@ -3,25 +3,25 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
-import { useThemeStore, accentColors, ThemeMode } from '@/stores/themeStore'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 import {
   SlidersHorizontal,
   Sun,
   Moon,
-  Monitor,
   Check,
 } from 'lucide-react'
+
+type ThemeMode = 'light' | 'dark'
 
 const themeModes: { id: ThemeMode; name: string; icon: typeof Sun }[] = [
   { id: 'light', name: '라이트', icon: Sun },
   { id: 'dark', name: '다크', icon: Moon },
-  { id: 'system', name: '시스템', icon: Monitor },
 ]
 
 export function ThemeDropdown() {
   const [isOpen, setIsOpen] = useState(false)
-  const { mode, accentColor, setMode, setAccentColor } = useThemeStore()
-  const { resolvedTheme } = useTheme()
+  const { accentColor, setAccentColor } = useThemeStore()
+  const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export function ThemeDropdown() {
 
   if (!mounted) {
     return (
-      <button className="p-2.5 rounded-xl bg-theme-secondary text-theme-muted">
+      <button className="p-2.5 rounded-xl bg-zinc-800 text-zinc-400">
         <SlidersHorizontal className="w-5 h-5" />
       </button>
     )
@@ -42,7 +42,11 @@ export function ThemeDropdown() {
     <div className="relative">
       <motion.button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2.5 rounded-xl hover:bg-theme-secondary text-theme-muted hover:text-theme transition-colors"
+        className={`relative p-2.5 rounded-xl transition-colors ${
+          isDark
+            ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+            : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+        }`}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         aria-label="테마 설정"
@@ -76,17 +80,20 @@ export function ThemeDropdown() {
             >
               {/* Theme Mode Section */}
               <div className={`px-4 pb-3 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                <h3 className="text-xs font-semibold text-theme-muted uppercase tracking-wider mb-3">
+                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   테마 모드
                 </h3>
                 <div className="flex gap-2">
                   {themeModes.map((themeMode) => {
                     const Icon = themeMode.icon
-                    const isActive = mode === themeMode.id
+                    const isActive = theme === themeMode.id
                     return (
                       <button
                         key={themeMode.id}
-                        onClick={() => setMode(themeMode.id)}
+                        onClick={() => {
+                          setTheme(themeMode.id)
+                          setIsOpen(false)
+                        }}
                         className={`flex-1 flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all border ${
                           isActive
                             ? 'bg-accent/20 text-accent border-accent/30'
@@ -105,7 +112,7 @@ export function ThemeDropdown() {
 
               {/* Accent Color Section */}
               <div className="px-4 pt-3">
-                <h3 className="text-xs font-semibold text-theme-muted uppercase tracking-wider mb-3">
+                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   강조 색상
                 </h3>
                 <div className="grid grid-cols-4 gap-2">
@@ -114,7 +121,10 @@ export function ThemeDropdown() {
                     return (
                       <button
                         key={color.id}
-                        onClick={() => setAccentColor(color.id)}
+                        onClick={() => {
+                          setAccentColor(color.id)
+                          setIsOpen(false)
+                        }}
                         className={`relative flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${
                           isActive
                             ? isDark
@@ -135,7 +145,7 @@ export function ThemeDropdown() {
                         >
                           {isActive && <Check className="w-4 h-4 text-white" />}
                         </div>
-                        <span className="text-[10px] text-theme-muted font-medium">
+                        <span className={`text-[10px] font-medium ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                           {color.name}
                         </span>
                       </button>
@@ -147,7 +157,7 @@ export function ThemeDropdown() {
               {/* Preview */}
               <div className={`px-4 pt-4 mt-3 border-t ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-theme-muted">미리보기</span>
+                  <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>미리보기</span>
                   <div className="flex items-center gap-2">
                     <div
                       className="w-16 h-2 rounded-full"
