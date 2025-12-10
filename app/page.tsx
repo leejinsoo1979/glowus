@@ -469,7 +469,7 @@ export default function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 px-6 sm:px-10 lg:px-16 bg-accent-gradient">
+      <section className="py-20 px-6 sm:px-10 lg:px-16 bg-accent/90">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-6">
             지금 바로 시작하세요

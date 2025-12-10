@@ -10,14 +10,12 @@ interface AgentConfigPanelProps {
   node: Node<AgentNodeData> | null
   onClose: () => void
   onUpdate: (nodeId: string, data: Partial<AgentNodeData>) => void
-  onDelete: (nodeId: string) => void
 }
 
 export function AgentConfigPanel({
   node,
   onClose,
   onUpdate,
-  onDelete,
 }: AgentConfigPanelProps) {
   if (!node) return null
 
@@ -33,11 +31,11 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">모델</label>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">모델</label>
               <select
                 value={node.data.model || "gpt-4-turbo"}
                 onChange={(e) => handleChange("model", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="gpt-4">GPT-4</option>
                 <option value="gpt-4-turbo">GPT-4 Turbo</option>
@@ -48,7 +46,7 @@ export function AgentConfigPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 Temperature ({node.data.temperature || 0.7})
               </label>
               <input
@@ -65,7 +63,7 @@ export function AgentConfigPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 Max Tokens
               </label>
               <input
@@ -74,36 +72,55 @@ export function AgentConfigPanel({
                 onChange={(e) =>
                   handleChange("maxTokens", parseInt(e.target.value))
                 }
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 System Prompt
               </label>
               <textarea
                 value={node.data.systemPrompt || ""}
                 onChange={(e) => handleChange("systemPrompt", e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
                 placeholder="시스템 프롬프트를 입력하세요..."
               />
             </div>
           </>
         )
 
+      case "prompt":
+        return (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              프롬프트 내용
+            </label>
+            <textarea
+              value={node.data.prompt || ""}
+              onChange={(e) => handleChange("prompt", e.target.value)}
+              rows={6}
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+              placeholder="프롬프트를 입력하세요..."
+            />
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+              $input1, $input2 등을 사용하여 연결된 노드의 출력을 참조하세요
+            </p>
+          </div>
+        )
+
       case "memory":
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 메모리 타입
               </label>
               <select
                 value={node.data.memoryType || "buffer"}
                 onChange={(e) => handleChange("memoryType", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="buffer">Buffer Memory</option>
                 <option value="summary">Summary Memory</option>
@@ -113,7 +130,7 @@ export function AgentConfigPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 메모리 한도 (대화 수)
               </label>
               <input
@@ -122,7 +139,7 @@ export function AgentConfigPanel({
                 onChange={(e) =>
                   handleChange("memoryLimit", parseInt(e.target.value))
                 }
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               />
             </div>
           </>
@@ -132,13 +149,13 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 벡터 스토어
               </label>
               <select
                 value={node.data.vectorStore || "supabase"}
                 onChange={(e) => handleChange("vectorStore", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="supabase">Supabase</option>
                 <option value="pinecone">Pinecone</option>
@@ -148,7 +165,7 @@ export function AgentConfigPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 임베딩 모델
               </label>
               <select
@@ -156,7 +173,7 @@ export function AgentConfigPanel({
                 onChange={(e) =>
                   handleChange("embeddingModel", e.target.value)
                 }
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="text-embedding-3-small">
                   text-embedding-3-small
@@ -171,7 +188,7 @@ export function AgentConfigPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 검색 결과 수
               </label>
               <input
@@ -180,7 +197,7 @@ export function AgentConfigPanel({
                 onChange={(e) =>
                   handleChange("retrievalCount", parseInt(e.target.value))
                 }
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               />
             </div>
           </>
@@ -190,13 +207,13 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 라우팅 로직
               </label>
               <select
                 value={node.data.routingLogic || "conditional"}
                 onChange={(e) => handleChange("routingLogic", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="conditional">조건부 분기</option>
                 <option value="sequential">순차 실행</option>
@@ -204,10 +221,25 @@ export function AgentConfigPanel({
               </select>
             </div>
 
-            <div className="p-3 bg-zinc-800/50 rounded-lg">
-              <p className="text-xs text-zinc-400">
+            {node.data.routingLogic === "conditional" && (
+              <div className="space-y-2 mt-4">
+                <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  조건 코드 (JavaScript)
+                </label>
+                <textarea
+                  value={node.data.code || "// return 'handle1' or 'handle2' based on input\nif (input.includes('hello')) return 'a';\nreturn 'b';"}
+                  onChange={(e) => handleChange("code", e.target.value)}
+                  rows={8}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                  placeholder="// 조건 로직을 작성하세요"
+                />
+              </div>
+            )}
+
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg mt-4">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 💡 라우터는 입력에 따라 다른 경로로 대화를 분기합니다.
-                각 출력 핸들을 다른 노드에 연결하세요.
+                조건부 분기 선택 시, 위 코드창에 반환할 핸들 ID('a', 'b' 등)를 결정하는 로직을 작성하세요.
               </p>
             </div>
           </>
@@ -217,13 +249,13 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 평가 타입
               </label>
               <select
                 value={node.data.evaluationType || "quality"}
                 onChange={(e) => handleChange("evaluationType", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="quality">품질 평가</option>
                 <option value="relevance">관련성 평가</option>
@@ -233,7 +265,7 @@ export function AgentConfigPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 임계값 ({node.data.threshold || 0.8})
               </label>
               <input
@@ -255,13 +287,13 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 입력 타입
               </label>
               <select
                 value={node.data.inputType || "text"}
                 onChange={(e) => handleChange("inputType", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="text">텍스트</option>
                 <option value="file">파일</option>
@@ -277,13 +309,13 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 출력 타입
               </label>
               <select
                 value={node.data.outputType || "text"}
                 onChange={(e) => handleChange("outputType", e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               >
                 <option value="text">텍스트</option>
                 <option value="json">JSON</option>
@@ -298,7 +330,7 @@ export function AgentConfigPanel({
         return (
           <>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 함수 이름
               </label>
               <input
@@ -306,29 +338,155 @@ export function AgentConfigPanel({
                 value={node.data.functionName || ""}
                 onChange={(e) => handleChange("functionName", e.target.value)}
                 placeholder="함수 이름을 입력하세요"
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 함수 인자 (JSON)
               </label>
               <textarea
                 value={node.data.functionArgs || "{}"}
                 onChange={(e) => handleChange("functionArgs", e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
                 placeholder='{"param1": "value1"}'
               />
             </div>
           </>
         )
 
-      default:
+      case "javascript":
         return (
-          <div className="p-3 bg-zinc-800/50 rounded-lg">
-            <p className="text-xs text-zinc-400">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              코드 (JavaScript):
+            </label>
+            <textarea
+              value={node.data.code || "// Access inputs as input1, etc.\nreturn input1.toUpperCase()"}
+              onChange={(e) => handleChange("code", e.target.value)}
+              rows={12}
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+              placeholder="// 여기에 자바스크립트 코드를 작성하세요"
+            />
+          </div>
+        )
+
+      case "custom_tool":
+        return (
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                도구 이름
+              </label>
+              <input
+                type="text"
+                value={node.data.functionName || ""}
+                onChange={(e) => handleChange("functionName", e.target.value)}
+                placeholder="사용자 정의 도구 이름"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                구현 (JavaScript)
+              </label>
+              <textarea
+                value={node.data.code || "// Tool implementation\nasync function execute(args) {\n  // Your code here\n  return result;\n}"}
+                onChange={(e) => handleChange("code", e.target.value)}
+                rows={12}
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                placeholder="// Implementation"
+              />
+            </div>
+          </>
+        )
+
+      case "image_generation":
+        return (
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                모델
+              </label>
+              <select
+                value={node.data.model || "dall-e-3"}
+                onChange={(e) => handleChange("model", e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+              >
+                <option value="dall-e-3">DALL·E 3</option>
+                <option value="dall-e-2">DALL·E 2</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                이미지 크기
+              </label>
+              <select
+                value={node.data.inputConfig?.size as string || "1024x1024"}
+                onChange={(e) => handleChange("inputConfig", { ...node.data.inputConfig, size: e.target.value })}
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+              >
+                <option value="1024x1024">1024x1024</option>
+                <option value="512x512">512x512</option>
+                <option value="256x256">256x256</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                품질
+              </label>
+              <select
+                value={node.data.inputConfig?.quality as string || "standard"}
+                onChange={(e) => handleChange("inputConfig", { ...node.data.inputConfig, quality: e.target.value })}
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+              >
+                <option value="standard">Standard</option>
+                <option value="hd">HD</option>
+              </select>
+            </div>
+          </>
+        )
+
+      case "embedding":
+        return (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              임베딩 모델
+            </label>
+            <select
+              value={node.data.embeddingModel || "text-embedding-3-small"}
+              onChange={(e) => handleChange("embeddingModel", e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            >
+              <option value="text-embedding-3-small">text-embedding-3-small</option>
+              <option value="text-embedding-3-large">text-embedding-3-large</option>
+              <option value="text-embedding-ada-002">text-embedding-ada-002</option>
+            </select>
+          </div>
+        )
+
+      case "tool":
+        return (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              API URL
+            </label>
+            <input
+              type="text"
+              value={node.data.url || ""}
+              onChange={(e) => handleChange("url", e.target.value)}
+              placeholder="https://api.example.com/v1/..."
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+          </div>
+        )
+        return (
+          <div className="p-3 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
               이 노드에 대한 추가 설정이 없습니다.
             </p>
           </div>
@@ -342,19 +500,19 @@ export function AgentConfigPanel({
         initial={{ x: 300, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 300, opacity: 0 }}
-        className="w-80 bg-zinc-900 border-l border-zinc-800 flex flex-col overflow-hidden"
+        className="w-80 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden transition-colors duration-200"
       >
         {/* Header */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between transition-colors">
           <div className="flex items-center gap-2">
-            <Settings className="w-4 h-4 text-zinc-400" />
-            <h3 className="text-sm font-semibold text-zinc-100">노드 설정</h3>
+            <Settings className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">노드 설정</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
           >
-            <X className="w-4 h-4 text-zinc-400" />
+            <X className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
           </button>
         </div>
 
@@ -362,49 +520,37 @@ export function AgentConfigPanel({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Node Info */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400">노드 이름</label>
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">노드 이름</label>
             <input
               type="text"
               value={node.data.label || ""}
               onChange={(e) => handleChange("label", e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400">설명</label>
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">설명</label>
             <textarea
               value={node.data.description || ""}
               onChange={(e) => handleChange("description", e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
               placeholder="노드 설명을 입력하세요..."
             />
           </div>
 
-          <div className="border-t border-zinc-800 pt-4">
+          <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 transition-colors">
             <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="w-4 h-4 text-violet-400" />
-              <span className="text-xs font-medium text-zinc-300">
-                노드 설정
+              <Sparkles className="w-4 h-4 text-violet-500 dark:text-violet-400" />
+              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-300">
+                상세 설정
               </span>
             </div>
             {renderConfigFields()}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-zinc-800">
-          <Button
-            variant="danger"
-            size="sm"
-            className="w-full"
-            onClick={() => onDelete(node.id)}
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            노드 삭제
-          </Button>
-        </div>
       </motion.div>
     </AnimatePresence>
   )

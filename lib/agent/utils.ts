@@ -14,65 +14,158 @@ export function generateAgentNodeId(type: AgentType): string {
 }
 
 // Node type configurations
+// Node type configurations
 export const AGENT_NODE_CONFIGS: Record<AgentType, AgentNodeTypeConfig> = {
+  start: {
+    type: "start",
+    label: "Start",
+    labelKo: "Start",
+    description: "Workflow entry point",
+    descriptionKo: "Workflow entry point",
+    icon: "Play",
+    color: "#22c55e", // Green
+    bgColor: "#22c55e20",
+    borderColor: "#22c55e",
+    category: "core",
+    handles: { inputs: 0, outputs: 1 },
+  },
+  prompt: {
+    type: "prompt",
+    label: "Prompt",
+    labelKo: "Prompt",
+    description: "Input text or prompt",
+    descriptionKo: "Input text or prompt",
+    icon: "FileText",
+    color: "#d946ef", // Fuchsia/Pink
+    bgColor: "#d946ef20",
+    borderColor: "#d946ef",
+    category: "core",
+    handles: { inputs: 1, outputs: 1 },
+  },
   llm: {
     type: "llm",
-    label: "LLM",
-    labelKo: "LLM 모델",
-    description: "Large Language Model node for text generation",
-    descriptionKo: "텍스트 생성을 위한 대규모 언어 모델",
+    label: "Text Model",
+    labelKo: "Text Model",
+    description: "Generate text with LLM",
+    descriptionKo: "Generate text with LLM",
     icon: "Brain",
-    color: "#8b5cf6",
+    color: "#8b5cf6", // Violet
     bgColor: "#8b5cf620",
     borderColor: "#8b5cf6",
     category: "core",
     handles: { inputs: 1, outputs: 1 },
   },
-  router: {
-    type: "router",
-    label: "Router",
-    labelKo: "라우터",
-    description: "Route conversations to different paths",
-    descriptionKo: "대화를 다른 경로로 분기",
-    icon: "GitBranch",
-    color: "#f59e0b",
-    bgColor: "#f59e0b20",
-    borderColor: "#f59e0b",
-    category: "control",
-    handles: { inputs: 1, outputs: 3 },
-  },
-  memory: {
-    type: "memory",
-    label: "Memory",
-    labelKo: "메모리",
-    description: "Store and retrieve conversation context",
-    descriptionKo: "대화 컨텍스트 저장 및 검색",
-    icon: "Database",
-    color: "#06b6d4",
-    bgColor: "#06b6d420",
-    borderColor: "#06b6d4",
-    category: "memory",
+  image_generation: {
+    type: "image_generation",
+    label: "Image Generation",
+    labelKo: "Image Generation",
+    description: "Generate images",
+    descriptionKo: "Generate images",
+    icon: "Image",
+    color: "#6366f1", // Indigo
+    bgColor: "#6366f120",
+    borderColor: "#6366f1",
+    category: "tools",
     handles: { inputs: 1, outputs: 1 },
   },
-  tool: {
+  tool: { // Renamed from "tool" to indicate HTTP Request in UI
     type: "tool",
-    label: "Tool",
-    labelKo: "도구",
-    description: "External tool or API integration",
-    descriptionKo: "외부 도구 또는 API 연동",
-    icon: "Wrench",
-    color: "#ec4899",
+    label: "HTTP Request",
+    labelKo: "HTTP Request",
+    description: "Call external APIs",
+    descriptionKo: "Call external APIs",
+    icon: "Globe", // Or Activity/Globe
+    color: "#ec4899", // Pink
     bgColor: "#ec489920",
     borderColor: "#ec4899",
     category: "tools",
     handles: { inputs: 1, outputs: 1 },
   },
+  router: { // Conditional
+    type: "router",
+    label: "Conditional",
+    labelKo: "Conditional",
+    description: "Branch based on condition",
+    descriptionKo: "Branch based on condition",
+    icon: "GitBranch", // Or ArrowRight? Reference has a specific branching icon. GitBranch is close.
+    color: "#a855f7", // Purple
+    bgColor: "#a855f720",
+    borderColor: "#a855f7",
+    category: "control",
+    handles: { inputs: 1, outputs: 2 }, // Usually 2 outputs (True/False)
+  },
+  javascript: {
+    type: "javascript",
+    label: "JavaScript",
+    labelKo: "JavaScript",
+    description: "Execute custom JS code",
+    descriptionKo: "Execute custom JS code",
+    icon: "Code",
+    color: "#f59e0b", // Amber/Yellow
+    bgColor: "#f59e0b20",
+    borderColor: "#f59e0b",
+    category: "tools",
+    handles: { inputs: 1, outputs: 1 },
+  },
+  embedding: {
+    type: "embedding",
+    label: "Embedding Model",
+    labelKo: "Embedding Model",
+    description: "Convert text to embeddings",
+    descriptionKo: "Convert text to embeddings",
+    icon: "Layers",
+    color: "#06b6d4", // Cyan
+    bgColor: "#06b6d420",
+    borderColor: "#06b6d4",
+    category: "memory",
+    handles: { inputs: 1, outputs: 1 },
+  },
+  custom_tool: {
+    type: "custom_tool",
+    label: "Tool",
+    labelKo: "Tool",
+    description: "Custom function tool",
+    descriptionKo: "Custom function tool",
+    icon: "Wrench",
+    color: "#f97316", // Orange
+    bgColor: "#f9731620",
+    borderColor: "#f97316",
+    category: "tools",
+    handles: { inputs: 1, outputs: 1 },
+  },
+  end: {
+    type: "end",
+    label: "End",
+    labelKo: "End",
+    description: "Workflow output",
+    descriptionKo: "Workflow output",
+    icon: "Flag",
+    color: "#ef4444", // Red
+    bgColor: "#ef444420", // Red
+    borderColor: "#ef4444",
+    category: "core",
+    handles: { inputs: 1, outputs: 0 },
+  },
+  // Legacy or unused types kept for internal logic/safety, or mapped to basic styles
+  memory: {
+    type: "memory",
+    label: "Memory",
+    labelKo: "Memory",
+    description: "Store context",
+    descriptionKo: "Store context",
+    icon: "Database",
+    color: "#71717a",
+    bgColor: "#71717a20",
+    borderColor: "#71717a",
+    category: "memory",
+    handles: { inputs: 1, outputs: 1 },
+  },
   rag: {
     type: "rag",
     label: "RAG",
-    labelKo: "RAG 검색",
-    description: "Retrieval Augmented Generation",
-    descriptionKo: "검색 증강 생성 (벡터 검색)",
+    labelKo: "RAG",
+    description: "Retrieval",
+    descriptionKo: "Retrieval",
     icon: "Search",
     color: "#10b981",
     bgColor: "#10b98120",
@@ -83,22 +176,22 @@ export const AGENT_NODE_CONFIGS: Record<AgentType, AgentNodeTypeConfig> = {
   input: {
     type: "input",
     label: "Input",
-    labelKo: "입력",
-    description: "User or system input node",
-    descriptionKo: "사용자 또는 시스템 입력",
+    labelKo: "Input",
+    description: "Input",
+    descriptionKo: "Input",
     icon: "MessageSquare",
-    color: "#3b82f6",
-    bgColor: "#3b82f620",
-    borderColor: "#3b82f6",
+    color: "var(--accent-color)",
+    bgColor: "var(--accent-color-20)",
+    borderColor: "var(--accent-color)",
     category: "io",
     handles: { inputs: 0, outputs: 1 },
   },
   output: {
     type: "output",
     label: "Output",
-    labelKo: "출력",
-    description: "Final output node",
-    descriptionKo: "최종 출력 노드",
+    labelKo: "Output",
+    description: "Output",
+    descriptionKo: "Output",
     icon: "Send",
     color: "#22c55e",
     bgColor: "#22c55e20",
@@ -109,9 +202,9 @@ export const AGENT_NODE_CONFIGS: Record<AgentType, AgentNodeTypeConfig> = {
   chain: {
     type: "chain",
     label: "Chain",
-    labelKo: "체인",
-    description: "Chain multiple operations together",
-    descriptionKo: "여러 작업을 연결",
+    labelKo: "Chain",
+    description: "Chain",
+    descriptionKo: "Chain",
     icon: "Link",
     color: "#6366f1",
     bgColor: "#6366f120",
@@ -122,9 +215,9 @@ export const AGENT_NODE_CONFIGS: Record<AgentType, AgentNodeTypeConfig> = {
   evaluator: {
     type: "evaluator",
     label: "Evaluator",
-    labelKo: "평가자",
-    description: "Evaluate output quality",
-    descriptionKo: "출력 품질 평가",
+    labelKo: "Evaluator",
+    description: "Evaluate",
+    descriptionKo: "Evaluate",
     icon: "CheckCircle",
     color: "#f97316",
     bgColor: "#f9731620",
@@ -135,9 +228,9 @@ export const AGENT_NODE_CONFIGS: Record<AgentType, AgentNodeTypeConfig> = {
   function: {
     type: "function",
     label: "Function",
-    labelKo: "함수",
-    description: "Custom function call",
-    descriptionKo: "커스텀 함수 호출",
+    labelKo: "Function",
+    description: "Function",
+    descriptionKo: "Function",
     icon: "Code",
     color: "#64748b",
     bgColor: "#64748b20",
@@ -213,6 +306,35 @@ function getDefaultAgentNodeData(type: AgentType): Partial<AgentNodeData> {
         ...baseData,
         functionName: "",
         functionArgs: "{}",
+      }
+    case "start":
+      return baseData
+    case "end":
+      return baseData
+    case "prompt":
+      return {
+        ...baseData,
+        systemPrompt: "",
+      }
+    case "image_generation":
+      return {
+        ...baseData,
+        model: "dall-e-3",
+      }
+    case "javascript":
+      return {
+        ...baseData,
+        // No specific data needed for now, handled in component
+      }
+    case "embedding":
+      return {
+        ...baseData,
+        embeddingModel: "text-embedding-3-small",
+      }
+    case "custom_tool":
+      return {
+        ...baseData,
+        // Default tool config?
       }
     default:
       return baseData

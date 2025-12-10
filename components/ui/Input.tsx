@@ -47,7 +47,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <div className="relative group">
           {leftIcon && (
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary-400 transition-colors">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-accent transition-colors">
               {leftIcon}
             </div>
           )}
@@ -58,7 +58,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             className={cn(
               'flex h-12 w-full rounded-xl border-2 bg-zinc-800/80 backdrop-blur-sm px-4 py-3 text-sm text-zinc-100 transition-all duration-200',
               'placeholder:text-zinc-500',
-              'focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10',
+              'focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/10',
               'hover:border-zinc-600',
               'disabled:cursor-not-allowed disabled:bg-zinc-900 disabled:opacity-60',
               error
@@ -137,7 +137,7 @@ const FloatingInput = forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             'peer flex h-14 w-full rounded-xl border-2 bg-zinc-800/80 backdrop-blur-sm px-4 pt-5 pb-2 text-sm text-zinc-100 transition-all duration-200',
             'placeholder:text-transparent',
-            'focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10',
+            'focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/10',
             error ? 'border-danger-500' : 'border-zinc-700',
             className
           )}
@@ -149,7 +149,7 @@ const FloatingInput = forwardRef<HTMLInputElement, InputProps>(
             htmlFor={inputId}
             className={cn(
               'absolute left-4 top-4 text-zinc-500 text-sm transition-all duration-200 pointer-events-none origin-left',
-              'peer-focus:top-2 peer-focus:text-xs peer-focus:text-primary-400',
+              'peer-focus:top-2 peer-focus:text-xs peer-focus:text-accent',
               'peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:text-xs',
               error && 'text-danger-500 peer-focus:text-danger-500'
             )}

@@ -1,12 +1,13 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
+import { createClient } from '@/lib/supabase/client'
 import { Logo } from '@/components/ui'
 import {
   LayoutDashboard,
@@ -24,6 +25,9 @@ import {
   FileText,
   Workflow,
   Bot,
+  LogOut,
+  Mail,
+  MessageCircle,
 } from 'lucide-react'
 
 const navigation = [
@@ -32,6 +36,8 @@ const navigation = [
   { name: '태스크', href: '/dashboard-group/tasks', icon: ListTodo },
   { name: 'KPI', href: '/dashboard-group/kpis', icon: TrendingUp },
   { name: '커밋 기록', href: '/dashboard-group/commits', icon: GitCommit },
+  { name: '메신저', href: '/dashboard-group/messenger', icon: MessageCircle },
+  { name: '이메일', href: '/dashboard-group/email', icon: Mail },
   { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
   { name: 'AI 에이전트', href: '/dashboard-group/agents', icon: Bot },
   { name: '리포트', href: '/dashboard-group/reports', icon: FileText },
@@ -46,14 +52,22 @@ const investorNav = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { sidebarOpen, toggleSidebar } = useUIStore()
-  const { user, currentTeam } = useAuthStore()
+  const { user, currentTeam, logout: clearAuth } = useAuthStore()
   const { resolvedTheme } = useTheme()
 
   // resolvedTheme이 undefined일 때(SSR) dark로 기본값
   const isDark = resolvedTheme === 'dark' || resolvedTheme === undefined
   const isVC = user?.role === 'INVESTOR'
   const navItems = isVC ? investorNav : navigation
+
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    clearAuth()
+    router.push('/auth-group/login')
+  }
 
   return (
     <motion.aside
@@ -67,17 +81,15 @@ export function Sidebar() {
       animate={{ width: sidebarOpen ? 280 : 80 }}
     >
       {/* Logo */}
-      <div className={`h-16 flex items-center justify-between px-4 border-b ${
-        isDark ? 'border-zinc-800' : 'border-zinc-200'
-      }`}>
+      <div className={`h-16 flex items-center justify-between px-4 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'
+        }`}>
         <Logo size="md" collapsed={!sidebarOpen} />
         <motion.button
           onClick={toggleSidebar}
-          className={`p-2 rounded-xl transition-colors ${
-            isDark
-              ? 'hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-              : 'hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700'
-          }`}
+          className={`p-2 rounded-xl transition-colors ${isDark
+            ? 'hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+            : 'hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700'
+            }`}
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
@@ -98,13 +110,12 @@ export function Sidebar() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
           >
-            <div className={`flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r ${
-              isDark
-                ? 'from-zinc-800/50 to-zinc-800 border border-zinc-700/50'
-                : 'from-zinc-100 to-zinc-50 border border-zinc-200'
-            }`}>
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-500/20 to-primary-600/20 rounded-xl flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-primary-400" />
+            <div className={`flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r ${isDark
+              ? 'from-zinc-800/50 to-zinc-800 border border-zinc-700/50'
+              : 'from-zinc-100 to-zinc-50 border border-zinc-200'
+              }`}>
+              <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-accent" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-semibold truncate ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
@@ -136,7 +147,7 @@ export function Sidebar() {
                   'relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200',
                   'group',
                   isActive
-                    ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-lg shadow-primary-500/25'
+                    ? 'bg-accent text-white shadow-lg shadow-accent/25'
                     : isDark
                       ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                       : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
@@ -148,8 +159,8 @@ export function Sidebar() {
                     isActive
                       ? 'text-white'
                       : isDark
-                        ? 'text-zinc-500 group-hover:text-primary-400'
-                        : 'text-zinc-400 group-hover:text-primary-500'
+                        ? 'text-zinc-500 group-hover:text-accent'
+                        : 'text-zinc-400 group-hover:text-accent'
                   )}
                 />
                 <AnimatePresence>
@@ -166,17 +177,15 @@ export function Sidebar() {
                 </AnimatePresence>
                 {/* Tooltip for collapsed state */}
                 {!sidebarOpen && (
-                  <div className={`absolute left-full ml-2 px-3 py-2 text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg ${
-                    isDark
-                      ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
-                      : 'bg-white text-zinc-900 border border-zinc-200'
-                  }`}>
+                  <div className={`absolute left-full ml-2 px-3 py-2 text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg ${isDark
+                    ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+                    : 'bg-white text-zinc-900 border border-zinc-200'
+                    }`}>
                     {item.name}
-                    <div className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rotate-45 border-l border-b ${
-                      isDark
-                        ? 'bg-zinc-800 border-zinc-700'
-                        : 'bg-white border-zinc-200'
-                    }`} />
+                    <div className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rotate-45 border-l border-b ${isDark
+                      ? 'bg-zinc-800 border-zinc-700'
+                      : 'bg-white border-zinc-200'
+                      }`} />
                   </div>
                 )}
               </Link>
@@ -200,9 +209,8 @@ export function Sidebar() {
                 : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
           )}
         >
-          <Settings className={`w-5 h-5 flex-shrink-0 group-hover:rotate-90 transition-transform duration-300 ${
-            isDark ? 'text-zinc-500' : 'text-zinc-400'
-          }`} />
+          <Settings className={`w-5 h-5 flex-shrink-0 group-hover:rotate-90 transition-transform duration-300 ${isDark ? 'text-zinc-500' : 'text-zinc-400'
+            }`} />
           <AnimatePresence>
             {sidebarOpen && (
               <motion.span
@@ -215,6 +223,46 @@ export function Sidebar() {
             )}
           </AnimatePresence>
         </Link>
+      </div>
+
+      {/* Logout Button */}
+      <div className={`px-3 py-4 border-t ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+        <button
+          onClick={handleLogout}
+          className={cn(
+            'relative w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group',
+            isDark
+              ? 'text-zinc-500 hover:bg-zinc-800 hover:text-white'
+              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900'
+          )}
+        >
+          <LogOut className={`w-5 h-5 flex-shrink-0 group-hover:-translate-x-1 transition-transform duration-300 ${isDark ? 'text-zinc-500 group-hover:text-white' : 'text-zinc-400 group-hover:text-zinc-900'
+            }`} />
+          <AnimatePresence>
+            {sidebarOpen && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                나가기
+              </motion.span>
+            )}
+          </AnimatePresence>
+          {/* Tooltip for collapsed state */}
+          {!sidebarOpen && (
+            <div className={`absolute left-full ml-2 px-3 py-2 text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg ${isDark
+              ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+              : 'bg-white text-zinc-900 border border-zinc-200'
+              }`}>
+              나가기
+              <div className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rotate-45 border-l border-b ${isDark
+                ? 'bg-zinc-800 border-zinc-700'
+                : 'bg-white border-zinc-200'
+                }`} />
+            </div>
+          )}
+        </button>
       </div>
     </motion.aside>
   )

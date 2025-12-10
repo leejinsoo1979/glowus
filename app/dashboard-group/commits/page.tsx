@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -56,11 +57,19 @@ const item = {
 export default function CommitsPage() {
   const { currentStartup } = useAuthStore()
   const { openCommitModal } = useUIStore()
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [commits, setCommits] = useState<Task[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [filterPriority, setFilterPriority] = useState<string>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('timeline')
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
 
   const fetchCommits = useCallback(async () => {
     if (!currentStartup?.id) {
@@ -160,7 +169,7 @@ export default function CommitsPage() {
       case 'MEDIUM':
         return 'bg-yellow-500/20 text-yellow-400'
       default:
-        return 'bg-zinc-700 text-zinc-400'
+        return isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-600'
     }
   }
 
@@ -193,7 +202,7 @@ export default function CommitsPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto" />
-          <p className="text-zinc-500">커밋 기록을 불러오는 중...</p>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-600'}>커밋 기록을 불러오는 중...</p>
         </div>
       </div>
     )
@@ -222,18 +231,18 @@ export default function CommitsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">커밋 기록</h1>
-          <p className="text-zinc-500 mt-1">팀의 모든 작업 기록을 확인하세요</p>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>커밋 기록</h1>
+          <p className={`mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-600'}`}>팀의 모든 작업 기록을 확인하세요</p>
         </div>
         <div className="flex items-center gap-3">
           {/* View Mode Toggle */}
-          <div className="flex bg-zinc-800 rounded-lg p-1">
+          <div className={`flex rounded-lg p-1 ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
             <button
               onClick={() => setViewMode('timeline')}
               className={`p-2 rounded-md transition-colors ${
                 viewMode === 'timeline'
                   ? 'bg-accent text-white'
-                  : 'text-zinc-400 hover:text-zinc-100'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900'
               }`}
               title="타임라인 뷰"
             >
@@ -244,7 +253,7 @@ export default function CommitsPage() {
               className={`p-2 rounded-md transition-colors ${
                 viewMode === 'list'
                   ? 'bg-accent text-white'
-                  : 'text-zinc-400 hover:text-zinc-100'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900'
               }`}
               title="리스트 뷰"
             >
@@ -262,21 +271,29 @@ export default function CommitsPage() {
         <CardContent className="py-4">
           <div className="flex items-center gap-4">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
               <input
                 type="text"
                 placeholder="커밋 검색..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus-accent"
+                className={`w-full h-10 pl-10 pr-4 rounded-lg text-sm focus:outline-none focus-accent ${
+                  isDark
+                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder:text-zinc-500'
+                    : 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
+                }`}
               />
             </div>
             <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-zinc-500" />
+              <Filter className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
               <select
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value)}
-                className="h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 focus:outline-none focus-accent"
+                className={`h-10 px-3 rounded-lg text-sm focus:outline-none focus-accent ${
+                  isDark
+                    ? 'bg-zinc-800 border border-zinc-700 text-zinc-100'
+                    : 'bg-zinc-50 border border-zinc-300 text-zinc-900'
+                }`}
               >
                 <option value="all">모든 영향도</option>
                 <option value="HIGH">높음</option>
@@ -292,9 +309,9 @@ export default function CommitsPage() {
       {filteredCommits.length === 0 ? (
         <Card variant="default">
           <CardContent className="py-12 text-center">
-            <GitCommit className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-zinc-300 mb-2">커밋이 없습니다</h3>
-            <p className="text-zinc-500 mb-6">첫 번째 커밋을 기록해보세요</p>
+            <GitCommit className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
+            <h3 className={`text-lg font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>커밋이 없습니다</h3>
+            <p className={`mb-6 ${isDark ? 'text-zinc-500' : 'text-zinc-600'}`}>첫 번째 커밋을 기록해보세요</p>
             <Button onClick={openCommitModal} leftIcon={<Plus className="w-4 h-4" />}>
               커밋 작성하기
             </Button>
@@ -318,10 +335,10 @@ export default function CommitsPage() {
             <div key={date} className="space-y-3">
               {/* Date Header */}
               <div className="flex items-center gap-3">
-                <Calendar className="w-4 h-4 text-zinc-500" />
-                <h3 className="text-sm font-medium text-zinc-400">{date}</h3>
-                <div className="flex-1 h-px bg-zinc-800" />
-                <span className="text-xs text-zinc-600">{dateCommits.length}개의 커밋</span>
+                <Calendar className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
+                <h3 className={`text-sm font-medium ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>{date}</h3>
+                <div className={`flex-1 h-px ${isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                <span className={`text-xs ${isDark ? 'text-zinc-600' : 'text-zinc-500'}`}>{dateCommits.length}개의 커밋</span>
               </div>
 
               {/* Commits */}
@@ -334,7 +351,7 @@ export default function CommitsPage() {
                   >
                     <Card
                       variant="default"
-                      className="hover:border-zinc-600 transition-colors cursor-pointer"
+                      className={`transition-colors cursor-pointer ${isDark ? 'hover:border-zinc-600' : 'hover:border-zinc-400'}`}
                     >
                       <CardContent className="py-4">
                         <div className="flex items-start gap-4">
@@ -343,7 +360,7 @@ export default function CommitsPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <h4 className="text-sm font-medium text-zinc-100 group-hover:text-accent transition-colors">
+                              <h4 className={`text-sm font-medium group-hover:text-accent transition-colors ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                                 {commit.title}
                               </h4>
                               <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${getPriorityBadgeStyle(commit.priority)}`}>
@@ -351,12 +368,12 @@ export default function CommitsPage() {
                               </span>
                             </div>
                             {commit.description && (
-                              <p className="text-sm text-zinc-500 line-clamp-1 mb-2">
+                              <p className={`text-sm line-clamp-1 mb-2 ${isDark ? 'text-zinc-500' : 'text-zinc-600'}`}>
                                 {commit.description}
                               </p>
                             )}
-                            <div className="flex items-center gap-3 text-xs text-zinc-500">
-                              <span className="font-medium text-zinc-400">
+                            <div className={`flex items-center gap-3 text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                              <span className={`font-medium ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                                 {commit.author?.name || '알 수 없음'}
                               </span>
                               <span>•</span>

@@ -46,7 +46,7 @@ const STAGES = ['전체', 'IDEA', 'MVP', 'EARLY', 'GROWTH', 'SCALE']
 
 const stageColors: Record<string, string> = {
   IDEA: 'bg-zinc-700 text-zinc-300',
-  MVP: 'bg-blue-500/20 text-blue-400',
+  MVP: 'bg-accent/20 text-accent',
   EARLY: 'bg-green-500/20 text-green-400',
   GROWTH: 'bg-orange-500/20 text-orange-400',
   SCALE: 'bg-purple-500/20 text-purple-400',

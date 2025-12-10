@@ -309,7 +309,7 @@ function WorkflowBuilderInner() {
                 case "trigger":
                   return "#22c55e"
                 case "input":
-                  return "#3b82f6"
+                  return "var(--accent-color)"
                 case "output":
                   return "#10b981"
                 case "process":

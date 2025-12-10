@@ -256,7 +256,7 @@ export default function ReportsPage() {
         </div>
         <button
           onClick={() => setShowGenerateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-black font-medium rounded-lg hover:bg-accent/90 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-accent text-white font-medium rounded-lg hover:bg-accent/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           리포트 생성
@@ -311,13 +311,11 @@ export default function ReportsPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
-                      report.type === 'weekly' ? 'bg-blue-500/20' : 'bg-purple-500/20'
-                    }`}>
+                    <div className={`p-2 rounded-lg bg-accent/20`}>
                       {report.type === 'weekly' ? (
-                        <Calendar className="w-5 h-5 text-blue-400" />
+                        <Calendar className="w-5 h-5 text-accent" />
                       ) : (
-                        <BarChart3 className="w-5 h-5 text-purple-400" />
+                        <BarChart3 className="w-5 h-5 text-accent" />
                       )}
                     </div>
                     <div>
@@ -363,11 +361,7 @@ export default function ReportsPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        selectedReport.type === 'weekly'
-                          ? 'bg-blue-500/20 text-blue-400'
-                          : 'bg-purple-500/20 text-purple-400'
-                      }`}>
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-accent/20 text-accent">
                         {selectedReport.type === 'weekly' ? '주간' : '월간'}
                       </span>
                     </div>
@@ -517,10 +511,10 @@ export default function ReportsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => setGenerateType('weekly')}
-                      className={`p-4 rounded-lg border transition-all ${
+                      className={`p-4 rounded-lg border-2 transition-all ${
                         generateType === 'weekly'
                           ? 'border-accent bg-accent/10'
-                          : 'border-zinc-700 hover:border-zinc-600'
+                          : 'border-zinc-700 hover:border-accent/50'
                       }`}
                     >
                       <Calendar className={`w-6 h-6 mx-auto mb-2 ${
@@ -533,10 +527,10 @@ export default function ReportsPage() {
                     </button>
                     <button
                       onClick={() => setGenerateType('monthly')}
-                      className={`p-4 rounded-lg border transition-all ${
+                      className={`p-4 rounded-lg border-2 transition-all ${
                         generateType === 'monthly'
                           ? 'border-accent bg-accent/10'
-                          : 'border-zinc-700 hover:border-zinc-600'
+                          : 'border-zinc-700 hover:border-accent/50'
                       }`}
                     >
                       <BarChart3 className={`w-6 h-6 mx-auto mb-2 ${
@@ -565,7 +559,7 @@ export default function ReportsPage() {
                 <button
                   onClick={generateReport}
                   disabled={isGenerating}
-                  className="flex-1 px-4 py-2 bg-accent text-black font-medium rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 bg-accent text-white font-medium rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {isGenerating ? (
                     <>

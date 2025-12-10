@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/nav/Sidebar'
 import { Header } from '@/components/nav/Header'
 import { CommitModal } from '@/components/commits/CommitModal'
@@ -96,17 +96,19 @@ export default function DashboardLayout({
     )
   }
 
+  const pathname = usePathname()
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email')
+
   return (
     <div className="min-h-screen bg-theme">
       <Sidebar />
       <Header />
       <CommitModal />
       <main
-        className={`pt-16 min-h-screen transition-all duration-300 ${
-          sidebarOpen ? 'pl-64' : 'pl-20'
-        }`}
+        className={`pt-16 min-h-screen transition-all duration-300 ${sidebarOpen ? 'pl-[280px]' : 'pl-20'
+          }`}
       >
-        <div className="p-6">
+        <div className={isFullWidthPage ? "" : "p-8 pl-10"}>
           {children}
         </div>
       </main>

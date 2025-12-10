@@ -37,7 +37,7 @@ export function TasksChart({ title = "태스크 현황" }: TasksChartProps) {
   }, [])
 
   const currentAccent = accentColors.find(c => c.id === accentColor) || accentColors[0]
-  const chartAccentColor = mounted ? currentAccent.color : "#3b82f6"
+  const chartAccentColor = mounted ? currentAccent.color : "var(--accent-color)"
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -124,7 +124,7 @@ export function ProductivityChart() {
   }, [])
 
   const currentAccent = accentColors.find(c => c.id === accentColor) || accentColors[0]
-  const chartAccentColor = mounted ? currentAccent.color : "#3b82f6"
+  const chartAccentColor = mounted ? currentAccent.color : "var(--accent-color)"
 
   const data = [
     { name: "월", score: 72 },

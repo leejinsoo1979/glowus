@@ -167,7 +167,7 @@ export default function RadialOrbitalTimeline({
         className={`w-full h-[500px] flex flex-col items-center justify-center bg-black overflow-hidden rounded-2xl ${className || ''}`}
       >
         <div className="relative w-full max-w-lg h-full flex items-center justify-center">
-          <div className="absolute w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-500 animate-pulse flex items-center justify-center z-10">
+          <div className="absolute w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-accent to-teal-500 animate-pulse flex items-center justify-center z-10">
             <div className="w-7 h-7 rounded-full bg-white/80 backdrop-blur-md"></div>
           </div>
           <div className="absolute w-80 h-80 rounded-full border border-white/10"></div>
@@ -192,7 +192,7 @@ export default function RadialOrbitalTimeline({
           }}
         >
           {/* Center Orb */}
-          <div className="absolute w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-500 animate-pulse flex items-center justify-center z-10">
+          <div className="absolute w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-accent to-teal-500 animate-pulse flex items-center justify-center z-10">
             <div className="absolute w-18 h-18 rounded-full border border-white/20 animate-ping opacity-70"></div>
             <div
               className="absolute w-22 h-22 rounded-full border border-white/10 animate-ping opacity-50"
@@ -320,7 +320,7 @@ export default function RadialOrbitalTimeline({
                         </div>
                         <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                            className="h-full bg-gradient-to-r from-accent to-purple-500"
                             style={{ width: `${item.energy}%` }}
                           ></div>
                         </div>

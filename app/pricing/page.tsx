@@ -46,9 +46,6 @@ export default function PricingPage() {
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-6 sm:px-10 lg:px-16 bg-gradient-to-b from-gray-50 to-white dark:from-zinc-950 dark:to-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-zinc-800 dark:text-zinc-100 mb-6">
-            심플하고 투명한 <span className="text-accent">요금제</span>
-          </h1>
           <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
             팀 규모와 필요에 맞는 요금제를 선택하세요.
             모든 플랜에서 14일 무료 체험이 가능합니다.

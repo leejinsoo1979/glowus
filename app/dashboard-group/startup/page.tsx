@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, Button, Input } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -24,7 +25,7 @@ import {
 
 const STAGES: { value: StartupStage; label: string; color: string }[] = [
   { value: 'IDEA', label: '아이디어', color: 'bg-zinc-700 text-zinc-300' },
-  { value: 'MVP', label: 'MVP', color: 'bg-blue-500/20 text-blue-400' },
+  { value: 'MVP', label: 'MVP', color: 'bg-accent/20 text-accent' },
   { value: 'EARLY', label: '초기', color: 'bg-green-500/20 text-green-400' },
   { value: 'GROWTH', label: '성장', color: 'bg-purple-500/20 text-purple-400' },
   { value: 'SCALE', label: '스케일업', color: 'bg-orange-500/20 text-orange-400' },
@@ -37,12 +38,20 @@ const INDUSTRIES = [
 
 export default function StartupPage() {
   const { user } = useAuthStore()
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [startups, setStartups] = useState<Startup[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingStartup, setEditingStartup] = useState<Startup | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
 
   const [formData, setFormData] = useState<CreateStartupInput>({
     name: '',
@@ -165,7 +174,7 @@ export default function StartupPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto" />
-          <p className="text-zinc-500">스타트업 정보를 불러오는 중...</p>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-600'}>스타트업 정보를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -176,8 +185,8 @@ export default function StartupPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">스타트업 관리</h1>
-          <p className="text-zinc-500 mt-1">스타트업 정보를 관리하세요</p>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>스타트업 관리</h1>
+          <p className={`mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-600'}`}>스타트업 정보를 관리하세요</p>
         </div>
         <Button onClick={() => setShowCreateModal(true)} leftIcon={<Plus className="w-4 h-4" />}>
           스타트업 추가
@@ -203,12 +212,12 @@ export default function StartupPage() {
       {startups.length === 0 ? (
         <Card variant="default" className="py-16">
           <div className="text-center space-y-4">
-            <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mx-auto">
-              <Building2 className="w-8 h-8 text-zinc-500" />
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+              <Building2 className={`w-8 h-8 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-zinc-100">등록된 스타트업이 없습니다</h3>
-              <p className="text-zinc-500 mt-1">첫 번째 스타트업을 추가해보세요</p>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>등록된 스타트업이 없습니다</h3>
+              <p className={`mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-600'}`}>첫 번째 스타트업을 추가해보세요</p>
             </div>
             <Button onClick={() => setShowCreateModal(true)} leftIcon={<Plus className="w-4 h-4" />}>
               스타트업 추가
@@ -245,38 +254,38 @@ export default function StartupPage() {
 
                   <CardContent className="flex-1 space-y-4">
                     {startup.description && (
-                      <p className="text-sm text-zinc-400 line-clamp-2">{startup.description}</p>
+                      <p className={`text-sm line-clamp-2 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>{startup.description}</p>
                     )}
 
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-zinc-400">
+                      <div className={`flex items-center gap-2 text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                         <Building2 className="w-4 h-4" />
                         <span>{startup.industry}</span>
                       </div>
                       {startup.website && (
-                        <div className="flex items-center gap-2 text-sm text-zinc-400">
+                        <div className={`flex items-center gap-2 text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                           <Globe className="w-4 h-4" />
                           <a href={startup.website} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline truncate">
                             {startup.website}
                           </a>
                         </div>
                       )}
-                      <div className="flex items-center gap-2 text-sm text-zinc-400">
+                      <div className={`flex items-center gap-2 text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                         <Users className="w-4 h-4" />
                         <span>{startup.employee_count}명</span>
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-zinc-800 grid grid-cols-2 gap-3">
+                    <div className={`pt-3 border-t grid grid-cols-2 gap-3 ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                       <div>
-                        <p className="text-xs text-zinc-500">월 매출</p>
-                        <p className="text-sm font-semibold text-zinc-100">
+                        <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>월 매출</p>
+                        <p className={`text-sm font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                           {formatCurrency(startup.monthly_revenue)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500">월 지출</p>
-                        <p className="text-sm font-semibold text-zinc-100">
+                        <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>월 지출</p>
+                        <p className={`text-sm font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                           {formatCurrency(startup.monthly_burn)}
                         </p>
                       </div>
@@ -321,22 +330,24 @@ export default function StartupPage() {
             onClick={handleCloseModal}
           >
             <motion.div
-              className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              className={`rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto ${
+                isDark ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-zinc-200'
+              }`}
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-zinc-800">
+              <div className={`p-6 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold text-zinc-100">
+                  <h2 className={`text-xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                     {editingStartup ? '스타트업 수정' : '새 스타트업 추가'}
                   </h2>
                   <button
                     onClick={handleCloseModal}
-                    className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+                    className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}
                   >
-                    <X className="w-5 h-5 text-zinc-400" />
+                    <X className={`w-5 h-5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
                   </button>
                 </div>
               </div>
@@ -351,9 +362,13 @@ export default function StartupPage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">산업 분야</label>
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>산업 분야</label>
                   <select
-                    className="w-full h-11 px-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus-accent"
+                    className={`w-full h-11 px-4 rounded-xl text-sm focus:outline-none focus-accent ${
+                      isDark
+                        ? 'bg-zinc-800 border border-zinc-700 text-zinc-100'
+                        : 'bg-zinc-50 border border-zinc-300 text-zinc-900'
+                    }`}
                     value={formData.industry}
                     onChange={e => setFormData({ ...formData, industry: e.target.value })}
                     required
@@ -366,7 +381,7 @@ export default function StartupPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">성장 단계</label>
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>성장 단계</label>
                   <div className="grid grid-cols-5 gap-2">
                     {STAGES.map(stage => (
                       <button
@@ -375,7 +390,7 @@ export default function StartupPage() {
                         className={`py-2 px-3 rounded-lg text-xs font-medium transition-all ${
                           formData.stage === stage.value
                             ? 'bg-accent text-white'
-                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                            : isDark ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                         }`}
                         onClick={() => setFormData({ ...formData, stage: stage.value })}
                       >
@@ -394,9 +409,13 @@ export default function StartupPage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">소개</label>
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>소개</label>
                   <textarea
-                    className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus-accent resize-none"
+                    className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus-accent resize-none ${
+                      isDark
+                        ? 'bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder:text-zinc-500'
+                        : 'bg-zinc-50 border border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
+                    }`}
                     rows={3}
                     placeholder="스타트업에 대해 간단히 소개해주세요"
                     value={formData.description}

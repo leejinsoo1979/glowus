@@ -63,9 +63,9 @@ const forumPosts: ForumPost[] = [
 ]
 
 const categoryConfig = {
-  discussion: { icon: MessageSquare, label: '토론', color: 'bg-blue-500/10 text-blue-400' },
+  discussion: { icon: MessageSquare, label: '토론', color: 'bg-accent/10 text-accent' },
   question: { icon: HelpCircle, label: '질문', color: 'bg-purple-500/10 text-purple-400' },
-  announcement: { icon: Megaphone, label: '공지', color: 'bg-accent/10 text-accent' },
+  announcement: { icon: Megaphone, label: '공지', color: 'bg-green-500/10 text-green-400' },
   idea: { icon: Lightbulb, label: '아이디어', color: 'bg-yellow-500/10 text-yellow-400' },
 }
 

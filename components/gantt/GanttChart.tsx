@@ -226,7 +226,7 @@ export function GanttChart({
   }, [tasks])
 
   const columnWidth = viewMode === "day" ? 60 : viewMode === "week" ? 40 : 25
-  const accentColorValue = mounted ? currentAccent.color : "#3b82f6"
+  const accentColorValue = mounted ? currentAccent.color : "var(--accent-color)"
 
   const getProgressColor = (progress: number) => {
     if (progress === 100) return "#22c55e"

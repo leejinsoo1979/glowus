@@ -70,7 +70,7 @@ export function EngagementOverview({
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-zinc-400">전체 열 지수</CardTitle>
-          <Flame className="h-4 w-4" style={{ color: mounted ? currentAccent.color : '#3b82f6' }} />
+          <Flame className="h-4 w-4 text-accent" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-zinc-100">{Math.round(data.overallHeat * 100)}%</div>
@@ -88,7 +88,7 @@ export function EngagementOverview({
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-zinc-400">활성 팀원</CardTitle>
-          <Users className="h-4 w-4" style={{ color: mounted ? currentAccent.color : '#3b82f6' }} />
+          <Users className="h-4 w-4 text-accent" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-zinc-100">{data.activeMembers}명</div>
@@ -96,10 +96,9 @@ export function EngagementOverview({
           <div className="mt-2">
             <div className="w-full bg-zinc-700 rounded-full h-2">
               <div
-                className="h-2 rounded-full transition-all duration-300"
+                className="h-2 rounded-full transition-all duration-300 bg-accent"
                 style={{
-                  width: `${(data.activeMembers / 12) * 100}%`,
-                  backgroundColor: mounted ? currentAccent.color : '#3b82f6'
+                  width: `${(data.activeMembers / 12) * 100}%`
                 }}
               />
             </div>
@@ -111,14 +110,14 @@ export function EngagementOverview({
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-zinc-400">평균 작업 시간</CardTitle>
-          <Clock className="h-4 w-4 text-success-500" />
+          <Clock className="h-4 w-4 text-accent" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-zinc-100">{data.avgSessionTime}</div>
           <p className="text-xs text-zinc-500">지난주 대비 +12%</p>
           <div className="mt-2">
             <div className="w-full bg-zinc-700 rounded-full h-2">
-              <div className="bg-success-500 h-2 rounded-full transition-all duration-300" style={{ width: "75%" }} />
+              <div className="bg-accent h-2 rounded-full transition-all duration-300" style={{ width: "75%" }} />
             </div>
           </div>
         </CardContent>
@@ -128,7 +127,7 @@ export function EngagementOverview({
       <Card className="lg:col-span-3 bg-zinc-900 border-zinc-800">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Zap className="h-5 w-5" style={{ color: mounted ? currentAccent.color : '#3b82f6' }} />
+            <Zap className="h-5 w-5 text-accent" />
             <CardTitle className="text-zinc-100">🔥 핫 태스크</CardTitle>
           </div>
           <p className="text-sm text-zinc-500">팀원 활동 및 상호작용 기반 가장 활발한 태스크</p>
@@ -139,11 +138,7 @@ export function EngagementOverview({
               <div key={task.title} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
                 <div className="flex items-center space-x-3">
                   <div
-                    className="flex items-center justify-center w-6 h-6 rounded-full text-sm font-bold"
-                    style={{
-                      backgroundColor: mounted ? `${currentAccent.color}33` : '#3b82f633',
-                      color: mounted ? currentAccent.color : '#3b82f6'
-                    }}
+                    className="flex items-center justify-center w-6 h-6 rounded-full text-sm font-bold bg-accent/20 text-accent"
                   >
                     {index + 1}
                   </div>
@@ -157,12 +152,9 @@ export function EngagementOverview({
                   <div className="flex items-center space-x-2">
                     <div className="w-16 h-2 bg-zinc-700 rounded-full overflow-hidden">
                       <div
-                        className="h-full transition-all duration-300"
+                        className="h-full transition-all duration-300 bg-accent"
                         style={{
-                          width: `${task.heat * 100}%`,
-                          background: mounted
-                            ? `linear-gradient(to right, ${currentAccent.color}, #6366f1)`
-                            : 'linear-gradient(to right, #3b82f6, #6366f1)'
+                          width: `${task.heat * 100}%`
                         }}
                       />
                     </div>

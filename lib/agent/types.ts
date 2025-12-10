@@ -11,7 +11,7 @@ export interface AgentNodeData {
   agentPersonality?: string
 
   // LLM properties
-  model?: "gpt-4" | "gpt-4-turbo" | "gpt-3.5-turbo" | "claude-3-opus" | "claude-3-sonnet"
+  model?: "gpt-4" | "gpt-4-turbo" | "gpt-3.5-turbo" | "claude-3-opus" | "claude-3-sonnet" | "dall-e-3"
   temperature?: number
   maxTokens?: number
   systemPrompt?: string
@@ -44,24 +44,40 @@ export interface AgentNodeData {
   functionName?: string
   functionArgs?: string
 
+  // UI Display properties
+  url?: string
+  condition?: string
+
   // Evaluation properties
   evaluationType?: "quality" | "relevance" | "accuracy" | "safety"
   threshold?: number
+  // Code properties
+  code?: string
+
+  // Prompt properties
+  prompt?: string
 }
 
 export type AgentNode = Node<AgentNodeData>
 
 export type AgentType =
-  | "llm"           // LLM 노드
-  | "router"        // 라우터
-  | "memory"        // 메모리
-  | "tool"          // 도구 호출
-  | "rag"           // RAG 검색
-  | "input"         // 입력
-  | "output"        // 출력
-  | "chain"         // 체인 연결
-  | "evaluator"     // 평가자
-  | "function"      // 함수 호출
+  | "llm"           // Text Model
+  | "router"        // Conditional
+  | "memory"        // Memory
+  | "tool"          // HTTP Request (legacy name kept for compatibility, label changed)
+  | "rag"           // RAG
+  | "input"         // Input
+  | "output"        // Output
+  | "chain"         // Chain
+  | "evaluator"     // Evaluator
+  | "function"      // Function
+  | "start"         // Start
+  | "prompt"        // Prompt
+  | "image_generation" // Image Generation
+  | "end"           // End
+  | "javascript"    // JavaScript
+  | "embedding"     // Embedding Model
+  | "custom_tool"   // Custom Tool
 
 export interface AgentTool {
   id: string

@@ -1,6 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -35,6 +37,14 @@ export function Logo({
   animated = true,
 }: LogoProps) {
   const config = sizeConfig[size]
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
 
   const logoContent = (
     <motion.div
@@ -51,7 +61,7 @@ export function Logo({
           <span className={cn('font-black tracking-tight text-accent', config.text)}>
             Glow
           </span>
-          <span className={cn('font-black tracking-tight text-zinc-100', config.text)}>
+          <span className={cn('font-black tracking-tight', isDark ? 'text-zinc-100' : 'text-zinc-900', config.text)}>
             US
           </span>
         </>
@@ -81,6 +91,15 @@ export function LogoMini({ className }: { className?: string }) {
 
 // Wordmark only version
 export function LogoWordmark({ size = 'md', className }: { size?: 'sm' | 'md' | 'lg' | 'xl'; className?: string }) {
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
+
   const textSize = {
     sm: 'text-lg',
     md: 'text-xl',
@@ -93,7 +112,7 @@ export function LogoWordmark({ size = 'md', className }: { size?: 'sm' | 'md' | 
       <span className={cn('font-black tracking-tight text-accent', textSize[size])}>
         Glow
       </span>
-      <span className={cn('font-black tracking-tight text-zinc-100', textSize[size])}>
+      <span className={cn('font-black tracking-tight', isDark ? 'text-zinc-100' : 'text-zinc-900', textSize[size])}>
         US
       </span>
     </div>

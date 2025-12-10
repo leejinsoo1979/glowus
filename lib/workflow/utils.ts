@@ -27,7 +27,7 @@ export const NODE_CONFIGS: NodeTypeConfig[] = [
     label: "데이터 입력",
     description: "외부 데이터 소스 연결",
     icon: "Database",
-    color: "#3b82f6",
+    color: "var(--accent-color)",
     category: "input",
   },
   // Process nodes

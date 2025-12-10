@@ -187,7 +187,7 @@ function StatCard({ title, value, change, changeLabel, icon, trend, className }:
             )}
           </div>
           {icon && (
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white shadow-lg shadow-primary-500/30">
+            <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-white shadow-lg shadow-accent/30">
               {icon}
             </div>
           )}

@@ -45,7 +45,7 @@ interface PipelineItem {
 
 const PIPELINE_STAGES = [
   { key: 'INTERESTED', label: '관심', color: 'bg-zinc-700' },
-  { key: 'CONTACTED', label: '컨택', color: 'bg-blue-500/30' },
+  { key: 'CONTACTED', label: '컨택', color: 'bg-accent/30' },
   { key: 'MEETING', label: '미팅', color: 'bg-yellow-500/30' },
   { key: 'DUE_DILIGENCE', label: 'DD', color: 'bg-orange-500/30' },
   { key: 'NEGOTIATION', label: '협상', color: 'bg-purple-500/30' },

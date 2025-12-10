@@ -55,7 +55,7 @@ interface StartupCardProps {
 const stageColors: Record<string, string> = {
   "시드": "#71717a",
   "프리시드": "#6b7280",
-  "시리즈 A": "#3b82f6",
+  "시리즈 A": "var(--accent-color)",
   "시리즈 B": "#8b5cf6",
   "시리즈 C+": "#22c55e",
 }
@@ -74,7 +74,7 @@ export function StartupCard({
     setMounted(true)
   }, [])
 
-  const accentColorValue = mounted ? currentAccent.color : "#3b82f6"
+  const accentColorValue = mounted ? currentAccent.color : "var(--accent-color)"
   const stageColor = stageColors[startup.stage] || "#71717a"
 
   if (variant === "compact") {

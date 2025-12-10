@@ -230,7 +230,7 @@ export default function AgentsPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-zinc-500">총 실행 수</span>
-                <Play className="w-4 h-4 text-blue-500" />
+                <Play className="w-4 h-4 text-accent" />
               </div>
               <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
                 {totalRuns.toLocaleString()}

@@ -114,7 +114,7 @@ const defaultCommits: Commit[] = [
 
 const impactConfig = {
   low: { label: "낮음", color: "bg-zinc-600 text-zinc-300", icon: "📝" },
-  medium: { label: "보통", color: "bg-blue-500/20 text-blue-400", icon: "📊" },
+  medium: { label: "보통", color: "bg-yellow-500/20 text-yellow-400", icon: "📊" },
   high: { label: "높음", color: "bg-orange-500/20 text-orange-400", icon: "🚀" },
 }
 
@@ -132,7 +132,8 @@ export function CommitTimeline({
     setMounted(true)
   }, [])
 
-  const accentColorValue = mounted ? currentAccent.color : "#3b82f6"
+  // Use CSS variable for accent color
+  const accentColorValue = "var(--accent-color)"
 
   const filteredCommits = commits.filter(
     (c) => filter === "all" || c.impactLevel === filter

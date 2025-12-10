@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { Card, CardHeader, CardTitle, CardContent, StatCard } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import { formatRelativeTime } from '@/lib/utils'
@@ -67,7 +68,15 @@ const item = {
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
+  const { resolvedTheme } = useTheme()
   const [isLoading, setIsLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
   const [metrics, setMetrics] = useState({
     sprintProgress: 0,
     tasksCompleted: 0,
@@ -125,7 +134,7 @@ export default function DashboardPage() {
       case 'medium':
         return { bg: 'bg-warning-500/20', text: 'text-warning-400', label: '중간' }
       default:
-        return { bg: 'bg-zinc-700', text: 'text-zinc-400', label: '낮음' }
+        return { bg: isDark ? 'bg-zinc-700' : 'bg-zinc-200', text: isDark ? 'text-zinc-400' : 'text-zinc-600', label: '낮음' }
     }
   }
 
@@ -136,7 +145,7 @@ export default function DashboardPage() {
       case 'high':
         return { bg: 'bg-warning-500/20', text: 'text-warning-400', label: '높음', dot: 'bg-warning-500' }
       default:
-        return { bg: 'bg-zinc-700', text: 'text-zinc-400', label: '보통', dot: 'bg-zinc-500' }
+        return { bg: isDark ? 'bg-zinc-700' : 'bg-zinc-200', text: isDark ? 'text-zinc-400' : 'text-zinc-600', label: '보통', dot: 'bg-zinc-500' }
     }
   }
 
@@ -152,7 +161,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto" />
-          <p className="text-zinc-500">대시보드 데이터를 불러오는 중...</p>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-400'}>대시보드 데이터를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -168,15 +177,15 @@ export default function DashboardPage() {
       {/* Header */}
       <motion.div variants={item} className="flex items-end justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-100">
+          <h1 className={`text-3xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
             {getGreeting()}, <span className="text-gradient">{user?.name || '사용자'}</span>님
           </h1>
-          <p className="text-zinc-500 mt-2 flex items-center gap-2">
+          <p className={`mt-2 flex items-center gap-2 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>
             <Activity className="w-4 h-4" />
             오늘의 팀 현황을 확인하세요
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-zinc-500">
+        <div className={`flex items-center gap-2 text-sm ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>
           <Clock className="w-4 h-4" />
           {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}
         </div>
@@ -241,22 +250,30 @@ export default function DashboardPage() {
                 return (
                   <motion.div
                     key={commit.id}
-                    className="flex items-start gap-4 p-4 rounded-xl hover:bg-zinc-800/50 transition-colors cursor-pointer group"
+                    className={`flex items-start gap-4 p-4 rounded-xl transition-colors cursor-pointer group ${
+                      isDark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100'
+                    }`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
                   >
-                    <div className="w-10 h-10 bg-gradient-to-br from-zinc-700 to-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-accent/20 transition-colors">
-                      <GitCommit className="w-5 h-5 text-zinc-400 group-hover:text-accent transition-colors" />
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-accent/20 transition-colors ${
+                      isDark ? 'bg-gradient-to-br from-zinc-700 to-zinc-800' : 'bg-zinc-100'
+                    }`}>
+                      <GitCommit className={`w-5 h-5 group-hover:text-accent transition-colors ${
+                        isDark ? 'text-zinc-400' : 'text-zinc-500'
+                      }`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-100 group-hover:text-accent transition-colors">
+                      <p className={`text-sm font-medium group-hover:text-accent transition-colors ${
+                        isDark ? 'text-zinc-100' : 'text-zinc-900'
+                      }`}>
                         {commit.description}
                       </p>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-xs font-medium text-zinc-400">{commit.user_name}</span>
-                        <span className="text-xs text-zinc-600">•</span>
-                        <span className="text-xs text-zinc-500">
+                        <span className={`text-xs font-medium ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>{commit.user_name}</span>
+                        <span className={`text-xs ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>•</span>
+                        <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                           {formatRelativeTime(commit.created_at)}
                         </span>
                       </div>
@@ -288,7 +305,11 @@ export default function DashboardPage() {
                 return (
                   <motion.div
                     key={task.id}
-                    className="p-4 border border-zinc-800 rounded-xl hover:border-zinc-700 hover:bg-zinc-800/50 transition-all cursor-pointer group"
+                    className={`p-4 border rounded-xl transition-all cursor-pointer group ${
+                      isDark
+                        ? 'border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50'
+                        : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-100'
+                    }`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
@@ -297,14 +318,16 @@ export default function DashboardPage() {
                     <div className="flex items-start gap-3">
                       <div className={`w-2 h-2 rounded-full mt-2 ${badge.dot}`} />
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-zinc-100 group-hover:text-accent transition-colors">
+                        <p className={`text-sm font-medium group-hover:text-accent transition-colors ${
+                          isDark ? 'text-zinc-100' : 'text-zinc-900'
+                        }`}>
                           {task.title}
                         </p>
                         <div className="flex items-center justify-between mt-2">
                           <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${badge.bg} ${badge.text}`}>
                             {badge.label}
                           </span>
-                          <span className="text-xs text-zinc-500">{task.assignee_name}</span>
+                          <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>{task.assignee_name}</span>
                         </div>
                       </div>
                     </div>
@@ -338,14 +361,14 @@ export default function DashboardPage() {
                 <Sparkles className="w-7 h-7 text-white" />
               </motion.div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-zinc-100 mb-2 flex items-center gap-2">
+                <h3 className={`text-lg font-bold mb-2 flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                   AI 인사이트
                   <span className="px-2 py-0.5 text-xs font-medium bg-accent/20 text-accent rounded-full">
                     New
                   </span>
                 </h3>
-                <p className="text-zinc-400 leading-relaxed">
-                  이번 스프린트에서 <span className="font-semibold text-zinc-100">결제 시스템 연동</span> 태스크가 예상보다 지연되고 있습니다.
+                <p className={`leading-relaxed ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                  이번 스프린트에서 <span className={`font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>결제 시스템 연동</span> 태스크가 예상보다 지연되고 있습니다.
                   현재 진행 속도를 감안하면 마감일까지 완료하기 어려울 수 있습니다.
                   <span className="font-semibold text-accent"> 추가 리소스 배치를 고려해보세요.</span>
                 </p>
@@ -353,7 +376,11 @@ export default function DashboardPage() {
                   <button className="px-4 py-2 text-sm font-semibold text-accent hover:text-accent/80 hover:bg-accent/10 rounded-lg transition-colors">
                     자세히 보기 →
                   </button>
-                  <button className="px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors">
+                  <button className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isDark
+                      ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                      : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
+                  }`}>
                     다음에 보기
                   </button>
                 </div>

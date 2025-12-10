@@ -92,7 +92,7 @@ export function CommitModal() {
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-zinc-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
                     <GitCommit className="w-5 h-5 text-white" />
                   </div>
                   <div>
@@ -120,7 +120,7 @@ export function CommitModal() {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="작업 내용을 한 줄로 요약해주세요"
-                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-colors"
+                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-colors"
                       required
                     />
                   </div>
@@ -134,7 +134,7 @@ export function CommitModal() {
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="더 자세한 내용이 있다면 적어주세요..."
-                      className="w-full h-24 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 resize-none transition-colors"
+                      className="w-full h-24 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 resize-none transition-colors"
                     />
                   </div>
 
@@ -177,14 +177,14 @@ export function CommitModal() {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl"
+                        className="p-4 bg-accent/10 border border-accent/30 rounded-xl"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 bg-primary-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Sparkles className="w-4 h-4 text-primary-400" />
+                          <div className="w-8 h-8 bg-accent/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Sparkles className="w-4 h-4 text-accent" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-primary-400 mb-1">AI 제안</p>
+                            <p className="text-sm font-medium text-accent mb-1">AI 제안</p>
                             <p className="text-sm text-zinc-300">{aiSuggestion}</p>
                           </div>
                         </div>
@@ -197,7 +197,7 @@ export function CommitModal() {
                     <button
                       type="button"
                       onClick={handleAiSuggest}
-                      className="flex items-center gap-2 text-sm text-primary-400 hover:text-primary-300 transition-colors"
+                      className="flex items-center gap-2 text-sm text-accent hover:text-accent/80 transition-colors"
                     >
                       <Sparkles className="w-4 h-4" />
                       AI로 인사이트 받기

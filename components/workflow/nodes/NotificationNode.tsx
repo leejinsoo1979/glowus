@@ -10,8 +10,8 @@ function NotificationNodeComponent(props: NodeProps<NodeData>) {
   const typeConfig: Record<string, { icon: React.ReactNode; color: string; bgColor: string }> = {
     email: {
       icon: <Mail className="w-3 h-3" />,
-      color: "text-blue-400",
-      bgColor: "bg-blue-500/20",
+      color: "text-accent",
+      bgColor: "bg-accent/20",
     },
     slack: {
       icon: <MessageSquare className="w-3 h-3" />,

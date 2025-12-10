@@ -99,10 +99,10 @@ export function ChatbotWidget() {
           style={{
             background: mounted
               ? `linear-gradient(to bottom right, ${currentAccent.color}, #6366f1)`
-              : 'linear-gradient(to bottom right, #3b82f6, #6366f1)',
+              : 'linear-gradient(to bottom right, var(--accent-color), #6366f1)',
             boxShadow: mounted
               ? `0 10px 15px -3px ${currentAccent.color}4d, 0 4px 6px -4px ${currentAccent.color}4d`
-              : '0 10px 15px -3px #3b82f64d'
+              : '0 10px 15px -3px var(--accent-color-50)'
           }}
         >
           <MessageCircle className="h-6 w-6 text-white" />
@@ -132,10 +132,10 @@ export function ChatbotWidget() {
                   style={{
                     background: mounted
                       ? `linear-gradient(to bottom right, ${currentAccent.color}33, #6366f133)`
-                      : 'linear-gradient(to bottom right, #3b82f633, #6366f133)'
+                      : 'linear-gradient(to bottom right, var(--accent-color-20), #6366f133)'
                   }}
                 >
-                  <Sparkles className="h-4 w-4" style={{ color: mounted ? currentAccent.color : '#3b82f6' }} />
+                  <Sparkles className="h-4 w-4" style={{ color: mounted ? currentAccent.color : 'var(--accent-color)' }} />
                 </div>
                 <div>
                   <CardTitle className="text-sm font-semibold text-zinc-100">
@@ -185,12 +185,12 @@ export function ChatbotWidget() {
                           background: message.sender === "user"
                             ? mounted
                               ? `linear-gradient(to bottom right, ${currentAccent.color}33, #6366f133)`
-                              : 'linear-gradient(to bottom right, #3b82f633, #6366f133)'
+                              : 'linear-gradient(to bottom right, var(--accent-color-20), #6366f133)'
                             : '#27272a'
                         }}
                       >
                         {message.sender === "user" ? (
-                          <User className="h-4 w-4" style={{ color: mounted ? currentAccent.color : '#3b82f6' }} />
+                          <User className="h-4 w-4" style={{ color: mounted ? currentAccent.color : 'var(--accent-color)' }} />
                         ) : (
                           <Bot className="h-4 w-4 text-zinc-400" />
                         )}
@@ -202,7 +202,7 @@ export function ChatbotWidget() {
                             background: message.sender === "user"
                               ? mounted
                                 ? `linear-gradient(to bottom right, ${currentAccent.color}, #6366f1)`
-                                : 'linear-gradient(to bottom right, #3b82f6, #6366f1)'
+                                : 'linear-gradient(to bottom right, var(--accent-color), #6366f1)'
                               : '#27272a',
                             color: message.sender === "user" ? '#fff' : '#f4f4f5'
                           }}
@@ -258,7 +258,7 @@ export function ChatbotWidget() {
                     style={{
                       background: mounted
                         ? `linear-gradient(to right, ${currentAccent.color}, #6366f1)`
-                        : 'linear-gradient(to right, #3b82f6, #6366f1)'
+                        : 'linear-gradient(to right, var(--accent-color), #6366f1)'
                     }}
                   >
                     <Send className="h-4 w-4" />

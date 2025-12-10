@@ -9,7 +9,7 @@ import type { NodeData } from "@/lib/workflow"
 function HttpNodeComponent(props: NodeProps<NodeData>) {
   const methodColors: Record<string, string> = {
     GET: "text-green-400 bg-green-500/20",
-    POST: "text-blue-400 bg-blue-500/20",
+    POST: "text-accent bg-accent/20",
     PUT: "text-amber-400 bg-amber-500/20",
     DELETE: "text-red-400 bg-red-500/20",
     PATCH: "text-purple-400 bg-purple-500/20",

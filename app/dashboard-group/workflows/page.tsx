@@ -185,7 +185,7 @@ export default function WorkflowsPage() {
           { label: "전체 워크플로우", value: mockWorkflows.length, icon: <Workflow className="w-5 h-5" /> },
           { label: "활성", value: mockWorkflows.filter((w) => w.status === "active").length, icon: <Zap className="w-5 h-5 text-green-400" /> },
           { label: "오늘 실행", value: 42, icon: <CheckCircle className="w-5 h-5 text-accent" /> },
-          { label: "평균 노드 수", value: Math.round(mockWorkflows.reduce((acc, w) => acc + w.nodesCount, 0) / mockWorkflows.length), icon: <Settings className="w-5 h-5 text-purple-400" /> },
+          { label: "평균 노드 수", value: Math.round(mockWorkflows.reduce((acc, w) => acc + w.nodesCount, 0) / mockWorkflows.length), icon: <Settings className="w-5 h-5 text-accent" /> },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}

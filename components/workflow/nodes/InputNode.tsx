@@ -11,13 +11,13 @@ function InputNodeComponent(props: NodeProps<NodeData>) {
     <BaseNode
       {...props}
       icon={<Database className="w-4 h-4" />}
-      color="#3b82f6"
+      color="var(--accent-color)"
       showTargetHandle={false}
     >
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-zinc-500">소스:</span>
-          <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs">
+          <span className="px-2 py-0.5 bg-accent/20 text-accent rounded text-xs">
             {props.data.dataSource || "manual"}
           </span>
         </div>

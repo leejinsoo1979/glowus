@@ -140,16 +140,16 @@ const typeConfig = {
   },
   metric: {
     icon: BarChart3,
-    color: "#3b82f6",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/30",
+    color: "#a855f7",
+    bgColor: "bg-purple-500/10",
+    borderColor: "border-purple-500/30",
     label: "지표",
   },
 }
 
 const priorityConfig = {
   low: { label: "낮음", color: "bg-zinc-600 text-zinc-300" },
-  medium: { label: "보통", color: "bg-blue-500/20 text-blue-400" },
+  medium: { label: "보통", color: "bg-yellow-500/20 text-yellow-400" },
   high: { label: "높음", color: "bg-orange-500/20 text-orange-400" },
   critical: { label: "긴급", color: "bg-red-500/20 text-red-400" },
 }
@@ -170,7 +170,8 @@ export function AIInsightPanel({
     setMounted(true)
   }, [])
 
-  const accentColorValue = mounted ? currentAccent.color : "#3b82f6"
+  // Use CSS variable for accent color
+  const accentColorValue = "var(--accent-color)"
 
   const filteredInsights = insights.filter(
     (i) => selectedType === "all" || i.type === selectedType

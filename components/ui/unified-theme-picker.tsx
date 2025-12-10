@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
-import { Settings2, Sun, Moon, Monitor, Check } from 'lucide-react'
+import { Palette, Sun, Moon, Monitor, Check } from 'lucide-react'
 
 export function UnifiedThemePicker() {
   const [isOpen, setIsOpen] = useState(false)
@@ -73,7 +73,7 @@ export function UnifiedThemePicker() {
           className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white dark:border-zinc-800"
           style={{ backgroundColor: currentColor?.color }}
         />
-        <Settings2 className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+        <Palette className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
       </motion.button>
 
       <AnimatePresence>
@@ -97,7 +97,10 @@ export function UnifiedThemePicker() {
                   return (
                     <button
                       key={mode.id}
-                      onClick={() => setTheme(mode.id)}
+                      onClick={() => {
+                        setTheme(mode.id)
+                        setIsOpen(false)
+                      }}
                       className={`flex-1 flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
                         isActive
                           ? 'bg-accent/15 text-accent border border-accent/30'
@@ -123,7 +126,10 @@ export function UnifiedThemePicker() {
                   return (
                     <motion.button
                       key={color.id}
-                      onClick={() => setAccentColor(color.id)}
+                      onClick={() => {
+                        setAccentColor(color.id)
+                        setIsOpen(false)
+                      }}
                       className={`relative flex flex-col items-center gap-1 p-1.5 rounded-xl transition-all ${
                         isActive
                           ? 'bg-gray-100 dark:bg-zinc-800 ring-2 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900'

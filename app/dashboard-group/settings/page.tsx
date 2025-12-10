@@ -13,7 +13,7 @@ const settingsSections = [
     description: '외부 서비스와 연동하여 워크플로우를 자동화',
     icon: Link2,
     href: '/dashboard-group/settings/integrations',
-    color: 'bg-blue-500/10 text-blue-400'
+    color: 'bg-accent/10 text-accent'
   },
   {
     id: 'appearance',
@@ -21,7 +21,7 @@ const settingsSections = [
     description: '다크/라이트 모드 및 강조 색상 변경',
     icon: Palette,
     href: null, // 테마는 헤더의 ThemeDropdown에서 설정
-    color: 'bg-purple-500/10 text-purple-400'
+    color: 'bg-accent/10 text-accent'
   },
   {
     id: 'notifications',
@@ -29,7 +29,7 @@ const settingsSections = [
     description: '이메일 및 푸시 알림 환경 설정',
     icon: Bell,
     href: null, // 준비 중
-    color: 'bg-orange-500/10 text-orange-400',
+    color: 'bg-accent/10 text-accent',
     comingSoon: true
   },
   {
@@ -38,7 +38,7 @@ const settingsSections = [
     description: '비밀번호 변경 및 2단계 인증',
     icon: Shield,
     href: null, // 준비 중
-    color: 'bg-red-500/10 text-red-400',
+    color: 'bg-accent/10 text-accent',
     comingSoon: true
   }
 ]

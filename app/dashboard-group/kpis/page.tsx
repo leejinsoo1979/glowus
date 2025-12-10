@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { Card, CardHeader, CardTitle, CardContent, Button, Input } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -41,7 +42,7 @@ interface Startup {
 const KPI_TYPE_INFO: Record<string, { label: string; icon: typeof TrendingUp; color: string; unit: string }> = {
   mrr: { label: 'MRR (월간 반복 수익)', icon: DollarSign, color: 'text-green-400', unit: '원' },
   arr: { label: 'ARR (연간 반복 수익)', icon: DollarSign, color: 'text-green-500', unit: '원' },
-  customers: { label: '고객 수', icon: Users, color: 'text-blue-400', unit: '명' },
+  customers: { label: '고객 수', icon: Users, color: 'text-accent', unit: '명' },
   churn_rate: { label: '이탈률', icon: TrendingDown, color: 'text-red-400', unit: '%' },
   dau: { label: 'DAU (일간 활성 사용자)', icon: Activity, color: 'text-purple-400', unit: '명' },
   mau: { label: 'MAU (월간 활성 사용자)', icon: Activity, color: 'text-purple-500', unit: '명' },
@@ -72,6 +73,8 @@ const item = {
 
 export default function KpisPage() {
   const { user } = useAuthStore()
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [startups, setStartups] = useState<Startup[]>([])
   const [selectedStartup, setSelectedStartup] = useState<string>('')
@@ -79,6 +82,12 @@ export default function KpisPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedKpiType, setSelectedKpiType] = useState<string>('mrr')
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
 
   // Form state
   const [formData, setFormData] = useState({
@@ -228,7 +237,7 @@ export default function KpisPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto" />
-          <p className="text-zinc-500">KPI 데이터를 불러오는 중...</p>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-400'}>KPI 데이터를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -244,8 +253,8 @@ export default function KpisPage() {
       {/* Header */}
       <motion.div variants={item} className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-100">KPI 관리</h1>
-          <p className="text-zinc-500 mt-2">스타트업의 핵심 지표를 추적하세요</p>
+          <h1 className={`text-3xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>KPI 관리</h1>
+          <p className={`mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>스타트업의 핵심 지표를 추적하세요</p>
         </div>
         <div className="flex items-center gap-4">
           {/* Startup Selector */}
@@ -254,7 +263,11 @@ export default function KpisPage() {
               <select
                 value={selectedStartup}
                 onChange={(e) => setSelectedStartup(e.target.value)}
-                className="appearance-none bg-zinc-800 text-zinc-100 px-4 py-2.5 pr-10 rounded-xl border border-zinc-700 focus:outline-none focus-accent cursor-pointer"
+                className={`appearance-none px-4 py-2.5 pr-10 rounded-xl border focus:outline-none focus-accent cursor-pointer ${
+                  isDark
+                    ? 'bg-zinc-800 text-zinc-100 border-zinc-700'
+                    : 'bg-white text-zinc-900 border-zinc-300'
+                }`}
               >
                 {startups.map((startup) => (
                   <option key={startup.id} value={startup.id}>
@@ -262,7 +275,7 @@ export default function KpisPage() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
             </div>
           )}
 
@@ -291,7 +304,9 @@ export default function KpisPage() {
               <Card key={type} variant="default">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                      isDark ? 'bg-gradient-to-br from-zinc-700 to-zinc-800' : 'bg-zinc-100'
+                    }`}>
                       <Icon className={`w-6 h-6 ${typeInfo.color}`} />
                     </div>
                     {previousMetric && (
@@ -302,11 +317,11 @@ export default function KpisPage() {
                     )}
                   </div>
                   <div className="mt-4">
-                    <p className="text-sm text-zinc-400">{typeInfo.label}</p>
-                    <p className="text-2xl font-bold text-zinc-100 mt-1">
+                    <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>{typeInfo.label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                       {formatValue(latestMetric.metric_value, type)}
                     </p>
-                    <p className="text-xs text-zinc-500 mt-2">
+                    <p className={`text-xs mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                       {new Date(latestMetric.period_end).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short' })} 기준
                     </p>
                   </div>
@@ -412,11 +427,11 @@ export default function KpisPage() {
         <motion.div variants={item}>
           <Card variant="default" className="py-16">
             <div className="text-center">
-              <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <BarChart3 className="w-8 h-8 text-zinc-500" />
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+                <BarChart3 className={`w-8 h-8 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
               </div>
-              <h3 className="text-lg font-semibold text-zinc-300">아직 KPI 데이터가 없습니다</h3>
-              <p className="text-zinc-500 mt-2">첫 번째 KPI를 추가하여 성과를 추적하세요</p>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>아직 KPI 데이터가 없습니다</h3>
+              <p className={`mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>첫 번째 KPI를 추가하여 성과를 추적하세요</p>
               <Button className="mt-6" onClick={() => setIsModalOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 KPI 추가
@@ -437,25 +452,29 @@ export default function KpisPage() {
             onClick={() => setIsModalOpen(false)}
           >
             <motion.div
-              className="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 w-full max-w-lg shadow-2xl"
+              className={`rounded-2xl p-6 w-full max-w-lg shadow-2xl ${
+                isDark
+                  ? 'bg-zinc-900 border border-zinc-800'
+                  : 'bg-white border border-zinc-200'
+              }`}
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-zinc-100">KPI 추가</h2>
+                <h2 className={`text-xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>KPI 추가</h2>
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+                  className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}
                 >
-                  <X className="w-5 h-5 text-zinc-400" />
+                  <X className={`w-5 h-5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                     KPI 유형 *
                   </label>
                   <div className="relative">
@@ -465,7 +484,11 @@ export default function KpisPage() {
                         setFormData({ ...formData, metric_type: e.target.value })
                         setSelectedKpiType(e.target.value)
                       }}
-                      className="w-full appearance-none bg-zinc-800 text-zinc-100 px-4 py-3 pr-10 rounded-xl border border-zinc-700 focus:outline-none focus-accent"
+                      className={`w-full appearance-none px-4 py-3 pr-10 rounded-xl border focus:outline-none focus-accent ${
+                        isDark
+                          ? 'bg-zinc-800 text-zinc-100 border-zinc-700'
+                          : 'bg-white text-zinc-900 border-zinc-300'
+                      }`}
                       required
                     >
                       {Object.entries(KPI_TYPE_INFO).map(([key, info]) => (
@@ -474,13 +497,13 @@ export default function KpisPage() {
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                    <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                       값 *
                     </label>
                     <Input
@@ -493,7 +516,7 @@ export default function KpisPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                       단위
                     </label>
                     <Input
@@ -507,7 +530,7 @@ export default function KpisPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                       기간 시작 *
                     </label>
                     <Input
@@ -518,7 +541,7 @@ export default function KpisPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
                       기간 종료 *
                     </label>
                     <Input

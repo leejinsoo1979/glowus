@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { Card, CardHeader, CardTitle, CardContent, Button, Input } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import { formatRelativeTime } from '@/lib/utils'
@@ -30,7 +31,7 @@ import {
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode }> = {
   TODO: { label: '할 일', color: 'bg-zinc-700 text-zinc-300', icon: <Circle className="w-4 h-4" /> },
-  IN_PROGRESS: { label: '진행 중', color: 'bg-blue-500/20 text-blue-400', icon: <Timer className="w-4 h-4" /> },
+  IN_PROGRESS: { label: '진행 중', color: 'bg-accent/20 text-accent', icon: <Timer className="w-4 h-4" /> },
   DONE: { label: '완료', color: 'bg-green-500/20 text-green-400', icon: <CheckCircle2 className="w-4 h-4" /> },
   BLOCKED: { label: '차단됨', color: 'bg-red-500/20 text-red-400', icon: <AlertTriangle className="w-4 h-4" /> },
 }
@@ -53,6 +54,8 @@ type ViewMode = 'kanban' | 'list' | 'grid'
 
 export default function TasksPage() {
   const { user } = useAuthStore()
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [tasks, setTasks] = useState<TaskWithAuthor[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -112,9 +115,15 @@ export default function TasksPage() {
   }, [])
 
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
     fetchTasks()
     fetchStartups()
   }, [fetchTasks, fetchStartups])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -224,7 +233,7 @@ export default function TasksPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto" />
-          <p className="text-zinc-500">태스크를 불러오는 중...</p>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-400'}>태스크를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -235,16 +244,16 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">태스크 관리</h1>
-          <p className="text-zinc-500 mt-1">팀의 업무를 추적하고 관리하세요</p>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>태스크 관리</h1>
+          <p className={`mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>팀의 업무를 추적하고 관리하세요</p>
         </div>
         <div className="flex items-center gap-3">
           {/* View Mode Toggle */}
-          <div className="flex bg-zinc-800 rounded-lg p-1">
+          <div className={`flex rounded-lg p-1 ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
             <button
               onClick={() => setViewMode('kanban')}
               className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'kanban' ? 'bg-accent text-white' : 'text-zinc-400 hover:text-zinc-100'
+                viewMode === 'kanban' ? 'bg-accent text-white' : isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900'
               }`}
               title="칸반 보드"
             >
@@ -253,7 +262,7 @@ export default function TasksPage() {
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'grid' ? 'bg-accent text-white' : 'text-zinc-400 hover:text-zinc-100'
+                viewMode === 'grid' ? 'bg-accent text-white' : isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900'
               }`}
               title="그리드 뷰"
             >
@@ -262,7 +271,7 @@ export default function TasksPage() {
             <button
               onClick={() => setViewMode('list')}
               className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'list' ? 'bg-accent text-white' : 'text-zinc-400 hover:text-zinc-100'
+                viewMode === 'list' ? 'bg-accent text-white' : isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900'
               }`}
               title="리스트 뷰"
             >
@@ -281,11 +290,15 @@ export default function TasksPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-2">
-        <Filter className="w-4 h-4 text-zinc-500" />
+        <Filter className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
         <div className="flex gap-2">
           <button
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              filterStatus === 'ALL' ? 'bg-accent text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              filterStatus === 'ALL'
+                ? 'bg-accent text-white'
+                : isDark
+                  ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
             }`}
             onClick={() => setFilterStatus('ALL')}
           >
@@ -295,7 +308,11 @@ export default function TasksPage() {
             <button
               key={status}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                filterStatus === status ? 'bg-accent text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                filterStatus === status
+                  ? 'bg-accent text-white'
+                  : isDark
+                    ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
               }`}
               onClick={() => setFilterStatus(status)}
             >
@@ -325,8 +342,8 @@ export default function TasksPage() {
         <Card variant="default" className="py-8">
           <div className="text-center space-y-3">
             <AlertCircle className="w-12 h-12 text-warning-400 mx-auto" />
-            <h3 className="text-lg font-semibold text-zinc-100">스타트업을 먼저 등록하세요</h3>
-            <p className="text-zinc-500">태스크를 생성하려면 먼저 스타트업을 등록해야 합니다.</p>
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>스타트업을 먼저 등록하세요</h3>
+            <p className={isDark ? 'text-zinc-500' : 'text-zinc-500'}>태스크를 생성하려면 먼저 스타트업을 등록해야 합니다.</p>
             <Button variant="outline" onClick={() => window.location.href = '/dashboard-group/startup'}>
               스타트업 등록하기
             </Button>
@@ -348,9 +365,9 @@ export default function TasksPage() {
                   <span className={`p-1.5 rounded-lg ${STATUS_CONFIG[status].color}`}>
                     {STATUS_CONFIG[status].icon}
                   </span>
-                  <h3 className="font-semibold text-zinc-100">{STATUS_CONFIG[status].label}</h3>
+                  <h3 className={`font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>{STATUS_CONFIG[status].label}</h3>
                 </div>
-                <span className="text-sm text-zinc-500">{groupedTasks[status].length}</span>
+                <span className={`text-sm ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>{groupedTasks[status].length}</span>
               </div>
 
               <div className="space-y-3 min-h-[200px]">
@@ -384,8 +401,8 @@ export default function TasksPage() {
           {tasks.length === 0 && (
             <Card variant="default" className="py-12">
               <div className="text-center space-y-3">
-                <ListTodo className="w-12 h-12 text-zinc-600 mx-auto" />
-                <p className="text-zinc-500">태스크가 없습니다.</p>
+                <ListTodo className={`w-12 h-12 mx-auto ${isDark ? 'text-zinc-600' : 'text-zinc-300'}`} />
+                <p className={isDark ? 'text-zinc-500' : 'text-zinc-400'}>태스크가 없습니다.</p>
               </div>
             </Card>
           )}
@@ -403,19 +420,23 @@ export default function TasksPage() {
             onClick={handleCloseModal}
           >
             <motion.div
-              className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              className={`rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto ${
+                isDark
+                  ? 'bg-zinc-900 border border-zinc-800'
+                  : 'bg-white border border-zinc-200'
+              }`}
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-zinc-800">
+              <div className={`p-6 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold text-zinc-100">
+                  <h2 className={`text-xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                     {editingTask ? '태스크 수정' : '새 태스크 추가'}
                   </h2>
-                  <button onClick={handleCloseModal} className="p-2 hover:bg-zinc-800 rounded-lg">
-                    <X className="w-5 h-5 text-zinc-400" />
+                  <button onClick={handleCloseModal} className={`p-2 rounded-lg ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
+                    <X className={`w-5 h-5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
                   </button>
                 </div>
               </div>
@@ -423,9 +444,13 @@ export default function TasksPage() {
               <form onSubmit={handleSubmit} className="p-6 space-y-5">
                 {!editingTask && (
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">스타트업</label>
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>스타트업</label>
                     <select
-                      className="w-full h-11 px-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus-accent"
+                      className={`w-full h-11 px-4 border rounded-xl text-sm focus:outline-none focus-accent ${
+                        isDark
+                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100'
+                          : 'bg-white border-zinc-300 text-zinc-900'
+                      }`}
                       value={formData.startup_id}
                       onChange={e => setFormData({ ...formData, startup_id: e.target.value })}
                       required
@@ -446,9 +471,13 @@ export default function TasksPage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">설명</label>
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>설명</label>
                   <textarea
-                    className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus-accent resize-none"
+                    className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus-accent resize-none ${
+                      isDark
+                        ? 'bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500'
+                        : 'bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
+                    }`}
                     rows={3}
                     placeholder="태스크에 대한 상세 설명"
                     value={formData.description}
@@ -458,9 +487,13 @@ export default function TasksPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">상태</label>
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>상태</label>
                     <select
-                      className="w-full h-11 px-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus-accent"
+                      className={`w-full h-11 px-4 border rounded-xl text-sm focus:outline-none focus-accent ${
+                        isDark
+                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100'
+                          : 'bg-white border-zinc-300 text-zinc-900'
+                      }`}
                       value={formData.status}
                       onChange={e => setFormData({ ...formData, status: e.target.value as TaskStatus })}
                     >
@@ -471,9 +504,13 @@ export default function TasksPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">우선순위</label>
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>우선순위</label>
                     <select
-                      className="w-full h-11 px-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus-accent"
+                      className={`w-full h-11 px-4 border rounded-xl text-sm focus:outline-none focus-accent ${
+                        isDark
+                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100'
+                          : 'bg-white border-zinc-300 text-zinc-900'
+                      }`}
                       value={formData.priority}
                       onChange={e => setFormData({ ...formData, priority: e.target.value as TaskPriority })}
                     >
@@ -486,9 +523,13 @@ export default function TasksPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">카테고리</label>
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>카테고리</label>
                     <select
-                      className="w-full h-11 px-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus-accent"
+                      className={`w-full h-11 px-4 border rounded-xl text-sm focus:outline-none focus-accent ${
+                        isDark
+                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100'
+                          : 'bg-white border-zinc-300 text-zinc-900'
+                      }`}
                       value={formData.category}
                       onChange={e => setFormData({ ...formData, category: e.target.value })}
                     >

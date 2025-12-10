@@ -84,7 +84,7 @@ const defaultColumns: KanbanColumnType[] = [
   {
     id: "in_progress",
     title: "진행 중",
-    color: "#3b82f6",
+    color: "var(--accent-color)",
     tasks: [
       {
         id: "task-3",
@@ -284,7 +284,7 @@ export function KanbanBoard({
           <Button
             className="gap-2"
             style={{
-              backgroundColor: mounted ? currentAccent.color : "#3b82f6",
+              backgroundColor: mounted ? currentAccent.color : "var(--accent-color)",
             }}
           >
             <Plus className="h-4 w-4" />
@@ -306,7 +306,7 @@ export function KanbanBoard({
             <KanbanColumn
               key={column.id}
               column={column}
-              accentColor={mounted ? currentAccent.color : "#3b82f6"}
+              accentColor={mounted ? currentAccent.color : "var(--accent-color)"}
             >
               <SortableContext
                 items={column.tasks.map((t) => t.id)}
@@ -316,7 +316,7 @@ export function KanbanBoard({
                   <KanbanCard
                     key={task.id}
                     task={task}
-                    accentColor={mounted ? currentAccent.color : "#3b82f6"}
+                    accentColor={mounted ? currentAccent.color : "var(--accent-color)"}
                   />
                 ))}
               </SortableContext>
@@ -328,7 +328,7 @@ export function KanbanBoard({
           {activeTask ? (
             <KanbanCard
               task={activeTask}
-              accentColor={mounted ? currentAccent.color : "#3b82f6"}
+              accentColor={mounted ? currentAccent.color : "var(--accent-color)"}
               isDragging
             />
           ) : null}

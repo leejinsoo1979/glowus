@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import {
-  SlidersHorizontal,
+  Palette,
   Sun,
   Moon,
   Check,
@@ -31,7 +31,7 @@ export function ThemeDropdown() {
   if (!mounted) {
     return (
       <button className="p-2.5 rounded-xl bg-zinc-800 text-zinc-400">
-        <SlidersHorizontal className="w-5 h-5" />
+        <Palette className="w-5 h-5" />
       </button>
     )
   }
@@ -51,7 +51,7 @@ export function ThemeDropdown() {
         whileTap={{ scale: 0.95 }}
         aria-label="테마 설정"
       >
-        <SlidersHorizontal className="w-5 h-5" />
+        <Palette className="w-5 h-5" />
       </motion.button>
 
       <AnimatePresence>

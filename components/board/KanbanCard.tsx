@@ -14,7 +14,7 @@ interface KanbanCardProps {
 
 const priorityConfig = {
   low: { label: "낮음", color: "bg-zinc-600 text-zinc-300" },
-  medium: { label: "보통", color: "bg-blue-500/20 text-blue-400" },
+  medium: { label: "보통", color: "bg-yellow-500/20 text-yellow-400" },
   high: { label: "높음", color: "bg-orange-500/20 text-orange-400" },
   urgent: { label: "긴급", color: "bg-red-500/20 text-red-400" },
 }

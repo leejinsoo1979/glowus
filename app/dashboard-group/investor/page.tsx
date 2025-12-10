@@ -31,21 +31,21 @@ const QUICK_ACTIONS = [
     description: '새로운 투자 기회를 발견하세요',
     href: '/dashboard-group/investor/explore',
     icon: Building2,
-    color: 'bg-blue-500/20 text-blue-400',
+    color: 'bg-accent/20 text-accent',
   },
   {
     title: '파이프라인 관리',
     description: '관심 스타트업을 관리하세요',
     href: '/dashboard-group/investor/pipeline',
     icon: Briefcase,
-    color: 'bg-purple-500/20 text-purple-400',
+    color: 'bg-accent/20 text-accent',
   },
   {
     title: '접근 요청',
     description: '대기중인 요청을 확인하세요',
     href: '/dashboard-group/investor/requests',
     icon: Send,
-    color: 'bg-orange-500/20 text-orange-400',
+    color: 'bg-accent/20 text-accent',
   },
 ]
 
@@ -115,8 +115,8 @@ export default function InvestorDashboard() {
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
-                  <Briefcase className="w-6 h-6 text-purple-400" />
+                <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center">
+                  <Briefcase className="w-6 h-6 text-accent" />
                 </div>
                 <div>
                   <p className="text-sm text-zinc-500">파이프라인</p>
@@ -135,8 +135,8 @@ export default function InvestorDashboard() {
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-orange-400" />
+                <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-accent" />
                 </div>
                 <div>
                   <p className="text-sm text-zinc-500">대기중 요청</p>
@@ -155,8 +155,8 @@ export default function InvestorDashboard() {
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
-                  <CheckCircle className="w-6 h-6 text-green-400" />
+                <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center">
+                  <CheckCircle className="w-6 h-6 text-accent" />
                 </div>
                 <div>
                   <p className="text-sm text-zinc-500">승인된 접근</p>
@@ -175,8 +175,8 @@ export default function InvestorDashboard() {
           <Card className="bg-zinc-900 border-zinc-800">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                  <Eye className="w-6 h-6 text-blue-400" />
+                <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center">
+                  <Eye className="w-6 h-6 text-accent" />
                 </div>
                 <div>
                   <p className="text-sm text-zinc-500">열람 가능</p>

@@ -11,9 +11,9 @@ function InputNodeComponent(props: NodeProps<AgentNodeData>) {
     <BaseAgentNode
       {...props}
       icon={<MessageSquare className="w-5 h-5" />}
-      color="#3b82f6"
-      bgColor="#3b82f610"
-      borderColor="#3b82f640"
+      color="var(--accent-color)"
+      bgColor="var(--accent-color-10)"
+      borderColor="var(--accent-color-40)"
       inputHandles={0}
       outputHandles={1}
     />

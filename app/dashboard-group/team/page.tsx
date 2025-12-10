@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { Card, CardHeader, CardTitle, CardContent, Button, Input } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import { formatDate, getInitials } from '@/lib/utils'
@@ -48,6 +49,8 @@ const ROLE_OPTIONS = [
 
 export default function TeamPage() {
   const { user } = useAuthStore()
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [startups, setStartups] = useState<Startup[]>([])
   const [selectedStartup, setSelectedStartup] = useState<string>('')
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -56,6 +59,12 @@ export default function TeamPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  const isDark = mounted ? resolvedTheme === 'dark' : true
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const [inviteData, setInviteData] = useState({
     email: '',
@@ -166,17 +175,17 @@ export default function TeamPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">팀 관리</h1>
-          <p className="text-gray-500 mt-1">팀원을 초대하고 관리하세요</p>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>팀 관리</h1>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-500'}>팀원을 초대하고 관리하세요</p>
         </div>
         <Card variant="default" className="py-16">
           <div className="text-center space-y-4">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
-              <Users className="w-8 h-8 text-gray-400" />
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+              <Users className={`w-8 h-8 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">스타트업을 먼저 등록하세요</h3>
-              <p className="text-gray-500 mt-1">팀원을 관리하려면 먼저 스타트업을 등록해야 합니다.</p>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>스타트업을 먼저 등록하세요</h3>
+              <p className={`mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>팀원을 관리하려면 먼저 스타트업을 등록해야 합니다.</p>
             </div>
             <Button onClick={() => window.location.href = '/dashboard-group/startup'}>
               스타트업 등록하기
@@ -192,8 +201,8 @@ export default function TeamPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">팀 관리</h1>
-          <p className="text-gray-500 mt-1">팀원을 초대하고 관리하세요</p>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>팀 관리</h1>
+          <p className={isDark ? 'text-zinc-500' : 'text-zinc-500'}>팀원을 초대하고 관리하세요</p>
         </div>
         {isFounder && (
           <Button onClick={() => setShowInviteModal(true)} leftIcon={<UserPlus className="w-4 h-4" />}>
@@ -211,7 +220,9 @@ export default function TeamPage() {
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
                 selectedStartup === startup.id
                   ? 'bg-accent text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  : isDark
+                    ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
               }`}
               onClick={() => setSelectedStartup(startup.id)}
             >
@@ -280,9 +291,9 @@ export default function TeamPage() {
       ) : teamMembers.length === 0 ? (
         <Card variant="default" className="py-12">
           <div className="text-center space-y-3">
-            <Users className="w-12 h-12 text-gray-300 mx-auto" />
-            <h3 className="text-lg font-semibold text-gray-900">아직 팀원이 없습니다</h3>
-            <p className="text-gray-500">팀원을 초대하여 함께 일해보세요</p>
+            <Users className={`w-12 h-12 mx-auto ${isDark ? 'text-zinc-600' : 'text-zinc-300'}`} />
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>아직 팀원이 없습니다</h3>
+            <p className={isDark ? 'text-zinc-500' : 'text-zinc-500'}>팀원을 초대하여 함께 일해보세요</p>
             {isFounder && (
               <Button onClick={() => setShowInviteModal(true)} leftIcon={<UserPlus className="w-4 h-4" />}>
                 첫 팀원 초대하기
@@ -301,17 +312,23 @@ export default function TeamPage() {
             >
               <Card variant="default" className="p-5">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center text-gray-600 font-semibold">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-semibold ${
+                    isDark
+                      ? 'bg-gradient-to-br from-zinc-700 to-zinc-800 text-zinc-300'
+                      : 'bg-gradient-to-br from-zinc-200 to-zinc-300 text-zinc-600'
+                  }`}>
                     {getInitials(member.user.name)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-gray-900 truncate">{member.user.name}</h4>
-                    <p className="text-sm text-gray-500 truncate">{member.user.email}</p>
+                    <h4 className={`font-semibold truncate ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>{member.user.name}</h4>
+                    <p className={`text-sm truncate ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>{member.user.email}</p>
                     <div className="mt-2 flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                        isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
+                      }`}>
                         {member.role}
                       </span>
-                      <span className="text-xs text-gray-400">
+                      <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                         {formatDate(member.joined_at)}
                       </span>
                     </div>
@@ -319,7 +336,11 @@ export default function TeamPage() {
                   {isFounder && (
                     <button
                       onClick={() => handleRemoveMember(member.id)}
-                      className="p-2 hover:bg-danger-50 rounded-lg text-gray-400 hover:text-danger-500 transition-colors"
+                      className={`p-2 rounded-lg transition-colors ${
+                        isDark
+                          ? 'text-zinc-500 hover:bg-danger-500/10 hover:text-danger-400'
+                          : 'text-zinc-400 hover:bg-danger-50 hover:text-danger-500'
+                      }`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -342,49 +363,57 @@ export default function TeamPage() {
             onClick={() => setShowInviteModal(false)}
           >
             <motion.div
-              className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-md"
+              className={`rounded-2xl shadow-2xl w-full max-w-md ${
+                isDark
+                  ? 'bg-zinc-900 border border-zinc-800'
+                  : 'bg-white border border-zinc-200'
+              }`}
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-zinc-800">
+              <div className={`p-6 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center">
                       <UserPlus className="w-5 h-5 text-accent" />
                     </div>
-                    <h2 className="text-xl font-bold text-zinc-100">팀원 초대</h2>
+                    <h2 className={`text-xl font-bold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>팀원 초대</h2>
                   </div>
-                  <button onClick={() => setShowInviteModal(false)} className="p-2 hover:bg-zinc-800 rounded-lg">
-                    <X className="w-5 h-5 text-zinc-400" />
+                  <button onClick={() => setShowInviteModal(false)} className={`p-2 rounded-lg ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
+                    <X className={`w-5 h-5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
                   </button>
                 </div>
               </div>
 
               <form onSubmit={handleInvite} className="p-6 space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
                     이메일 주소
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                    <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
                     <input
                       type="email"
-                      className="w-full h-11 pl-12 pr-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-100 focus:outline-none focus-accent"
+                      className={`w-full h-11 pl-12 pr-4 border rounded-xl text-sm focus:outline-none focus-accent ${
+                        isDark
+                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100'
+                          : 'bg-white border-zinc-300 text-zinc-900'
+                      }`}
                       placeholder="team@example.com"
                       value={inviteData.email}
                       onChange={e => setInviteData({ ...inviteData, email: e.target.value })}
                       required
                     />
                   </div>
-                  <p className="mt-1.5 text-xs text-zinc-500">
+                  <p className={`mt-1.5 text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                     초대하려는 사용자가 이미 가입되어 있어야 합니다.
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">역할</label>
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>역할</label>
                   <div className="grid grid-cols-2 gap-2">
                     {ROLE_OPTIONS.map(role => (
                       <button
@@ -393,15 +422,17 @@ export default function TeamPage() {
                         className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
                           inviteData.role === role.value
                             ? 'border-accent bg-accent/10'
-                            : 'border-zinc-700 hover:border-zinc-600'
+                            : isDark
+                              ? 'border-zinc-700 hover:border-zinc-600'
+                              : 'border-zinc-200 hover:border-zinc-300'
                         }`}
                         onClick={() => setInviteData({ ...inviteData, role: role.value })}
                       >
                         <role.icon className={`w-4 h-4 ${
-                          inviteData.role === role.value ? 'text-accent' : 'text-zinc-400'
+                          inviteData.role === role.value ? 'text-accent' : isDark ? 'text-zinc-400' : 'text-zinc-500'
                         }`} />
                         <span className={`text-sm font-medium ${
-                          inviteData.role === role.value ? 'text-accent' : 'text-zinc-400'
+                          inviteData.role === role.value ? 'text-accent' : isDark ? 'text-zinc-400' : 'text-zinc-500'
                         }`}>
                           {role.label}
                         </span>

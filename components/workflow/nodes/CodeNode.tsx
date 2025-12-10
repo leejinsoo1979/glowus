@@ -9,7 +9,7 @@ import type { NodeData } from "@/lib/workflow"
 function CodeNodeComponent(props: NodeProps<NodeData>) {
   const languageColors: Record<string, string> = {
     javascript: "text-yellow-400 bg-yellow-500/20",
-    typescript: "text-blue-400 bg-blue-500/20",
+    typescript: "text-accent bg-accent/20",
     python: "text-green-400 bg-green-500/20",
   }
 

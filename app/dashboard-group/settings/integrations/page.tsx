@@ -66,7 +66,7 @@ const INTEGRATIONS = [
     name: 'Google Calendar',
     description: '태스크 마감일을 캘린더와 동기화',
     icon: Calendar,
-    color: 'bg-blue-600',
+    color: 'bg-accent',
     features: [
       '마감일 자동 동기화',
       '일정 충돌 알림',
@@ -279,7 +279,7 @@ export default function IntegrationsPage() {
                     <button
                       onClick={() => connectIntegration(integration.type)}
                       disabled={connecting === integration.type}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-black font-medium rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-white font-medium rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
                     >
                       {connecting === integration.type ? (
                         <>

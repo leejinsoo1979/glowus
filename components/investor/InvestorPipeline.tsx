@@ -113,7 +113,7 @@ const defaultStages: PipelineStage[] = [
   {
     id: "contacted",
     title: "컨택",
-    color: "#3b82f6",
+    color: "var(--accent-color)",
     investors: [
       {
         id: "inv-3",
@@ -380,7 +380,7 @@ export function InvestorPipeline({
     setMounted(true)
   }, [])
 
-  const accentColorValue = mounted ? currentAccent.color : "#3b82f6"
+  const accentColorValue = mounted ? currentAccent.color : "var(--accent-color)"
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
