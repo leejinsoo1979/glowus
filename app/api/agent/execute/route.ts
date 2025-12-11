@@ -263,7 +263,6 @@ export async function POST(req: Request) {
                                         model: openai(node.data.model || "gpt-4o"),
                                         prompt,
                                         temperature: node.data.temperature || 0.7,
-                                        // @ts-expect-error - maxOutputTokens type mismatch if inconsistent
                                         maxOutputTokens: node.data.maxTokens || 2000,
                                     })
                                     output = textResult.text

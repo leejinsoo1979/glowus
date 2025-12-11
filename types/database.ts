@@ -7,6 +7,11 @@ export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED'
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 export type StartupStage = 'IDEA' | 'MVP' | 'EARLY' | 'GROWTH' | 'SCALE'
 
+// Agent System Types
+export type AgentStatus = 'ACTIVE' | 'INACTIVE' | 'BUSY' | 'ERROR'
+export type AgentMessageType = 'USER_TO_AGENT' | 'AGENT_TO_USER' | 'AGENT_TO_AGENT' | 'SYSTEM'
+export type AgentTaskStatus = 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+
 // ============================================
 // Table Types
 // ============================================
@@ -157,6 +162,146 @@ export interface Commit {
   files: string[] | null
 
   created_at: string
+}
+
+// ============================================
+// Agent System Types
+// ============================================
+
+export interface DeployedAgent {
+  id: string
+  name: string
+  description: string | null
+
+  // Owner
+  owner_id: string
+  startup_id: string | null
+
+  // Workflow definition (ReactFlow JSON)
+  workflow_nodes: Record<string, unknown>[]
+  workflow_edges: Record<string, unknown>[]
+
+  // Agent capabilities
+  capabilities: string[]
+
+  // Status
+  status: AgentStatus
+  last_active_at: string | null
+
+  // Avatar for chat
+  avatar_url: string | null
+
+  // Execution context
+  system_prompt: string | null
+  model: string
+  temperature: number
+
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentTeam {
+  id: string
+  name: string
+  description: string | null
+
+  // Owner
+  owner_id: string
+  startup_id: string | null
+
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentTeamMember {
+  id: string
+  team_id: string
+  agent_id: string
+
+  // Role in team (e.g., 'developer', 'reviewer', 'project_manager')
+  role: string
+
+  joined_at: string
+}
+
+export interface AgentMessage {
+  id: string
+
+  // Conversation tracking
+  conversation_id: string
+
+  // Sender (either user or agent)
+  sender_type: 'USER' | 'AGENT'
+  sender_user_id: string | null
+  sender_agent_id: string | null
+
+  // Receiver (either user or agent)
+  receiver_type: 'USER' | 'AGENT'
+  receiver_user_id: string | null
+  receiver_agent_id: string | null
+
+  // Message content
+  message_type: AgentMessageType
+  content: string
+
+  // Optional metadata (tool calls, function results, etc.)
+  metadata: Record<string, unknown> | null
+
+  // Optional task reference
+  task_id: string | null
+
+  created_at: string
+}
+
+export interface AgentConversation {
+  id: string
+
+  // Participants
+  user_id: string
+  agent_ids: string[]
+
+  // Context
+  title: string | null
+  startup_id: string | null
+
+  // Status
+  is_active: boolean
+
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentTask {
+  id: string
+
+  // Task info
+  title: string
+  description: string | null
+  instructions: string
+
+  // Assignment
+  assigner_type: 'USER' | 'AGENT'
+  assigner_user_id: string | null
+  assigner_agent_id: string | null
+  assignee_agent_id: string
+
+  // Status
+  status: AgentTaskStatus
+
+  // Results
+  result: string | null
+  error: string | null
+
+  // Context
+  conversation_id: string | null
+  startup_id: string | null
+
+  // Time tracking
+  started_at: string | null
+  completed_at: string | null
+
+  created_at: string
+  updated_at: string
 }
 
 // ============================================

@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   Layers,
   Flag,
+  Plus,
 } from "lucide-react"
 import { AGENT_NODE_CONFIGS, getCategoryLabel } from "@/lib/agent"
 import type { AgentType, AgentNodeTypeConfig } from "@/lib/agent"
@@ -46,9 +47,10 @@ const iconMap: Record<string, React.ComponentType<{ className?: string; style?: 
 
 interface AgentNodeLibraryProps {
   onDragStart: (event: React.DragEvent, nodeType: AgentType) => void
+  onCreateAgent?: () => void
 }
 
-export function AgentNodeLibrary({ onDragStart }: AgentNodeLibraryProps) {
+export function AgentNodeLibrary({ onDragStart, onCreateAgent }: AgentNodeLibraryProps) {
   const [searchTerm, setSearchTerm] = useState("")
   // Expand all by default to show everything
   const [expandedCategories, setExpandedCategories] = useState<string[]>([
@@ -90,6 +92,15 @@ export function AgentNodeLibrary({ onDragStart }: AgentNodeLibraryProps) {
     <div className="w-[300px] bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden transition-colors duration-200">
       {/* Header */}
       <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 transition-colors">
+        {/* 에이전트 생성 버튼 */}
+        <button
+          onClick={onCreateAgent}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 mb-3 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          새 에이전트 생성
+        </button>
+
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-5 h-5 text-violet-500 dark:text-violet-400" />
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Agent Nodes</h2>

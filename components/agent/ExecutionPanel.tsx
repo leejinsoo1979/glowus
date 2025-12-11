@@ -20,6 +20,7 @@ type ExecutionPanelProps = {
     onClose: () => void
     onNodeStatusChange?: (nodeId: string, status: "idle" | "running" | "completed" | "error") => void
     onNodeOutputChange?: (nodeId: string, output: any) => void
+    onLog?: (type: 'info' | 'output' | 'error', message: string) => void
 }
 
 export function ExecutionPanel({
@@ -29,6 +30,7 @@ export function ExecutionPanel({
     onClose,
     onNodeStatusChange,
     onNodeOutputChange,
+    onLog,
 }: ExecutionPanelProps) {
     const [isExecuting, setIsExecuting] = useState(false)
     const [executionLog, setExecutionLog] = useState<ExecutionResult[]>([])
@@ -45,6 +47,8 @@ export function ExecutionPanel({
             if (onNodeStatusChange) onNodeStatusChange(node.id, "idle")
             if (onNodeOutputChange) onNodeOutputChange(node.id, null)
         })
+
+        if (onLog) onLog('info', 'Starting workflow execution...')
 
         try {
             const response = await fetch("/api/agent/execute", {
@@ -81,6 +85,9 @@ export function ExecutionPanel({
                                 if (update.nodeId) {
                                     if (onNodeStatusChange) onNodeStatusChange(update.nodeId, "running")
                                     setCurrentNodeId(update.nodeId)
+                                    // Log start
+                                    const node = nodes.find((n) => n.id === update.nodeId)
+                                    if (onLog) onLog('info', `Executing node: ${node?.data.label || update.nodeId} (${node?.type})`)
                                 }
                                 break
 
@@ -104,6 +111,11 @@ export function ExecutionPanel({
                                         },
                                     ])
                                     setCurrentNodeId(null)
+                                    // Log output
+                                    if (onLog) {
+                                        const outStr = typeof update.output === 'string' ? update.output : JSON.stringify(update.output)
+                                        onLog('output', `${getNodeLabel(update.nodeId)} output: ${outStr.substring(0, 100)}${outStr.length > 100 ? '...' : ''}`)
+                                    }
                                 }
                                 break
 
@@ -122,14 +134,17 @@ export function ExecutionPanel({
                                     },
                                 ])
                                 setCurrentNodeId(null)
+                                if (onLog) onLog('error', `Node ${getNodeLabel(update.nodeId)} failed: ${update.error}`)
                                 break
 
                             case "complete":
                                 setCurrentNodeId(null)
+                                if (onLog) onLog('info', 'Workflow execution completed successfully.')
                                 break
 
                             case "error":
                                 setError(update.error || "Execution failed")
+                                if (onLog) onLog('error', `Workflow error: ${update.error}`)
                                 break
                         }
                     } catch (parseError) {
@@ -210,8 +225,8 @@ export function ExecutionPanel({
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 className={`border rounded-lg p-3 ${result.error
-                                        ? "border-red-500/20 bg-red-500/5"
-                                        : "border-zinc-700 bg-zinc-800/50"
+                                    ? "border-red-500/20 bg-red-500/5"
+                                    : "border-zinc-700 bg-zinc-800/50"
                                     }`}
                             >
                                 <div className="flex items-start gap-2">

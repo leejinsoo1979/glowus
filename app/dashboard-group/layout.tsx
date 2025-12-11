@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Sidebar } from '@/components/nav/Sidebar'
+import { TwoLevelSidebar } from '@/components/nav/TwoLevelSidebar'
 import { Header } from '@/components/nav/Header'
 import { CommitModal } from '@/components/commits/CommitModal'
 import { useUIStore } from '@/stores/uiStore'
@@ -16,55 +16,61 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { sidebarOpen } = useUIStore()
   const { setUser, setCurrentStartup, setIsLoading, isLoading } = useAuthStore()
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email')
 
   useEffect(() => {
     const supabase = createClient()
 
     // Get initial session
     const getUser = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser()
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
 
-      if (!authUser) {
-        router.push('/auth-group/login')
-        return
+        if (!authUser) {
+          router.push('/auth-group/login')
+          return
+        }
+
+        // Fetch user profile
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUser.id)
+          .single()
+
+        if (profile) {
+          setUser(profile as User)
+        } else {
+          // Create profile from auth metadata
+          setUser({
+            id: authUser.id,
+            email: authUser.email!,
+            name: authUser.user_metadata.name || 'User',
+            role: authUser.user_metadata.role || 'FOUNDER',
+            company: authUser.user_metadata.company,
+            created_at: authUser.created_at,
+            updated_at: authUser.created_at,
+          } as User)
+        }
+
+        // Fetch user's startup
+        const { data: startup } = await supabase
+          .from('startups')
+          .select('*')
+          .eq('founder_id', authUser.id)
+          .single()
+
+        if (startup) {
+          setCurrentStartup(startup as Startup)
+        }
+      } catch (error) {
+        console.error('Failed to fetch user data:', error)
+      } finally {
+        setIsLoading(false)
       }
-
-      // Fetch user profile
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-
-      if (profile) {
-        setUser(profile as User)
-      } else {
-        // Create profile from auth metadata
-        setUser({
-          id: authUser.id,
-          email: authUser.email!,
-          name: authUser.user_metadata.name || 'User',
-          role: authUser.user_metadata.role || 'FOUNDER',
-          company: authUser.user_metadata.company,
-          created_at: authUser.created_at,
-          updated_at: authUser.created_at,
-        } as User)
-      }
-
-      // Fetch user's startup
-      const { data: startup } = await supabase
-        .from('startups')
-        .select('*')
-        .eq('founder_id', authUser.id)
-        .single()
-
-      if (startup) {
-        setCurrentStartup(startup as Startup)
-      }
-
-      setIsLoading(false)
     }
 
     getUser()
@@ -96,19 +102,19 @@ export default function DashboardLayout({
     )
   }
 
-  const pathname = usePathname()
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email')
+  // 2단계 사이드바: Level1(64px) + Level2(220px) = 284px
+  const sidebarWidth = 284
 
   return (
     <div className="min-h-screen bg-theme">
-      <Sidebar />
+      <TwoLevelSidebar />
       <Header />
       <CommitModal />
       <main
-        className={`pt-16 min-h-screen transition-all duration-300 ${sidebarOpen ? 'pl-[280px]' : 'pl-20'
-          }`}
+        className="pt-16 min-h-screen transition-all duration-300"
+        style={{ paddingLeft: `${sidebarWidth}px` }}
       >
-        <div className={isFullWidthPage ? "" : "p-8 pl-10"}>
+        <div className={isFullWidthPage ? "" : "p-8"}>
           {children}
         </div>
       </main>
