@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { useThemeStore } from '@/stores/themeStore'
 import { useTeamStore, Team } from '@/stores/teamStore'
 import { MemberAddModal, MemberFormData } from '@/components/team/MemberAddModal'
+import { MemberProfileModal, TeamMember } from '@/components/team/MemberProfileModal'
 import {
   UserPlus,
   Search,
@@ -55,11 +56,35 @@ export default function TeamMembersPage() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('album')
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false)
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
+  const [selectedMemberGradient, setSelectedMemberGradient] = useState<string>('')
 
   const handleAddMember = (data: MemberFormData) => {
     // TODO: API 연동
     console.log('New member:', data)
     setIsMemberModalOpen(false)
+  }
+
+  const handleMemberClick = (member: typeof dummyMembers[0], index: number) => {
+    const teamMember: TeamMember = {
+      ...member,
+      role: member.role as 'admin' | 'member' | 'viewer',
+      phone: '010-1234-5678',
+      location: '서울, 대한민국',
+      joinedAt: '2024년 3월',
+      bio: `${member.position}으로 팀에 기여하고 있습니다.`,
+      skills: member.position === 'CEO'
+        ? ['리더십', '전략', '비즈니스']
+        : member.position.includes('개발') || member.position.includes('프론트')
+        ? ['React', 'TypeScript', 'Node.js']
+        : member.position.includes('디자인')
+        ? ['Figma', 'UI/UX', 'Prototyping']
+        : ['마케팅', '데이터 분석', '콘텐츠'],
+    }
+    setSelectedMember(teamMember)
+    setSelectedMemberGradient(getAvatarGradient(index))
+    setIsProfileModalOpen(true)
   }
 
   const getAccentBg = () => {
@@ -260,6 +285,7 @@ export default function TeamMembersPage() {
               key={member.id}
               variants={item}
               whileHover={{ y: -4 }}
+              onClick={() => handleMemberClick(member, index)}
               className={cn(
                 "group relative rounded-2xl cursor-pointer",
                 "bg-white dark:bg-zinc-800/50",
@@ -372,11 +398,12 @@ export default function TeamMembersPage() {
           animate="show"
           className="space-y-3"
         >
-          {filteredMembers.map((member) => (
+          {filteredMembers.map((member, index) => (
             <motion.div
               key={member.id}
               variants={item}
-              className="group rounded-2xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 shadow-sm dark:shadow-none p-4 hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-600 transition-all"
+              onClick={() => handleMemberClick(member, index)}
+              className="group rounded-2xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 shadow-sm dark:shadow-none p-4 hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-600 transition-all cursor-pointer"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -459,6 +486,14 @@ export default function TeamMembersPage() {
         isOpen={isMemberModalOpen}
         onClose={() => setIsMemberModalOpen(false)}
         onSubmit={handleAddMember}
+      />
+
+      {/* Member Profile Modal */}
+      <MemberProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        member={selectedMember}
+        avatarGradient={selectedMemberGradient}
       />
     </div>
   )
