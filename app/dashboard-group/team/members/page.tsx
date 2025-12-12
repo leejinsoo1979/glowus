@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useThemeStore } from '@/stores/themeStore'
+import { useTeamStore, Team } from '@/stores/teamStore'
 import {
   UserPlus,
   Search,
@@ -16,7 +17,9 @@ import {
   List,
   Plus,
   MessageCircle,
-  Phone
+  Phone,
+  ArrowLeft,
+  Users
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -33,7 +36,20 @@ type ViewMode = 'album' | 'list'
 
 export default function TeamMembersPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const teamId = searchParams.get('teamId')
   const { accentColor } = useThemeStore()
+  const { teams } = useTeamStore()
+  const [currentTeam, setCurrentTeam] = useState<Team | null>(null)
+
+  useEffect(() => {
+    if (teamId) {
+      const team = teams.find(t => t.id === teamId)
+      setCurrentTeam(team || null)
+    } else {
+      setCurrentTeam(null)
+    }
+  }, [teamId, teams])
   const [searchQuery, setSearchQuery] = useState('')
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('album')
@@ -111,16 +127,28 @@ export default function TeamMembersPage() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8"
+        className="mb-8"
       >
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-            팀원 관리
-          </h1>
-          <p className="text-zinc-500 dark:text-white/50 mt-1">
-            {dummyMembers.length}명의 팀원
-          </p>
-        </div>
+        {/* Back Button & Team Name */}
+        {currentTeam && (
+          <button
+            onClick={() => router.push('/dashboard-group/team')}
+            className="flex items-center gap-2 text-zinc-500 dark:text-white/50 hover:text-zinc-700 dark:hover:text-white/70 transition-colors mb-4"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">팀 목록</span>
+          </button>
+        )}
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+              {currentTeam ? `${currentTeam.name} 팀원` : '팀원 관리'}
+            </h1>
+            <p className="text-zinc-500 dark:text-white/50 mt-1">
+              {currentTeam ? `${currentTeam.memberCount}명의 팀원` : `${dummyMembers.length}명의 팀원`}
+            </p>
+          </div>
 
         {/* View Toggle & Add Button (리스트 뷰에서만 추가 버튼 표시) */}
         <div className="flex items-center gap-3">
@@ -166,6 +194,7 @@ export default function TeamMembersPage() {
               팀원 추가
             </button>
           )}
+          </div>
         </div>
       </motion.div>
 
