@@ -6,7 +6,7 @@
  */
 
 export const DEV_USER = {
-  id: 'dev-test-user-00000000-0000-0000-0000-000000000000',
+  id: '00000000-0000-0000-0000-000000000001',
   email: 'dev@startupshow.local',
   name: 'Dev Tester',
   role: 'founder' as const,
@@ -16,7 +16,7 @@ export const DEV_USER = {
 }
 
 export const DEV_STARTUP = {
-  id: 'dev-startup-00000000-0000-0000-0000-000000000000',
+  id: '00000000-0000-0000-0000-000000000002',
   name: 'Dev Startup',
   founder_id: DEV_USER.id,
   description: '개발 테스트용 스타트업',
@@ -24,7 +24,7 @@ export const DEV_STARTUP = {
 }
 
 export const DEV_TEAM = {
-  id: 'dev-team-00000000-0000-0000-0000-000000000000',
+  id: '00000000-0000-0000-0000-000000000003',
   name: 'Dev Team',
   startup_id: DEV_STARTUP.id,
   created_at: new Date().toISOString(),

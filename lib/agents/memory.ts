@@ -1,11 +1,21 @@
 // Agent Memory System
 // 에이전트가 사람처럼 일하고, 기록하고, 기억하는 시스템
 
-import OpenAI from 'openai'
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
+// Ollama 로컬 LLM 호출 헬퍼
+async function callOllama(prompt: string, json = false): Promise<string> {
+  const res = await fetch('http://localhost:11434/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'deepseek-r1:7b',
+      prompt,
+      stream: false,
+      format: json ? 'json' : undefined,
+    }),
+  })
+  const data = await res.json()
+  return data.response || ''
+}
 
 // =====================================================
 // Types
@@ -385,14 +395,8 @@ ${conversation}
 
 지식이 없으면 빈 배열을 반환하세요.`
 
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.3,
-      })
-
-      const result = JSON.parse(response.choices[0].message.content || '{"knowledge": []}')
+      const response = await callOllama(prompt, true)
+      const result = JSON.parse(response || '{"knowledge": []}')
 
       for (const k of result.knowledge || []) {
         await this.saveKnowledge({
@@ -621,14 +625,8 @@ ${conversation}
   "self_summary": "나는 이런 에이전트입니다 (1-2문장)"
 }`
 
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.3,
-      })
-
-      const identity = JSON.parse(response.choices[0].message.content || '{}')
+      const response = await callOllama(prompt, true)
+      const identity = JSON.parse(response || '{}')
 
       const { error } = await this.supabase
         .from('agent_identity')
@@ -696,19 +694,11 @@ ${conversation}
   // -------------------------------------------------
 
   /**
-   * 임베딩 생성
+   * 임베딩 생성 (Ollama 미지원 - 빈 배열 반환)
    */
   private async createEmbedding(text: string): Promise<number[]> {
-    try {
-      const response = await openai.embeddings.create({
-        model: 'text-embedding-ada-002',
-        input: text.slice(0, 8000), // 토큰 제한
-      })
-      return response.data[0].embedding
-    } catch (error) {
-      console.error('Embedding creation error:', error)
-      return []
-    }
+    // Ollama는 임베딩 미지원, 빈 배열 반환
+    return []
   }
 
   /**
@@ -716,18 +706,9 @@ ${conversation}
    */
   private async generateSummary(content: string): Promise<string> {
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: '주어진 내용을 한국어로 간단명료하게 1-2문장으로 요약하세요.',
-          },
-          { role: 'user', content },
-        ],
-        max_tokens: 200,
-      })
-      return response.choices[0].message.content || ''
+      const prompt = `주어진 내용을 한국어로 간단명료하게 1-2문장으로 요약하세요.\n\n${content}`
+      const response = await callOllama(prompt)
+      return response || content.slice(0, 200) + '...'
     } catch (error) {
       console.error('Summary generation error:', error)
       return content.slice(0, 200) + '...'
@@ -824,14 +805,8 @@ ${logSummaries}
   "insights": ["인사이트 1", "인사이트 2"]
 }`
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
-      temperature: 0.5,
-    })
-
-    return JSON.parse(response.choices[0].message.content || '{}')
+    const response = await callOllama(prompt, true)
+    return JSON.parse(response || '{}')
   }
 
   /**

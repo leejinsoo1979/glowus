@@ -1,0 +1,112 @@
+{
+  "version": "1.0",
+  "type": "agent",
+  "metadata": {
+    "name": "My Agent",
+    "description": "",
+    "exportedAt": "2025-12-12T12:28:34.926Z"
+  },
+  "nodes": [
+    {
+      "id": "input-645d1a02",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 200
+      },
+      "data": {
+        "label": "Input",
+        "description": "Input",
+        "agentType": "input",
+        "inputType": "text"
+      },
+      "width": 220,
+      "height": 95
+    },
+    {
+      "id": "start-712e66e4",
+      "type": "start",
+      "position": {
+        "x": 220,
+        "y": 240
+      },
+      "data": {
+        "label": "Start",
+        "description": "Workflow entry point",
+        "agentType": "start"
+      },
+      "width": 200,
+      "height": 75
+    },
+    {
+      "id": "prompt-d7a42398",
+      "type": "prompt",
+      "position": {
+        "x": 220,
+        "y": 240
+      },
+      "data": {
+        "label": "Prompt",
+        "description": "Input text or prompt",
+        "agentType": "prompt",
+        "systemPrompt": "",
+        "prompt": "YouTube 비디오 분석 요청:\n\nURL: $input1\n\n다음 항목을 분석해주세요:\n1. 영상 제목 및 채널명 추정\n2. 주요 내용 요약 (3-5문장)\n3. 핵심 키워드 (5개)\n4. 타겟 오디언스\n5. 콘텐츠 카테고리\n6. 예상 인기도 분석\n7. SEO 최적화 제안\n\n분석 결과를 한국어로 상세히 작성해주세요."
+      },
+      "width": 270,
+      "height": 416,
+      "selected": true,
+      "dragging": false
+    },
+    {
+      "id": "llm-54d8b808",
+      "type": "llm",
+      "position": {
+        "x": 220,
+        "y": 240
+      },
+      "data": {
+        "label": "Text Model",
+        "description": "Generate text with LLM",
+        "agentType": "llm",
+        "model": "gpt-4-turbo",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "systemPrompt": "You are a helpful assistant."
+      },
+      "width": 200,
+      "height": 75
+    },
+    {
+      "id": "output-726e06da",
+      "type": "output",
+      "position": {
+        "x": 220,
+        "y": 240
+      },
+      "data": {
+        "label": "Output",
+        "description": "Output",
+        "agentType": "output",
+        "outputType": "text"
+      },
+      "width": 220,
+      "height": 95
+    },
+    {
+      "id": "end-91bd3d7c",
+      "type": "end",
+      "position": {
+        "x": 220,
+        "y": 240
+      },
+      "data": {
+        "label": "End",
+        "description": "Workflow output",
+        "agentType": "end"
+      },
+      "width": 200,
+      "height": 75
+    }
+  ],
+  "edges": []
+}
