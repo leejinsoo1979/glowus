@@ -42,10 +42,10 @@ export function Header() {
 
   return (
     <header
-      className={`fixed top-0 right-0 z-30 h-16 transition-all duration-300 ${sidebarOpen ? 'left-[304px]' : 'left-16'
+      className={`fixed top-0 right-0 z-30 h-16 transition-all duration-300 backdrop-blur-xl ${sidebarOpen ? 'left-[304px]' : 'left-16'
         } ${isDark
-          ? 'border-b border-zinc-800'
-          : 'border-b border-zinc-200'
+          ? 'bg-zinc-900/80 border-b border-zinc-800'
+          : 'bg-white/80 border-b border-zinc-200'
         }`}
     >
       <div className="h-full px-8 flex items-center justify-between gap-4">
