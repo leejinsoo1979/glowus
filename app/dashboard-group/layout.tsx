@@ -5,7 +5,6 @@ import { useRouter, usePathname } from 'next/navigation'
 import { TwoLevelSidebar } from '@/components/nav/TwoLevelSidebar'
 import { Header } from '@/components/nav/Header'
 import { CommitModal } from '@/components/commits/CommitModal'
-import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Startup } from '@/types'
@@ -17,7 +16,6 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { sidebarOpen } = useUIStore()
   const { setUser, setCurrentStartup, setIsLoading, isLoading } = useAuthStore()
   const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email')
 
@@ -102,15 +100,8 @@ export default function DashboardLayout({
     )
   }
 
-  // 2단계 사이드바: Level1(64px) + Level2(220px or 280px for company)
-  const isCompanyPage = pathname?.startsWith('/dashboard-group/company') ||
-                        pathname?.startsWith('/dashboard-group/hr') ||
-                        pathname?.startsWith('/dashboard-group/sales') ||
-                        pathname?.startsWith('/dashboard-group/finance') ||
-                        pathname?.startsWith('/dashboard-group/tax') ||
-                        pathname?.startsWith('/dashboard-group/payroll') ||
-                        pathname?.startsWith('/dashboard-group/expense')
-  const sidebarWidth = isCompanyPage ? 344 : 284 // 64 + 280 or 64 + 220
+  // 2단계 사이드바: Level1(64px) + Level2(240px)
+  const sidebarWidth = 304 // 64 + 240
 
   return (
     <div className="min-h-screen bg-theme">

@@ -554,7 +554,61 @@ const investorCategories: Category[] = [
   },
 ]
 
-// 재귀적 메뉴 아이템 컴포넌트
+// 상위 메뉴 카드 컴포넌트 (2열 그리드용 세로 직사각형)
+function TopLevelCardMenu({
+  item,
+  isDark,
+  isExpanded,
+  onToggle
+}: {
+  item: NestedMenuItem
+  isDark: boolean
+  isExpanded: boolean
+  onToggle: () => void
+}) {
+  const IconComponent = item.icon
+
+  return (
+    <motion.button
+      onClick={onToggle}
+      className={cn(
+        'w-full aspect-[3/4] rounded-xl border transition-all duration-200',
+        'flex flex-col items-center justify-center gap-2',
+        isDark
+          ? 'bg-zinc-800/50 border-zinc-700/50 hover:bg-zinc-700/50'
+          : 'bg-zinc-100 border-zinc-200 hover:bg-zinc-200/80',
+        isExpanded && 'ring-2 ring-accent/60 border-accent/40'
+      )}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.97 }}
+    >
+      <div className={cn(
+        'w-10 h-10 rounded-xl flex items-center justify-center',
+        isDark ? 'bg-zinc-700/80' : 'bg-white',
+        'shadow-sm'
+      )}>
+        {IconComponent && (
+          <IconComponent className={cn(
+            'w-5 h-5',
+            isExpanded
+              ? 'text-accent'
+              : isDark ? 'text-zinc-400' : 'text-zinc-500'
+          )} />
+        )}
+      </div>
+      <p className={cn(
+        'text-[11px] font-medium leading-tight px-1 text-center',
+        isExpanded
+          ? 'text-accent'
+          : isDark ? 'text-zinc-300' : 'text-zinc-700'
+      )}>
+        {item.name}
+      </p>
+    </motion.button>
+  )
+}
+
+// 재귀적 메뉴 아이템 컴포넌트 (하위 메뉴용)
 function NestedMenuItemComponent({
   item,
   depth = 0,
@@ -583,7 +637,7 @@ function NestedMenuItemComponent({
         <button
           onClick={() => toggleExpand(item.name)}
           className={cn(
-            'w-full flex items-center gap-2 py-1.5 text-xs font-medium transition-all duration-200 rounded-md hover:bg-zinc-800/50',
+            'w-full flex items-center gap-2 py-1.5 text-xs font-medium transition-all duration-200 rounded-md',
             depth === 0 ? 'text-zinc-300 font-semibold' : 'text-zinc-400',
             isDark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100'
           )}
@@ -648,11 +702,12 @@ export function TwoLevelSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, currentTeam, logout: clearAuth } = useAuthStore()
+  const { activeCategory, setActiveCategory } = useUIStore()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<string | null>('home')
   const [isSubMenuOpen, setIsSubMenuOpen] = useState(true)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [selectedCompanyMenu, setSelectedCompanyMenu] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -739,6 +794,7 @@ export function TwoLevelSidebar() {
                 onClick={() => {
                   setActiveCategory(category.id)
                   setIsSubMenuOpen(true)
+                  setSelectedCompanyMenu(null) // 카테고리 변경 시 초기화
                 }}
                 className={cn(
                   'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 group relative',
@@ -817,7 +873,7 @@ export function TwoLevelSidebar() {
         {isSubMenuOpen && activeItems.length > 0 && (
           <motion.aside
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: isCompanyMenu ? 280 : 220, opacity: 1 }}
+            animate={{ width: 240, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className={cn(
@@ -827,7 +883,7 @@ export function TwoLevelSidebar() {
                 : 'bg-white border-zinc-200'
             )}
           >
-            <div className={cn('h-full flex flex-col', isCompanyMenu ? 'w-[280px]' : 'w-[220px]')}>
+            <div className="h-full flex flex-col w-[240px]">
               {/* Category Header */}
               <div className={cn(
                 'h-16 flex items-center px-4 border-b flex-shrink-0',
@@ -877,17 +933,101 @@ export function TwoLevelSidebar() {
               {/* Sub Navigation */}
               <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
                 {isCompanyMenu ? (
-                  // 회사 메뉴 - 중첩 구조
-                  activeItems.map((item) => (
-                    <NestedMenuItemComponent
-                      key={item.name}
-                      item={item}
-                      isDark={isDark}
-                      pathname={pathname}
-                      expandedItems={expandedItems}
-                      toggleExpand={toggleExpand}
-                    />
-                  ))
+                  // 회사 메뉴 - 드릴다운 네비게이션
+                  <AnimatePresence mode="wait">
+                    {selectedCompanyMenu === null ? (
+                      // 메인 카드 그리드 뷰
+                      <motion.div
+                        key="card-grid"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        transition={{ duration: 0.2 }}
+                        className="grid grid-cols-2 gap-2"
+                      >
+                        {activeItems.map((item, index) => (
+                          <motion.div
+                            key={item.name}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: index * 0.03 }}
+                          >
+                            <TopLevelCardMenu
+                              item={item}
+                              isDark={isDark}
+                              isExpanded={false}
+                              onToggle={() => setSelectedCompanyMenu(item.name)}
+                            />
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    ) : (
+                      // 선택된 메뉴의 하위 메뉴 뷰
+                      <motion.div
+                        key={`submenu-${selectedCompanyMenu}`}
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        {/* 뒤로가기 버튼 */}
+                        <button
+                          onClick={() => setSelectedCompanyMenu(null)}
+                          className={cn(
+                            'flex items-center gap-2 w-full px-2 py-2 mb-3 rounded-lg text-sm font-medium transition-colors',
+                            isDark
+                              ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                              : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                          )}
+                        >
+                          <ChevronRight className="w-4 h-4 rotate-180" />
+                          <span>전체 메뉴</span>
+                        </button>
+
+                        {/* 현재 메뉴 타이틀 */}
+                        {(() => {
+                          const selectedItem = activeItems.find(item => item.name === selectedCompanyMenu)
+                          const IconComponent = selectedItem?.icon
+                          return (
+                            <div className={cn(
+                              'flex items-center gap-2 px-2 py-2 mb-2 rounded-lg',
+                              isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+                            )}>
+                              {IconComponent && (
+                                <IconComponent className={cn(
+                                  'w-4 h-4',
+                                  isDark ? 'text-zinc-300' : 'text-zinc-700'
+                                )} />
+                              )}
+                              <span className={cn(
+                                'text-sm font-semibold',
+                                isDark ? 'text-zinc-200' : 'text-zinc-800'
+                              )}>
+                                {selectedCompanyMenu}
+                              </span>
+                            </div>
+                          )
+                        })()}
+
+                        {/* 하위 메뉴 목록 */}
+                        <div className="space-y-0.5">
+                          {activeItems
+                            .find(item => item.name === selectedCompanyMenu)
+                            ?.children?.map((child) => (
+                              <NestedMenuItemComponent
+                                key={child.name}
+                                item={child}
+                                depth={0}
+                                isDark={isDark}
+                                pathname={pathname}
+                                expandedItems={expandedItems}
+                                toggleExpand={toggleExpand}
+                              />
+                            ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 ) : (
                   // 일반 메뉴 - 플랫 구조
                   activeItems.map((item, index) => {
