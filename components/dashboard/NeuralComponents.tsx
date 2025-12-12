@@ -111,11 +111,11 @@ export function TiltCard({ children, className, glowColor = "rgba(255,255,255,0.
             onClick={onClick}
             className={cn(
                 "relative rounded-3xl transition-all duration-200 ease-out group",
-                "bg-white/80 dark:bg-white/5 backdrop-blur-xl", // Adaptive Glass
-                "border border-zinc-200 dark:border-white/10", // Adaptive Border
-                "shadow-sm dark:shadow-none", // Light mode shadow
-                "hover:shadow-md dark:hover:shadow-[0_0_40px_-10px_rgba(255,255,255,0.1)]",
-                "hover:border-zinc-300 dark:hover:border-white/20",
+                "bg-white dark:bg-white/5 backdrop-blur-xl", // Adaptive Glass
+                "border border-zinc-300 dark:border-white/10", // Adaptive Border
+                "shadow-md dark:shadow-none", // Light mode shadow
+                "hover:shadow-lg dark:hover:shadow-[0_0_40px_-10px_rgba(255,255,255,0.1)]",
+                "hover:border-zinc-400 dark:hover:border-white/20",
                 className
             )}
         >

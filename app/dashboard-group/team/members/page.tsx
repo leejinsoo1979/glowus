@@ -189,7 +189,7 @@ export default function TeamMembersPage() {
           {/* Add Button (리스트 뷰에서만) */}
           {viewMode === 'list' && (
             <button
-              onClick={() => router.push('/dashboard-group/team/members/new')}
+              onClick={() => setIsMemberModalOpen(true)}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-white transition-all",
                 getAccentBg(),
@@ -235,7 +235,7 @@ export default function TeamMembersPage() {
           <motion.div
             variants={item}
             whileHover={{ y: -4 }}
-            onClick={() => router.push('/dashboard-group/team/members/new')}
+            onClick={() => setIsMemberModalOpen(true)}
             className={cn(
               "group rounded-2xl cursor-pointer min-h-[240px]",
               "border-2 border-dashed border-zinc-300 dark:border-zinc-600",
@@ -453,6 +453,13 @@ export default function TeamMembersPage() {
           )}
         </motion.div>
       )}
+
+      {/* Member Add Modal */}
+      <MemberAddModal
+        isOpen={isMemberModalOpen}
+        onClose={() => setIsMemberModalOpen(false)}
+        onSubmit={handleAddMember}
+      />
     </div>
   )
 }

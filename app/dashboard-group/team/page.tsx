@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useTeamStore, Team } from '@/stores/teamStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal'
+import { MemberAddModal, MemberFormData } from '@/components/team/MemberAddModal'
 import {
   TiltCard,
   LiveMeshGradient,
@@ -71,6 +72,7 @@ export default function TeamPage() {
   const { teams, addTeam, removeTeam } = useTeamStore()
   const [mounted, setMounted] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isMemberModalOpen, setIsMemberModalOpen] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
@@ -103,6 +105,12 @@ export default function TeamPage() {
   const handleCreateTeam = (data: TeamFormData) => {
     addTeam(data)
     setIsModalOpen(false)
+  }
+
+  const handleAddMember = (data: MemberFormData) => {
+    // TODO: API 연동
+    console.log('New member:', data)
+    setIsMemberModalOpen(false)
   }
 
   const handleDeleteTeam = (teamId: string, e: React.MouseEvent) => {
@@ -354,7 +362,7 @@ export default function TeamPage() {
                   보기
                 </button>
                 <button
-                  onClick={() => router.push('/dashboard-group/team/members/new')}
+                  onClick={() => setIsMemberModalOpen(true)}
                   className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
                     accent.bgLight, "hover:opacity-80"
@@ -622,6 +630,13 @@ export default function TeamPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleCreateTeam}
+      />
+
+      {/* Member Add Modal */}
+      <MemberAddModal
+        isOpen={isMemberModalOpen}
+        onClose={() => setIsMemberModalOpen(false)}
+        onSubmit={handleAddMember}
       />
 
       {/* Click outside to close menu */}
