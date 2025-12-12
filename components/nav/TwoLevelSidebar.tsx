@@ -494,7 +494,7 @@ const categories: Category[] = [
         name: '빠른 액션',
         icon: Zap,
         children: [
-          { name: '프로젝트 생성', href: '/dashboard-group/projects/new', icon: Plus },
+          { name: '프로젝트 생성', href: '/dashboard-group/project', icon: Plus },
           { name: '업무 생성', href: '/dashboard-group/tasks/new', icon: Plus },
           { name: '에이전트 호출', href: '/dashboard-group/agents', icon: Bot },
         ]
@@ -502,7 +502,7 @@ const categories: Category[] = [
       { name: '오늘 할 일', href: '/dashboard-group/tasks?filter=today', icon: ListTodo },
       { name: '내가 맡은 업무', href: '/dashboard-group/tasks?filter=mine', icon: User },
       { name: '마감 임박', href: '/dashboard-group/tasks?filter=urgent', icon: AlertCircle },
-      { name: '진행 중 프로젝트', href: '/dashboard-group/projects?status=active', icon: Play },
+      { name: '진행 중 프로젝트', href: '/dashboard-group/project?status=active', icon: Play },
       { name: '오늘 일정', href: '/dashboard-group/calendar?view=today', icon: CalendarDays },
       { name: '개인 KPI', href: '/dashboard-group/kpis', icon: Target },
     ]
@@ -513,10 +513,10 @@ const categories: Category[] = [
     name: '프로젝트',
     icon: IoRocketOutline,
     items: [
-      { name: '전체 프로젝트', href: '/dashboard-group/projects', icon: FolderKanban },
-      { name: '진행 중', href: '/dashboard-group/projects?status=active', icon: Play },
-      { name: '완료', href: '/dashboard-group/projects?status=completed', icon: CheckCircle },
-      { name: '보관', href: '/dashboard-group/projects?status=archived', icon: Archive },
+      { name: '전체 프로젝트', href: '/dashboard-group/project', icon: FolderKanban },
+      { name: '진행 중', href: '/dashboard-group/project?status=active', icon: Play },
+      { name: '완료', href: '/dashboard-group/project?status=completed', icon: CheckCircle },
+      { name: '보류', href: '/dashboard-group/project?status=on_hold', icon: Archive },
     ]
   },
   // 파일·문서 - 내가 쓰는 모든 자료
@@ -904,7 +904,7 @@ export function TwoLevelSidebar() {
         pathname.startsWith('/dashboard-group/tax') ||
         pathname.startsWith('/dashboard-group/payroll') ||
         pathname.startsWith('/dashboard-group/expense')) return 'company'
-    if (pathname.startsWith('/dashboard-group/projects')) return 'projects'
+    if (pathname.startsWith('/dashboard-group/project')) return 'projects'
     if (pathname.startsWith('/dashboard-group/files')) return 'files'
     if (pathname.startsWith('/dashboard-group/calendar')) return 'calendar'
     if (pathname.startsWith('/dashboard-group/email')) return 'email'

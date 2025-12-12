@@ -7,6 +7,11 @@ export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED'
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 export type StartupStage = 'IDEA' | 'MVP' | 'EARLY' | 'GROWTH' | 'SCALE'
 
+// Project System Types
+export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled'
+export type ProjectPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type ProjectMemberRole = 'lead' | 'member' | 'observer'
+
 // Agent System Types
 export type AgentStatus = 'ACTIVE' | 'INACTIVE' | 'BUSY' | 'ERROR'
 export type AgentMessageType = 'USER_TO_AGENT' | 'AGENT_TO_USER' | 'AGENT_TO_AGENT' | 'SYSTEM'
@@ -163,6 +168,53 @@ export interface Commit {
   files: string[] | null
 
   created_at: string
+}
+
+// ============================================
+// Project System Types
+// ============================================
+
+export interface Project {
+  id: string
+  team_id: string
+  name: string
+  description: string | null
+  status: ProjectStatus
+  priority: ProjectPriority
+  start_date: string | null
+  end_date: string | null
+  deadline: string | null
+  progress: number
+  budget: number | null
+  tags: string[]
+  color: string
+  owner_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectMember {
+  id: string
+  project_id: string
+  user_id: string
+  role: ProjectMemberRole
+  joined_at: string
+}
+
+export interface ProjectAgent {
+  id: string
+  project_id: string
+  agent_id: string
+  role: string
+  assigned_at: string
+  is_active: boolean
+}
+
+// Project with relations
+export interface ProjectWithRelations extends Project {
+  members?: (ProjectMember & { user?: User })[]
+  agents?: (ProjectAgent & { agent?: DeployedAgent })[]
+  owner?: User
 }
 
 // ============================================
@@ -459,6 +511,35 @@ export interface RespondInvestorAccessInput {
   can_view_team?: boolean
   can_view_tasks?: boolean
   can_download_reports?: boolean
+}
+
+// Project Input Types
+export interface CreateProjectInput {
+  team_id: string
+  name: string
+  description?: string
+  status?: ProjectStatus
+  priority?: ProjectPriority
+  start_date?: string
+  end_date?: string
+  deadline?: string
+  budget?: number
+  tags?: string[]
+  color?: string
+}
+
+export interface UpdateProjectInput extends Partial<Omit<CreateProjectInput, 'team_id'>> {
+  progress?: number
+}
+
+export interface AddProjectMemberInput {
+  user_id: string
+  role?: ProjectMemberRole
+}
+
+export interface AddProjectAgentInput {
+  agent_id: string
+  role?: string
 }
 
 // ============================================
