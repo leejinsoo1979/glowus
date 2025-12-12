@@ -555,7 +555,7 @@ const investorCategories: Category[] = [
   },
 ]
 
-// 상위 메뉴 카드 컴포넌트 (2열 그리드용 - Premium Redesign)
+// 상위 메뉴 카드 컴포넌트 (2열 그리드용 - Bold & Clean Redesign)
 function TopLevelCardMenu({
   item,
   isDark,
@@ -570,110 +570,133 @@ function TopLevelCardMenu({
   const IconComponent = item.icon
   const { accentColor } = useThemeStore()
 
-  // 테마 색상에 따른 Glow 효과 클래스 생성
-  const getGlowColor = () => {
+  // 테마 색상 클래스 생성기
+  const getThemeClasses = () => {
     switch (accentColor) {
-      case 'purple': return 'group-hover:shadow-purple-500/20 group-hover:border-purple-500/30'
-      case 'blue': return 'group-hover:shadow-blue-500/20 group-hover:border-blue-500/30'
-      case 'green': return 'group-hover:shadow-green-500/20 group-hover:border-green-500/30'
-      case 'orange': return 'group-hover:shadow-orange-500/20 group-hover:border-orange-500/30'
-      case 'pink': return 'group-hover:shadow-pink-500/20 group-hover:border-pink-500/30'
-      case 'red': return 'group-hover:shadow-red-500/20 group-hover:border-red-500/30'
-      case 'yellow': return 'group-hover:shadow-yellow-500/20 group-hover:border-yellow-500/30'
-      case 'cyan': return 'group-hover:shadow-cyan-500/20 group-hover:border-cyan-500/30'
-      default: return 'group-hover:shadow-blue-500/20 group-hover:border-blue-500/30'
+      case 'purple':
+        return {
+          border: 'hover:border-purple-500 focus:border-purple-500',
+          text: 'group-hover:text-purple-600 dark:group-hover:text-purple-400',
+          bg: 'hover:bg-purple-50 dark:hover:bg-purple-900/10',
+          activeBorder: 'border-purple-600 ring-1 ring-purple-600',
+          activeText: 'text-purple-600 dark:text-purple-400',
+          activeBg: 'bg-purple-50 dark:bg-purple-900/20'
+        }
+      case 'green':
+        return {
+          border: 'hover:border-green-500 focus:border-green-500',
+          text: 'group-hover:text-green-600 dark:group-hover:text-green-400',
+          bg: 'hover:bg-green-50 dark:hover:bg-green-900/10',
+          activeBorder: 'border-green-600 ring-1 ring-green-600',
+          activeText: 'text-green-600 dark:text-green-400',
+          activeBg: 'bg-green-50 dark:bg-green-900/20'
+        }
+      case 'orange':
+        return {
+          border: 'hover:border-orange-500 focus:border-orange-500',
+          text: 'group-hover:text-orange-600 dark:group-hover:text-orange-400',
+          bg: 'hover:bg-orange-50 dark:hover:bg-orange-900/10',
+          activeBorder: 'border-orange-600 ring-1 ring-orange-600',
+          activeText: 'text-orange-600 dark:text-orange-400',
+          activeBg: 'bg-orange-50 dark:bg-orange-900/20'
+        }
+      case 'pink':
+        return {
+          border: 'hover:border-pink-500 focus:border-pink-500',
+          text: 'group-hover:text-pink-600 dark:group-hover:text-pink-400',
+          bg: 'hover:bg-pink-50 dark:hover:bg-pink-900/10',
+          activeBorder: 'border-pink-600 ring-1 ring-pink-600',
+          activeText: 'text-pink-600 dark:text-pink-400',
+          activeBg: 'bg-pink-50 dark:bg-pink-900/20'
+        }
+      case 'red':
+        return {
+          border: 'hover:border-red-500 focus:border-red-500',
+          text: 'group-hover:text-red-600 dark:group-hover:text-red-400',
+          bg: 'hover:bg-red-50 dark:hover:bg-red-900/10',
+          activeBorder: 'border-red-600 ring-1 ring-red-600',
+          activeText: 'text-red-600 dark:text-red-400',
+          activeBg: 'bg-red-50 dark:bg-red-900/20'
+        }
+      case 'yellow':
+        return {
+          border: 'hover:border-yellow-500 focus:border-yellow-500',
+          text: 'group-hover:text-yellow-600 dark:group-hover:text-yellow-400',
+          bg: 'hover:bg-yellow-50 dark:hover:bg-yellow-900/10',
+          activeBorder: 'border-yellow-600 ring-1 ring-yellow-600',
+          activeText: 'text-yellow-600 dark:text-yellow-400',
+          activeBg: 'bg-yellow-50 dark:bg-yellow-900/20'
+        }
+      case 'cyan':
+        return {
+          border: 'hover:border-cyan-500 focus:border-cyan-500',
+          text: 'group-hover:text-cyan-600 dark:group-hover:text-cyan-400',
+          bg: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/10',
+          activeBorder: 'border-cyan-600 ring-1 ring-cyan-600',
+          activeText: 'text-cyan-600 dark:text-cyan-400',
+          activeBg: 'bg-cyan-50 dark:bg-cyan-900/20'
+        }
+      case 'blue':
+      default:
+        return {
+          border: 'hover:border-blue-500 focus:border-blue-500',
+          text: 'group-hover:text-blue-600 dark:group-hover:text-blue-400',
+          bg: 'hover:bg-blue-50 dark:hover:bg-blue-900/10',
+          activeBorder: 'border-blue-600 ring-1 ring-blue-600',
+          activeText: 'text-blue-600 dark:text-blue-400',
+          activeBg: 'bg-blue-50 dark:bg-blue-900/20'
+        }
     }
   }
 
-  // 아이콘 bg color
-  const getIconBgColor = () => {
-    switch (accentColor) {
-      case 'purple': return isDark ? 'bg-purple-500/20' : 'bg-purple-100'
-      case 'blue': return isDark ? 'bg-blue-500/20' : 'bg-blue-100'
-      case 'green': return isDark ? 'bg-green-500/20' : 'bg-green-100'
-      case 'orange': return isDark ? 'bg-orange-500/20' : 'bg-orange-100'
-      case 'pink': return isDark ? 'bg-pink-500/20' : 'bg-pink-100'
-      case 'red': return isDark ? 'bg-red-500/20' : 'bg-red-100'
-      case 'yellow': return isDark ? 'bg-yellow-500/20' : 'bg-yellow-100'
-      case 'cyan': return isDark ? 'bg-cyan-500/20' : 'bg-cyan-100'
-      default: return isDark ? 'bg-blue-500/20' : 'bg-blue-100'
-    }
-  }
-
-  // 아이콘 text color
-  const getIconColor = () => {
-    switch (accentColor) {
-      case 'purple': return 'text-purple-500'
-      case 'blue': return 'text-blue-500'
-      case 'green': return 'text-green-500'
-      case 'orange': return 'text-orange-500'
-      case 'pink': return 'text-pink-500'
-      case 'red': return 'text-red-500'
-      case 'yellow': return 'text-yellow-500'
-      case 'cyan': return 'text-cyan-500'
-      default: return 'text-blue-500'
-    }
-  }
+  const theme = getThemeClasses()
 
   return (
-    <motion.button
+    <button
       onClick={onToggle}
       className={cn(
-        'group relative w-full aspect-[1/1] rounded-2xl border transition-all duration-300 ease-out flex flex-col items-center justify-center gap-3 overflow-hidden',
+        'group w-full aspect-[4/5] rounded-xl border transition-all duration-200 flex flex-col items-center justify-center gap-3',
         isDark
-          ? 'bg-zinc-900/40 border-zinc-800/60 backdrop-blur-sm'
-          : 'bg-white/80 border-zinc-200/60 shadow-sm',
-        getGlowColor(),
-        isExpanded && 'ring-1 ring-accent border-accent'
+          ? 'bg-zinc-900 border-zinc-700 hover:bg-zinc-800'
+          : 'bg-white border-zinc-200 hover:bg-zinc-50',
+        theme.border,
+        theme.bg,
+        isExpanded && cn(theme.activeBorder, theme.activeBg)
       )}
-      whileHover={{ scale: 1.03, y: -2 }}
-      whileTap={{ scale: 0.98 }}
     >
-      {/* Background Gradient Effect on Hover */}
-      <div
-        className={cn(
-          "absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none",
-          "bg-gradient-to-br from-transparent via-transparent to-black/5"
-        )}
-      />
-
-      {/* Icon Container with Glassmorphism */}
       <div className={cn(
-        'relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300',
-        'group-hover:scale-110 group-hover:rotate-3',
-        isExpanded ? getIconBgColor() : (isDark ? 'bg-zinc-800' : 'bg-zinc-100'),
-        isDark ? 'shadow-inner border border-white/5' : 'shadow-sm border border-black/5'
+        'w-14 h-14 rounded-2xl flex items-center justify-center transition-colors',
+        isExpanded ? 'bg-transparent' : (isDark ? 'bg-zinc-800' : 'bg-zinc-100')
       )}>
         {IconComponent && (
           <IconComponent className={cn(
-            'w-6 h-6 transition-colors duration-300',
-            isExpanded
-              ? getIconColor()
-              : (isDark ? 'text-zinc-400 group-hover:text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-800'),
-            // Active state color override when expanded
-            isExpanded && getIconColor()
+            'w-8 h-8 transition-colors', // 아이콘 크기 대폭 확대
+            isDark ? 'text-zinc-400' : 'text-zinc-500',
+            theme.text,
+            isExpanded && theme.activeText
           )} />
         )}
       </div>
 
-      {/* Text Label */}
-      <div className="flex flex-col items-center gap-0.5 z-10">
-        <p className={cn(
-          'text-sm font-semibold tracking-tight transition-colors duration-300',
-          isExpanded
-            ? getIconColor()
-            : (isDark ? 'text-zinc-400 group-hover:text-zinc-200' : 'text-zinc-600 group-hover:text-zinc-900')
+      <div className="flex flex-col items-center gap-0.5">
+        <span className={cn(
+          'text-sm font-bold transition-colors', // 폰트 굵기 강화
+          isDark ? 'text-zinc-300' : 'text-zinc-700',
+          theme.text,
+          isExpanded && theme.activeText
         )}>
           {item.name}
-        </p>
-        <p className={cn(
-          "text-[10px] uppercase tracking-wider font-medium opacity-0 transform translate-y-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0",
-          isDark ? "text-zinc-600" : "text-zinc-400"
-        )}>
-          Open Menu
-        </p>
+        </span>
+        {isExpanded && (
+          <span className={cn(
+            "text-[10px] uppercase font-semibold tracking-wider",
+            isDark ? "text-zinc-500" : "text-zinc-400"
+          )}>
+            Select
+          </span>
+        )}
       </div>
-    </motion.button>
+    </button>
   )
 }
 

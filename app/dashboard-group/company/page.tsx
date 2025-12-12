@@ -1,25 +1,61 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Bell,
+  ExternalLink,
   FileText,
-  Users,
-  CreditCard,
-  Building2,
-  TrendingUp,
-  TrendingDown,
-  Calendar as CalendarIcon,
 } from 'lucide-react'
+
+// 위젯 헤더 컴포넌트 (보기 버튼 포함)
+function WidgetHeader({
+  title,
+  href,
+  isDark,
+  children
+}: {
+  title: string
+  href?: string
+  isDark: boolean
+  children?: React.ReactNode
+}) {
+  const router = useRouter()
+
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <h3 className={cn('font-semibold', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
+        {title}
+      </h3>
+      <div className="flex items-center gap-2">
+        {children}
+        {href && (
+          <button
+            onClick={() => router.push(href)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
+              isDark
+                ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+            )}
+          >
+            보기
+            <ExternalLink className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // 캘린더 컴포넌트
 function CalendarWidget({ isDark }: { isDark: boolean }) {
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 11, 1)) // 2025-12
+  const [currentDate, setCurrentDate] = useState(new Date(2025, 11, 1))
+  const router = useRouter()
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
@@ -30,17 +66,14 @@ function CalendarWidget({ isDark }: { isDark: boolean }) {
 
   const days = []
 
-  // 이전 달
   for (let i = firstDay - 1; i >= 0; i--) {
     days.push({ day: prevMonthDays - i, isCurrentMonth: false })
   }
 
-  // 현재 달
   for (let i = 1; i <= daysInMonth; i++) {
     days.push({ day: i, isCurrentMonth: true })
   }
 
-  // 다음 달
   const remaining = 42 - days.length
   for (let i = 1; i <= remaining; i++) {
     days.push({ day: i, isCurrentMonth: false })
@@ -75,6 +108,18 @@ function CalendarWidget({ isDark }: { isDark: boolean }) {
           </button>
           <button className={cn('p-1 rounded hover:bg-zinc-100 ml-2', isDark && 'hover:bg-zinc-800')}>
             <Plus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => router.push('/dashboard-group/company/calendar')}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
+              isDark
+                ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+            )}
+          >
+            보기
+            <ExternalLink className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -120,6 +165,7 @@ function CalendarWidget({ isDark }: { isDark: boolean }) {
 
 // Todo 위젯
 function TodoWidget({ isDark }: { isDark: boolean }) {
+  const router = useRouter()
   const todos = [
     { date: 12, label: 'Today', items: ['등록된 일정이 없습니다.'], color: 'bg-accent' },
     { date: 13, label: '', items: ['등록된 일정이 없습니다.'], color: 'bg-zinc-400' },
@@ -131,6 +177,7 @@ function TodoWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4 mt-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
+      <WidgetHeader title="일정" href="/dashboard-group/company/schedule" isDark={isDark} />
       {todos.map((todo, i) => (
         <div key={i} className={cn(
           'py-3',
@@ -167,9 +214,7 @@ function SalesWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        매출입 현황
-      </h3>
+      <WidgetHeader title="매출입 현황" href="/dashboard-group/sales/sales-list" isDark={isDark} />
 
       <div className="flex items-center gap-4 mb-4">
         <div className="flex gap-1">
@@ -208,7 +253,7 @@ function SalesWidget({ isDark }: { isDark: boolean }) {
         isDark ? 'bg-zinc-800/50' : 'bg-zinc-50'
       )}>
         <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-          매출 내역에 등록된 건이이 없습니다.
+          매출 내역에 등록된 건이 없습니다.
         </p>
       </div>
     </div>
@@ -222,9 +267,7 @@ function TrainingWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        교육 현황
-      </h3>
+      <WidgetHeader title="교육 현황" href="/dashboard-group/hr/training-status" isDark={isDark} />
 
       <div className="flex items-center justify-center gap-1 mb-4">
         <ChevronLeft className="w-4 h-4 text-zinc-400" />
@@ -237,7 +280,7 @@ function TrainingWidget({ isDark }: { isDark: boolean }) {
         isDark ? 'bg-zinc-800/50' : 'bg-zinc-50'
       )}>
         <p className={cn('text-xs text-center px-4', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-          법정의무교육 앱 사용을 위해 서비스 신청이 필요합니다. 외부기관 연동센터에서 서비스 연동 후 사용해 주세요.
+          법정의무교육 앱 사용을 위해 서비스 신청이 필요합니다.
         </p>
       </div>
     </div>
@@ -259,9 +302,7 @@ function NoticeWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        공지사항
-      </h3>
+      <WidgetHeader title="공지사항" href="/dashboard-group/company/notices" isDark={isDark} />
 
       <div className="space-y-2">
         {notices.map((notice, i) => (
@@ -311,9 +352,7 @@ function PaymentProgressWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        전자결제 진행현황
-      </h3>
+      <WidgetHeader title="전자결제 진행현황" href="/dashboard-group/finance/transactions" isDark={isDark} />
 
       <div className={cn(
         'h-24 flex items-center justify-center rounded-lg',
@@ -342,9 +381,7 @@ function TaxInvoiceWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        매출 전자세금계산서 발행 현황
-      </h3>
+      <WidgetHeader title="매출 전자세금계산서 발행 현황" href="/dashboard-group/sales/tax-invoice" isDark={isDark} />
 
       <div className="flex items-center justify-center gap-1 mb-4">
         <ChevronLeft className="w-4 h-4 text-zinc-400" />
@@ -365,14 +402,13 @@ function TaxInvoiceWidget({ isDark }: { isDark: boolean }) {
             </span>
           </div>
           <div className="space-y-1.5 text-xs">
-            <div className={cn('grid grid-cols-4 gap-2 pb-1 border-b', isDark ? 'border-zinc-700 text-zinc-500' : 'border-zinc-200 text-zinc-400')}>
+            <div className={cn('grid grid-cols-3 gap-2 pb-1 border-b', isDark ? 'border-zinc-700 text-zinc-500' : 'border-zinc-200 text-zinc-400')}>
               <span>발행 상태</span>
-              <span>발행 발행</span>
-              <span>수정 발행</span>
-              <span></span>
+              <span>발행</span>
+              <span>수정</span>
             </div>
             {items.map((item, i) => (
-              <div key={i} className="grid grid-cols-4 gap-2">
+              <div key={i} className="grid grid-cols-3 gap-2">
                 <span className={cn(
                   'flex items-center gap-1',
                   item.isError ? 'text-red-500' : isDark ? 'text-zinc-400' : 'text-zinc-600'
@@ -402,14 +438,13 @@ function TaxInvoiceWidget({ isDark }: { isDark: boolean }) {
             </span>
           </div>
           <div className="space-y-1.5 text-xs">
-            <div className={cn('grid grid-cols-4 gap-2 pb-1 border-b', isDark ? 'border-zinc-700 text-zinc-500' : 'border-zinc-200 text-zinc-400')}>
+            <div className={cn('grid grid-cols-3 gap-2 pb-1 border-b', isDark ? 'border-zinc-700 text-zinc-500' : 'border-zinc-200 text-zinc-400')}>
               <span>발행 상태</span>
-              <span>일반 발행</span>
-              <span>수정 발행</span>
-              <span></span>
+              <span>일반</span>
+              <span>수정</span>
             </div>
             {items.map((item, i) => (
-              <div key={i} className="grid grid-cols-4 gap-2">
+              <div key={i} className="grid grid-cols-3 gap-2">
                 <span className={cn(
                   'flex items-center gap-1',
                   item.isError ? 'text-red-500' : isDark ? 'text-zinc-400' : 'text-zinc-600'
@@ -438,9 +473,7 @@ function ContractProgressWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        전자계약 진행현황
-      </h3>
+      <WidgetHeader title="전자계약 진행현황" href="/dashboard-group/hr/contracts" isDark={isDark} />
 
       <div className={cn(
         'h-24 flex items-center justify-center rounded-lg',
@@ -461,9 +494,7 @@ function HRStatusWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        인력 현황
-      </h3>
+      <WidgetHeader title="인력 현황" href="/dashboard-group/hr/employees" isDark={isDark} />
 
       <div className="flex items-center gap-4 mb-4 text-xs">
         <div className="flex items-center gap-1">
@@ -480,7 +511,6 @@ function HRStatusWidget({ isDark }: { isDark: boolean }) {
         </div>
       </div>
 
-      {/* Simple chart placeholder */}
       <div className={cn(
         'h-32 rounded-lg relative overflow-hidden',
         isDark ? 'bg-zinc-800/50' : 'bg-zinc-50'
@@ -510,15 +540,6 @@ function HRStatusWidget({ isDark }: { isDark: boolean }) {
           <span>2025-12</span>
         </div>
       </div>
-
-      <button className={cn(
-        'w-full mt-3 py-2 text-xs rounded-lg border transition-colors',
-        isDark
-          ? 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'
-          : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
-      )}>
-        전체보기
-      </button>
     </div>
   )
 }
@@ -530,17 +551,14 @@ function AccountBalanceWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className={cn('font-semibold', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-          계좌 잔액 현황
-        </h3>
+      <WidgetHeader title="계좌 잔액 현황" href="/dashboard-group/finance/accounts" isDark={isDark}>
         <button className={cn(
           'text-xs px-2 py-1 rounded-full',
           isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
         )}>
           조회기준
         </button>
-      </div>
+      </WidgetHeader>
 
       <p className={cn('text-xs mb-4', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
         최근 수집일시 : -
@@ -565,9 +583,7 @@ function DataCollectionWidget({ isDark }: { isDark: boolean }) {
       'rounded-xl border p-4',
       isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
     )}>
-      <h3 className={cn('font-semibold mb-4', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-        기관별 자료수집 이력
-      </h3>
+      <WidgetHeader title="기관별 자료수집 이력" href="/dashboard-group/company/data-collection" isDark={isDark} />
 
       <div className={cn(
         'h-24 flex items-center justify-center rounded-lg',
