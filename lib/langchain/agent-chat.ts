@@ -169,10 +169,10 @@ export async function generateAgentChatResponse(
     participantNames?: string[]
   }
 ): Promise<string> {
-  // LLM 설정
+  // LLM 설정 (기본: Ollama 로컬)
   const llmConfig: LLMConfig = {
-    provider: agent.config?.llm_provider || 'openai',
-    model: agent.config?.llm_model || 'gpt-4o-mini',
+    provider: agent.config?.llm_provider || 'llama',
+    model: agent.config?.llm_model || 'deepseek-r1:7b',
     temperature: agent.config?.temperature || 0.7,
   }
 
@@ -245,8 +245,8 @@ export async function generateAgentMeetingResponse(
   otherAgents: { name: string; role: string }[] = []
 ): Promise<string> {
   const llmConfig: LLMConfig = {
-    provider: agent.config?.llm_provider || 'openai',
-    model: agent.config?.llm_model || 'gpt-4o-mini',
+    provider: agent.config?.llm_provider || 'llama',
+    model: agent.config?.llm_model || 'deepseek-r1:7b',
     temperature: 0.8, // 더 창의적인 응답
   }
 
