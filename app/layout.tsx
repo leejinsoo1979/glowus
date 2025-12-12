@@ -5,6 +5,19 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'GlowUS - Founders OS for Real-Time Growth',
   description: '스타트업 창업자를 위한 AI 기반 운영 플랫폼. 업무 관리부터 투자 유치까지.',
+  icons: {
+    icon: [
+      {
+        url: '/favicon-light.svg',
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        url: '/favicon-dark.svg',
+        media: '(prefers-color-scheme: dark)',
+      },
+    ],
+    apple: '/favicon-light.svg',
+  },
 }
 
 // 페이지 로드 전 localStorage에서 accent color를 즉시 적용하는 스크립트
