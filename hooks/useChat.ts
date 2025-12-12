@@ -130,14 +130,11 @@ export function useChatRoom(roomId: string | null) {
   const fetchRoom = useCallback(async () => {
     if (!roomId) return
     try {
-      console.log('[useChat] fetchRoom 호출:', roomId)
       const res = await fetch(`/api/chat/rooms/${roomId}`)
       if (!res.ok) throw new Error('Failed to fetch room')
       const data = await res.json()
-      console.log('[useChat] fetchRoom 성공:', data?.id, 'participants:', data?.participants?.length)
       setRoom(data)
     } catch (err) {
-      console.error('[useChat] fetchRoom 에러:', err)
       setError(err instanceof Error ? err.message : 'Unknown error')
     }
   }, [roomId])
@@ -196,8 +193,7 @@ export function useChatRoom(roomId: string | null) {
           table: 'chat_messages',
           filter: `room_id=eq.${roomId}`,
         },
-        (payload) => {
-          console.log('[Realtime] 새 메시지 감지:', payload)
+        () => {
           if (isSubscribed) {
             // 새 메시지 - 전체 다시 가져오기 (sender 정보 포함)
             fetchMessages()
@@ -226,16 +222,13 @@ export function useChatRoom(roomId: string | null) {
         }
       )
       .subscribe((status) => {
-        console.log('[Realtime] 구독 상태:', status)
         if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] 실시간 연결 성공!')
           // 실시간 연결 성공하면 폴링 중지
           if (pollingInterval) {
             clearInterval(pollingInterval)
             pollingInterval = null
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('[Realtime] 연결 실패, 폴링으로 전환')
           // 실시간 실패 시 폴링 시작 (3초마다)
           if (!pollingInterval) {
             pollingInterval = setInterval(() => {
@@ -275,17 +268,12 @@ export function useChatRoom(roomId: string | null) {
 
     // 채팅방에 에이전트가 있는지 확인
     const hasAgent = room?.participants?.some(p => p.participant_type === 'agent' || p.agent)
-    console.log('[useChat] sendMessage - room:', room?.id, 'participants:', room?.participants?.length, 'hasAgent:', hasAgent)
-    if (room?.participants) {
-      console.log('[useChat] participants:', room.participants.map(p => ({ type: p.participant_type, agent: !!p.agent, user: !!p.user })))
-    }
 
     try {
       setSending(true)
 
       // 에이전트가 있으면 타이핑 상태 설정
       if (hasAgent) {
-        console.log('[useChat] 에이전트 타이핑 상태 설정!')
         setAgentTyping(true)
       }
 

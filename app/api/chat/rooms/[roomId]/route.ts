@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getDevUserIfEnabled } from '@/lib/dev-user'
 
 // GET: 채팅방 상세 정보
 export async function GET(
@@ -10,10 +11,19 @@ export async function GET(
   try {
     const supabase = createClient()
     const adminClient = createAdminClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // DEV 바이패스 체크
+    const devUser = getDevUserIfEnabled()
+    let user: any = null
+
+    if (devUser) {
+      user = devUser
+    } else {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !authUser) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = authUser
     }
 
     const { roomId } = params

@@ -5,20 +5,24 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Plus,
   Search,
-  Filter,
   FolderKanban,
   Users,
   Bot,
   Calendar,
   MoreHorizontal,
   Loader2,
-  ChevronRight,
   X,
+  LayoutGrid,
+  List,
+  Star,
+  Clock,
+  ChevronDown,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
 import { useRouter } from "next/navigation"
-import type { Project, ProjectWithRelations, User, DeployedAgent } from "@/types/database"
+import type { ProjectWithRelations, User, DeployedAgent } from "@/types/database"
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   planning: { label: "계획중", color: "#6B7280" },
@@ -28,12 +32,12 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   cancelled: { label: "취소", color: "#EF4444" },
 }
 
-const priorityLabels: Record<string, { label: string; color: string }> = {
-  low: { label: "낮음", color: "#6B7280" },
-  medium: { label: "보통", color: "#3B82F6" },
-  high: { label: "높음", color: "#F59E0B" },
-  urgent: { label: "긴급", color: "#EF4444" },
-}
+const projectTemplates = [
+  { id: "blank", name: "빈 프로젝트", icon: Plus, color: "#E5E7EB" },
+  { id: "marketing", name: "마케팅 캠페인", icon: Sparkles, color: "#8B5CF6" },
+  { id: "product", name: "제품 개발", icon: FolderKanban, color: "#3B82F6" },
+  { id: "research", name: "리서치", icon: Search, color: "#10B981" },
+]
 
 export default function ProjectsPage() {
   const router = useRouter()
@@ -41,6 +45,8 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [sortBy, setSortBy] = useState<string>("updated")
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list")
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([])
   const [teamMembers, setTeamMembers] = useState<User[]>([])
@@ -85,7 +91,6 @@ export default function ProjectsPage() {
         return
       }
       const data = await res.json()
-      // 배열인지 확인 후 설정
       if (Array.isArray(data)) {
         setProjects(data)
       } else {
@@ -104,7 +109,6 @@ export default function ProjectsPage() {
       const res = await fetch("/api/teams")
       if (!res.ok) return
       const data = await res.json()
-      // 배열인지 확인 후 설정
       if (Array.isArray(data)) {
         setTeams(data)
         if (data.length > 0 && !newProject.team_id) {
@@ -121,7 +125,6 @@ export default function ProjectsPage() {
       const res = await fetch(`/api/team-members?team_id=${teamId}`)
       if (!res.ok) return
       const data = await res.json()
-      // 배열인지 확인 후 설정
       if (Array.isArray(data)) {
         setTeamMembers(data.map((m: any) => m.user).filter(Boolean))
       }
@@ -135,7 +138,6 @@ export default function ProjectsPage() {
       const res = await fetch("/api/agents")
       if (!res.ok) return
       const data = await res.json()
-      // 배열인지 확인 후 설정
       if (Array.isArray(data)) {
         setAgents(data)
       }
@@ -149,7 +151,6 @@ export default function ProjectsPage() {
 
     setCreating(true)
     try {
-      // 프로젝트 생성
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -159,7 +160,6 @@ export default function ProjectsPage() {
       if (!res.ok) throw new Error("프로젝트 생성 실패")
       const project = await res.json()
 
-      // 멤버 추가
       for (const userId of selectedMembers) {
         await fetch(`/api/projects/${project.id}/members`, {
           method: "POST",
@@ -168,7 +168,6 @@ export default function ProjectsPage() {
         })
       }
 
-      // 에이전트 추가
       for (const agentId of selectedAgents) {
         await fetch(`/api/projects/${project.id}/agents`, {
           method: "POST",
@@ -177,7 +176,6 @@ export default function ProjectsPage() {
         })
       }
 
-      // 리셋 및 새로고침
       setIsCreateModalOpen(false)
       setNewProject({
         name: "",
@@ -199,22 +197,41 @@ export default function ProjectsPage() {
     }
   }
 
-  const filteredProjects = projects.filter((project) => {
-    const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || project.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const filteredProjects = projects
+    .filter((project) => {
+      const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesStatus = statusFilter === "all" || project.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+    .sort((a, b) => {
+      if (sortBy === "updated") {
+        return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
+      }
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name)
+      }
+      if (sortBy === "created") {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+      return 0
+    })
 
   const colorOptions = [
-    "#8B5CF6",
-    "#3B82F6",
-    "#10B981",
-    "#F59E0B",
-    "#EF4444",
-    "#EC4899",
-    "#06B6D4",
-    "#84CC16",
+    "#8B5CF6", "#3B82F6", "#10B981", "#F59E0B",
+    "#EF4444", "#EC4899", "#06B6D4", "#84CC16",
   ]
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffTime = now.getTime() - date.getTime()
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) return "오늘"
+    if (diffDays === 1) return "어제"
+    if (diffDays < 7) return `${diffDays}일 전`
+    return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })
+  }
 
   if (loading) {
     return (
@@ -226,127 +243,182 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">프로젝트</h1>
-          <p className="text-zinc-400 mt-1">팀원과 AI 에이전트를 프로젝트에 투입하세요</p>
+      {/* Templates Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm text-zinc-400">프로젝트 템플릿</span>
+          <ChevronDown className="w-4 h-4 text-zinc-500" />
         </div>
-        <Button
-          onClick={() => setIsCreateModalOpen(true)}
-          style={{ backgroundColor: currentAccent.color }}
-          className="text-white"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          새 프로젝트
-        </Button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="프로젝트 검색..."
-            className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-        >
-          <option value="all">모든 상태</option>
-          <option value="planning">계획중</option>
-          <option value="active">진행중</option>
-          <option value="on_hold">보류</option>
-          <option value="completed">완료</option>
-          <option value="cancelled">취소</option>
-        </select>
-      </div>
-
-      {/* Projects Grid */}
-      {filteredProjects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
-          <FolderKanban className="w-16 h-16 mb-4 opacity-50" />
-          <p>프로젝트가 없습니다</p>
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={() => setIsCreateModalOpen(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            첫 프로젝트 만들기
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProjects.map((project) => (
-            <motion.div
-              key={project.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 cursor-pointer transition-all group"
-              onClick={() => router.push(`/dashboard-group/project/${project.id}`)}
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {projectTemplates.map((template) => (
+            <button
+              key={template.id}
+              onClick={() => {
+                if (template.id === "blank") {
+                  setIsCreateModalOpen(true)
+                }
+              }}
+              className="flex-shrink-0 w-32 group"
             >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
+              <div
+                className="w-full h-20 rounded-lg border-2 border-dashed border-zinc-700 flex items-center justify-center mb-2 transition-all group-hover:border-zinc-500"
+                style={{ backgroundColor: template.id === "blank" ? "transparent" : `${template.color}10` }}
+              >
+                <template.icon
+                  className="w-6 h-6 transition-transform group-hover:scale-110"
+                  style={{ color: template.id === "blank" ? "#71717A" : template.color }}
+                />
+              </div>
+              <p className="text-xs text-zinc-400 text-center group-hover:text-zinc-300">
+                {template.name}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Projects Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        {/* Section Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-lg font-semibold text-white">프로젝트</h2>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" className="text-zinc-400">
+              템플릿 둘러보기
+            </Button>
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
+              style={{ backgroundColor: currentAccent.color }}
+              className="text-white"
+              size="sm"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              새 프로젝트
+            </Button>
+          </div>
+        </div>
+
+        {/* Filters Bar */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-800">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-zinc-500">필터</span>
+
+            {/* Status Filter */}
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-zinc-600 cursor-pointer"
+              >
+                <option value="all">모든 상태</option>
+                <option value="planning">계획중</option>
+                <option value="active">진행중</option>
+                <option value="on_hold">보류</option>
+                <option value="completed">완료</option>
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            </div>
+
+            {/* Sort */}
+            <span className="text-sm text-zinc-500 ml-4">정렬</span>
+            <div className="relative">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-zinc-600 cursor-pointer"
+              >
+                <option value="updated">최근 수정</option>
+                <option value="created">생성일</option>
+                <option value="name">이름</option>
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="검색..."
+                className="w-48 pl-9 pr-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+            </div>
+
+            {/* View Toggle */}
+            <div className="flex border border-zinc-700 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-1.5 ${viewMode === "grid" ? "bg-zinc-700" : "bg-zinc-800 hover:bg-zinc-700/50"}`}
+              >
+                <LayoutGrid className="w-4 h-4 text-zinc-400" />
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 ${viewMode === "list" ? "bg-zinc-700" : "bg-zinc-800 hover:bg-zinc-700/50"}`}
+              >
+                <List className="w-4 h-4 text-zinc-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        {filteredProjects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
+            <FolderKanban className="w-16 h-16 mb-4 opacity-50" />
+            <p>프로젝트가 없습니다</p>
+            <p className="text-sm mt-1">새 프로젝트를 만들어 시작하세요</p>
+          </div>
+        ) : viewMode === "list" ? (
+          /* List View */
+          <div className="divide-y divide-zinc-800">
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 px-6 py-3 text-xs text-zinc-500 font-medium">
+              <div className="col-span-5">이름</div>
+              <div className="col-span-2">참여자</div>
+              <div className="col-span-2">최근 수정</div>
+              <div className="col-span-2">담당자</div>
+              <div className="col-span-1"></div>
+            </div>
+
+            {/* Table Rows */}
+            {filteredProjects.map((project) => (
+              <motion.div
+                key={project.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-800/50 cursor-pointer group"
+                onClick={() => router.push(`/dashboard-group/project/${project.id}`)}
+              >
+                {/* Name */}
+                <div className="col-span-5 flex items-center gap-3">
                   <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                     style={{ backgroundColor: `${project.color}20` }}
                   >
-                    <FolderKanban className="w-5 h-5" style={{ color: project.color }} />
+                    <FolderKanban className="w-4 h-4" style={{ color: project.color }} />
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-white group-hover:text-zinc-100">
-                      {project.name}
-                    </h3>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full"
-                      style={{
-                        backgroundColor: `${statusLabels[project.status]?.color}20`,
-                        color: statusLabels[project.status]?.color,
-                      }}
-                    >
-                      {statusLabels[project.status]?.label}
-                    </span>
+                  <div className="min-w-0">
+                    <p className="font-medium text-white truncate">{project.name}</p>
+                    <p className="text-xs text-zinc-500 truncate">{project.description || "설명 없음"}</p>
                   </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-
-              {/* Description */}
-              {project.description && (
-                <p className="text-sm text-zinc-400 mb-4 line-clamp-2">
-                  {project.description}
-                </p>
-              )}
-
-              {/* Progress */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-zinc-500">진행률</span>
-                  <span className="text-zinc-400">{project.progress}%</span>
-                </div>
-                <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
                     style={{
-                      width: `${project.progress}%`,
-                      backgroundColor: project.color,
+                      backgroundColor: `${statusLabels[project.status]?.color}20`,
+                      color: statusLabels[project.status]?.color,
                     }}
-                  />
+                  >
+                    {statusLabels[project.status]?.label}
+                  </span>
                 </div>
-              </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
                 {/* Members */}
-                <div className="flex items-center gap-2">
+                <div className="col-span-2 flex items-center gap-2">
                   <div className="flex -space-x-2">
                     {project.members?.slice(0, 3).map((member) => (
                       <img
@@ -357,54 +429,113 @@ export default function ProjectsPage() {
                         title={member.user?.name}
                       />
                     ))}
-                    {(project.members?.length || 0) > 3 && (
-                      <div className="w-6 h-6 rounded-full bg-zinc-800 border-2 border-zinc-900 flex items-center justify-center">
-                        <span className="text-[10px] text-zinc-400">
-                          +{(project.members?.length || 0) - 3}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-xs text-zinc-500">
-                    <Users className="w-3 h-3 inline mr-1" />
-                    {project.members?.length || 0}
-                  </span>
-                </div>
-
-                {/* Agents */}
-                <div className="flex items-center gap-2">
-                  <div className="flex -space-x-2">
-                    {project.agents?.slice(0, 2).map((assignment) => (
+                    {project.agents?.slice(0, 1).map((assignment) => (
                       <img
                         key={assignment.id}
                         src={assignment.agent?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${assignment.agent?.name}`}
                         alt={assignment.agent?.name}
-                        className="w-6 h-6 rounded-full border-2 border-zinc-900"
-                        title={assignment.agent?.name}
+                        className="w-6 h-6 rounded-full border-2 border-zinc-900 bg-zinc-800"
+                        title={`🤖 ${assignment.agent?.name}`}
                       />
                     ))}
                   </div>
-                  <span className="text-xs text-zinc-500">
-                    <Bot className="w-3 h-3 inline mr-1" />
-                    {project.agents?.length || 0}
-                  </span>
+                  {((project.members?.length || 0) + (project.agents?.length || 0)) > 4 && (
+                    <span className="text-xs text-zinc-500">
+                      +{(project.members?.length || 0) + (project.agents?.length || 0) - 4}
+                    </span>
+                  )}
                 </div>
 
-                {/* Deadline */}
-                {project.deadline && (
-                  <span className="text-xs text-zinc-500">
-                    <Calendar className="w-3 h-3 inline mr-1" />
-                    {new Date(project.deadline).toLocaleDateString("ko-KR", {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                {/* Last Updated */}
+                <div className="col-span-2 text-sm text-zinc-400">
+                  {formatDate(project.updated_at || project.created_at)}
+                </div>
+
+                {/* Owner */}
+                <div className="col-span-2 text-sm text-zinc-400">
+                  {project.owner?.name || "-"}
+                </div>
+
+                {/* Actions */}
+                <div className="col-span-1 flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    className="p-1 hover:bg-zinc-700 rounded"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Star className="w-4 h-4 text-zinc-500 hover:text-yellow-400" />
+                  </button>
+                  <button
+                    className="p-1 hover:bg-zinc-700 rounded"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="w-4 h-4 text-zinc-500" />
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          /* Grid View */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
+            {filteredProjects.map((project) => (
+              <motion.div
+                key={project.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4 hover:border-zinc-600 cursor-pointer transition-all group"
+                onClick={() => router.push(`/dashboard-group/project/${project.id}`)}
+              >
+                {/* Thumbnail */}
+                <div
+                  className="w-full h-24 rounded-lg mb-3 flex items-center justify-center"
+                  style={{ backgroundColor: `${project.color}15` }}
+                >
+                  <FolderKanban className="w-10 h-10" style={{ color: project.color, opacity: 0.7 }} />
+                </div>
+
+                {/* Info */}
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-white truncate">{project.name}</h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      수정: {formatDate(project.updated_at || project.created_at)}
+                    </p>
+                  </div>
+                  <button
+                    className="p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="w-4 h-4 text-zinc-500" />
+                  </button>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-700">
+                  <div className="flex -space-x-2">
+                    {project.members?.slice(0, 3).map((member) => (
+                      <img
+                        key={member.id}
+                        src={member.user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user?.name}`}
+                        alt={member.user?.name}
+                        className="w-6 h-6 rounded-full border-2 border-zinc-800"
+                      />
+                    ))}
+                  </div>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: `${statusLabels[project.status]?.color}20`,
+                      color: statusLabels[project.status]?.color,
+                    }}
+                  >
+                    {statusLabels[project.status]?.label}
                   </span>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Create Project Modal */}
       <AnimatePresence>
@@ -425,7 +556,7 @@ export default function ProjectsPage() {
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                <h2 className="text-lg font-semibold text-white">새 프로젝트 만들기</h2>
+                <h2 className="text-lg font-semibold text-white">새 프로젝트</h2>
                 <button
                   onClick={() => setIsCreateModalOpen(false)}
                   className="text-zinc-400 hover:text-white"
@@ -445,11 +576,10 @@ export default function ProjectsPage() {
                     <input
                       type="text"
                       value={newProject.name}
-                      onChange={(e) =>
-                        setNewProject({ ...newProject, name: e.target.value })
-                      }
+                      onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                       placeholder="프로젝트 이름을 입력하세요"
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                      className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                      autoFocus
                     />
                   </div>
 
@@ -459,92 +589,44 @@ export default function ProjectsPage() {
                     </label>
                     <textarea
                       value={newProject.description}
-                      onChange={(e) =>
-                        setNewProject({ ...newProject, description: e.target.value })
-                      }
+                      onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
                       placeholder="프로젝트에 대한 설명을 입력하세요"
                       rows={3}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none"
+                      className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        팀 *
-                      </label>
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">팀 *</label>
                       <select
                         value={newProject.team_id}
-                        onChange={(e) =>
-                          setNewProject({ ...newProject, team_id: e.target.value })
-                        }
-                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                        onChange={(e) => setNewProject({ ...newProject, team_id: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                       >
-                        {teams.map((team) => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
+                        {teams.length === 0 ? (
+                          <option value="">팀 없음</option>
+                        ) : (
+                          teams.map((team) => (
+                            <option key={team.id} value={team.id}>{team.name}</option>
+                          ))
+                        )}
                       </select>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        마감일
-                      </label>
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">마감일</label>
                       <input
                         type="date"
                         value={newProject.deadline}
-                        onChange={(e) =>
-                          setNewProject({ ...newProject, deadline: e.target.value })
-                        }
-                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                        onChange={(e) => setNewProject({ ...newProject, deadline: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                       />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        상태
-                      </label>
-                      <select
-                        value={newProject.status}
-                        onChange={(e) =>
-                          setNewProject({ ...newProject, status: e.target.value })
-                        }
-                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                      >
-                        <option value="planning">계획중</option>
-                        <option value="active">진행중</option>
-                        <option value="on_hold">보류</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-2">
-                        우선순위
-                      </label>
-                      <select
-                        value={newProject.priority}
-                        onChange={(e) =>
-                          setNewProject({ ...newProject, priority: e.target.value })
-                        }
-                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                      >
-                        <option value="low">낮음</option>
-                        <option value="medium">보통</option>
-                        <option value="high">높음</option>
-                        <option value="urgent">긴급</option>
-                      </select>
                     </div>
                   </div>
 
                   {/* Color */}
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">
-                      색상
-                    </label>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">색상</label>
                     <div className="flex gap-2">
                       {colorOptions.map((color) => (
                         <button
@@ -553,7 +635,7 @@ export default function ProjectsPage() {
                           className={`w-8 h-8 rounded-lg transition-all ${
                             newProject.color === color
                               ? "ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
-                              : ""
+                              : "hover:scale-110"
                           }`}
                           style={{ backgroundColor: color }}
                         />
@@ -568,7 +650,7 @@ export default function ProjectsPage() {
                     <Users className="w-4 h-4 inline mr-2" />
                     팀원 추가
                   </label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-zinc-800/50 rounded-lg min-h-[80px]">
+                  <div className="flex flex-wrap gap-2 p-3 bg-zinc-800/50 rounded-lg min-h-[60px]">
                     {teamMembers.length === 0 ? (
                       <p className="text-zinc-500 text-sm">팀을 선택하면 팀원이 표시됩니다</p>
                     ) : (
@@ -606,7 +688,7 @@ export default function ProjectsPage() {
                     <Bot className="w-4 h-4 inline mr-2" />
                     AI 에이전트 투입
                   </label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-zinc-800/50 rounded-lg min-h-[80px]">
+                  <div className="flex flex-wrap gap-2 p-3 bg-zinc-800/50 rounded-lg min-h-[60px]">
                     {agents.length === 0 ? (
                       <p className="text-zinc-500 text-sm">사용 가능한 에이전트가 없습니다</p>
                     ) : (
@@ -646,7 +728,7 @@ export default function ProjectsPage() {
                 </Button>
                 <Button
                   onClick={handleCreateProject}
-                  disabled={!newProject.name.trim() || !newProject.team_id || creating}
+                  disabled={!newProject.name.trim() || creating}
                   style={{ backgroundColor: currentAccent.color }}
                   className="text-white"
                 >
@@ -656,10 +738,7 @@ export default function ProjectsPage() {
                       생성 중...
                     </>
                   ) : (
-                    <>
-                      <Plus className="w-4 h-4 mr-2" />
-                      프로젝트 생성
-                    </>
+                    "프로젝트 생성"
                   )}
                 </Button>
               </div>
