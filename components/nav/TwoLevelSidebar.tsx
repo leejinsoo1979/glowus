@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { createClient } from '@/lib/supabase/client'
 import { Logo } from '@/components/ui'
 import { CgMenuGridO } from 'react-icons/cg'
+import { BsPersonWorkspace } from 'react-icons/bs'
 import {
   LayoutDashboard,
   ListTodo,
@@ -50,6 +51,12 @@ const categories = [
       { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },
       { name: '스타트업', href: '/dashboard-group/startup', icon: Building2 },
     ]
+  },
+  {
+    id: 'workspace',
+    name: '워크스페이스',
+    icon: BsPersonWorkspace,
+    items: []
   },
   {
     id: 'work',
