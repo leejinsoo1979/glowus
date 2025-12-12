@@ -1,7 +1,7 @@
-// Multi-LLM Client - OpenAI + Qwen3 (DashScope)
+// Multi-LLM Client - OpenAI + Qwen3 (DashScope) + Ollama
 import OpenAI from 'openai'
 
-export type LLMProvider = 'openai' | 'qwen'
+export type LLMProvider = 'openai' | 'qwen' | 'llama'
 
 export interface LLMConfig {
   provider: LLMProvider
@@ -19,6 +19,12 @@ export const openaiClient = new OpenAI({
 export const qwenClient = new OpenAI({
   apiKey: process.env.DASHSCOPE_API_KEY || '',
   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+})
+
+// Ollama 클라이언트 (로컬 LLM - OpenAI 호환 API)
+export const ollamaClient = new OpenAI({
+  apiKey: 'ollama',  // Ollama는 API key가 필요 없지만 OpenAI 클라이언트가 요구함
+  baseURL: 'http://localhost:11434/v1',
 })
 
 // 사용 가능한 모델 목록
@@ -42,8 +48,10 @@ export function getClient(provider: LLMProvider): OpenAI {
       return openaiClient
     case 'qwen':
       return qwenClient
+    case 'llama':
+      return ollamaClient
     default:
-      return openaiClient
+      return ollamaClient  // 기본값: Ollama 로컬 LLM
   }
 }
 

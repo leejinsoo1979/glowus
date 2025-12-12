@@ -34,11 +34,9 @@ export interface EnhancedAgentConfig extends AgentConfig {
 
 // DB에서 가져온 에이전트를 오케스트레이터 형식으로 변환
 export function convertToAgentConfig(dbAgent: any): AgentConfig {
-  // gpt-4 계열 모델은 접근 불가하므로 gpt-4o-mini로 변경
-  let model = dbAgent.llm_model || dbAgent.model || 'gpt-4o-mini'
-  if (model.startsWith('gpt-4') && !model.includes('gpt-4o')) {
-    model = 'gpt-4o-mini'
-  }
+  // 강제: Ollama 로컬 LLM 사용 (OpenAI 비용 문제)
+  // 모델을 무조건 qwen2.5:3b로 강제 설정 (DB 값 무시)
+  const model = 'qwen2.5:3b'
 
   return {
     id: dbAgent.id,
@@ -47,7 +45,7 @@ export function convertToAgentConfig(dbAgent: any): AgentConfig {
     description: dbAgent.description,
     systemPrompt: dbAgent.system_prompt || `당신은 ${dbAgent.name}입니다.`,
     interactionMode: (dbAgent.interaction_mode as InteractionMode) || 'solo',
-    llmProvider: (dbAgent.llm_provider as LLMProvider) || 'openai',
+    llmProvider: 'llama' as LLMProvider,  // 강제: Ollama 로컬 LLM
     llmModel: model,
     temperature: dbAgent.temperature ?? 0.7,
     speakOrder: dbAgent.speak_order ?? 0,
@@ -69,8 +67,8 @@ export function determineInteractionMode(agents: AgentConfig[]): InteractionMode
   const modeCount = new Map<InteractionMode, number>()
   modes.forEach(m => modeCount.set(m, (modeCount.get(m) || 0) + 1))
 
-  // 가장 많은 모드 선택 (기본: collaborate)
-  let maxMode: InteractionMode = 'collaborate'
+  // 가장 많은 모드 선택 (기본: sequential - 에이전트들이 서로 응답 보고 이어서 대화)
+  let maxMode: InteractionMode = 'sequential'
   let maxCount = 0
   modeCount.forEach((count, mode) => {
     if (count > maxCount && mode !== 'solo') {
@@ -98,7 +96,9 @@ export async function processAgentResponsesWithMemory(
   roomContext: RoomContext,
   options?: Partial<OrchestratorOptions>
 ): Promise<AgentResponse[]> {
+  console.log('[ChatIntegration] processAgentResponsesWithMemory called with', agents?.length, 'agents')
   if (!agents || agents.length === 0) {
+    console.log('[ChatIntegration] No agents provided, returning empty')
     return []
   }
 
@@ -138,6 +138,7 @@ export async function processAgentResponsesWithMemory(
   // 2. 상호작용 모드 결정
   const mode = options?.mode || determineInteractionMode(agentConfigs)
   const effectiveMode = roomContext.isMeeting ? 'debate' : mode
+  console.log('[ChatIntegration] Mode determined:', effectiveMode, '(isMeeting:', roomContext.isMeeting, ')')
 
   // 3. 컨텍스트 추가된 사용자 메시지
   let contextualMessage = userMessage
@@ -153,11 +154,13 @@ export async function processAgentResponsesWithMemory(
   }
 
   try {
+    console.log('[ChatIntegration] Calling orchestrateAgents...')
     const responses = await orchestrateAgents(
       agentConfigs,
       contextualMessage,
       orchestratorOptions
     )
+    console.log('[ChatIntegration] orchestrateAgents returned', responses?.length, 'responses')
 
     // 5. 응답 후 각 에이전트의 대화 기록 저장
     await logAgentConversations(

@@ -1,485 +1,554 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useTheme } from 'next-themes'
-import { Button } from '@/components/ui'
-import { useAuthStore } from '@/stores/authStore'
 import {
   Mail,
-  Send,
+  Plus,
   Inbox,
   Star,
+  Send,
   Trash2,
-  Plus,
-  X,
-  Paperclip,
-  Search,
-  MoreVertical,
-  Reply,
-  Forward,
-  Archive,
-  Clock,
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
+  Bot,
   FileText,
-  AlertCircle,
-  Image as ImageIcon
+  RefreshCw,
+  ChevronDown,
+  Sparkles,
+  Loader2,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useThemeStore } from '@/stores/themeStore'
+import { Button } from '@/components/ui/Button'
+import { EmailAccountModal, EmailAccountFormData } from '@/components/email/EmailAccountModal'
+import { EmailList } from '@/components/email/EmailList'
+import { EmailViewer } from '@/components/email/EmailViewer'
+import type { EmailAccount, EmailMessage, EmailSummary } from '@/types/email'
 
-type EmailTab = 'inbox' | 'sent' | 'starred' | 'drafts' | 'trash' | 'spam'
-
-interface Email {
-  id: string
-  from: string
-  fromName: string
-  to: string
-  toName: string
-  subject: string
-  body: string
-  date: string
-  isRead: boolean
-  isStarred: boolean
-  hasAttachments?: boolean
-  label?: string
-  type: 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam'
-}
-
-// Mock data re-use and expansion
-const MOCK_EMAILS: Email[] = [
-  {
-    id: '1',
-    from: 'investor@vc.com',
-    fromName: 'James Kim',
-    to: 'me@startup.com',
-    toName: 'Me',
-    subject: 'Follow-up on Seed Round Discussion',
-    body: 'Hi Jinsoo,\n\nI enjoyed our conversation yesterday. I wanted to follow up regarding the valuation cap we discussed. Could you send over the updated financial projections?\n\nBest,\nJames',
-    date: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    isRead: false,
-    isStarred: true,
-    type: 'inbox',
-    label: 'Investment'
-  },
-  {
-    id: '2',
-    from: 'support@aws.com',
-    fromName: 'AWS Billing',
-    to: 'billing@startup.com',
-    toName: 'Billing Team',
-    subject: 'Invoice for November 2025',
-    body: 'Your invoice for the period of November 1 - November 30 is now available. Total amount: $1,240.50.\n\nPlease log in to the console to view details.',
-    date: new Date(Date.now() - 86400000 * 2).toISOString(), // 2 days ago
-    isRead: true,
-    isStarred: false,
-    type: 'inbox',
-    label: 'Finance'
-  },
-  {
-    id: '3',
-    from: 'newsletter@techcrunch.com',
-    fromName: 'TechCrunch',
-    to: 'me@startup.com',
-    toName: 'Me',
-    subject: 'Daily Crunch: The biggest startup news',
-    body: "Here's what happened in the startup world today...",
-    date: new Date(Date.now() - 86400000 * 3).toISOString(),
-    isRead: true,
-    isStarred: false,
-    type: 'inbox',
-    label: 'News'
-  },
-  {
-    id: '4',
-    from: 'me@startup.com',
-    fromName: 'Me',
-    to: 'team@startup.com',
-    toName: 'Team',
-    subject: 'Q1 Goals Review',
-    body: 'Hey Team,\n\nGreat work this quarter. Let\'s review our Q1 goals this Friday. Please prepare your slide decks.',
-    date: new Date(Date.now() - 172800000).toISOString(),
-    isRead: true,
-    isStarred: false,
-    type: 'sent',
-  },
-  {
-    id: '5',
-    from: 'designer@startup.com',
-    fromName: 'Sarah Lee',
-    to: 'me@startup.com',
-    toName: 'Me',
-    subject: 'New UI Kits are ready',
-    body: 'I have uploaded the new component library to Figma. Please check it out when you have a moment.',
-    date: new Date(Date.now() - 300000).toISOString(), // 5 mins ago
-    isRead: false,
-    isStarred: false,
-    hasAttachments: true,
-    type: 'inbox',
-    label: 'Design'
-  }
-]
+type Folder = 'inbox' | 'starred' | 'sent' | 'trash'
 
 export default function EmailPage() {
-  const { user } = useAuthStore()
-  const { resolvedTheme } = useTheme()
-  const [activeTab, setActiveTab] = useState<EmailTab>('inbox')
-  const [emails, setEmails] = useState<Email[]>(MOCK_EMAILS)
-  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [isComposeOpen, setIsComposeOpen] = useState(false)
+  const { accentColor } = useThemeStore()
+  const [accounts, setAccounts] = useState<EmailAccount[]>([])
+  const [selectedAccount, setSelectedAccount] = useState<EmailAccount | null>(null)
+  const [emails, setEmails] = useState<EmailMessage[]>([])
+  const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null)
+  const [currentFolder, setCurrentFolder] = useState<Folder>('inbox')
+  const [summary, setSummary] = useState<EmailSummary | null>(null)
 
-  const selectedEmail = emails.find(e => e.id === selectedEmailId)
-  const isDark = resolvedTheme === 'dark'
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [isAddingAccount, setIsAddingAccount] = useState(false)
+  const [isGeneratingReply, setIsGeneratingReply] = useState(false)
+  const [generatedReply, setGeneratedReply] = useState<{
+    subject: string
+    body_text: string
+    body_html: string
+  } | null>(null)
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
 
-  // Filter Logic
-  const filteredEmails = emails.filter(email => {
-    // 1. Tab Filter
-    let matchesTab = false
-    if (activeTab === 'starred') matchesTab = email.isStarred
-    else matchesTab = email.type === activeTab
-
-    // 2. Search Filter
-    const query = searchQuery.toLowerCase()
-    const matchesSearch =
-      email.subject.toLowerCase().includes(query) ||
-      email.fromName.toLowerCase().includes(query) ||
-      email.body.toLowerCase().includes(query)
-
-    return matchesTab && matchesSearch
-  })
-
-  // Format Date Logic
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-
-    if (diff < 86400000) {
-      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    } else if (diff < 604800000) { // < 7 days
-      return date.toLocaleDateString('en-US', { weekday: 'short' })
+  const getAccentClasses = () => {
+    switch (accentColor) {
+      case 'purple': return { bg: 'bg-purple-500', hover: 'hover:bg-purple-600', light: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-400' }
+      case 'blue': return { bg: 'bg-blue-500', hover: 'hover:bg-blue-600', light: 'bg-blue-100 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400' }
+      case 'green': return { bg: 'bg-green-500', hover: 'hover:bg-green-600', light: 'bg-green-100 dark:bg-green-500/20', text: 'text-green-600 dark:text-green-400' }
+      case 'orange': return { bg: 'bg-orange-500', hover: 'hover:bg-orange-600', light: 'bg-orange-100 dark:bg-orange-500/20', text: 'text-orange-600 dark:text-orange-400' }
+      case 'pink': return { bg: 'bg-pink-500', hover: 'hover:bg-pink-600', light: 'bg-pink-100 dark:bg-pink-500/20', text: 'text-pink-600 dark:text-pink-400' }
+      case 'red': return { bg: 'bg-red-500', hover: 'hover:bg-red-600', light: 'bg-red-100 dark:bg-red-500/20', text: 'text-red-600 dark:text-red-400' }
+      case 'yellow': return { bg: 'bg-yellow-500', hover: 'hover:bg-yellow-600', light: 'bg-yellow-100 dark:bg-yellow-500/20', text: 'text-yellow-600 dark:text-yellow-400' }
+      case 'cyan': return { bg: 'bg-cyan-500', hover: 'hover:bg-cyan-600', light: 'bg-cyan-100 dark:bg-cyan-500/20', text: 'text-cyan-600 dark:text-cyan-400' }
+      default: return { bg: 'bg-blue-500', hover: 'hover:bg-blue-600', light: 'bg-blue-100 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400' }
     }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
-  // Handlers
-  const handleToggleStar = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation()
-    setEmails(prev => prev.map(email =>
-      email.id === id ? { ...email, isStarred: !email.isStarred } : email
-    ))
+  const accent = getAccentClasses()
+
+  // Fetch accounts
+  const fetchAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/email/accounts')
+      if (res.ok) {
+        const data = await res.json()
+        setAccounts(data)
+        if (data.length > 0 && !selectedAccount) {
+          setSelectedAccount(data[0])
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch accounts:', error)
+    }
+  }, [selectedAccount])
+
+  // Fetch emails
+  const fetchEmails = useCallback(async () => {
+    if (!selectedAccount) {
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams({
+        account_id: selectedAccount.id,
+      })
+
+      const res = await fetch(`/api/email/messages?${params}`)
+      if (res.ok) {
+        let data = await res.json()
+
+        // Client-side filtering
+        if (currentFolder === 'starred') {
+          data = data.filter((e: EmailMessage) => e.is_starred)
+        } else if (currentFolder === 'sent') {
+          data = data.filter((e: EmailMessage) => e.is_sent)
+        } else if (currentFolder === 'trash') {
+          data = data.filter((e: EmailMessage) => e.is_trash)
+        } else {
+          data = data.filter((e: EmailMessage) => !e.is_trash && !e.is_sent)
+        }
+
+        setEmails(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch emails:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [selectedAccount, currentFolder])
+
+  // Sync emails
+  const syncEmails = async () => {
+    if (!selectedAccount) return
+
+    setIsSyncing(true)
+    try {
+      const res = await fetch('/api/email/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: selectedAccount.id }),
+      })
+
+      if (res.ok) {
+        await fetchEmails()
+      }
+    } catch (error) {
+      console.error('Failed to sync emails:', error)
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
-  const handleDelete = (id: string) => {
-    setEmails(prev => prev.filter(email => email.id !== id))
-    if (selectedEmailId === id) setSelectedEmailId(null)
+  // Add account
+  const handleAddAccount = async (data: EmailAccountFormData) => {
+    setIsAddingAccount(true)
+    try {
+      const res = await fetch('/api/email/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+
+      if (res.ok) {
+        const account = await res.json()
+        setAccounts([...accounts, account])
+        setSelectedAccount(account)
+        setIsAddModalOpen(false)
+      } else {
+        const error = await res.json()
+        alert(error.error || '계정 추가에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('Failed to add account:', error)
+      alert('계정 추가에 실패했습니다.')
+    } finally {
+      setIsAddingAccount(false)
+    }
   }
 
-  const handleMarkRead = (id: string) => {
-    setEmails(prev => prev.map(email =>
-      email.id === id ? { ...email, isRead: true } : email
-    ))
+  // Star email
+  const handleStar = async (emailId: string, starred: boolean) => {
+    try {
+      await fetch('/api/email/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_id: emailId, action: 'star', value: starred }),
+      })
+
+      setEmails(emails.map((e) =>
+        e.id === emailId ? { ...e, is_starred: starred } : e
+      ))
+
+      if (selectedEmail?.id === emailId) {
+        setSelectedEmail({ ...selectedEmail, is_starred: starred })
+      }
+    } catch (error) {
+      console.error('Failed to star email:', error)
+    }
   }
 
-  const tabs = [
-    { id: 'inbox', label: 'Inbox', icon: Inbox, count: emails.filter(e => e.type === 'inbox' && !e.isRead).length },
-    { id: 'sent', label: 'Sent', icon: Send, count: 0 },
-    { id: 'starred', label: 'Starred', icon: Star, count: emails.filter(e => e.isStarred).length },
-    { id: 'drafts', label: 'Drafts', icon: FileText, count: 0 },
-    { id: 'trash', label: 'Trash', icon: Trash2, count: 0 },
+  // Delete email
+  const handleDelete = async (emailId: string) => {
+    try {
+      await fetch('/api/email/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_id: emailId, action: 'trash' }),
+      })
+
+      setEmails(emails.filter((e) => e.id !== emailId))
+      if (selectedEmail?.id === emailId) {
+        setSelectedEmail(null)
+      }
+    } catch (error) {
+      console.error('Failed to delete email:', error)
+    }
+  }
+
+  // Mark as read
+  const handleMarkRead = async (emailId: string, read: boolean) => {
+    try {
+      await fetch('/api/email/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_id: emailId, action: 'read', value: read }),
+      })
+
+      setEmails(emails.map((e) =>
+        e.id === emailId ? { ...e, is_read: read } : e
+      ))
+    } catch (error) {
+      console.error('Failed to mark email:', error)
+    }
+  }
+
+  // Generate AI reply
+  const handleGenerateReply = async (email: EmailMessage) => {
+    setIsGeneratingReply(true)
+    setGeneratedReply(null)
+
+    try {
+      const res = await fetch('/api/email/ai/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_id: email.id }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setGeneratedReply(data)
+      }
+    } catch (error) {
+      console.error('Failed to generate reply:', error)
+    } finally {
+      setIsGeneratingReply(false)
+    }
+  }
+
+  // Generate daily summary
+  const handleGenerateSummary = async () => {
+    if (!selectedAccount) return
+
+    setIsGeneratingSummary(true)
+    try {
+      const res = await fetch('/api/email/ai/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: selectedAccount.id }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setSummary(data)
+      }
+    } catch (error) {
+      console.error('Failed to generate summary:', error)
+    } finally {
+      setIsGeneratingSummary(false)
+    }
+  }
+
+  // Select email and mark as read
+  const handleSelectEmail = (email: EmailMessage) => {
+    setSelectedEmail(email)
+    setGeneratedReply(null)
+    if (!email.is_read) {
+      handleMarkRead(email.id, true)
+    }
+  }
+
+  useEffect(() => {
+    fetchAccounts()
+  }, [fetchAccounts])
+
+  useEffect(() => {
+    fetchEmails()
+  }, [fetchEmails])
+
+  const folders = [
+    { id: 'inbox' as Folder, label: '받은편지함', icon: Inbox },
+    { id: 'starred' as Folder, label: '중요', icon: Star },
+    { id: 'sent' as Folder, label: '보낸편지함', icon: Send },
+    { id: 'trash' as Folder, label: '휴지통', icon: Trash2 },
   ]
 
+  const unreadCount = emails.filter((e) => !e.is_read && !e.is_trash && !e.is_sent).length
+
   return (
-    <div className={`flex h-[calc(100vh-4rem)] overflow-hidden ${isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-white text-zinc-900'}`}>
-
-      {/* Pane 1: Navigation Sidebar (240px) */}
-      <div className={`w-60 flex-shrink-0 border-r flex flex-col ${isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50/50'}`}>
-        <div className={`p-4 h-16 flex items-center border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-          <div className="flex items-center gap-2 font-semibold">
-            <div className="w-8 h-8 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg flex items-center justify-center">
-              <Mail className="w-4 h-4" />
-            </div>
-            <span>Mailbox</span>
-          </div>
-        </div>
-
-        <div className="p-3">
-          <Button
-            className="w-full justify-start mb-6"
-            onClick={() => setIsComposeOpen(true)}
-            leftIcon={<Plus className="w-4 h-4" />}
-          >
-            New Message
-          </Button>
-
-          <div className="space-y-1">
-            {tabs.map(tab => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id as EmailTab)
-                    setSelectedEmailId(null) // Reset selection when changing tabs
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                    ? isDark ? 'bg-zinc-800 text-white' : 'bg-zinc-200 text-black'
-                    : isDark ? 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                    }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-4 h-4" />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.count > 0 && (
-                    <span className={`text-xs ${isActive ? '' : 'text-zinc-500'}`}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Storage or Labels could go here */}
-        <div className="mt-auto p-4 border-t border-zinc-200 dark:border-zinc-800">
-          <div className="flex items-center justify-between text-xs text-zinc-500">
-            <span>1.2 GB of 15 GB used</span>
-            <span className="cursor-pointer hover:underline">Clean up</span>
-          </div>
-          <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-800 rounded-full mt-2 overflow-hidden">
-            <div className="w-[8%] h-full bg-accent rounded-full"></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Pane 2: Email List (320px - 400px) */}
-      <div className={`w-[25rem] flex-shrink-0 border-r flex flex-col ${isDark ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-200 bg-white'}`}>
-        <div className={`p-4 h-16 border-b flex items-center gap-2 ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-          <div className={`relative flex-1 rounded-lg overflow-hidden ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search mail..."
-              className="w-full py-2 pl-9 pr-4 bg-transparent outline-none text-sm placeholder:text-zinc-500"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
-          {filteredEmails.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-zinc-500 text-sm mt-10">
-              <Inbox className="w-10 h-10 mb-2 opacity-20" />
-              <p>No messages found</p>
+    <div className="h-[calc(100vh-64px)] flex bg-zinc-50 dark:bg-zinc-950">
+      {/* Sidebar */}
+      <div className="w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col">
+        {/* Account Selector */}
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-700">
+          {accounts.length > 0 ? (
+            <div className="relative">
+              <select
+                value={selectedAccount?.id || ''}
+                onChange={(e) => {
+                  const account = accounts.find((a) => a.id === e.target.value)
+                  if (account) setSelectedAccount(account)
+                }}
+                className="w-full px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 appearance-none cursor-pointer"
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.email_address}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
             </div>
           ) : (
-            filteredEmails.map(email => (
-              <button
-                key={email.id}
-                onClick={() => {
-                  setSelectedEmailId(email.id)
-                  handleMarkRead(email.id)
-                }}
-                className={`w-full text-left p-4 border-b transition-colors relative group ${isDark ? 'border-zinc-800 hover:bg-zinc-800/50' : 'border-zinc-100 hover:bg-zinc-50'
-                  } ${selectedEmailId === email.id ? isDark ? 'bg-zinc-800' : 'bg-zinc-100' : ''}`}
-              >
-                {!email.isRead && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
-                )}
-                <div className="flex justify-between items-start mb-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`text-sm truncate ${email.isRead ? isDark ? 'font-normal text-zinc-300' : 'font-normal text-zinc-700' : 'font-semibold'}`}>
-                      {activeTab === 'sent' ? `To: ${email.toName}` : email.fromName}
-                    </span>
-                  </div>
-                  <span className={`text-xs whitespace-nowrap ml-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                    {formatDate(email.date)}
-                  </span>
-                </div>
-
-                <div className={`text-sm mb-1 truncate ${email.isRead ? isDark ? 'font-normal text-zinc-400' : 'font-normal text-zinc-600' : 'font-medium'}`}>
-                  {email.subject}
-                </div>
-
-                <div className={`text-xs truncate line-clamp-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                  {email.body}
-                </div>
-
-                <div className="flex items-center gap-2 mt-2">
-                  {email.label && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-400' : 'bg-white border-zinc-200 text-zinc-500'
-                      }`}>
-                      {email.label}
-                    </span>
-                  )}
-                  {email.hasAttachments && <Paperclip className="w-3 h-3 text-zinc-500" />}
-                  {email.isStarred && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 ml-auto" />}
-                </div>
-              </button>
-            ))
+            <p className="text-sm text-zinc-500 text-center">
+              이메일 계정이 없습니다
+            </p>
           )}
+        </div>
+
+        {/* Add Account Button */}
+        <div className="p-4">
+          <Button
+            variant="accent"
+            size="md"
+            className="w-full"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setIsAddModalOpen(true)}
+          >
+            계정 추가
+          </Button>
+        </div>
+
+        {/* Folders */}
+        <nav className="flex-1 px-2 py-2">
+          {folders.map((folder) => (
+            <button
+              key={folder.id}
+              onClick={() => {
+                setCurrentFolder(folder.id)
+                setSelectedEmail(null)
+              }}
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors mb-1",
+                currentFolder === folder.id
+                  ? cn(accent.light, accent.text)
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              )}
+            >
+              <folder.icon className="w-5 h-5" />
+              <span className="flex-1 text-left">{folder.label}</span>
+              {folder.id === 'inbox' && unreadCount > 0 && (
+                <span className={cn(
+                  "px-2 py-0.5 rounded-full text-xs font-medium text-white",
+                  accent.bg
+                )}>
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* AI Summary Button */}
+        <div className="p-4 border-t border-zinc-200 dark:border-zinc-700">
+          <Button
+            variant="ghost"
+            size="md"
+            className="w-full justify-start"
+            leftIcon={isGeneratingSummary ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            onClick={handleGenerateSummary}
+            disabled={isGeneratingSummary || !selectedAccount}
+          >
+            AI 일일 요약
+          </Button>
         </div>
       </div>
 
-      {/* Pane 3: Reading Pane (Flex Grow) */}
-      <div className={`flex-1 flex flex-col min-w-0 ${isDark ? 'bg-zinc-950' : 'bg-white'}`}>
-        {selectedEmail ? (
-          <>
-            {/* Toolbar */}
-            <div className={`h-16 px-6 border-b flex items-center justify-between flex-shrink-0 ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-              <div className="flex items-center gap-2">
-                <Button size="icon" variant="ghost" className="text-zinc-500">
-                  <Archive className="w-5 h-5" />
-                </Button>
-                <Button size="icon" variant="ghost" className="text-zinc-500">
-                  <AlertCircle className="w-5 h-5" />
-                </Button>
-                <Button
-                  size="icon" variant="ghost"
-                  className="text-zinc-500 hover:text-red-500"
-                  onClick={() => handleDelete(selectedEmail.id)}
-                >
-                  <Trash2 className="w-5 h-5" />
-                </Button>
-                <div className={`w-px h-6 mx-2 ${isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`}></div>
-                <Button size="icon" variant="ghost" className="text-zinc-500">
-                  <Clock className="w-5 h-5" />
-                </Button>
-                <Button size="icon" variant="ghost" className="text-zinc-500">
-                  <MoreVertical className="w-5 h-5" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500">
-                  1 of {filteredEmails.length}
-                </span>
-                <div className="flex">
-                  <Button size="icon" variant="ghost" disabled>
-                    <ChevronLeft className="w-5 h-5" />
-                  </Button>
-                  <Button size="icon" variant="ghost">
-                    <ChevronRight className="w-5 h-5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-8">
-              {/* Header */}
-              <div className="flex items-start justify-between mb-8">
-                <h1 className="text-2xl font-bold leading-tight">{selectedEmail.subject}</h1>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" leftIcon={<Reply className="w-4 h-4" />}>
-                    Reply
-                  </Button>
-                  <Button size="sm" variant="outline" leftIcon={<Forward className="w-4 h-4" />}>
-                    Forward
-                  </Button>
-                </div>
-              </div>
-
-              {/* Sender Info */}
-              <div className="flex items-center gap-4 mb-8">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${isDark ? 'bg-zinc-700' : 'bg-zinc-900'
-                  }`}>
-                  {selectedEmail.fromName.charAt(0)}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-baseline justify-between">
-                    <span className="font-semibold">{selectedEmail.fromName}</span>
-                    <span className="text-xs text-zinc-500">{new Date(selectedEmail.date).toLocaleString()}</span>
-                  </div>
-                  <div className="text-sm text-zinc-500">{`<${selectedEmail.from}>`}</div>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className={`prose max-w-none whitespace-pre-line ${isDark ? 'prose-invert' : ''} text-sm leading-relaxed`}>
-                {selectedEmail.body}
-              </div>
-
-              {/* Attachments Placeholder */}
-              {selectedEmail.hasAttachments && (
-                <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">
-                  <h4 className="text-sm font-medium mb-3">1 Attachment</h4>
-                  <div className={`flex items-center gap-3 p-3 border rounded-xl w-64 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${isDark ? 'border-zinc-800' : 'border-zinc-200'
-                    }`}>
-                    <div className="w-10 h-10 bg-red-100 text-red-600 rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium truncate">Q1_Financials.pdf</p>
-                      <p className="text-xs text-zinc-500">2.4 MB</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </>
+      {/* Email List */}
+      <div className="w-96 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
+        {selectedAccount ? (
+          <EmailList
+            emails={emails}
+            selectedEmail={selectedEmail}
+            onSelectEmail={handleSelectEmail}
+            onRefresh={syncEmails}
+            onStar={handleStar}
+            onDelete={handleDelete}
+            onMarkRead={handleMarkRead}
+            isLoading={isLoading || isSyncing}
+          />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-zinc-500">
-            <Mail className="w-16 h-16 mb-4 opacity-10" />
-            <p className="text-lg font-medium">Select an item to read</p>
-            <p className="text-sm">Nothing is selected</p>
+          <div className="flex flex-col items-center justify-center h-full text-zinc-400 p-8">
+            <Mail className="w-16 h-16 mb-4 opacity-50" />
+            <p className="text-center mb-4">
+              이메일 계정을 추가하여<br />시작하세요
+            </p>
+            <Button
+              variant="accent"
+              size="md"
+              leftIcon={<Plus className="w-4 h-4" />}
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              계정 추가
+            </Button>
           </div>
         )}
       </div>
 
-      {/* Compose Modal (Simple Overlay) */}
-      <AnimatePresence>
-        {isComposeOpen && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center lg:items-end lg:justify-end lg:p-8">
+      {/* Email Viewer / Summary */}
+      <div className="flex-1 bg-white dark:bg-zinc-900">
+        <AnimatePresence mode="wait">
+          {selectedEmail ? (
+            <EmailViewer
+              key={selectedEmail.id}
+              email={selectedEmail}
+              onClose={() => setSelectedEmail(null)}
+              onReply={(e) => console.log('Reply to:', e)}
+              onForward={(e) => console.log('Forward:', e)}
+              onDelete={handleDelete}
+              onStar={handleStar}
+              onGenerateReply={handleGenerateReply}
+              isGeneratingReply={isGeneratingReply}
+              generatedReply={generatedReply}
+            />
+          ) : summary ? (
             <motion.div
-              initial={{ opacity: 0, y: 50, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={`w-full max-w-2xl h-[80vh] lg:h-[600px] lg:w-[600px] shadow-2xl flex flex-col overflow-hidden rounded-t-xl lg:rounded-xl ring-1 ring-black/10 ${isDark ? 'bg-zinc-900' : 'bg-white'
-                }`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="h-full p-6 overflow-y-auto"
             >
-              <div className={`flex items-center justify-between p-3 border-b ${isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-100 border-zinc-200'}`}>
-                <span className="font-semibold px-2">New Message</span>
-                <div className="flex gap-1">
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setIsComposeOpen(false)}>
-                    <X className="w-4 h-4" />
-                  </Button>
+              <div className="max-w-2xl mx-auto">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", accent.light)}>
+                    <Bot className={cn("w-6 h-6", accent.text)} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+                      AI 일일 요약
+                    </h2>
+                    <p className="text-sm text-zinc-500">
+                      {new Date(summary.created_at).toLocaleDateString('ko-KR')}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex-1 flex flex-col">
-                <input
-                  className={`px-4 py-3 border-b outline-none text-sm ${isDark ? 'bg-transparent border-zinc-800' : 'bg-transparent border-zinc-100'}`}
-                  placeholder="Recipients"
-                />
-                <input
-                  className={`px-4 py-3 border-b outline-none text-sm font-medium ${isDark ? 'bg-transparent border-zinc-800' : 'bg-transparent border-zinc-100'}`}
-                  placeholder="Subject"
-                />
-                <textarea
-                  className="flex-1 p-4 outline-none resize-none text-sm bg-transparent"
-                  placeholder="Type your message..."
-                />
-              </div>
-              <div className={`p-3 border-t flex items-center justify-between ${isDark ? 'border-zinc-800' : 'border-zinc-100'}`}>
-                <div className="flex gap-1">
-                  <Button size="icon" variant="ghost"><Paperclip className="w-4 h-4" /></Button>
-                  <Button size="icon" variant="ghost"><ImageIcon className="w-4 h-4" /></Button>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-xl">
+                    <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                      {summary.total_emails}
+                    </p>
+                    <p className="text-sm text-zinc-500">전체 이메일</p>
+                  </div>
+                  <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-xl">
+                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {summary.unread_count}
+                    </p>
+                    <p className="text-sm text-zinc-500">읽지 않음</p>
+                  </div>
+                  <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-xl">
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {summary.urgent_count}
+                    </p>
+                    <p className="text-sm text-zinc-500">긴급</p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setIsComposeOpen(false)}>Discard</Button>
-                  <Button onClick={() => setIsComposeOpen(false)} leftIcon={<Send className="w-4 h-4" />}>Send</Button>
+
+                {/* Summary Text */}
+                <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-xl mb-6">
+                  <p className="text-zinc-700 dark:text-zinc-300">
+                    {summary.summary_text}
+                  </p>
                 </div>
+
+                {/* Key Highlights */}
+                {summary.key_highlights && summary.key_highlights.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-zinc-500 mb-3">주요 이메일</h3>
+                    <div className="space-y-2">
+                      {summary.key_highlights.map((highlight, i) => (
+                        <div
+                          key={i}
+                          className="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl"
+                        >
+                          <p className="font-medium text-zinc-900 dark:text-white">
+                            {highlight.subject}
+                          </p>
+                          <p className="text-sm text-zinc-500">
+                            {highlight.from}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Items */}
+                {summary.action_items && summary.action_items.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-500 mb-3">조치 필요</h3>
+                    <div className="space-y-2">
+                      {summary.action_items.map((item, i) => (
+                        <div
+                          key={i}
+                          className="p-3 bg-orange-50 dark:bg-orange-500/10 rounded-xl border border-orange-200 dark:border-orange-500/20"
+                        >
+                          <p className="text-orange-700 dark:text-orange-400">
+                            {item.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setSummary(null)}
+                  className="mt-6 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  닫기
+                </button>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center h-full text-zinc-400"
+            >
+              <FileText className="w-16 h-16 mb-4 opacity-50" />
+              <p className="text-lg">이메일을 선택하세요</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
+      {/* Add Account Modal */}
+      <EmailAccountModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddAccount}
+        isLoading={isAddingAccount}
+      />
     </div>
   )
 }

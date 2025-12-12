@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { CreateTaskInput } from '@/types/database'
+
+// DEV 모드 설정
+const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // Type helpers
 interface StartupCheck {
@@ -12,11 +17,18 @@ interface StartupCheck {
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
+    const adminSupabase = createAdminClient()
     const { searchParams } = new URL(request.url)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     const startupId = searchParams.get('startup_id')
@@ -25,13 +37,9 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    let query = supabase
+    let query = adminSupabase
       .from('tasks')
-      .select(`
-        *,
-        author:users!tasks_author_id_fkey(id, name, email, avatar_url),
-        startup:startups!tasks_startup_id_fkey(id, name)
-      `, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 

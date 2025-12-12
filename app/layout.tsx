@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
+import { QueryProvider } from '@/components/providers/QueryProvider'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -58,9 +59,11 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: accentColorScript }} />
       </head>
       <body className="min-h-screen">
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   )

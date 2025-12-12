@@ -149,30 +149,26 @@ export function ProductivityChart() {
   }
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
-      <CardHeader>
-        <CardTitle className="text-lg font-semibold text-zinc-100">주간 생산성 추이</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.5} />
-              <XAxis dataKey="name" stroke="#71717a" fontSize={12} />
-              <YAxis stroke="#71717a" fontSize={12} domain={[0, 100]} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone"
-                dataKey="score"
-                stroke={chartAccentColor}
-                strokeWidth={3}
-                dot={{ fill: chartAccentColor, strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, fill: chartAccentColor }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="h-full flex flex-col">
+      <h3 className="text-lg font-semibold text-zinc-700 dark:text-zinc-100 mb-4">주간 생산성 추이</h3>
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.3} />
+            <XAxis dataKey="name" stroke="#71717a" fontSize={12} />
+            <YAxis stroke="#71717a" fontSize={12} domain={[0, 100]} />
+            <Tooltip content={<CustomTooltip />} />
+            <Line
+              type="monotone"
+              dataKey="score"
+              stroke={chartAccentColor}
+              strokeWidth={3}
+              dot={{ fill: chartAccentColor, strokeWidth: 2, r: 4 }}
+              activeDot={{ r: 6, fill: chartAccentColor }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   )
 }

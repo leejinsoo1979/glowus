@@ -159,10 +159,19 @@ export async function DELETE(
   try {
     const supabase = createClient()
     const adminClient = createAdminClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // DEV 바이패스 체크
+    const devUser = getDevUserIfEnabled()
+    let user: any = null
+
+    if (devUser) {
+      user = devUser
+    } else {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !authUser) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = authUser
     }
 
     const { roomId } = params

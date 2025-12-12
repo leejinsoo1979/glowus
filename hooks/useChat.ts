@@ -125,6 +125,23 @@ export function useChatRoom(roomId: string | null) {
   const supabase = createClient()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasAgentRef = useRef<boolean>(false)
+  const lastMessageIdRef = useRef<string | null>(null)
+
+  // room 변경 시 에이전트 존재 여부 업데이트
+  useEffect(() => {
+    const hasAgent = room?.participants?.some(p =>
+      p.participant_type === 'agent' ||
+      p.agent ||
+      p.agent_id
+    ) ?? false
+    hasAgentRef.current = hasAgent
+    console.log('[useChat] Room updated - hasAgent:', hasAgent, 'participants:', room?.participants?.map(p => ({
+      type: p.participant_type,
+      agent_id: p.agent_id,
+      agent: p.agent?.name
+    })))
+  }, [room])
 
   // 채팅방 정보 조회
   const fetchRoom = useCallback(async () => {
@@ -139,11 +156,11 @@ export function useChatRoom(roomId: string | null) {
     }
   }, [roomId])
 
-  // 메시지 조회
-  const fetchMessages = useCallback(async (before?: string) => {
+  // 메시지 조회 (showLoading: 로딩 표시 여부)
+  const fetchMessages = useCallback(async (before?: string, showLoading = true) => {
     if (!roomId) return
     try {
-      setLoading(true)
+      if (showLoading) setLoading(true)
       const url = before
         ? `/api/chat/rooms/${roomId}/messages?before=${before}`
         : `/api/chat/rooms/${roomId}/messages`
@@ -160,7 +177,7 @@ export function useChatRoom(roomId: string | null) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [roomId])
 
@@ -176,87 +193,69 @@ export function useChatRoom(roomId: string | null) {
     }
   }, [roomId, fetchRoom, fetchMessages])
 
-  // 실시간 메시지 구독
+  // 메시지 polling (3초마다, 로딩 표시 없음)
   useEffect(() => {
     if (!roomId) return
 
-    let isSubscribed = true
-    let pollingInterval: NodeJS.Timeout | null = null
+    const interval = setInterval(() => {
+      fetchMessages(undefined, false)  // showLoading = false
+    }, 3000)
 
-    const channel = supabase
-      .channel(`room:${roomId}:${Date.now()}`) // 고유한 채널 이름
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `room_id=eq.${roomId}`,
-        },
-        () => {
-          if (isSubscribed) {
-            // 새 메시지 - 전체 다시 가져오기 (sender 정보 포함)
-            fetchMessages()
-            // 에이전트 타이핑 상태 해제
+    return () => clearInterval(interval)
+  }, [roomId, fetchMessages])
+
+  // 에이전트 타이핑 상태 polling (1초마다)
+  useEffect(() => {
+    if (!roomId) return
+
+    const checkTypingStatus = async () => {
+      try {
+        const res = await fetch(`/api/chat/rooms/${roomId}`)
+        if (!res.ok) return
+        const data = await res.json()
+
+        // 에이전트 참여자 중 타이핑 중인 에이전트 확인
+        const typingAgents = data.participants?.filter((p: any) =>
+          p.participant_type === 'agent' && p.is_typing
+        ) || []
+
+        if (typingAgents.length > 0) {
+          setAgentTyping(true)
+          // 타이핑 중인 에이전트 참여자 저장 (UI에서 표시용)
+          setTypingUsers(typingAgents)
+        } else {
+          // 타이핑 중인 에이전트가 없으면 해제
+          if (agentTyping) {
             setAgentTyping(false)
+            setTypingUsers([])
           }
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'chat_participants',
-          filter: `room_id=eq.${roomId}`,
-        },
-        async () => {
-          if (!isSubscribed) return
-          // 타이핑 상태 변경 시 참여자 정보 갱신
-          await fetchRoom()
-          // 타이핑 중인 사용자 필터링
-          if (room?.participants) {
-            const typing = room.participants.filter((p) => p.is_typing)
-            setTypingUsers(typing)
-          }
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // 실시간 연결 성공하면 폴링 중지
-          if (pollingInterval) {
-            clearInterval(pollingInterval)
-            pollingInterval = null
-          }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          // 실시간 실패 시 폴링 시작 (3초마다)
-          if (!pollingInterval) {
-            pollingInterval = setInterval(() => {
-              if (isSubscribed) {
-                fetchMessages()
-              }
-            }, 3000)
-          }
-        }
-      })
-
-    channelRef.current = channel
-
-    // 초기 폴링 시작 (realtime이 연결될 때까지)
-    pollingInterval = setInterval(() => {
-      if (isSubscribed) {
-        fetchMessages()
+      } catch (err) {
+        // 에러 무시
       }
-    }, 5000)
-
-    return () => {
-      isSubscribed = false
-      if (pollingInterval) {
-        clearInterval(pollingInterval)
-      }
-      supabase.removeChannel(channel)
     }
-  }, [roomId, supabase, fetchMessages, fetchRoom, room?.participants])
+
+    const interval = setInterval(checkTypingStatus, 1000)
+    checkTypingStatus() // 초기 체크
+
+    return () => clearInterval(interval)
+  }, [roomId, agentTyping])
+
+  // 새 에이전트 메시지 감지시 타이핑 해제
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      // 새로운 메시지인지 확인
+      if (lastMsg.id !== lastMessageIdRef.current) {
+        lastMessageIdRef.current = lastMsg.id
+        // 에이전트 메시지이고 타이핑 중이면 해제
+        if (lastMsg.sender_type === 'agent' && agentTyping) {
+          console.log('[useChat] New agent message received:', lastMsg.id, 'setting agentTyping to false')
+          setAgentTyping(false)
+        }
+      }
+    }
+  }, [messages, agentTyping])
 
   // 메시지 전송
   const sendMessage = async (content: string, options?: {
@@ -266,15 +265,20 @@ export function useChatRoom(roomId: string | null) {
   }) => {
     if (!roomId || !content.trim()) return
 
-    // 채팅방에 에이전트가 있는지 확인
-    const hasAgent = room?.participants?.some(p => p.participant_type === 'agent' || p.agent)
+    // 채팅방에 에이전트가 있는지 확인 (ref에서 가져옴 - 항상 최신 값)
+    const hasAgent = hasAgentRef.current
+
+    console.log('[useChat] sendMessage - hasAgent:', hasAgent, '(from ref)')
 
     try {
       setSending(true)
 
       // 에이전트가 있으면 타이핑 상태 설정
       if (hasAgent) {
+        console.log('[useChat] Setting agentTyping to TRUE - waiting for agent response')
         setAgentTyping(true)
+      } else {
+        console.log('[useChat] No agent in room, skipping agentTyping')
       }
 
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
@@ -295,27 +299,12 @@ export function useChatRoom(roomId: string | null) {
         return [...prev, newMessage]
       })
 
-      // 에이전트 응답 대기 후 메시지 갱신 (Realtime 안될 경우 대비)
-      const checkForAgentResponse = async () => {
-        await fetchMessages()
-        // 새 메시지가 에이전트로부터 왔는지 확인
-        const latestMessages = await fetch(`/api/chat/rooms/${roomId}/messages`).then(r => r.json())
-        const hasNewAgentMessage = latestMessages.some((m: any) =>
-          m.sender_type === 'agent' && new Date(m.created_at) > new Date(newMessage.created_at)
-        )
-        if (hasNewAgentMessage) {
+      // 에이전트 응답 타임아웃 (15초 후 타이핑 상태 해제)
+      if (hasAgent) {
+        setTimeout(() => {
+          console.log('[useChat] Agent typing timeout reached, setting agentTyping to false')
           setAgentTyping(false)
-        }
-        return hasNewAgentMessage
-      }
-
-      // 점진적으로 체크 (더 자주, 더 오래)
-      const intervals = [500, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 10000, 15000]
-      for (const delay of intervals) {
-        setTimeout(async () => {
-          const found = await checkForAgentResponse()
-          if (found) return
-        }, delay)
+        }, 15000)
       }
 
       // 타이핑 상태 해제
@@ -380,6 +369,107 @@ export function useChatRoom(roomId: string | null) {
     handleTyping,
     fetchMessages,
     fetchRoom,
+  }
+}
+
+// 회의 상태 관리 훅
+export function useMeeting(roomId: string | null) {
+  const [meetingStatus, setMeetingStatus] = useState<{
+    is_meeting_active: boolean
+    meeting_topic: string | null
+    meeting_duration_minutes: number | null
+    meeting_started_at: string | null
+    meeting_end_time: string | null
+    remaining_seconds: number | null
+    meeting_facilitator_id: string | null  // 진행자 ID 추가
+  } | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  // 회의 상태 조회
+  const fetchMeetingStatus = useCallback(async () => {
+    if (!roomId) return
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/meeting`)
+      if (!res.ok) return
+      const data = await res.json()
+      setMeetingStatus(data)
+    } catch (err) {
+      console.error('Failed to fetch meeting status:', err)
+    }
+  }, [roomId])
+
+  // 회의 시작
+  const startMeeting = async (topic: string, durationMinutes: number, facilitatorId?: string | null) => {
+    if (!roomId) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/meeting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic,
+          duration_minutes: durationMinutes,
+          facilitator_id: facilitatorId || null,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to start meeting')
+      const data = await res.json()
+      setMeetingStatus(data)
+      return data
+    } catch (err) {
+      console.error('Failed to start meeting:', err)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 회의 종료
+  const endMeeting = async () => {
+    if (!roomId) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/meeting`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('Failed to end meeting')
+      const data = await res.json()
+      setMeetingStatus(data)
+      return data
+    } catch (err) {
+      console.error('Failed to end meeting:', err)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 초기 로드
+  useEffect(() => {
+    if (roomId) {
+      fetchMeetingStatus()
+    } else {
+      setMeetingStatus(null)
+    }
+  }, [roomId, fetchMeetingStatus])
+
+  // 회의 중일 때 1초마다 상태 업데이트
+  useEffect(() => {
+    if (!roomId || !meetingStatus?.is_meeting_active) return
+
+    const interval = setInterval(() => {
+      fetchMeetingStatus()
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [roomId, meetingStatus?.is_meeting_active, fetchMeetingStatus])
+
+  return {
+    meetingStatus,
+    loading,
+    startMeeting,
+    endMeeting,
+    fetchMeetingStatus,
   }
 }
 

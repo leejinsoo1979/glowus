@@ -11,7 +11,6 @@ import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal
 import { MemberAddModal, MemberFormData } from '@/components/team/MemberAddModal'
 import {
   TiltCard,
-  LiveMeshGradient,
 } from '@/components/dashboard'
 import {
   Users,
@@ -222,8 +221,6 @@ export default function TeamPage() {
   if (teams.length === 0) {
     return (
       <div className="relative min-h-screen p-6">
-        <LiveMeshGradient />
-
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -292,8 +289,6 @@ export default function TeamPage() {
 
   return (
     <div className="relative min-h-screen p-6">
-      <LiveMeshGradient />
-
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}

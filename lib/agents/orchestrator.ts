@@ -140,8 +140,12 @@ function createAgentNode(agent: AgentConfig) {
         responses: [agentResponse],
         messages: [new AIMessage({ content, name: agent.name })],
       }
-    } catch (error) {
-      console.error(`Agent ${agent.name} error:`, error)
+    } catch (error: any) {
+      console.error(`[Orchestrator] Agent ${agent.name} error:`)
+      console.error('  Provider:', agent.llmProvider)
+      console.error('  Model:', agent.llmModel)
+      console.error('  Error:', error?.message || error)
+      console.error('  Stack:', error?.stack)
 
       // Fallback 응답
       const fallbackResponse: AgentResponse = {
@@ -149,7 +153,7 @@ function createAgentNode(agent: AgentConfig) {
         agentName: agent.name,
         content: `죄송합니다. 일시적인 오류가 발생했습니다.`,
         timestamp: new Date(),
-        metadata: { error: true },
+        metadata: { error: true, errorMessage: error?.message },
       }
 
       return {
@@ -195,6 +199,7 @@ export async function runSequentialMode(
   agents: AgentConfig[],
   userMessage: string
 ): Promise<AgentResponse[]> {
+  console.log('[Orchestrator] Sequential mode starting with', agents.length, 'agents')
   const sortedAgents = [...agents].sort((a, b) =>
     (a.speakOrder ?? 0) - (b.speakOrder ?? 0)
   )
@@ -202,6 +207,7 @@ export async function runSequentialMode(
   const responses: AgentResponse[] = []
 
   for (const agent of sortedAgents) {
+    console.log(`[Orchestrator] Processing agent: ${agent.name}`)
     const node = createAgentNode(agent)
     const result = await node({
       messages: [],
@@ -215,10 +221,12 @@ export async function runSequentialMode(
     })
 
     if (result.responses?.[0]) {
+      console.log(`[Orchestrator] Agent ${agent.name} responded:`, result.responses[0].content.slice(0, 50))
       responses.push(result.responses[0])
     }
   }
 
+  console.log('[Orchestrator] Sequential mode completed with', responses.length, 'responses')
   return responses
 }
 
@@ -425,6 +433,7 @@ export async function orchestrateAgents(
 
   // 모드 결정: 옵션 > 에이전트 설정
   const effectiveMode = mode || agents[0]?.interactionMode || 'solo'
+  console.log(`[Orchestrator] orchestrateAgents called - mode: ${effectiveMode}, agents: ${agents.length}`)
 
   switch (effectiveMode) {
     case 'solo':

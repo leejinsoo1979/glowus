@@ -27,9 +27,9 @@ import {
   Workflow,
   LogOut,
   Mail,
-  MessageCircle,
   BrainCircuit,
 } from 'lucide-react'
+import { TbBrandWechat } from 'react-icons/tb'
 
 const navigation = [
   { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },
@@ -37,7 +37,7 @@ const navigation = [
   { name: '태스크', href: '/dashboard-group/tasks', icon: ListTodo },
   { name: 'KPI', href: '/dashboard-group/kpis', icon: TrendingUp },
   { name: '커밋 기록', href: '/dashboard-group/commits', icon: GitCommit },
-  { name: '메신저', href: '/dashboard-group/messenger', icon: MessageCircle },
+  { name: '메신저', href: '/dashboard-group/messenger', icon: TbBrandWechat },
   { name: '이메일', href: '/dashboard-group/email', icon: Mail },
   { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
   { name: 'AI 에이전트', href: '/dashboard-group/agents', icon: BrainCircuit },

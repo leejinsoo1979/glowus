@@ -15,8 +15,10 @@ import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal
 import { useTeamStore } from '@/stores/teamStore'
 import { CgMenuGridO } from 'react-icons/cg'
 import { BsPersonWorkspace } from 'react-icons/bs'
-import { IoCalendarOutline, IoRocketOutline } from 'react-icons/io5'
+import { IoCalendarNumberOutline, IoRocketOutline } from 'react-icons/io5'
 import { GoPerson, GoPeople } from 'react-icons/go'
+import { TbBrandWechat } from 'react-icons/tb'
+import { CiHardDrive } from 'react-icons/ci'
 import {
   LayoutDashboard,
   ListTodo,
@@ -34,7 +36,6 @@ import {
   Bot,
   LogOut,
   Mail,
-  MessageCircle,
   Home,
   Briefcase,
   PieChart,
@@ -523,7 +524,7 @@ const categories: Category[] = [
   {
     id: 'files',
     name: '파일·문서',
-    icon: FileText,
+    icon: CiHardDrive,
     items: [
       { name: '내 파일', href: '/dashboard-group/files', icon: FolderOpen },
       { name: '프로젝트별 문서', href: '/dashboard-group/files?view=projects', icon: FolderKanban },
@@ -535,9 +536,9 @@ const categories: Category[] = [
   {
     id: 'calendar',
     name: '캘린더',
-    icon: IoCalendarOutline,
+    icon: IoCalendarNumberOutline,
     items: [
-      { name: '전체 일정', href: '/dashboard-group/calendar', icon: IoCalendarOutline },
+      { name: '전체 일정', href: '/dashboard-group/calendar', icon: IoCalendarNumberOutline },
       { name: '개인 일정', href: '/dashboard-group/calendar?view=personal', icon: User },
       { name: '프로젝트 일정', href: '/dashboard-group/calendar?view=projects', icon: FolderKanban },
       { name: '마감일', href: '/dashboard-group/calendar?view=deadlines', icon: AlertCircle },
@@ -561,13 +562,14 @@ const categories: Category[] = [
   {
     id: 'messenger',
     name: '메신저',
-    icon: MessageCircle,
+    icon: TbBrandWechat,
     items: [
-      { name: '전체 채팅', href: '/dashboard-group/messenger', icon: MessageCircle },
+      { name: '전체 채팅', href: '/dashboard-group/messenger', icon: TbBrandWechat },
       { name: '개인 채팅', href: '/dashboard-group/messenger?view=dm', icon: User },
       { name: '팀 채널', href: '/dashboard-group/messenger?view=team', icon: Users },
       { name: '프로젝트 채널', href: '/dashboard-group/messenger?view=projects', icon: FolderKanban },
       { name: '에이전트 채팅', href: '/dashboard-group/messenger?view=agents', icon: Bot },
+      { name: '회의록', href: '/dashboard-group/messenger/meetings', icon: FileText },
     ]
   },
   // 팀 - 클릭 시 사이드바 열림

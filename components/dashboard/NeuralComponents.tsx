@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useRef, useState, useEffect } from 'react'
-import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import React from 'react'
+import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/stores/themeStore'
 
@@ -66,74 +66,31 @@ export function LiveMeshGradient() {
     )
 }
 
-// --- 3D Tilt Card ---
+// --- Card Component ---
 interface TiltCardProps {
     children: React.ReactNode
     className?: string
-    glowColor?: string
     onClick?: () => void
 }
 
-export function TiltCard({ children, className, glowColor = "rgba(255,255,255,0.1)", onClick }: TiltCardProps) {
-    const x = useMotionValue(0)
-    const y = useMotionValue(0)
-
-    const mouseX = useSpring(x, { stiffness: 500, damping: 100 })
-    const mouseY = useSpring(y, { stiffness: 500, damping: 100 })
-
-    const rotateX = useTransform(mouseY, [-0.5, 0.5], ["12deg", "-12deg"])
-    const rotateY = useTransform(mouseX, [-0.5, 0.5], ["-12deg", "12deg"])
-
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect()
-        const width = rect.width
-        const height = rect.height
-        const mouseXFromCenter = e.clientX - rect.left - width / 2
-        const mouseYFromCenter = e.clientY - rect.top - height / 2
-        x.set(mouseXFromCenter / width)
-        y.set(mouseYFromCenter / height)
-    }
-
-    const handleMouseLeave = () => {
-        x.set(0)
-        y.set(0)
-    }
-
+export function TiltCard({ children, className, onClick }: TiltCardProps) {
     return (
-        <motion.div
-            style={{
-                rotateX,
-                rotateY,
-                transformStyle: "preserve-3d",
-            }}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
+        <div
             onClick={onClick}
             className={cn(
-                "relative rounded-3xl transition-all duration-200 ease-out group",
-                "bg-white dark:bg-white/5 backdrop-blur-xl", // Adaptive Glass
-                "border border-zinc-500 dark:border-white/10", // Adaptive Border
-                "shadow-[0_4px_20px_rgba(0,0,0,0.15)] dark:shadow-none", // Light mode shadow (강한 그림자)
-                "hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:hover:shadow-[0_0_40px_-10px_rgba(255,255,255,0.1)]",
-                "hover:border-zinc-400 dark:hover:border-white/20",
+                "relative rounded-2xl overflow-hidden",
+                "bg-white dark:bg-white/5 backdrop-blur-xl",
+                "border border-zinc-200 dark:border-white/10",
+                "shadow-sm dark:shadow-none",
+                "hover:border-zinc-300 dark:hover:border-white/20 transition-colors",
+                onClick && "cursor-pointer",
                 className
             )}
         >
-            <div
-                style={{ transform: "translateZ(50px)" }}
-                className="relative z-10 h-full"
-            >
+            <div className="relative z-10 h-full">
                 {children}
             </div>
-
-            {/* Glossy Reflection */}
-            <div
-                className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-                style={{
-                    background: `radial-gradient(circle at 50% 0%, ${glowColor}, transparent 70%)`
-                }}
-            />
-        </motion.div>
+        </div>
     )
 }
 

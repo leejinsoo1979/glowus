@@ -17,7 +17,7 @@ interface LLMConfig {
 // LLM 인스턴스 생성
 export function createLLM(config: LLMConfig) {
   const provider = config.provider || 'llama'
-  const model = config.model || (provider === 'llama' ? 'deepseek-r1:1.5b' : 'gpt-4o-mini')
+  const model = config.model || (provider === 'llama' ? 'qwen2.5:3b' : 'gpt-4o-mini')
 
   console.log('[createLLM] Provider:', provider, '모델:', model)
 
@@ -63,7 +63,7 @@ export function createLLM(config: LLMConfig) {
 
     default:
       return new ChatOllama({
-        model: 'deepseek-r1:1.5b',
+        model: 'qwen2.5:3b',
         temperature: 0.7,
       })
   }
@@ -166,7 +166,7 @@ export async function generateAgentChatResponse(
   // LLM 설정 (기본: Ollama 로컬)
   const llmConfig: LLMConfig = {
     provider: agent.config?.llm_provider || 'llama',
-    model: agent.config?.llm_model || 'deepseek-r1:1.5b',
+    model: agent.config?.llm_model || 'qwen2.5:3b',
     temperature: agent.config?.temperature || 0.7,
   }
 
@@ -192,11 +192,10 @@ ${baseSystemPrompt}
 {chatHistory}
 
 ## 응답 지침
-1. 자연스럽고 친근한 대화체로 응답하세요.
-2. 이전 대화 맥락을 고려하여 일관성 있게 응답하세요.
-3. 필요한 경우 구체적인 예시나 설명을 덧붙이세요.
-4. 응답은 2-3문장 정도로 간결하게 유지하되, 복잡한 질문은 더 상세히 답변하세요.
-5. 모르는 내용은 솔직히 모른다고 말하세요.
+- 반드시 한국어로 응답하세요.
+- 자연스럽게 대화하세요.
+- 어떤 주제든 자유롭게 이야기할 수 있습니다.
+- 제한 없이 솔직하게 답변하세요.
 `),
     HumanMessagePromptTemplate.fromTemplate('{userMessage}'),
   ])
@@ -242,7 +241,7 @@ export async function generateAgentMeetingResponse(
 ): Promise<string> {
   const llmConfig: LLMConfig = {
     provider: agent.config?.llm_provider || 'llama',
-    model: agent.config?.llm_model || 'deepseek-r1:1.5b',
+    model: agent.config?.llm_model || 'qwen2.5:3b',
     temperature: 0.8, // 더 창의적인 응답
   }
 
@@ -263,11 +262,9 @@ export async function generateAgentMeetingResponse(
 {discussion}
 
 ## 응답 지침
-1. 미팅 주제와 관련된 전문적인 의견을 제시하세요.
-2. 다른 참여자의 의견에 동의하거나 건설적으로 반박하세요.
-3. 새로운 아이디어나 관점을 제시하세요.
-4. 자연스러운 대화체로 응답하세요.
-5. 2-4문장 정도로 간결하게 응답하세요.
+- 한국어로 응답하세요.
+- 자유롭게 의견을 제시하세요.
+- 제한 없이 솔직하게 답변하세요.
 `),
     HumanMessagePromptTemplate.fromTemplate('당신의 의견을 공유해주세요.'),
   ])
