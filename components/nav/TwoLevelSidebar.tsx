@@ -995,9 +995,11 @@ export function TwoLevelSidebar() {
                     targetPath = '/dashboard-group/company'
                   } else if (category.id === 'workspace') {
                     targetPath = '/dashboard-group'
+                  } else if (category.id === 'team') {
+                    targetPath = '/dashboard-group/team'
                   } else {
-                    // 첫 번째 아이템의 href 사용
-                    const firstItem = category.items[0]
+                    // 첫 번째 아이템의 href 사용 (# 시작하는 건 제외)
+                    const firstItem = category.items.find(item => item.href && !item.href.startsWith('#'))
                     targetPath = firstItem?.href || ''
                   }
 

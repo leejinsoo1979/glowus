@@ -257,8 +257,9 @@ export default function TeamMembersPage() {
               className={cn(
                 "group relative rounded-2xl cursor-pointer",
                 "bg-white dark:bg-zinc-800/50",
-                "border border-zinc-200 dark:border-zinc-700",
-                "hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow-md",
+                "border border-zinc-200 dark:border-zinc-700/50",
+                "shadow-sm hover:shadow-lg dark:shadow-none",
+                "hover:border-zinc-300 dark:hover:border-zinc-600",
                 "transition-all duration-200"
               )}
             >
@@ -369,7 +370,7 @@ export default function TeamMembersPage() {
             <motion.div
               key={member.id}
               variants={item}
-              className="group rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-zinc-200/50 dark:border-white/10 p-4 hover:border-accent/30 transition-all"
+              className="group rounded-2xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 shadow-sm dark:shadow-none p-4 hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-600 transition-all"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
