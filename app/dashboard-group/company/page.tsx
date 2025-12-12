@@ -3,13 +3,19 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
+import { useThemeStore } from '@/stores/themeStore'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Plus,
   ExternalLink,
   FileText,
+  X,
+  Check,
+  Settings,
 } from 'lucide-react'
 
 // 위젯 헤더 컴포넌트 (보기 버튼 포함)
@@ -489,6 +495,34 @@ function ContractProgressWidget({ isDark }: { isDark: boolean }) {
 
 // 인력 현황
 function HRStatusWidget({ isDark }: { isDark: boolean }) {
+  const [hoveredPoint, setHoveredPoint] = useState<number | null>(null)
+  const [rangeStart, setRangeStart] = useState(0)
+  const [rangeEnd, setRangeEnd] = useState(100)
+
+  const hrData = [
+    { month: '2025-07', total: 0.35, joined: 0.1, left: 0.05 },
+    { month: '2025-08', total: 0.4, joined: 0.15, left: 0.1 },
+    { month: '2025-09', total: 0.55, joined: 0.2, left: 0.05 },
+    { month: '2025-10', total: 0.65, joined: 0.1, left: 0.1 },
+    { month: '2025-11', total: 0.75, joined: 0.2, left: 0.1 },
+    { month: '2025-12', total: 0.85, joined: 0.15, left: 0.05 },
+  ]
+
+  // viewBox 기반 반응형 차트
+  const viewBoxWidth = 400
+  const viewBoxHeight = 180
+  const paddingLeft = 35
+  const paddingRight = 20
+  const paddingTop = 15
+  const paddingBottom = 30
+  const graphWidth = viewBoxWidth - paddingLeft - paddingRight
+  const graphHeight = viewBoxHeight - paddingTop - paddingBottom
+
+  const getX = (index: number) => paddingLeft + (index / (hrData.length - 1)) * graphWidth
+  const getY = (value: number) => paddingTop + (1 - value) * graphHeight
+
+  const linePath = hrData.map((d, i) => `${i === 0 ? 'M' : 'L'}${getX(i)},${getY(d.total)}`).join(' ')
+
   return (
     <div className={cn(
       'rounded-xl border p-4',
@@ -496,47 +530,188 @@ function HRStatusWidget({ isDark }: { isDark: boolean }) {
     )}>
       <WidgetHeader title="인력 현황" href="/dashboard-group/hr/employees" isDark={isDark} />
 
-      <div className="flex items-center gap-4 mb-4 text-xs">
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-blue-500" />
+      {/* Legend */}
+      <div className="flex items-center gap-4 mb-3 text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-0.5 bg-emerald-500 rounded-full" />
           <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>총인원</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />
           <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>입사자</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-red-500" />
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 bg-red-400 rounded-sm" />
           <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>퇴사자</span>
         </div>
       </div>
 
-      <div className={cn(
-        'h-32 rounded-lg relative overflow-hidden',
-        isDark ? 'bg-zinc-800/50' : 'bg-zinc-50'
-      )}>
-        <svg className="w-full h-full" viewBox="0 0 300 100" preserveAspectRatio="none">
+      {/* Chart - 반응형 */}
+      <div className="relative w-full" style={{ aspectRatio: '400/180' }}>
+        <svg
+          viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+          className="w-full h-full"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* Y-Axis Grid Lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((val) => (
+            <g key={val}>
+              <line
+                x1={paddingLeft}
+                y1={getY(val)}
+                x2={viewBoxWidth - paddingRight}
+                y2={getY(val)}
+                stroke={isDark ? '#3f3f46' : '#e4e4e7'}
+                strokeDasharray="3,3"
+              />
+              <text
+                x={paddingLeft - 8}
+                y={getY(val) + 4}
+                textAnchor="end"
+                fontSize="11"
+                fill={isDark ? '#71717a' : '#a1a1aa'}
+              >
+                {val}
+              </text>
+            </g>
+          ))}
+
+          {/* Bar Chart for 입사자/퇴사자 */}
+          {hrData.map((d, i) => {
+            const barWidth = 12
+            const x = getX(i)
+            return (
+              <g key={i}>
+                {/* 입사자 (blue) */}
+                <rect
+                  x={x - barWidth - 2}
+                  y={getY(d.joined)}
+                  width={barWidth}
+                  height={graphHeight - (getY(d.joined) - paddingTop)}
+                  fill="rgb(59, 130, 246)"
+                  opacity={0.8}
+                  rx={2}
+                />
+                {/* 퇴사자 (red) */}
+                <rect
+                  x={x + 2}
+                  y={getY(d.left)}
+                  width={barWidth}
+                  height={graphHeight - (getY(d.left) - paddingTop)}
+                  fill="rgb(248, 113, 113)"
+                  opacity={0.8}
+                  rx={2}
+                />
+              </g>
+            )
+          })}
+
+          {/* Line Chart for 총인원 */}
           <path
-            d="M0,80 L50,75 L100,70 L150,65 L200,60 L250,55 L300,50"
+            d={linePath}
             fill="none"
-            stroke="rgb(59, 130, 246)"
-            strokeWidth="2"
-            opacity="0.8"
+            stroke="rgb(16, 185, 129)"
+            strokeWidth="2.5"
           />
-          <path
-            d="M0,90 L50,88 L100,85 L150,82 L200,80 L250,78 L300,75"
-            fill="none"
-            stroke="rgb(34, 197, 94)"
-            strokeWidth="2"
-            opacity="0.8"
-          />
+
+          {/* Data Points */}
+          {hrData.map((d, i) => (
+            <g key={i}>
+              <circle
+                cx={getX(i)}
+                cy={getY(d.total)}
+                r={hoveredPoint === i ? 6 : 5}
+                fill="rgb(16, 185, 129)"
+                stroke={isDark ? '#18181b' : '#fff'}
+                strokeWidth="2"
+                className="cursor-pointer"
+                onMouseEnter={() => setHoveredPoint(i)}
+                onMouseLeave={() => setHoveredPoint(null)}
+              />
+            </g>
+          ))}
+
+          {/* X-Axis Labels */}
+          {hrData.map((d, i) => (
+            <text
+              key={i}
+              x={getX(i)}
+              y={viewBoxHeight - 8}
+              textAnchor="middle"
+              fontSize="11"
+              fill={isDark ? '#71717a' : '#a1a1aa'}
+            >
+              {d.month}
+            </text>
+          ))}
         </svg>
-        <div className="absolute bottom-2 left-0 right-0 flex justify-between px-4 text-[10px] text-zinc-500">
+
+        {/* Tooltip */}
+        {hoveredPoint !== null && (
+          <div
+            className={cn(
+              'absolute px-3 py-2 rounded-lg text-xs shadow-lg z-10 pointer-events-none',
+              isDark ? 'bg-zinc-800 border border-zinc-700' : 'bg-white border border-zinc-200'
+            )}
+            style={{
+              left: `${(getX(hoveredPoint) / viewBoxWidth) * 100}%`,
+              top: `${(getY(hrData[hoveredPoint].total) / viewBoxHeight) * 100 - 25}%`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <p className={cn('font-medium mb-1', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
+              {hrData[hoveredPoint].month}
+            </p>
+            <div className="space-y-0.5">
+              <p className="flex items-center gap-1.5">
+                <span className="w-2.5 h-0.5 bg-emerald-500 rounded" />
+                <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>총인원:</span>
+                <span className={isDark ? 'text-zinc-200' : 'text-zinc-800'}>{hrData[hoveredPoint].total}</span>
+              </p>
+              <p className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />
+                <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>입사자:</span>
+                <span className={isDark ? 'text-zinc-200' : 'text-zinc-800'}>{hrData[hoveredPoint].joined}</span>
+              </p>
+              <p className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 bg-red-400 rounded-sm" />
+                <span className={isDark ? 'text-zinc-400' : 'text-zinc-600'}>퇴사자:</span>
+                <span className={isDark ? 'text-zinc-200' : 'text-zinc-800'}>{hrData[hoveredPoint].left}</span>
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Range Slider */}
+      <div className="mt-4 px-1">
+        <div className={cn(
+          'relative h-2 rounded-full',
+          isDark ? 'bg-zinc-800' : 'bg-zinc-200'
+        )}>
+          <div
+            className="absolute h-full bg-emerald-500/50 rounded-full"
+            style={{ left: `${rangeStart}%`, width: `${rangeEnd - rangeStart}%` }}
+          />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={rangeStart}
+            onChange={(e) => setRangeStart(Math.min(Number(e.target.value), rangeEnd - 10))}
+            className="absolute w-full h-full opacity-0 cursor-pointer"
+          />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={rangeEnd}
+            onChange={(e) => setRangeEnd(Math.max(Number(e.target.value), rangeStart + 10))}
+            className="absolute w-full h-full opacity-0 cursor-pointer"
+          />
+        </div>
+        <div className="flex justify-between mt-1.5 text-[10px] text-zinc-500">
           <span>2025-07</span>
-          <span>2025-08</span>
-          <span>2025-09</span>
-          <span>2025-10</span>
-          <span>2025-11</span>
           <span>2025-12</span>
         </div>
       </div>
@@ -597,35 +772,481 @@ function DataCollectionWidget({ isDark }: { isDark: boolean }) {
   )
 }
 
+// 위젯 미리보기 - 미니 캘린더
+function MiniCalendarPreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getAccentColor = () => {
+    switch (accentColor) {
+      case 'purple': return 'bg-purple-500'
+      case 'blue': return 'bg-blue-500'
+      case 'green': return 'bg-green-500'
+      case 'orange': return 'bg-orange-500'
+      case 'pink': return 'bg-pink-500'
+      case 'red': return 'bg-red-500'
+      case 'yellow': return 'bg-yellow-500'
+      case 'cyan': return 'bg-cyan-500'
+      default: return 'bg-blue-500'
+    }
+  }
+
+  return (
+    <div className="h-full p-3 flex flex-col">
+      <div className={cn('text-[10px] font-bold mb-2', isDark ? 'text-zinc-300' : 'text-zinc-700')}>2025.09</div>
+      <div className="grid grid-cols-7 gap-1 flex-1 content-start">
+        {[...Array(21)].map((_, i) => (
+          <div
+            key={i}
+            className={cn(
+              'aspect-square rounded-[2px] flex items-center justify-center text-[6px] font-medium transition-colors',
+              i === 8
+                ? cn(getAccentColor(), 'text-white shadow-sm')
+                : isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-100 text-zinc-400'
+            )}
+          >
+            {i + 1}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 차트
+function MiniChartPreview({ isDark, type }: { isDark: boolean; type: 'bar' | 'line' }) {
+  const { accentColor } = useThemeStore()
+
+  const getStrokeColor = () => {
+    switch (accentColor) {
+      case 'purple': return '#a855f7' // purple-500
+      case 'blue': return '#3b82f6' // blue-500
+      case 'green': return '#22c55e' // green-500
+      case 'orange': return '#f97316' // orange-500
+      case 'pink': return '#ec4899' // pink-500
+      case 'red': return '#ef4444' // red-500
+      case 'yellow': return '#eab308' // yellow-500
+      case 'cyan': return '#06b6d4' // cyan-500
+      default: return '#3b82f6'
+    }
+  }
+
+  const getFillColor = (idx: number) => {
+    // Alternate opacity or slightly different shades based on accent
+    const base = getStrokeColor()
+    return idx % 2 === 0 ? base : `${base}80` // 50% opacity
+  }
+
+  if (type === 'bar') {
+    return (
+      <div className="h-full p-4 flex items-end gap-1.5">
+        {[40, 70, 50, 85, 60, 75].map((h, i) => (
+          <div
+            key={i}
+            className="flex-1 rounded-t-sm transition-all hover:opacity-80"
+            style={{
+              height: `${h}%`,
+              backgroundColor: getFillColor(i)
+            }}
+          />
+        ))}
+      </div>
+    )
+  }
+  return (
+    <div className="h-full p-3 flex items-center">
+      <svg viewBox="0 0 100 50" className="w-full h-full overflow-visible">
+        {/* Fill Area with Gradient */}
+        <defs>
+          <linearGradient id={`gradient-${accentColor}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={getStrokeColor()} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={getStrokeColor()} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M0,40 L20,30 L40,35 L60,20 L80,25 L100,15 L100,50 L0,50 Z"
+          fill={`url(#gradient-${accentColor})`}
+          stroke="none"
+        />
+        <path
+          d="M0,40 L20,30 L40,35 L60,20 L80,25 L100,15"
+          fill="none"
+          stroke={getStrokeColor()}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {[0, 20, 40, 60, 80, 100].map((x, i) => (
+          <circle
+            key={i}
+            cx={x}
+            cy={[40, 30, 35, 20, 25, 15][i]}
+            r="2.5"
+            fill="white"
+            stroke={getStrokeColor()}
+            strokeWidth="1.5"
+          />
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 테이블
+function MiniTablePreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getAccentBg = () => {
+    switch (accentColor) {
+      case 'purple': return 'bg-purple-500'
+      case 'blue': return 'bg-blue-500'
+      case 'green': return 'bg-green-500'
+      case 'orange': return 'bg-orange-500'
+      case 'pink': return 'bg-pink-500'
+      case 'red': return 'bg-red-500'
+      case 'yellow': return 'bg-yellow-500'
+      case 'cyan': return 'bg-cyan-500'
+      default: return 'bg-blue-500'
+    }
+  }
+
+  return (
+    <div className="h-full p-4 flex flex-col justify-center gap-2.5">
+      <div className="flex gap-2 mb-1">
+        <div className={cn('w-8 h-2 rounded-[2px]', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('flex-1 h-2 rounded-[2px]', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('w-4 h-2 rounded-[2px]', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+      </div>
+      {[1, 2, 3].map((_, i) => (
+        <div key={i} className="flex gap-2 items-center">
+          <div className={cn('w-1.5 h-1.5 rounded-full', i === 0 ? getAccentBg() : isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+          <div className={cn('flex-1 h-1.5 rounded-full', isDark ? 'bg-zinc-800' : 'bg-zinc-100')} />
+          <div className={cn('w-6 h-1.5 rounded-full', isDark ? 'bg-zinc-800' : 'bg-zinc-100')} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 교육/플레이
+function MiniPlayPreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getIconColor = () => {
+    switch (accentColor) {
+      case 'purple': return 'text-purple-500'
+      case 'blue': return 'text-blue-500'
+      case 'green': return 'text-green-500'
+      case 'orange': return 'text-orange-500'
+      case 'pink': return 'text-pink-500'
+      case 'red': return 'text-red-500'
+      case 'yellow': return 'text-yellow-500'
+      case 'cyan': return 'text-cyan-500'
+      default: return 'text-blue-500'
+    }
+  }
+
+  return (
+    <div className="h-full flex items-center justify-center">
+      <div className={cn(
+        'w-10 h-10 rounded-full flex items-center justify-center border transition-all',
+        isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200 shadow-sm'
+      )}>
+        <div
+          className={cn(
+            "w-0 h-0 ml-1 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[10px]",
+            isDark ? "border-l-zinc-400" : "border-l-zinc-600"
+          )}
+          style={{
+            // Override with theme color if needed, but grey usually looks cleaner for "play" unless active
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 세금계산서 (문서 + 도장)
+function MiniTaxInvoicePreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getFillColor = () => {
+    switch (accentColor) {
+      case 'purple': return '#a855f7'
+      case 'blue': return '#3b82f6'
+      case 'green': return '#22c55e'
+      case 'orange': return '#f97316'
+      case 'pink': return '#ec4899'
+      case 'red': return '#ef4444'
+      case 'yellow': return '#eab308'
+      case 'cyan': return '#06b6d4'
+      default: return '#3b82f6'
+    }
+  }
+
+  return (
+    <div className="h-full flex items-center justify-center p-3">
+      {/* Document Shape */}
+      <div className={cn(
+        "relative w-10 h-14 rounded-sm border flex flex-col items-center pt-2 gap-1",
+        isDark ? "bg-zinc-800 border-zinc-600" : "bg-white border-zinc-300 shadow-sm"
+      )}>
+        <div className={cn("w-6 h-0.5 rounded-full", isDark ? "bg-zinc-600" : "bg-zinc-200")} />
+        <div className={cn("w-6 h-0.5 rounded-full", isDark ? "bg-zinc-600" : "bg-zinc-200")} />
+        <div className={cn("w-4 h-0.5 rounded-full", isDark ? "bg-zinc-600" : "bg-zinc-200")} />
+
+        {/* Stamp/Badge */}
+        <div className="absolute bottom-2 right-[-4px] rounded-full p-0.5 bg-white dark:bg-zinc-900 border border-transparent shadow-sm">
+          <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: getFillColor() }}>
+            <Check className="w-3 h-3 text-white" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 계좌 (카드)
+function MiniAccountPreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getGradientClass = () => {
+    switch (accentColor) {
+      case 'purple': return 'from-purple-500 to-purple-600'
+      case 'blue': return 'from-blue-500 to-blue-600'
+      case 'green': return 'from-green-500 to-green-600'
+      case 'orange': return 'from-orange-500 to-orange-600'
+      case 'pink': return 'from-pink-500 to-pink-600'
+      case 'red': return 'from-red-500 to-red-600'
+      case 'yellow': return 'from-yellow-500 to-yellow-600'
+      case 'cyan': return 'from-cyan-500 to-cyan-600'
+      default: return 'from-blue-500 to-blue-600'
+    }
+  }
+
+  return (
+    <div className="h-full flex items-center justify-center p-3">
+      {/* Card Shape */}
+      <div className={cn(
+        "w-12 h-8 rounded-md bg-gradient-to-br shadow-sm flex flex-col justify-between p-1.5",
+        getGradientClass()
+      )}>
+        <div className="w-2 h-1.5 rounded-[1px] bg-white/30" />
+        <div className="flex gap-1 justify-end">
+          <div className="w-1 h-1 rounded-full bg-white/50" />
+          <div className="w-1 h-1 rounded-full bg-white/50" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 전자계약 (서명)
+function MiniContractPreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getStrokeColor = () => {
+    switch (accentColor) {
+      case 'purple': return '#a855f7'
+      case 'blue': return '#3b82f6'
+      case 'green': return '#22c55e'
+      case 'orange': return '#f97316'
+      case 'pink': return '#ec4899'
+      case 'red': return '#ef4444'
+      case 'yellow': return '#eab308'
+      case 'cyan': return '#06b6d4'
+      default: return '#3b82f6'
+    }
+  }
+
+  return (
+    <div className="h-full flex items-center justify-center p-3">
+      <div className={cn(
+        "w-10 h-12 rounded-sm border flex flex-col justify-end p-2 gap-1.5",
+        isDark ? "bg-zinc-800 border-zinc-600" : "bg-white border-zinc-300"
+      )}>
+        <div className={cn("w-full h-0.5 rounded-full mb-auto mt-1", isDark ? "bg-zinc-600" : "bg-zinc-100")} />
+
+        {/* Signature Line */}
+        <div className="relative">
+          <div className={cn("w-full h-px", isDark ? "bg-zinc-600" : "bg-zinc-200")} />
+          {/* Signature Scribble */}
+          <svg className="absolute bottom-0.5 left-0 w-full h-4 overflow-visible">
+            <path
+              d="M2,10 Q5,4 8,8 T15,6 T22,8"
+              fill="none"
+              stroke={getStrokeColor()}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 위젯 미리보기 - 자료수집 (클라우드/서버)
+function MiniDataCollectionPreview({ isDark }: { isDark: boolean }) {
+  const { accentColor } = useThemeStore()
+
+  const getFillColor = () => {
+    switch (accentColor) {
+      case 'purple': return 'text-purple-500'
+      case 'blue': return 'text-blue-500'
+      case 'green': return 'text-green-500'
+      case 'orange': return 'text-orange-500'
+      case 'pink': return 'text-pink-500'
+      case 'red': return 'text-red-500'
+      case 'yellow': return 'text-yellow-500'
+      case 'cyan': return 'text-cyan-500'
+      default: return 'text-blue-500'
+    }
+  }
+
+  return (
+    <div className="h-full flex items-center justify-center">
+      <div className={cn(
+        "relative w-10 h-10 rounded-full flex items-center justify-center border",
+        isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-50 border-zinc-200"
+      )}>
+        {/* Arrows */}
+        <svg
+          viewBox="0 0 24 24"
+          className={cn("w-5 h-5 animate-pulse", getFillColor())}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+          <path d="M16 21h5v-5" />
+        </svg>
+      </div>
+    </div>
+  )
+}
+
 export default function CompanyDashboardPage() {
   const { resolvedTheme } = useTheme()
+  const { accentColor } = useThemeStore() // Call hook here too for container styling
   const isDark = resolvedTheme === 'dark'
+  const [isWidgetBarOpen, setIsWidgetBarOpen] = useState(true)
+
+  const router = useRouter()
+
+  const widgetPreviews = [
+    { id: 'calendar', title: '자금 캘린더', href: '/dashboard-group/company/calendar', preview: <MiniCalendarPreview isDark={isDark} /> },
+    { id: 'approval', title: '전자결재 진행현황', href: '/dashboard-group/finance/transactions', preview: <MiniChartPreview isDark={isDark} type="bar" /> },
+    { id: 'workforce', title: '인력현황', href: '/dashboard-group/hr/employees', preview: <MiniChartPreview isDark={isDark} type="line" /> },
+    { id: 'sales', title: '매출입 현황', href: '/dashboard-group/sales/sales-list', preview: <MiniChartPreview isDark={isDark} type="bar" /> },
+    { id: 'tax-invoice', title: '매출 전자세금계산서 발행현황', href: '/dashboard-group/sales/tax-invoice', preview: <MiniTaxInvoicePreview isDark={isDark} /> },
+    { id: 'account', title: '계좌 잔액 현황', href: '/dashboard-group/finance/accounts', preview: <MiniAccountPreview isDark={isDark} /> },
+    { id: 'education', title: '교육 현황', href: '/dashboard-group/hr/training-status', preview: <MiniPlayPreview isDark={isDark} /> },
+    { id: 'contract', title: '전자계약 진행현황', href: '/dashboard-group/hr/contracts', preview: <MiniContractPreview isDark={isDark} /> },
+    { id: 'data-collection', title: '기관별 자료수집 이력', href: '/dashboard-group/company/data-collection', preview: <MiniDataCollectionPreview isDark={isDark} /> },
+  ]
+
+  // Copy-paste of the robust theme class generator from Sidebar
+  const getThemeClasses = () => {
+    switch (accentColor) {
+      case 'purple': return { border: 'hover:border-purple-500', text: 'group-hover:text-purple-600 dark:group-hover:text-purple-400', bg: 'hover:bg-purple-50 dark:hover:bg-purple-900/10' }
+      case 'green': return { border: 'hover:border-green-500', text: 'group-hover:text-green-600 dark:group-hover:text-green-400', bg: 'hover:bg-green-50 dark:hover:bg-green-900/10' }
+      case 'orange': return { border: 'hover:border-orange-500', text: 'group-hover:text-orange-600 dark:group-hover:text-orange-400', bg: 'hover:bg-orange-50 dark:hover:bg-orange-900/10' }
+      case 'pink': return { border: 'hover:border-pink-500', text: 'group-hover:text-pink-600 dark:group-hover:text-pink-400', bg: 'hover:bg-pink-50 dark:hover:bg-pink-900/10' }
+      case 'red': return { border: 'hover:border-red-500', text: 'group-hover:text-red-600 dark:group-hover:text-red-400', bg: 'hover:bg-red-50 dark:hover:bg-red-900/10' }
+      case 'yellow': return { border: 'hover:border-yellow-500', text: 'group-hover:text-yellow-600 dark:group-hover:text-yellow-400', bg: 'hover:bg-yellow-50 dark:hover:bg-yellow-900/10' }
+      case 'cyan': return { border: 'hover:border-cyan-500', text: 'group-hover:text-cyan-600 dark:group-hover:text-cyan-400', bg: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/10' }
+      case 'blue': default: return { border: 'hover:border-blue-500', text: 'group-hover:text-blue-600 dark:group-hover:text-blue-400', bg: 'hover:bg-blue-50 dark:hover:bg-blue-900/10' }
+    }
+  }
+
+  const theme = getThemeClasses()
 
   return (
     <div className="space-y-6">
-      {/* 탭 헤더 */}
+      {/* 위젯 슬라이드 바 */}
       <div className={cn(
-        'flex items-center gap-1 border-b pb-2 -mt-4 -mx-8 px-8',
+        'border-b transition-all duration-300 -mt-4 -mx-8 px-8',
         isDark ? 'border-zinc-800' : 'border-zinc-200'
       )}>
-        {['전자세금계산서 발행', '사원정보관리', '계정상태관리', '연차촉진 현황'].map((tab, i) => (
-          <div key={tab} className="flex items-center">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-3">
+            <span className={cn('text-sm font-bold', isDark ? 'text-zinc-100' : 'text-zinc-900')}>홈</span>
+            <Settings className={cn('w-4 h-4', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
+            <div className={cn('w-24 h-px', isDark ? 'bg-zinc-700' : 'bg-zinc-300')} />
+          </div>
+          <div className="flex items-center gap-2">
             <button className={cn(
-              'px-3 py-2 text-sm',
-              i === 0
-                ? isDark ? 'text-zinc-100 font-medium' : 'text-zinc-900 font-medium'
-                : isDark ? 'text-zinc-500' : 'text-zinc-400'
+              'flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-medium transition-colors',
+              isDark ? 'border-zinc-700 text-zinc-400 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-600 hover:bg-zinc-100'
             )}>
-              {tab}
+              <X className="w-3.5 h-3.5" />
+              취소
             </button>
             <button className={cn(
-              'p-1 rounded hover:bg-zinc-100 text-zinc-400',
-              isDark && 'hover:bg-zinc-800'
+              'flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-medium transition-colors',
+              isDark ? 'border-zinc-700 text-zinc-400 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-600 hover:bg-zinc-100'
             )}>
-              ×
+              <Check className="w-3.5 h-3.5" />
+              저장
+            </button>
+            <button
+              onClick={() => setIsWidgetBarOpen(!isWidgetBarOpen)}
+              className={cn(
+                'p-1.5 rounded transition-colors ml-2',
+                isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-200 text-zinc-500'
+              )}
+            >
+              {isWidgetBarOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
           </div>
-        ))}
+        </div>
+
+        {/* 위젯 미리보기 그리드 */}
+        <div className={cn(
+          'transition-all duration-300 overflow-hidden',
+          isWidgetBarOpen ? 'max-h-60 pb-6' : 'max-h-0'
+        )}>
+          <div className="grid grid-cols-9 gap-3">
+            {widgetPreviews.map((widget) => (
+              <div
+                key={widget.id}
+                onClick={() => router.push(widget.href)}
+                className={cn(
+                  'group rounded-lg border overflow-hidden cursor-pointer transition-all duration-200',
+                  isDark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200',
+                  theme.border, // Hover border color from theme
+                  theme.bg // Hover background tint from theme
+                )}
+              >
+                <div className={cn(
+                  'h-24 transition-colors',
+                  isDark ? 'bg-zinc-800/50' : 'bg-zinc-50/50',
+                  'group-hover:bg-transparent' // Let container bg show through on hover
+                )}>
+                  {widget.preview}
+                </div>
+                <div className={cn(
+                  'px-2 py-2.5 border-t text-center transition-colors',
+                  isDark ? 'border-zinc-700' : 'border-zinc-100',
+                  'group-hover:border-transparent'
+                )}>
+                  <p className={cn(
+                    'text-[11px] font-bold leading-tight line-clamp-2 transition-colors',
+                    isDark ? 'text-zinc-400' : 'text-zinc-600',
+                    theme.text // Hover text color from theme
+                  )}>
+                    {widget.title}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 3컬럼 그리드 레이아웃 */}

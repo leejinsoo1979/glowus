@@ -578,63 +578,77 @@ function TopLevelCardMenu({
           border: 'hover:border-purple-500 focus:border-purple-500',
           text: 'group-hover:text-purple-600 dark:group-hover:text-purple-400',
           bg: 'hover:bg-purple-50 dark:hover:bg-purple-900/10',
+          iconBg: 'group-hover:bg-purple-100 dark:group-hover:bg-purple-500/20',
           activeBorder: 'border-purple-600 ring-1 ring-purple-600',
           activeText: 'text-purple-600 dark:text-purple-400',
-          activeBg: 'bg-purple-50 dark:bg-purple-900/20'
+          activeBg: 'bg-purple-50 dark:bg-purple-900/20',
+          activeIconBg: 'bg-purple-100 dark:bg-purple-500/20'
         }
       case 'green':
         return {
           border: 'hover:border-green-500 focus:border-green-500',
           text: 'group-hover:text-green-600 dark:group-hover:text-green-400',
           bg: 'hover:bg-green-50 dark:hover:bg-green-900/10',
+          iconBg: 'group-hover:bg-green-100 dark:group-hover:bg-green-500/20',
           activeBorder: 'border-green-600 ring-1 ring-green-600',
           activeText: 'text-green-600 dark:text-green-400',
-          activeBg: 'bg-green-50 dark:bg-green-900/20'
+          activeBg: 'bg-green-50 dark:bg-green-900/20',
+          activeIconBg: 'bg-green-100 dark:bg-green-500/20'
         }
       case 'orange':
         return {
           border: 'hover:border-orange-500 focus:border-orange-500',
           text: 'group-hover:text-orange-600 dark:group-hover:text-orange-400',
           bg: 'hover:bg-orange-50 dark:hover:bg-orange-900/10',
+          iconBg: 'group-hover:bg-orange-100 dark:group-hover:bg-orange-500/20',
           activeBorder: 'border-orange-600 ring-1 ring-orange-600',
           activeText: 'text-orange-600 dark:text-orange-400',
-          activeBg: 'bg-orange-50 dark:bg-orange-900/20'
+          activeBg: 'bg-orange-50 dark:bg-orange-900/20',
+          activeIconBg: 'bg-orange-100 dark:bg-orange-500/20'
         }
       case 'pink':
         return {
           border: 'hover:border-pink-500 focus:border-pink-500',
           text: 'group-hover:text-pink-600 dark:group-hover:text-pink-400',
           bg: 'hover:bg-pink-50 dark:hover:bg-pink-900/10',
+          iconBg: 'group-hover:bg-pink-100 dark:group-hover:bg-pink-500/20',
           activeBorder: 'border-pink-600 ring-1 ring-pink-600',
           activeText: 'text-pink-600 dark:text-pink-400',
-          activeBg: 'bg-pink-50 dark:bg-pink-900/20'
+          activeBg: 'bg-pink-50 dark:bg-pink-900/20',
+          activeIconBg: 'bg-pink-100 dark:bg-pink-500/20'
         }
       case 'red':
         return {
           border: 'hover:border-red-500 focus:border-red-500',
           text: 'group-hover:text-red-600 dark:group-hover:text-red-400',
           bg: 'hover:bg-red-50 dark:hover:bg-red-900/10',
+          iconBg: 'group-hover:bg-red-100 dark:group-hover:bg-red-500/20',
           activeBorder: 'border-red-600 ring-1 ring-red-600',
           activeText: 'text-red-600 dark:text-red-400',
-          activeBg: 'bg-red-50 dark:bg-red-900/20'
+          activeBg: 'bg-red-50 dark:bg-red-900/20',
+          activeIconBg: 'bg-red-100 dark:bg-red-500/20'
         }
       case 'yellow':
         return {
           border: 'hover:border-yellow-500 focus:border-yellow-500',
           text: 'group-hover:text-yellow-600 dark:group-hover:text-yellow-400',
           bg: 'hover:bg-yellow-50 dark:hover:bg-yellow-900/10',
+          iconBg: 'group-hover:bg-yellow-100 dark:group-hover:bg-yellow-500/20',
           activeBorder: 'border-yellow-600 ring-1 ring-yellow-600',
           activeText: 'text-yellow-600 dark:text-yellow-400',
-          activeBg: 'bg-yellow-50 dark:bg-yellow-900/20'
+          activeBg: 'bg-yellow-50 dark:bg-yellow-900/20',
+          activeIconBg: 'bg-yellow-100 dark:bg-yellow-500/20'
         }
       case 'cyan':
         return {
           border: 'hover:border-cyan-500 focus:border-cyan-500',
           text: 'group-hover:text-cyan-600 dark:group-hover:text-cyan-400',
           bg: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/10',
+          iconBg: 'group-hover:bg-cyan-100 dark:group-hover:bg-cyan-500/20',
           activeBorder: 'border-cyan-600 ring-1 ring-cyan-600',
           activeText: 'text-cyan-600 dark:text-cyan-400',
-          activeBg: 'bg-cyan-50 dark:bg-cyan-900/20'
+          activeBg: 'bg-cyan-50 dark:bg-cyan-900/20',
+          activeIconBg: 'bg-cyan-100 dark:bg-cyan-500/20'
         }
       case 'blue':
       default:
@@ -642,9 +656,11 @@ function TopLevelCardMenu({
           border: 'hover:border-blue-500 focus:border-blue-500',
           text: 'group-hover:text-blue-600 dark:group-hover:text-blue-400',
           bg: 'hover:bg-blue-50 dark:hover:bg-blue-900/10',
+          iconBg: 'group-hover:bg-blue-100 dark:group-hover:bg-blue-500/20',
           activeBorder: 'border-blue-600 ring-1 ring-blue-600',
           activeText: 'text-blue-600 dark:text-blue-400',
-          activeBg: 'bg-blue-50 dark:bg-blue-900/20'
+          activeBg: 'bg-blue-50 dark:bg-blue-900/20',
+          activeIconBg: 'bg-blue-100 dark:bg-blue-500/20'
         }
     }
   }
@@ -666,15 +682,20 @@ function TopLevelCardMenu({
     >
       <div className={cn(
         'w-14 h-14 rounded-2xl flex items-center justify-center transition-colors',
-        isExpanded ? 'bg-transparent' : (isDark ? 'bg-zinc-800' : 'bg-zinc-100')
+        isDark ? 'bg-zinc-800' : 'bg-zinc-100',
+        theme.iconBg,
+        isExpanded && theme.activeIconBg
       )}>
         {IconComponent && (
-          <IconComponent className={cn(
-            'w-8 h-8 transition-colors', // 아이콘 크기 대폭 확대
-            isDark ? 'text-zinc-400' : 'text-zinc-500',
-            theme.text,
-            isExpanded && theme.activeText
-          )} />
+          <IconComponent
+            strokeWidth={1.5}
+            className={cn(
+              'w-8 h-8 transition-colors', // 아이콘 크기 대폭 확대
+              isDark ? 'text-zinc-400' : 'text-zinc-500',
+              theme.text,
+              isExpanded && theme.activeText
+            )}
+          />
         )}
       </div>
 
@@ -875,8 +896,8 @@ export function TwoLevelSidebar() {
         className={cn(
           'w-16 h-full flex flex-col items-center py-4 border-r',
           isDark
-            ? 'bg-zinc-950 border-zinc-800'
-            : 'bg-zinc-100 border-zinc-200'
+            ? 'border-zinc-800'
+            : 'border-zinc-200'
         )}
       >
         {/* Logo */}
@@ -985,8 +1006,8 @@ export function TwoLevelSidebar() {
             className={cn(
               'h-full border-r overflow-hidden',
               isDark
-                ? 'bg-zinc-900/95 border-zinc-800'
-                : 'bg-white border-zinc-200'
+                ? 'border-zinc-800'
+                : 'border-zinc-200'
             )}
           >
             <div className="h-full flex flex-col w-[240px]">

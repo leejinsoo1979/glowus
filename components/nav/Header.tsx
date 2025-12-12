@@ -42,15 +42,15 @@ export function Header() {
 
   return (
     <header
-      className={`fixed top-0 right-0 z-30 h-16 backdrop-blur-xl transition-all duration-300 ${sidebarOpen ? 'left-[280px]' : 'left-20'
+      className={`fixed top-0 right-0 z-30 h-16 transition-all duration-300 ${sidebarOpen ? 'left-[304px]' : 'left-16'
         } ${isDark
-          ? 'bg-zinc-900/80 border-b border-zinc-800'
-          : 'bg-white/80 border-b border-zinc-200'
+          ? 'border-b border-zinc-800'
+          : 'border-b border-zinc-200'
         }`}
     >
-      <div className="h-full px-6 flex items-center justify-between gap-4">
+      <div className="h-full px-8 flex items-center justify-between gap-4">
         {/* Search */}
-        <div className="flex-1 max-w-2xl">
+        <div className="flex-1">
           <motion.div
             className={`relative transition-all duration-300 ${searchFocused ? 'scale-[1.02]' : ''}`}
           >
