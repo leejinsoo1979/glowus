@@ -94,7 +94,11 @@ const initialNodes: Node<AgentNodeData>[] = [
 
 const initialEdges: Edge[] = []
 
-function AgentBuilderInner() {
+interface AgentBuilderInnerProps {
+  agentId?: string
+}
+
+function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -122,9 +126,58 @@ function AgentBuilderInner() {
   const [deployAgentDescription, setDeployAgentDescription] = useState("")
   const [isDeploying, setIsDeploying] = useState(false)
   const [deploySuccess, setDeploySuccess] = useState(false)
+  // 상호작용 설정
+  const [deployInteractionMode, setDeployInteractionMode] = useState<'solo' | 'sequential' | 'debate' | 'collaborate' | 'supervisor'>('solo')
+  const [deployLlmProvider, setDeployLlmProvider] = useState<'openai' | 'qwen'>('openai')
+  const [deployLlmModel, setDeployLlmModel] = useState('gpt-4')
+  const [deploySpeakOrder, setDeploySpeakOrder] = useState(0)
+  // 편집 모드 상태
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
+  const [isLoadingAgent, setIsLoadingAgent] = useState(false)
   const terminalRef = useRef<TerminalPanelRef>(null)
   const { project, fitView, zoomIn, zoomOut } = useReactFlow()
   const { theme, setTheme } = useTheme()
+
+  // 에이전트 ID가 있으면 에이전트 데이터 로드
+  useEffect(() => {
+    if (agentId) {
+      setIsLoadingAgent(true)
+      fetch(`/api/agents/${agentId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.error) {
+            setEditingAgentId(agentId)
+            setAgentName(data.name || '')
+            setDeployAgentName(data.name || '')
+            setDeployAgentDescription(data.description || '')
+
+            // 워크플로우 노드와 엣지 로드 (position 검증)
+            if (data.workflow_nodes && data.workflow_nodes.length > 0) {
+              // 노드에 position이 없으면 기본값 추가
+              const validatedNodes = data.workflow_nodes.map((node: any, index: number) => ({
+                ...node,
+                position: node.position && typeof node.position.x === 'number'
+                  ? node.position
+                  : { x: 100 + (index * 200), y: 100 + (index * 100) }
+              }))
+              setNodes(validatedNodes)
+            }
+            if (data.workflow_edges && data.workflow_edges.length > 0) {
+              setEdges(data.workflow_edges)
+            }
+
+            // 화면에 맞춤
+            setTimeout(() => fitView({ padding: 0.2 }), 100)
+          }
+        })
+        .catch(err => {
+          console.error('에이전트 로드 실패:', err)
+        })
+        .finally(() => {
+          setIsLoadingAgent(false)
+        })
+    }
+  }, [agentId, setNodes, setEdges, fitView])
 
   // MCP Bridge - Claude Code에서 노드 조작 가능하게 함
   const { isConnected: isMcpConnected } = useMcpBridge({
@@ -364,6 +417,10 @@ function AgentBuilderInner() {
         body: JSON.stringify({
           name: deployAgentName.trim(),
           description: deployAgentDescription.trim() || null,
+          interaction_mode: deployInteractionMode,
+          llm_provider: deployLlmProvider,
+          llm_model: deployLlmModel,
+          speak_order: deploySpeakOrder,
           workflow_nodes: nodes.map(n => ({
             id: n.id,
             type: n.type,
@@ -391,13 +448,17 @@ function AgentBuilderInner() {
         setDeploySuccess(false)
         setDeployAgentName("")
         setDeployAgentDescription("")
+        setDeployInteractionMode('solo')
+        setDeployLlmProvider('openai')
+        setDeployLlmModel('gpt-4')
+        setDeploySpeakOrder(0)
       }, 2000)
     } catch (error) {
       alert(error instanceof Error ? error.message : "배포 중 오류가 발생했습니다")
     } finally {
       setIsDeploying(false)
     }
-  }, [nodes, edges, deployAgentName, deployAgentDescription])
+  }, [nodes, edges, deployAgentName, deployAgentDescription, deployInteractionMode, deployLlmProvider, deployLlmModel, deploySpeakOrder])
 
   const router = useRouter()
 
@@ -987,6 +1048,105 @@ function AgentBuilderInner() {
                     />
                   </div>
 
+                  {/* 상호작용 설정 섹션 */}
+                  <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
+                    <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">상호작용 설정</h4>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* 상호작용 모드 */}
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                          상호작용 모드
+                        </label>
+                        <select
+                          value={deployInteractionMode}
+                          onChange={(e) => setDeployInteractionMode(e.target.value as typeof deployInteractionMode)}
+                          className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        >
+                          <option value="solo">단독 (Solo)</option>
+                          <option value="sequential">순차 (Sequential)</option>
+                          <option value="debate">토론 (Debate)</option>
+                          <option value="collaborate">협업 (Collaborate)</option>
+                          <option value="supervisor">감독자 (Supervisor)</option>
+                        </select>
+                      </div>
+
+                      {/* LLM 제공자 */}
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                          LLM 제공자
+                        </label>
+                        <select
+                          value={deployLlmProvider}
+                          onChange={(e) => {
+                            const provider = e.target.value as typeof deployLlmProvider
+                            setDeployLlmProvider(provider)
+                            // 제공자 변경 시 기본 모델로 변경
+                            setDeployLlmModel(provider === 'openai' ? 'gpt-4' : 'qwen-max')
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        >
+                          <option value="openai">OpenAI</option>
+                          <option value="qwen">Qwen (Alibaba)</option>
+                        </select>
+                      </div>
+
+                      {/* LLM 모델 */}
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                          모델
+                        </label>
+                        <select
+                          value={deployLlmModel}
+                          onChange={(e) => setDeployLlmModel(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        >
+                          {deployLlmProvider === 'openai' ? (
+                            <>
+                              <option value="gpt-4">GPT-4</option>
+                              <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                              <option value="gpt-4o">GPT-4o</option>
+                              <option value="gpt-4o-mini">GPT-4o Mini</option>
+                              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="qwen-max">Qwen Max</option>
+                              <option value="qwen-plus">Qwen Plus</option>
+                              <option value="qwen-turbo">Qwen Turbo</option>
+                              <option value="qwen3-235b-a22b">Qwen3 235B</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* 발언 순서 (순차 모드일 때만) */}
+                      {deployInteractionMode === 'sequential' && (
+                        <div>
+                          <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                            발언 순서
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={deploySpeakOrder}
+                            onChange={(e) => setDeploySpeakOrder(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 모드 설명 */}
+                    <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+                      {deployInteractionMode === 'solo' && '에이전트가 독립적으로 응답합니다.'}
+                      {deployInteractionMode === 'sequential' && '에이전트들이 순서대로 응답합니다.'}
+                      {deployInteractionMode === 'debate' && '에이전트들이 서로 토론하며 결론을 도출합니다.'}
+                      {deployInteractionMode === 'collaborate' && '에이전트들이 역할을 분담하여 협업합니다.'}
+                      {deployInteractionMode === 'supervisor' && '감독자 에이전트가 다른 에이전트들을 조율합니다.'}
+                    </p>
+                  </div>
+
                   <div className="bg-zinc-50 dark:bg-zinc-800 rounded-lg p-3 text-sm">
                     <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
                       <Bot className="w-4 h-4" />
@@ -1034,10 +1194,14 @@ function AgentBuilderInner() {
   )
 }
 
-export function AgentBuilder() {
+interface AgentBuilderProps {
+  agentId?: string
+}
+
+export function AgentBuilder({ agentId }: AgentBuilderProps) {
   return (
     <ReactFlowProvider>
-      <AgentBuilderInner />
+      <AgentBuilderInner agentId={agentId} />
     </ReactFlowProvider>
   )
 }

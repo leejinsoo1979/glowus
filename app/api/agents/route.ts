@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { DeployedAgent } from '@/types/database'
 
 // GET: List all deployed agents for the current user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
+    const adminClient = createAdminClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -14,9 +16,10 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const startupId = searchParams.get('startup_id')
+    const teamId = searchParams.get('team_id')
     const status = searchParams.get('status')
 
-    let query = (supabase as any)
+    let query = (adminClient as any)
       .from('deployed_agents')
       .select('*')
       .eq('owner_id', user.id)
@@ -24,6 +27,10 @@ export async function GET(request: NextRequest) {
 
     if (startupId) {
       query = query.eq('startup_id', startupId)
+    }
+
+    if (teamId) {
+      query = query.eq('team_id', teamId)
     }
 
     if (status) {
@@ -34,23 +41,23 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('에이전트 조회 오류:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      // 테이블 없거나 에러 시 빈 배열 반환 (채팅 기능은 계속 작동)
+      return NextResponse.json([])
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(data || [])
   } catch (error) {
     console.error('에이전트 API 오류:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '서버 오류' },
-      { status: 500 }
-    )
+    // 에러 시에도 빈 배열 반환 (채팅 기능 유지)
+    return NextResponse.json([])
   }
 }
 
 // POST: Deploy a new agent
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
+    const adminClient = createAdminClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -62,42 +69,53 @@ export async function POST(request: NextRequest) {
       name,
       description,
       startup_id,
-      workflow_nodes,
-      workflow_edges,
+      team_id,
+      workflow_nodes = [],
+      workflow_edges = [],
       capabilities,
       avatar_url,
       system_prompt,
       model = 'gpt-4',
       temperature = 0.7,
+      // 상호작용 설정
+      interaction_mode = 'solo',
+      llm_provider = 'openai',
+      llm_model,
+      speak_order = 0,
     } = body
 
     if (!name) {
       return NextResponse.json({ error: '에이전트 이름이 필요합니다' }, { status: 400 })
     }
 
-    if (!workflow_nodes || !workflow_edges) {
-      return NextResponse.json({ error: '워크플로우 정의가 필요합니다' }, { status: 400 })
-    }
-
-    // Extract capabilities from workflow nodes
+    // Extract capabilities from workflow nodes (or use provided capabilities)
     const extractedCapabilities = capabilities || extractCapabilitiesFromNodes(workflow_nodes)
 
-    const agentData = {
+    // team_id를 capabilities 배열에 저장 (DB 스키마 변경 없이 팀 연결)
+    const teamCapability = team_id ? [`team:${team_id}`] : []
+    const allCapabilities = [...extractedCapabilities, ...teamCapability]
+
+    const agentData: Record<string, unknown> = {
       name,
       description,
       owner_id: user.id,
       startup_id: startup_id || null,
       workflow_nodes,
       workflow_edges,
-      capabilities: extractedCapabilities,
+      capabilities: allCapabilities,
       status: 'ACTIVE',
       avatar_url: avatar_url || generateAvatarUrl(name),
       system_prompt: system_prompt || generateSystemPrompt(name, extractedCapabilities),
       model,
       temperature,
+      // 상호작용 설정
+      interaction_mode,
+      llm_provider,
+      llm_model: llm_model || (llm_provider === 'openai' ? 'gpt-4' : 'qwen-max'),
+      speak_order,
     }
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await (adminClient as any)
       .from('deployed_agents')
       .insert(agentData)
       .select()

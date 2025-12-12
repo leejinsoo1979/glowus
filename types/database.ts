@@ -57,7 +57,8 @@ export interface Startup {
 
 export interface TeamMember {
   id: string
-  startup_id: string
+  startup_id: string | null
+  team_id: string | null
   user_id: string
   role: string
   joined_at: string
@@ -168,6 +169,9 @@ export interface Commit {
 // Agent System Types
 // ============================================
 
+export type InteractionMode = 'solo' | 'sequential' | 'debate' | 'collaborate' | 'supervisor'
+export type LLMProvider = 'openai' | 'qwen'
+
 export interface DeployedAgent {
   id: string
   name: string
@@ -176,6 +180,7 @@ export interface DeployedAgent {
   // Owner
   owner_id: string
   startup_id: string | null
+  team_id: string | null
 
   // Workflow definition (ReactFlow JSON)
   workflow_nodes: Record<string, unknown>[]
@@ -195,6 +200,14 @@ export interface DeployedAgent {
   system_prompt: string | null
   model: string
   temperature: number
+
+  // Multi-agent interaction settings
+  interaction_mode: InteractionMode
+  llm_provider: LLMProvider
+  llm_model: string
+  speak_order: number
+  collaborates_with: string[]
+  supervisor_id: string | null
 
   created_at: string
   updated_at: string
@@ -222,6 +235,27 @@ export interface AgentTeamMember {
   role: string
 
   joined_at: string
+}
+
+// Agent Group (for multi-agent collaboration)
+export interface AgentGroup {
+  id: string
+  name: string
+  description: string | null
+  team_id: string | null
+  interaction_mode: InteractionMode
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentGroupMember {
+  id: string
+  group_id: string
+  agent_id: string
+  role: 'supervisor' | 'member'
+  speak_order: number
+  created_at: string
 }
 
 export interface AgentMessage {
@@ -555,19 +589,28 @@ export interface Database {
         Row: TeamMember
         Insert: {
           id?: string
-          startup_id: string
+          startup_id?: string | null
+          team_id?: string | null
           user_id: string
           role: string
           joined_at?: string
         }
         Update: {
           role?: string
+          startup_id?: string | null
+          team_id?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "team_members_startup_id_fkey"
             columns: ["startup_id"]
             referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
           {
