@@ -27,8 +27,8 @@ let wsConnection = null;
 let wsReconnectTimer = null;
 let wsReconnectAttempts = 0;
 const WS_URL = 'ws://localhost:3001';
-const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_DELAY = 3000;
+const MAX_RECONNECT_ATTEMPTS = Infinity; // 무제한 재연결
+const RECONNECT_DELAY = 5000; // 5초 간격
 
 // 대기 중인 요청들 (requestId -> callback)
 const pendingRequests = new Map();
@@ -78,15 +78,27 @@ function connectWebSocket() {
 
 function scheduleReconnect() {
   if (wsReconnectTimer) return;
-  if (wsReconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    console.error(`[MCP] 최대 재연결 시도 횟수(${MAX_RECONNECT_ATTEMPTS})에 도달. 터미널 서버 실행 필요: node server/terminal-server.js`);
-    return;
-  }
   wsReconnectAttempts++;
+  const delay = Math.min(RECONNECT_DELAY * Math.min(wsReconnectAttempts, 6), 30000); // 최대 30초
+  console.error(`[MCP] 재연결 시도 ${wsReconnectAttempts}회 (${delay/1000}초 후)...`);
   wsReconnectTimer = setTimeout(() => {
     wsReconnectTimer = null;
     connectWebSocket();
-  }, RECONNECT_DELAY);
+  }, delay);
+}
+
+/**
+ * 즉시 재연결 시도 (도구 호출 시 사용)
+ */
+function ensureConnection() {
+  if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+    return true;
+  }
+  // 재연결 타이머가 없으면 즉시 연결 시도
+  if (!wsReconnectTimer) {
+    connectWebSocket();
+  }
+  return false;
 }
 
 /**
@@ -364,11 +376,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
+  // 도구 호출 시 연결 확인 및 재연결 시도
+  ensureConnection();
+
   try {
     let result;
 
     switch (name) {
       case 'get_canvas_state':
+        ensureConnection(); // 상태 요청 전 연결 확인
         requestCanvasState();
         // 약간의 딜레이 후 상태 반환
         await new Promise(resolve => setTimeout(resolve, 100));
