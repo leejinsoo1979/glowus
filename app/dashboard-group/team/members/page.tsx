@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { useThemeStore } from '@/stores/themeStore'
 import { useTeamStore, Team } from '@/stores/teamStore'
 import { MemberAddModal, MemberFormData } from '@/components/team/MemberAddModal'
-import { MemberProfileModal, TeamMember } from '@/components/team/MemberProfileModal'
 import {
   UserPlus,
   Search,
@@ -21,18 +21,24 @@ import {
   MessageCircle,
   Phone,
   ArrowLeft,
-  Users
+  Users,
+  Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// 더미 데이터
-const dummyMembers = [
-  { id: '1', name: '김진수', email: 'jinsu@example.com', role: 'admin', position: 'CEO', avatar: 'JK', isOnline: true },
-  { id: '2', name: '이수진', email: 'sujin@example.com', role: 'member', position: '개발팀장', avatar: 'SL', isOnline: true },
-  { id: '3', name: '박민호', email: 'minho@example.com', role: 'member', position: '프론트엔드', avatar: 'MH', isOnline: false },
-  { id: '4', name: '정유진', email: 'yujin@example.com', role: 'member', position: '디자이너', avatar: 'YJ', isOnline: true },
-  { id: '5', name: '최서연', email: 'seoyeon@example.com', role: 'viewer', position: '마케팅', avatar: 'CS', isOnline: false },
-]
+// 멤버 타입 정의
+interface Member {
+  id: string
+  name: string
+  email: string
+  role: string
+  position: string
+  avatar: string
+  isOnline: boolean
+  type: 'person' | 'bot'
+  botType?: string
+  description?: string
+}
 
 type ViewMode = 'album' | 'list'
 
@@ -44,6 +50,43 @@ export default function TeamMembersPage() {
   const { teams } = useTeamStore()
   const [currentTeam, setCurrentTeam] = useState<Team | null>(null)
 
+  const [members, setMembers] = useState<Member[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // BOT 목록 불러오기
+  const loadBots = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      const res = await fetch('/api/agents')
+      if (res.ok) {
+        const data = await res.json()
+        // deployed_agents를 Member 형식으로 변환
+        const bots: Member[] = data.map((agent: any) => ({
+          id: agent.id,
+          name: agent.name,
+          email: '',
+          role: 'bot',
+          position: agent.capabilities?.[0] || 'BOT',
+          avatar: agent.name.substring(0, 2).toUpperCase(),
+          isOnline: agent.status === 'ACTIVE',
+          type: 'bot' as const,
+          botType: agent.capabilities?.[0],
+          description: agent.description,
+        }))
+        setMembers(bots)
+      }
+    } catch (error) {
+      console.error('BOT 로드 실패:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadBots()
+  }, [loadBots])
+
   useEffect(() => {
     if (teamId) {
       const team = teams.find(t => t.id === teamId)
@@ -52,39 +95,77 @@ export default function TeamMembersPage() {
       setCurrentTeam(null)
     }
   }, [teamId, teams])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('album')
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false)
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
-  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
-  const [selectedMemberGradient, setSelectedMemberGradient] = useState<string>('')
 
-  const handleAddMember = (data: MemberFormData) => {
-    // TODO: API 연동
-    console.log('New member:', data)
+  const handleAddMember = async (data: MemberFormData) => {
+    const isBot = data.type === 'agent'
+
+    if (isBot) {
+      // BOT은 API를 통해 저장
+      try {
+        setIsSaving(true)
+        const res = await fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: data.name,
+            description: data.description || '',
+            capabilities: data.agentType ? [data.agentType] : ['일반'],
+            workflow_nodes: [{ id: 'start', type: 'start', data: {} }],
+            workflow_edges: [],
+          }),
+        })
+
+        if (res.ok) {
+          const newAgent = await res.json()
+          const newMember: Member = {
+            id: newAgent.id,
+            name: newAgent.name,
+            email: '',
+            role: 'bot',
+            position: newAgent.capabilities?.[0] || 'BOT',
+            avatar: newAgent.name.substring(0, 2).toUpperCase(),
+            isOnline: true,
+            type: 'bot',
+            botType: newAgent.capabilities?.[0],
+            description: newAgent.description,
+          }
+          setMembers(prev => [...prev, newMember])
+        } else {
+          const error = await res.json()
+          alert(error.error || 'BOT 추가 실패')
+        }
+      } catch (error) {
+        console.error('BOT 추가 실패:', error)
+        alert('BOT 추가 중 오류가 발생했습니다')
+      } finally {
+        setIsSaving(false)
+      }
+    } else {
+      // 일반 멤버는 로컬 상태에만 추가 (실제 구현 시 team_members API 사용)
+      const newMember: Member = {
+        id: String(Date.now()),
+        name: data.name,
+        email: data.email || '',
+        role: data.role || 'member',
+        position: data.position || '',
+        avatar: data.name.substring(0, 2).toUpperCase(),
+        isOnline: false,
+        type: 'person',
+        description: data.description,
+      }
+      setMembers(prev => [...prev, newMember])
+    }
+
     setIsMemberModalOpen(false)
   }
 
-  const handleMemberClick = (member: typeof dummyMembers[0], index: number) => {
-    const teamMember: TeamMember = {
-      ...member,
-      role: member.role as 'admin' | 'member' | 'viewer',
-      phone: '010-1234-5678',
-      location: '서울, 대한민국',
-      joinedAt: '2024년 3월',
-      bio: `${member.position}으로 팀에 기여하고 있습니다.`,
-      skills: member.position === 'CEO'
-        ? ['리더십', '전략', '비즈니스']
-        : member.position.includes('개발') || member.position.includes('프론트')
-        ? ['React', 'TypeScript', 'Node.js']
-        : member.position.includes('디자인')
-        ? ['Figma', 'UI/UX', 'Prototyping']
-        : ['마케팅', '데이터 분석', '콘텐츠'],
-    }
-    setSelectedMember(teamMember)
-    setSelectedMemberGradient(getAvatarGradient(index))
-    setIsProfileModalOpen(true)
+  const handleMemberClick = (member: Member) => {
+    router.push(`/dashboard-group/team/members/${member.id}`)
   }
 
   const getAccentBg = () => {
@@ -135,7 +216,7 @@ export default function TeamMembersPage() {
     }
   }
 
-  const filteredMembers = dummyMembers.filter(member =>
+  const filteredMembers = members.filter(member =>
     member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     member.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     member.position.toLowerCase().includes(searchQuery.toLowerCase())
@@ -177,79 +258,71 @@ export default function TeamMembersPage() {
               {currentTeam ? `${currentTeam.name} 팀원` : '팀원 관리'}
             </h1>
             <p className="text-zinc-500 dark:text-white/50 mt-1">
-              {currentTeam ? `${currentTeam.memberCount}명의 팀원` : `${dummyMembers.length}명의 팀원`}
+              {currentTeam ? `${currentTeam.memberCount}명의 팀원` : `${members.length}명의 팀원`}
             </p>
           </div>
 
-        {/* View Toggle & Add Button (리스트 뷰에서만 추가 버튼 표시) */}
-        <div className="flex items-center gap-3">
-          {/* View Toggle */}
-          <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-white/5 p-1">
-            <button
-              onClick={() => setViewMode('album')}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                viewMode === 'album'
-                  ? "bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm"
-                  : "text-zinc-500 dark:text-white/50 hover:text-zinc-700 dark:hover:text-white/70"
-              )}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              앨범
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                viewMode === 'list'
-                  ? "bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm"
-                  : "text-zinc-500 dark:text-white/50 hover:text-zinc-700 dark:hover:text-white/70"
-              )}
-            >
-              <List className="w-4 h-4" />
-              리스트
-            </button>
-          </div>
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="팀원 검색..."
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-all"
+              />
+            </div>
 
-          {/* Add Button (리스트 뷰에서만) */}
-          {viewMode === 'list' && (
-            <button
-              onClick={() => setIsMemberModalOpen(true)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-white transition-all",
-                getAccentBg(),
-                "hover:opacity-90"
-              )}
-            >
-              <UserPlus className="w-4 h-4" />
-              팀원 추가
-            </button>
-          )}
-          </div>
-        </div>
-      </motion.div>
+            {/* View Toggle */}
+            <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-white/5 p-1">
+              <button
+                onClick={() => setViewMode('album')}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  viewMode === 'album'
+                    ? "bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm"
+                    : "text-zinc-500 dark:text-white/50 hover:text-zinc-700 dark:hover:text-white/70"
+                )}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                앨범
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  viewMode === 'list'
+                    ? "bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm"
+                    : "text-zinc-500 dark:text-white/50 hover:text-zinc-700 dark:hover:text-white/70"
+                )}
+              >
+                <List className="w-4 h-4" />
+                리스트
+              </button>
+            </div>
 
-      {/* Search */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6"
-      >
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 dark:text-zinc-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="이름, 이메일, 직책으로 검색..."
-            className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-all"
-          />
+            {/* Add Button (리스트 뷰에서만) */}
+            {viewMode === 'list' && (
+              <button
+                onClick={() => setIsMemberModalOpen(true)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-white transition-all",
+                  getAccentBg(),
+                  "hover:opacity-90"
+                )}
+              >
+                <UserPlus className="w-4 h-4" />
+                팀원 추가
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
 
       {/* Album View */}
-      {viewMode === 'album' && (
+      {!isLoading && viewMode === 'album' && members.length > 0 && (
         <motion.div
           variants={container}
           initial="hidden"
@@ -285,7 +358,7 @@ export default function TeamMembersPage() {
               key={member.id}
               variants={item}
               whileHover={{ y: -4 }}
-              onClick={() => handleMemberClick(member, index)}
+              onClick={() => handleMemberClick(member)}
               className={cn(
                 "group relative rounded-2xl cursor-pointer",
                 "bg-white dark:bg-zinc-800/50",
@@ -329,15 +402,27 @@ export default function TeamMembersPage() {
               <div className="p-5 pt-6 flex flex-col items-center min-h-[240px]">
                 {/* Avatar */}
                 <div className="relative mb-4">
-                  <div className={cn(
-                    "w-18 h-18 rounded-full flex items-center justify-center text-lg font-semibold text-white",
-                    "bg-gradient-to-br",
-                    getAvatarGradient(index)
+                  {member.type === 'bot' ? (
+                    <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
+                      <Image
+                        src="/agent_image.jpg"
+                        alt={member.name}
+                        width={72}
+                        height={72}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className={cn(
+                      "w-18 h-18 rounded-full flex items-center justify-center text-lg font-semibold text-white",
+                      "bg-gradient-to-br",
+                      getAvatarGradient(index)
+                    )}
+                    style={{ width: '72px', height: '72px' }}
+                    >
+                      {member.avatar}
+                    </div>
                   )}
-                  style={{ width: '72px', height: '72px' }}
-                  >
-                    {member.avatar}
-                  </div>
 
                   {/* Online Status */}
                   <div className={cn(
@@ -380,7 +465,7 @@ export default function TeamMembersPage() {
             </motion.div>
           ))}
 
-          {filteredMembers.length === 0 && (
+          {filteredMembers.length === 0 && members.length > 0 && (
             <div className="col-span-full text-center py-12">
               <p className="text-zinc-500 dark:text-white/50">
                 검색 결과가 없습니다
@@ -390,8 +475,46 @@ export default function TeamMembersPage() {
         </motion.div>
       )}
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-zinc-400 animate-spin mb-4" />
+          <p className="text-zinc-500 dark:text-zinc-400">불러오는 중...</p>
+        </div>
+      )}
+
+      {/* Empty State - 팀원이 없을 때 */}
+      {!isLoading && members.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center justify-center py-20"
+        >
+          <div className="w-20 h-20 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+            <Users className="w-10 h-10 text-zinc-400 dark:text-zinc-500" />
+          </div>
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-2">
+            등록된 팀원이 없습니다
+          </h3>
+          <p className="text-zinc-500 dark:text-zinc-400 mb-6">
+            팀원 또는 BOT을 추가해보세요
+          </p>
+          <button
+            onClick={() => setIsMemberModalOpen(true)}
+            className={cn(
+              "flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-white transition-all",
+              getAccentBg(),
+              "hover:opacity-90"
+            )}
+          >
+            <UserPlus className="w-4 h-4" />
+            팀원 추가
+          </button>
+        </motion.div>
+      )}
+
       {/* List View */}
-      {viewMode === 'list' && (
+      {!isLoading && viewMode === 'list' && members.length > 0 && (
         <motion.div
           variants={container}
           initial="hidden"
@@ -402,18 +525,30 @@ export default function TeamMembersPage() {
             <motion.div
               key={member.id}
               variants={item}
-              onClick={() => handleMemberClick(member, index)}
+              onClick={() => handleMemberClick(member)}
               className="group rounded-2xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 shadow-sm dark:shadow-none p-4 hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-600 transition-all cursor-pointer"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   {/* Avatar */}
-                  <div className={cn(
-                    "w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-white",
-                    getAccentBg()
-                  )}>
-                    {member.avatar}
-                  </div>
+                  {member.type === 'bot' ? (
+                    <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
+                      <Image
+                        src="/agent_image.jpg"
+                        alt={member.name}
+                        width={48}
+                        height={48}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className={cn(
+                      "w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0",
+                      getAccentBg()
+                    )}>
+                      {member.avatar}
+                    </div>
+                  )}
 
                   {/* Info */}
                   <div>
@@ -471,7 +606,7 @@ export default function TeamMembersPage() {
             </motion.div>
           ))}
 
-          {filteredMembers.length === 0 && (
+          {filteredMembers.length === 0 && members.length > 0 && (
             <div className="text-center py-12">
               <p className="text-zinc-500 dark:text-white/50">
                 검색 결과가 없습니다
@@ -486,14 +621,6 @@ export default function TeamMembersPage() {
         isOpen={isMemberModalOpen}
         onClose={() => setIsMemberModalOpen(false)}
         onSubmit={handleAddMember}
-      />
-
-      {/* Member Profile Modal */}
-      <MemberProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        member={selectedMember}
-        avatarGradient={selectedMemberGradient}
       />
     </div>
   )

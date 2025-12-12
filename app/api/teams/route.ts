@@ -50,32 +50,53 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Get teams where user is a member
-  const { data, error } = await supabase
-    .from('team_members')
-    .select(`
-      role,
-      team:teams(
-        *,
-        founder:users!teams_founder_id_fkey(id, name, email, avatar_url),
-        team_members(
-          user:users(id, name, email, avatar_url),
-          role
-        )
-      )
-    `)
-    .eq('user_id', user.id) as { data: TeamMemberWithTeam[] | null; error: any }
+  // Get teams where user is founder or member
+  const { data: founderTeams, error: founderError } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('founder_id', user.id)
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (founderError) {
+    return NextResponse.json({ error: founderError.message }, { status: 500 })
   }
 
-  const teams = data?.map(tm => ({
-    ...tm.team,
-    userRole: tm.role,
-  })) || []
+  // Get teams where user is a member (not founder)
+  const { data: memberTeams, error: memberError } = await supabase
+    .from('team_members')
+    .select('team_id, role')
+    .eq('user_id', user.id)
+    .not('team_id', 'is', null)
 
-  return NextResponse.json({ data: teams })
+  let allTeams = (founderTeams || []).map(team => ({
+    ...team,
+    userRole: 'founder',
+    memberCount: 1,
+  }))
+
+  // If user is member of other teams, fetch those too
+  if (memberTeams && memberTeams.length > 0) {
+    const teamIds = memberTeams
+      .filter(m => m.team_id && !founderTeams?.some(t => t.id === m.team_id))
+      .map(m => m.team_id)
+
+    if (teamIds.length > 0) {
+      const { data: otherTeams } = await supabase
+        .from('teams')
+        .select('*')
+        .in('id', teamIds)
+
+      if (otherTeams) {
+        const otherTeamsWithRole = otherTeams.map(team => ({
+          ...team,
+          userRole: memberTeams.find(m => m.team_id === team.id)?.role || 'member',
+          memberCount: 1,
+        }))
+        allTeams = [...allTeams, ...otherTeamsWithRole]
+      }
+    }
+  }
+
+  return NextResponse.json({ data: allTeams })
 }
 
 // POST /api/teams - Create team

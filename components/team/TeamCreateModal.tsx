@@ -10,6 +10,7 @@ interface TeamCreateModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (team: TeamFormData) => void
+  isLoading?: boolean
 }
 
 export interface TeamFormData {
@@ -19,9 +20,8 @@ export interface TeamFormData {
   teamSize: string
 }
 
-export function TeamCreateModal({ isOpen, onClose, onSubmit }: TeamCreateModalProps) {
+export function TeamCreateModal({ isOpen, onClose, onSubmit, isLoading = false }: TeamCreateModalProps) {
   const { accentColor } = useThemeStore()
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState<TeamFormData>({
     name: '',
     description: '',
@@ -47,18 +47,14 @@ export function TeamCreateModal({ isOpen, onClose, onSubmit }: TeamCreateModalPr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name.trim()) return
-
-    setIsSubmitting(true)
-    await new Promise(resolve => setTimeout(resolve, 500))
+    if (!formData.name.trim() || isLoading) return
 
     onSubmit(formData)
-    setIsSubmitting(false)
     setFormData({ name: '', description: '', industry: '', teamSize: '1-5' })
-    onClose()
   }
 
   const handleClose = () => {
+    if (isLoading) return
     setFormData({ name: '', description: '', industry: '', teamSize: '1-5' })
     onClose()
   }
@@ -183,13 +179,14 @@ export function TeamCreateModal({ isOpen, onClose, onSubmit }: TeamCreateModalPr
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-5 py-2.5 rounded-xl font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  disabled={isLoading}
+                  className="px-5 py-2.5 rounded-xl font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || !formData.name.trim()}
+                  disabled={isLoading || !formData.name.trim()}
                   className={cn(
                     "px-6 py-2.5 rounded-xl font-medium text-white transition-all",
                     "flex items-center justify-center gap-2 min-w-[100px]",
@@ -197,7 +194,7 @@ export function TeamCreateModal({ isOpen, onClose, onSubmit }: TeamCreateModalPr
                     "disabled:opacity-50 disabled:cursor-not-allowed"
                   )}
                 >
-                  {isSubmitting ? (
+                  {isLoading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     '생성'

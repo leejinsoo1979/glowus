@@ -69,7 +69,7 @@ export default function TeamPage() {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
   const { accentColor } = useThemeStore()
-  const { teams, addTeam, removeTeam } = useTeamStore()
+  const { teams, isLoading, createTeam, deleteTeam, fetchTeams } = useTeamStore()
   const [mounted, setMounted] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false)
@@ -78,11 +78,15 @@ export default function TeamPage() {
 
   useEffect(() => {
     setMounted(true)
+    fetchTeams()
+  }, [fetchTeams])
+
+  useEffect(() => {
     // 첫 번째 팀을 기본 선택
-    if (teams.length > 0) {
+    if (teams.length > 0 && !selectedTeam) {
       setSelectedTeam(teams[0])
     }
-  }, [teams])
+  }, [teams, selectedTeam])
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
 
@@ -102,9 +106,22 @@ export default function TeamPage() {
 
   const accent = getAccentClasses()
 
-  const handleCreateTeam = (data: TeamFormData) => {
-    addTeam(data)
-    setIsModalOpen(false)
+  const [isCreating, setIsCreating] = useState(false)
+
+  const handleCreateTeam = async (data: TeamFormData) => {
+    setIsCreating(true)
+    const result = await createTeam({
+      name: data.name,
+      description: data.description,
+      industry: data.industry,
+    })
+    setIsCreating(false)
+    if (result) {
+      setIsModalOpen(false)
+      setSelectedTeam(result)
+    } else {
+      alert('팀 생성에 실패했습니다.')
+    }
   }
 
   const handleAddMember = (data: MemberFormData) => {
@@ -113,13 +130,17 @@ export default function TeamPage() {
     setIsMemberModalOpen(false)
   }
 
-  const handleDeleteTeam = (teamId: string, e: React.MouseEvent) => {
+  const handleDeleteTeam = async (teamId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (confirm('정말 이 팀을 삭제하시겠습니까?')) {
-      removeTeam(teamId)
+      const success = await deleteTeam(teamId)
       setMenuOpenId(null)
-      if (selectedTeam?.id === teamId) {
-        setSelectedTeam(teams.find(t => t.id !== teamId) || null)
+      if (success) {
+        if (selectedTeam?.id === teamId) {
+          setSelectedTeam(teams.find(t => t.id !== teamId) || null)
+        }
+      } else {
+        alert('팀 삭제에 실패했습니다.')
       }
     }
   }
@@ -223,6 +244,7 @@ export default function TeamPage() {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleCreateTeam}
+          isLoading={isCreating}
         />
       </div>
     )
@@ -630,6 +652,7 @@ export default function TeamPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleCreateTeam}
+        isLoading={isCreating}
       />
 
       {/* Member Add Modal */}

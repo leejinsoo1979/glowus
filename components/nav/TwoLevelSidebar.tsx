@@ -876,7 +876,8 @@ export function TwoLevelSidebar() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const [selectedCompanyMenu, setSelectedCompanyMenu] = useState<string | null>(null)
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false)
-  const { addTeam } = useTeamStore()
+  const { createTeam } = useTeamStore()
+  const [isCreatingTeam, setIsCreatingTeam] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -950,10 +951,20 @@ export function TwoLevelSidebar() {
     router.push('/auth-group/login')
   }
 
-  const handleTeamCreate = (teamData: TeamFormData) => {
-    addTeam(teamData)
-    // Navigate to team page after creation
-    router.push('/dashboard-group/team')
+  const handleTeamCreate = async (teamData: TeamFormData) => {
+    setIsCreatingTeam(true)
+    const result = await createTeam({
+      name: teamData.name,
+      description: teamData.description,
+      industry: teamData.industry,
+    })
+    setIsCreatingTeam(false)
+    if (result) {
+      setIsTeamModalOpen(false)
+      router.push('/dashboard-group/team')
+    } else {
+      alert('팀 생성에 실패했습니다.')
+    }
   }
 
   const activeItems = navCategories.find(cat => cat.id === currentCategory)?.items || []
@@ -1412,6 +1423,7 @@ export function TwoLevelSidebar() {
         isOpen={isTeamModalOpen}
         onClose={() => setIsTeamModalOpen(false)}
         onSubmit={handleTeamCreate}
+        isLoading={isCreatingTeam}
       />
     </div>
   )

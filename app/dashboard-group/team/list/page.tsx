@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
-import { useTeamStore } from '@/stores/teamStore'
+import { useTeamStore, CreateTeamData } from '@/stores/teamStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal'
+import { TeamCard } from '@/components/team/NewTeamCard'
 import {
   Users,
   Plus,
@@ -21,14 +22,13 @@ import {
   LayoutGrid,
   List,
   Sparkles,
-  TrendingUp,
-  FolderKanban,
   ArrowLeft,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 
 type ViewMode = 'album' | 'list'
 
-// 팀별 그라데이션 색상
 const teamGradients = [
   'from-violet-500 via-purple-500 to-fuchsia-500',
   'from-blue-500 via-cyan-500 to-teal-500',
@@ -40,26 +40,26 @@ const teamGradients = [
   'from-teal-500 via-emerald-500 to-green-500',
 ]
 
-const teamPatterns = [
-  'radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%)',
-  'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%)',
-  'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08) 0%, transparent 70%)',
-]
-
 export default function TeamListPage() {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
   const { accentColor } = useThemeStore()
-  const { teams, addTeam, removeTeam } = useTeamStore()
+  const { teams, isLoading, error, fetchTeams, createTeam, deleteTeam } = useTeamStore()
   const [mounted, setMounted] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('album')
+  const [isCreating, setIsCreating] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // 팀 목록 로드
+  useEffect(() => {
+    fetchTeams()
+  }, [fetchTeams])
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
 
@@ -79,15 +79,30 @@ export default function TeamListPage() {
 
   const accent = getAccentClasses()
 
-  const handleCreateTeam = (data: TeamFormData) => {
-    addTeam(data)
-    setIsModalOpen(false)
+  const handleCreateTeam = async (data: TeamFormData) => {
+    setIsCreating(true)
+    const createData: CreateTeamData = {
+      name: data.name,
+      description: data.description,
+      industry: data.industry,
+    }
+    const result = await createTeam(createData)
+    setIsCreating(false)
+
+    if (result) {
+      setIsModalOpen(false)
+    } else {
+      alert('팀 생성에 실패했습니다. 다시 시도해주세요.')
+    }
   }
 
-  const handleDeleteTeam = (teamId: string, e: React.MouseEvent) => {
+  const handleDeleteTeam = async (teamId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (confirm('정말 이 팀을 삭제하시겠습니까?')) {
-      removeTeam(teamId)
+      const success = await deleteTeam(teamId)
+      if (!success) {
+        alert('팀 삭제에 실패했습니다.')
+      }
       setMenuOpenId(null)
     }
   }
@@ -108,7 +123,6 @@ export default function TeamListPage() {
   }
 
   const getTeamGradient = (index: number) => teamGradients[index % teamGradients.length]
-  const getTeamPattern = (index: number) => teamPatterns[index % teamPatterns.length]
 
   const container = {
     hidden: { opacity: 0 },
@@ -153,6 +167,18 @@ export default function TeamListPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="팀 검색..."
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-all"
+              />
+            </div>
+
             {/* View Toggle */}
             <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
               <button
@@ -198,27 +224,28 @@ export default function TeamListPage() {
         </div>
       </motion.div>
 
-      {/* Search */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6"
-      >
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 dark:text-zinc-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="팀 이름, 업종으로 검색..."
-            className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-all"
-          />
+      {/* Error State */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center gap-3"
+        >
+          <AlertCircle className="w-5 h-5 text-red-500" />
+          <p className="text-red-700 dark:text-red-400">{error}</p>
+        </motion.div>
+      )}
+
+      {/* Loading State */}
+      {isLoading && teams.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-zinc-400 animate-spin mb-4" />
+          <p className="text-zinc-500 dark:text-zinc-400">팀 목록을 불러오는 중...</p>
         </div>
-      </motion.div>
+      )}
 
       {/* Empty State */}
-      {teams.length === 0 ? (
+      {!isLoading && teams.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -250,7 +277,7 @@ export default function TeamListPage() {
             팀 만들기
           </motion.button>
         </motion.div>
-      ) : (
+      ) : !isLoading && (
         <>
           {/* Album View */}
           {viewMode === 'album' && (
@@ -263,161 +290,94 @@ export default function TeamListPage() {
               {/* Add Team Card */}
               <motion.div
                 variants={item}
-                whileHover={{ y: -4 }}
+                whileHover={{ y: -4, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setIsModalOpen(true)}
                 className={cn(
-                  "group rounded-2xl cursor-pointer aspect-[4/3]",
-                  "border-2 border-dashed",
-                  isDark ? "border-zinc-700/50 hover:border-zinc-500" : "border-zinc-200 hover:border-zinc-400",
-                  "bg-zinc-50/50 dark:bg-zinc-900/30",
-                  "hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30",
-                  "transition-all duration-200"
+                  "group relative overflow-hidden rounded-3xl cursor-pointer transition-all duration-300 min-h-[280px]",
+                  "bg-white/80 dark:bg-black/20 backdrop-blur-xl",
+                  "border-2 border-dashed border-zinc-300 dark:border-zinc-600",
+                  "hover:border-zinc-400 dark:hover:border-zinc-500",
+                  "hover:shadow-2xl dark:hover:shadow-white/5",
+                  "flex flex-col items-center justify-center"
                 )}
               >
-                <div className="h-full flex flex-col items-center justify-center gap-3 p-6">
-                  <div className={cn(
-                    "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-200",
-                    "bg-zinc-100 dark:bg-zinc-800",
-                    "group-hover:bg-gradient-to-br group-hover:scale-110",
-                    `group-hover:${accent.gradient}`
-                  )}>
-                    <Plus className="w-7 h-7 text-zinc-400 dark:text-zinc-500 group-hover:text-white transition-colors" />
-                  </div>
-                  <div className="text-center">
-                    <p className="font-semibold text-zinc-600 dark:text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
-                      새 팀 만들기
-                    </p>
-                  </div>
+                <div className={cn(
+                  "w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all duration-300",
+                  "bg-zinc-100 dark:bg-zinc-800",
+                  "group-hover:bg-gradient-to-br group-hover:shadow-lg",
+                  `group-hover:${accent.gradient}`
+                )}>
+                  <Plus className="w-8 h-8 text-zinc-400 dark:text-zinc-500 group-hover:text-white transition-colors" />
                 </div>
+                <p className="text-lg font-semibold text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-zinc-200 transition-colors">
+                  새 팀 만들기
+                </p>
               </motion.div>
 
               {/* Team Cards */}
               {filteredTeams.map((team, index) => (
-                <motion.div
-                  key={team.id}
-                  variants={item}
-                  whileHover={{ y: -4 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => router.push(`/dashboard-group/team?teamId=${team.id}`)}
-                  className={cn(
-                    "group relative rounded-2xl cursor-pointer aspect-[4/3] overflow-hidden",
-                    "bg-white dark:bg-zinc-900",
-                    "border border-zinc-200/80 dark:border-zinc-800",
-                    "hover:border-zinc-300 dark:hover:border-zinc-700",
-                    "shadow-sm hover:shadow-xl",
-                    "transition-all duration-200"
-                  )}
-                >
-                  {/* Top Accent Bar */}
-                  <div className={cn(
-                    "absolute top-0 left-0 right-0 h-1 bg-gradient-to-r",
-                    getTeamGradient(index)
-                  )} />
+                <div key={team.id} className="relative">
+                  <TeamCard
+                    team={team}
+                    index={index}
+                    onClick={() => router.push(`/dashboard-group/team?teamId=${team.id}`)}
+                    onEdit={(e: React.MouseEvent) => {
+                      e.stopPropagation()
+                      setMenuOpenId(menuOpenId === team.id ? null : team.id)
+                    }}
+                  />
 
-                  {/* Menu Button */}
-                  <div className="absolute top-3 right-3 z-10">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMenuOpenId(menuOpenId === team.id ? null : team.id)
-                      }}
+                  {/* Context Menu - Overlay */}
+                  {menuOpenId === team.id && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
                       className={cn(
-                        "p-1.5 rounded-lg transition-all",
-                        "opacity-0 group-hover:opacity-100",
-                        "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        "absolute top-16 right-4 z-50 w-40 rounded-xl shadow-2xl overflow-hidden border",
+                        isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200"
                       )}
                     >
-                      <MoreVertical className="w-4 h-4 text-zinc-400" />
-                    </button>
-
-                    {menuOpenId === team.id && (
-                      <div className="absolute right-0 top-full mt-1 w-36 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-xl overflow-hidden z-20">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/dashboard-group/team/members?teamId=${team.id}`)
-                            setMenuOpenId(null)
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-                        >
-                          <Users className="w-4 h-4" />
-                          팀원 관리
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setMenuOpenId(null)
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          수정
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteTeam(team.id, e)}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          삭제
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card Content */}
-                  <div className="relative h-full p-5 flex flex-col">
-                    {/* Header */}
-                    <div className="flex items-start gap-3 mb-4">
-                      <div className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0",
-                        "bg-gradient-to-br shadow-md",
-                        getTeamGradient(index)
-                      )}>
-                        <span className="text-white font-bold text-lg">
-                          {team.name.charAt(0)}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0 pt-0.5">
-                        <h3 className="font-bold text-zinc-900 dark:text-white truncate text-lg leading-tight">
-                          {team.name}
-                        </h3>
-                        {team.industry && (
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {team.industry}
-                          </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/dashboard-group/team/members?teamId=${team.id}`)
+                          setMenuOpenId(null)
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-4 py-3 text-sm transition-colors",
+                          isDark ? "text-zinc-300 hover:bg-zinc-700" : "text-zinc-700 hover:bg-zinc-100"
                         )}
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    {team.description && (
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2 mb-4 flex-1">
-                        {team.description}
-                      </p>
-                    )}
-                    {!team.description && <div className="flex-1" />}
-
-                    {/* Stats */}
-                    <div className="flex items-center gap-4 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                      <div className="flex items-center gap-1.5">
-                        <Users className="w-4 h-4 text-zinc-400" />
-                        <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-                          {team.memberCount}명
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <FolderKanban className="w-4 h-4 text-zinc-400" />
-                        <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-                          0개
-                        </span>
-                      </div>
-                      <div className="ml-auto">
-                        <ChevronRight className="w-4 h-4 text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
+                      >
+                        <Users className="w-4 h-4" />
+                        팀원 관리
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setMenuOpenId(null)
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-4 py-3 text-sm transition-colors",
+                          isDark ? "text-zinc-300 hover:bg-zinc-700" : "text-zinc-700 hover:bg-zinc-100"
+                        )}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        수정
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteTeam(team.id, e)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-4 py-3 text-sm transition-colors",
+                          isDark ? "text-red-400 hover:bg-red-900/20" : "text-red-600 hover:bg-red-50"
+                        )}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        삭제
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
               ))}
 
               {filteredTeams.length === 0 && searchQuery && (
@@ -486,17 +446,12 @@ export default function TeamListPage() {
                             <div className="flex items-center gap-4 mt-1.5">
                               <span className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                                 <Users className="w-4 h-4" />
-                                {team.memberCount}명
+                                {team.memberCount || 0}명
                               </span>
                               <span className="text-sm text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                                 <Calendar className="w-4 h-4" />
-                                {formatDate(team.createdAt)}
+                                {formatDate(team.created_at)}
                               </span>
-                              {team.teamSize && (
-                                <span className="text-sm text-zinc-400 dark:text-zinc-500">
-                                  규모: {team.teamSize}
-                                </span>
-                              )}
                             </div>
                             {team.description && (
                               <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 line-clamp-1 max-w-lg">
@@ -508,18 +463,6 @@ export default function TeamListPage() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-3">
-                          {/* Quick Stats */}
-                          <div className="hidden md:flex items-center gap-6 mr-4">
-                            <div className="text-center">
-                              <p className="text-2xl font-bold text-zinc-900 dark:text-white">0</p>
-                              <p className="text-xs text-zinc-500 dark:text-zinc-400">프로젝트</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-2xl font-bold text-zinc-900 dark:text-white">0</p>
-                              <p className="text-xs text-zinc-500 dark:text-zinc-400">태스크</p>
-                            </div>
-                          </div>
-
                           <div className="relative">
                             <button
                               onClick={(e) => {
@@ -598,6 +541,7 @@ export default function TeamListPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleCreateTeam}
+        isLoading={isCreating}
       />
     </div>
   )
