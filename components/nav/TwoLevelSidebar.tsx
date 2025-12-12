@@ -13,6 +13,7 @@ import { Logo } from '@/components/ui'
 import { CgMenuGridO } from 'react-icons/cg'
 import { BsPersonWorkspace } from 'react-icons/bs'
 import { IoCalendarOutline } from 'react-icons/io5'
+import { GoPerson } from 'react-icons/go'
 import {
   LayoutDashboard,
   ListTodo,
@@ -116,6 +117,12 @@ const categories = [
     items: [
       { name: '팀 관리', href: '/dashboard-group/team', icon: Users },
     ]
+  },
+  {
+    id: 'mypage',
+    name: '마이페이지',
+    icon: GoPerson,
+    items: []
   },
 ]
 
