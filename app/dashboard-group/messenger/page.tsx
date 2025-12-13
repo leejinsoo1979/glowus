@@ -14,6 +14,7 @@ import { Button } from '@/components/ui'
 import { useChatRooms, useChatRoom, usePresence, useMeeting } from '@/hooks/useChat'
 import { ChatRoom, ChatMessage, ChatParticipant } from '@/types/chat'
 import { DEV_USER, isDevMode } from '@/lib/dev-user'
+import { PROVIDER_INFO, LLMProvider } from '@/lib/llm/models'
 
 // 참여자별 고유 색상 팔레트
 const AVATAR_COLORS = [
@@ -68,7 +69,8 @@ export default function MessengerPage() {
     typingUsers,
     agentTyping,
     sendMessage,
-    handleTyping
+    handleTyping,
+    fetchRoom
   } = useChatRoom(activeRoomId)
   const { onlineUsers } = usePresence(activeRoomId)
   const { meetingStatus, loading: meetingLoading, startMeeting, endMeeting } = useMeeting(activeRoomId)
@@ -1007,8 +1009,15 @@ export default function MessengerPage() {
                                 </span>
                               )}
                             </div>
-                            <span className="text-xs text-zinc-500">
-                              {isAgentParticipant ? 'AI 에이전트' : participant.user?.email || ''}
+                            <span className="text-xs text-zinc-500 flex items-center gap-1">
+                              {isAgentParticipant ? (
+                                <>
+                                  <span>{PROVIDER_INFO[(participant.agent?.llm_provider as LLMProvider) || 'ollama']?.icon || '🤖'}</span>
+                                  <span>{participant.agent?.model || 'qwen2.5:3b'}</span>
+                                </>
+                              ) : (
+                                participant.user?.email || ''
+                              )}
                             </span>
                           </div>
 
@@ -1111,6 +1120,8 @@ export default function MessengerPage() {
             onClose={() => setShowInviteModal(false)}
             onInvited={async () => {
               setShowInviteModal(false)
+              // 방 목록 및 현재 방 정보 새로고침
+              await Promise.all([fetchRooms(), fetchRoom()])
             }}
           />
         )}

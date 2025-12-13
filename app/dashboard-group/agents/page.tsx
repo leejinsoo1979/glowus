@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/Button"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
 import { AgentGroupModal } from "@/components/agent/AgentGroupModal"
+import { PROVIDER_INFO, LLMProvider } from "@/lib/llm/models"
 import type { DeployedAgent, AgentStatus, AgentGroup, InteractionMode } from "@/types/database"
 
 type TabType = "agents" | "groups"
@@ -507,9 +508,9 @@ export default function AgentsPage() {
                             <span>{formatTimeAgo(agent.last_active_at)}</span>
                           </div>
                         )}
-                        <div className="flex items-center gap-1">
-                          <Zap className="w-4 h-4" />
-                          <span>{agent.model}</span>
+                        <div className="flex items-center gap-1" title={`${agent.llm_provider || 'ollama'} / ${agent.model}`}>
+                          <span className="text-base">{PROVIDER_INFO[(agent.llm_provider || 'ollama') as LLMProvider]?.icon || '🤖'}</span>
+                          <span>{agent.model || 'qwen2.5:3b'}</span>
                         </div>
                       </div>
 

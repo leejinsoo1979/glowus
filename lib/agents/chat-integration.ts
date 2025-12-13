@@ -34,9 +34,11 @@ export interface EnhancedAgentConfig extends AgentConfig {
 
 // DB에서 가져온 에이전트를 오케스트레이터 형식으로 변환
 export function convertToAgentConfig(dbAgent: any): AgentConfig {
-  // 강제: Ollama 로컬 LLM 사용 (OpenAI 비용 문제)
-  // 모델을 무조건 qwen2.5:3b로 강제 설정 (DB 값 무시)
-  const model = 'qwen2.5:3b'
+  // 에이전트에 설정된 LLM 제공자와 모델 사용 (기본값: ollama/qwen2.5:3b)
+  const provider = (dbAgent.llm_provider || 'ollama') as LLMProvider
+  const model = dbAgent.model || 'qwen2.5:3b'
+
+  console.log(`[convertToAgentConfig] ${dbAgent.name}: ${provider}/${model}`)
 
   return {
     id: dbAgent.id,
@@ -45,7 +47,7 @@ export function convertToAgentConfig(dbAgent: any): AgentConfig {
     description: dbAgent.description,
     systemPrompt: dbAgent.system_prompt || `당신은 ${dbAgent.name}입니다.`,
     interactionMode: (dbAgent.interaction_mode as InteractionMode) || 'solo',
-    llmProvider: 'llama' as LLMProvider,  // 강제: Ollama 로컬 LLM
+    llmProvider: provider,
     llmModel: model,
     temperature: dbAgent.temperature ?? 0.7,
     speakOrder: dbAgent.speak_order ?? 0,

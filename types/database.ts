@@ -328,6 +328,9 @@ export interface DeployedAgent {
   // Avatar for chat
   avatar_url: string | null
 
+  // Profile video
+  video_url: string | null
+
   // Execution context
   system_prompt: string | null
   model: string

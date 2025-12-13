@@ -1,20 +1,77 @@
 // Agent Memory System
 // 에이전트가 사람처럼 일하고, 기록하고, 기억하는 시스템
 
-// Ollama 로컬 LLM 호출 헬퍼
-async function callOllama(prompt: string, json = false): Promise<string> {
-  const res = await fetch('http://localhost:11434/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'deepseek-r1:1.5b',
-      prompt,
-      stream: false,
-      format: json ? 'json' : undefined,
-    }),
-  })
-  const data = await res.json()
-  return data.response || ''
+// LLM 호출 헬퍼 (Grok 또는 Ollama)
+async function callLLM(prompt: string, json = false): Promise<string> {
+  // Grok API 사용 (환경변수에 키가 있으면)
+  if (process.env.XAI_API_KEY) {
+    try {
+      const res = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'grok-3-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          ...(json && { response_format: { type: 'json_object' } }),
+        }),
+      })
+      const data = await res.json()
+      return data.choices?.[0]?.message?.content || ''
+    } catch (error) {
+      console.warn('Grok API failed, falling back to Ollama:', error)
+    }
+  }
+
+  // Ollama 폴백
+  try {
+    const res = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'qwen2.5:3b',
+        prompt,
+        stream: false,
+        format: json ? 'json' : undefined,
+      }),
+    })
+    const data = await res.json()
+    return data.response || ''
+  } catch (error) {
+    console.error('Ollama also failed:', error)
+    return ''
+  }
+}
+
+// 임베딩 생성 헬퍼 (OpenAI 또는 해시 기반 폴백)
+async function createEmbeddingHelper(text: string): Promise<number[]> {
+  // OpenAI 임베딩 사용
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const res = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'text-embedding-3-small',
+          input: text.slice(0, 8000), // 토큰 제한
+        }),
+      })
+      const data = await res.json()
+      return data.data?.[0]?.embedding || []
+    } catch (error) {
+      console.warn('OpenAI embedding failed:', error)
+    }
+  }
+
+  // 폴백: 간단한 해시 기반 벡터 (시맨틱 검색은 안됨, 하지만 저장은 됨)
+  console.warn('Using hash-based embedding fallback (semantic search disabled)')
+  return []
 }
 
 // =====================================================
@@ -395,7 +452,7 @@ ${conversation}
 
 지식이 없으면 빈 배열을 반환하세요.`
 
-      const response = await callOllama(prompt, true)
+      const response = await callLLM(prompt, true)
       const result = JSON.parse(response || '{"knowledge": []}')
 
       for (const k of result.knowledge || []) {
@@ -625,7 +682,7 @@ ${conversation}
   "self_summary": "나는 이런 에이전트입니다 (1-2문장)"
 }`
 
-      const response = await callOllama(prompt, true)
+      const response = await callLLM(prompt, true)
       const identity = JSON.parse(response || '{}')
 
       const { error } = await this.supabase
@@ -694,11 +751,10 @@ ${conversation}
   // -------------------------------------------------
 
   /**
-   * 임베딩 생성 (Ollama 미지원 - 빈 배열 반환)
+   * 임베딩 생성 (OpenAI text-embedding-3-small 사용)
    */
   private async createEmbedding(text: string): Promise<number[]> {
-    // Ollama는 임베딩 미지원, 빈 배열 반환
-    return []
+    return createEmbeddingHelper(text)
   }
 
   /**
@@ -707,7 +763,7 @@ ${conversation}
   private async generateSummary(content: string): Promise<string> {
     try {
       const prompt = `주어진 내용을 한국어로 간단명료하게 1-2문장으로 요약하세요.\n\n${content}`
-      const response = await callOllama(prompt)
+      const response = await callLLM(prompt)
       return response || content.slice(0, 200) + '...'
     } catch (error) {
       console.error('Summary generation error:', error)
@@ -805,7 +861,7 @@ ${logSummaries}
   "insights": ["인사이트 1", "인사이트 2"]
 }`
 
-    const response = await callOllama(prompt, true)
+    const response = await callLLM(prompt, true)
     return JSON.parse(response || '{}')
   }
 
@@ -820,10 +876,52 @@ ${logSummaries}
   ): string {
     let summary = ''
 
-    // 정체성
+    // 정체성 (모든 필드 포함)
     if (identity) {
       summary += `## 나의 정체성\n`
-      summary += `${identity.selfSummary || ''}\n`
+      if (identity.selfSummary) {
+        summary += `${identity.selfSummary}\n\n`
+      }
+
+      // 핵심 가치
+      if (identity.coreValues?.length) {
+        summary += `핵심 가치: ${identity.coreValues.join(', ')}\n`
+      }
+
+      // 성격 특성
+      if (identity.personalityTraits?.length) {
+        summary += `성격: ${identity.personalityTraits.join(', ')}\n`
+      }
+
+      // 소통 스타일
+      if (identity.communicationStyle) {
+        summary += `소통 스타일: ${identity.communicationStyle}\n`
+      }
+
+      // 업무 스타일
+      if (identity.workingStyle) {
+        summary += `업무 스타일: ${identity.workingStyle}\n`
+      }
+
+      // 강점
+      if (identity.strengths?.length) {
+        summary += `강점: ${identity.strengths.join(', ')}\n`
+      }
+
+      // 전문 분야
+      if (identity.expertiseAreas?.length) {
+        const expertiseList = identity.expertiseAreas
+          .map(e => `${e.area}(숙련도: ${Math.round(e.level * 100)}%)`)
+          .join(', ')
+        summary += `전문 분야: ${expertiseList}\n`
+      }
+
+      // 성장 영역
+      if (identity.growthAreas?.length) {
+        summary += `성장 중인 영역: ${identity.growthAreas.join(', ')}\n`
+      }
+
+      // 최근 집중
       if (identity.recentFocus) {
         summary += `최근 집중: ${identity.recentFocus}\n`
       }

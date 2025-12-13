@@ -63,6 +63,7 @@ import {
   importAgentFromJson,
   AGENT_TEMPLATES,
 } from "@/lib/agent"
+import { AVAILABLE_MODELS, PROVIDER_INFO, LLMProvider, getDefaultModel } from "@/lib/llm/models"
 import type { AgentNodeData, AgentType } from "@/lib/agent"
 import { TerminalPanel, TerminalPanelRef } from "@/components/editor"
 import { useMcpBridge } from "@/hooks/useMcpBridge"
@@ -128,8 +129,8 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
   const [deploySuccess, setDeploySuccess] = useState(false)
   // 상호작용 설정
   const [deployInteractionMode, setDeployInteractionMode] = useState<'solo' | 'sequential' | 'debate' | 'collaborate' | 'supervisor'>('solo')
-  const [deployLlmProvider, setDeployLlmProvider] = useState<'openai' | 'qwen'>('openai')
-  const [deployLlmModel, setDeployLlmModel] = useState('gpt-4')
+  const [deployLlmProvider, setDeployLlmProvider] = useState<LLMProvider>('grok')
+  const [deployLlmModel, setDeployLlmModel] = useState('grok-4-0709-fast')
   const [deploySpeakOrder, setDeploySpeakOrder] = useState(0)
   // 편집 모드 상태
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
@@ -150,6 +151,19 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
             setAgentName(data.name || '')
             setDeployAgentName(data.name || '')
             setDeployAgentDescription(data.description || '')
+            // LLM 제공자/모델 로드
+            if (data.llm_provider) {
+              setDeployLlmProvider(data.llm_provider as LLMProvider)
+            }
+            if (data.model) {
+              setDeployLlmModel(data.model)
+            }
+            if (data.interaction_mode) {
+              setDeployInteractionMode(data.interaction_mode)
+            }
+            if (data.speak_order !== undefined) {
+              setDeploySpeakOrder(data.speak_order)
+            }
 
             // 워크플로우 노드와 엣지 로드 (position 검증)
             if (data.workflow_nodes && data.workflow_nodes.length > 0) {
@@ -465,8 +479,8 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
           setDeployAgentName("")
           setDeployAgentDescription("")
           setDeployInteractionMode('solo')
-          setDeployLlmProvider('openai')
-          setDeployLlmModel('gpt-4')
+          setDeployLlmProvider('grok')
+          setDeployLlmModel('grok-4-0709-fast')
           setDeploySpeakOrder(0)
         }
       }, 2000)
@@ -1185,52 +1199,89 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
                       </div>
 
                       {/* LLM 제공자 */}
-                      <div>
-                        <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
-                          LLM 제공자
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
+                          AI 모델 제공자
                         </label>
-                        <select
-                          value={deployLlmProvider}
-                          onChange={(e) => {
-                            const provider = e.target.value as typeof deployLlmProvider
-                            setDeployLlmProvider(provider)
-                            // 제공자 변경 시 기본 모델로 변경
-                            setDeployLlmModel(provider === 'openai' ? 'gpt-4' : 'qwen-max')
-                          }}
-                          className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
-                        >
-                          <option value="openai">OpenAI</option>
-                          <option value="qwen">Qwen (Alibaba)</option>
-                        </select>
+                        <div className="grid grid-cols-5 gap-2">
+                          {(Object.keys(PROVIDER_INFO) as LLMProvider[]).map((provider) => {
+                            const info = PROVIDER_INFO[provider]
+                            return (
+                              <button
+                                key={provider}
+                                type="button"
+                                onClick={() => {
+                                  setDeployLlmProvider(provider)
+                                  setDeployLlmModel(getDefaultModel(provider))
+                                }}
+                                className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+                                  deployLlmProvider === provider
+                                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                                    : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                                }`}
+                              >
+                                <span className="text-lg">{info.icon}</span>
+                                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{provider}</span>
+                                {info.recommended && (
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full">추천</span>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <p className="mt-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+                          {PROVIDER_INFO[deployLlmProvider]?.description}
+                        </p>
                       </div>
 
                       {/* LLM 모델 */}
-                      <div>
+                      <div className="col-span-2">
                         <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
-                          모델
+                          모델 선택
                         </label>
                         <select
                           value={deployLlmModel}
                           onChange={(e) => setDeployLlmModel(e.target.value)}
                           className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
                         >
-                          {deployLlmProvider === 'openai' ? (
-                            <>
-                              <option value="gpt-4">GPT-4</option>
-                              <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                              <option value="gpt-4o">GPT-4o</option>
-                              <option value="gpt-4o-mini">GPT-4o Mini</option>
-                              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                            </>
-                          ) : (
-                            <>
-                              <option value="qwen-max">Qwen Max</option>
-                              <option value="qwen-plus">Qwen Plus</option>
-                              <option value="qwen-turbo">Qwen Turbo</option>
-                              <option value="qwen3-235b-a22b">Qwen3 235B</option>
-                            </>
-                          )}
+                          {AVAILABLE_MODELS[deployLlmProvider]?.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.name} - {model.description}
+                              {model.costTier !== 'free' && ` ($${model.inputPrice}/$${model.outputPrice})`}
+                              {model.costTier === 'free' && ' (무료)'}
+                            </option>
+                          ))}
                         </select>
+                        {/* 선택된 모델 가격 정보 */}
+                        {(() => {
+                          const selectedModel = AVAILABLE_MODELS[deployLlmProvider]?.find(m => m.id === deployLlmModel)
+                          if (!selectedModel) return null
+                          return (
+                            <div className="mt-2 p-2 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">비용 등급:</span>
+                                <span className={`px-2 py-0.5 rounded-full ${
+                                  selectedModel.costTier === 'free' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' :
+                                  selectedModel.costTier === 'low' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' :
+                                  selectedModel.costTier === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400' :
+                                  'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                }`}>
+                                  {selectedModel.costTier === 'free' ? '무료' :
+                                   selectedModel.costTier === 'low' ? '저렴' :
+                                   selectedModel.costTier === 'medium' ? '보통' : '고가'}
+                                </span>
+                              </div>
+                              {selectedModel.costTier !== 'free' && (
+                                <div className="flex items-center justify-between text-xs mt-1">
+                                  <span className="text-zinc-500 dark:text-zinc-400">가격 (1M 토큰당):</span>
+                                  <span className="text-zinc-700 dark:text-zinc-300">
+                                    입력 ${selectedModel.inputPrice} / 출력 ${selectedModel.outputPrice}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
 
                       {/* 발언 순서 (순차 모드일 때만) */}

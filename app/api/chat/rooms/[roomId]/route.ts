@@ -73,7 +73,7 @@ export async function GET(
     if (agentIds.length > 0) {
       const { data: agents } = await (adminClient as any)
         .from('deployed_agents')
-        .select('id, name, description')
+        .select('id, name, description, llm_provider, model')
         .in('id', agentIds)
 
       for (const a of agents || []) {

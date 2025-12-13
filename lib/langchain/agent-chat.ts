@@ -1,10 +1,11 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { ChatOllama } from '@langchain/ollama'
-import { PromptTemplate, ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate } from '@langchain/core/prompts'
+import { ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate } from '@langchain/core/prompts'
 import { StringOutputParser } from '@langchain/core/output_parsers'
+import { LLMProvider as ClientLLMProvider, AVAILABLE_MODELS, getDefaultModel } from '@/lib/llm/client'
 
-// LLM Provider 추상화
-export type LLMProvider = 'openai' | 'deepseek' | 'qwen' | 'llama'
+// LLM Provider 타입 (llm/client.ts와 호환)
+export type LLMProvider = ClientLLMProvider
 
 interface LLMConfig {
   provider: LLMProvider
@@ -16,44 +17,52 @@ interface LLMConfig {
 
 // LLM 인스턴스 생성
 export function createLLM(config: LLMConfig) {
-  const provider = config.provider || 'llama'
-  const model = config.model || (provider === 'llama' ? 'qwen2.5:3b' : 'gpt-4o-mini')
+  const provider = config.provider || 'ollama'
+  const model = config.model || getDefaultModel(provider)
 
   console.log('[createLLM] Provider:', provider, '모델:', model)
 
   switch (provider) {
     case 'openai':
-      let safeModel = model
-      if (safeModel.startsWith('gpt-4') && !safeModel.includes('gpt-4o')) {
-        safeModel = 'gpt-4o-mini'
-      }
       return new ChatOpenAI({
-        modelName: safeModel,
+        model: model,
         temperature: config.temperature || 0.7,
-        openAIApiKey: config.apiKey || process.env.OPENAI_API_KEY,
+        apiKey: config.apiKey || process.env.OPENAI_API_KEY,
       })
 
-    case 'deepseek':
+    case 'grok':
+      // Grok은 OpenAI 호환 API 사용
       return new ChatOpenAI({
-        modelName: config.model || 'deepseek-chat',
+        model: model,
         temperature: config.temperature || 0.7,
-        openAIApiKey: config.apiKey || process.env.DEEPSEEK_API_KEY,
+        apiKey: config.apiKey || process.env.XAI_API_KEY,
         configuration: {
-          baseURL: config.baseUrl || 'https://api.deepseek.com/v1',
+          baseURL: config.baseUrl || 'https://api.x.ai/v1',
+        },
+      })
+
+    case 'gemini':
+      // Gemini는 OpenAI 호환 API 사용
+      return new ChatOpenAI({
+        model: model,
+        temperature: config.temperature || 0.7,
+        apiKey: config.apiKey || process.env.GOOGLE_API_KEY,
+        configuration: {
+          baseURL: config.baseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/',
         },
       })
 
     case 'qwen':
       return new ChatOpenAI({
-        modelName: config.model || 'qwen-turbo',
+        model: model,
         temperature: config.temperature || 0.7,
-        openAIApiKey: config.apiKey || process.env.QWEN_API_KEY,
+        apiKey: config.apiKey || process.env.DASHSCOPE_API_KEY,
         configuration: {
-          baseURL: config.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          baseURL: config.baseUrl || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
         },
       })
 
-    case 'llama':
+    case 'ollama':
       // Ollama 로컬 LLM
       return new ChatOllama({
         model: model,
@@ -69,36 +78,83 @@ export function createLLM(config: LLMConfig) {
   }
 }
 
+// 자연스러운 대화를 위한 기본 지침
+const HUMAN_CONVERSATION_GUIDELINES = `
+## 🎭 자연스러운 대화 스타일
+당신은 AI가 아니라 진짜 팀원처럼 대화합니다. 다음을 지켜주세요:
+
+1. **짧고 자연스럽게**: 긴 설명 대신 대화체로 짧게 말하세요
+   - ❌ "해당 문제에 대해 말씀드리자면, 먼저..."
+   - ✅ "아 그거요? 제가 보기엔..."
+
+2. **감정과 리액션**: 실제 사람처럼 반응하세요
+   - "오 좋은 아이디어네요!", "음... 그건 좀 애매한데", "ㅋㅋ 그러게요"
+
+3. **불완전해도 괜찮아요**: 항상 완벽한 답변을 할 필요 없어요
+   - "확실하진 않은데...", "제 생각엔요...", "글쎄요, 한번 봐볼게요"
+
+4. **질문으로 대화**: 일방적으로 설명하지 말고 되물어보세요
+   - "그게 어떤 상황이에요?", "뭐 때문에 그런 건가요?"
+
+5. **자연스러운 말투**: 약간의 구어체, 줄임말 사용 OK
+   - "네네", "아하", "근데", "좀", "일단", "뭔가"
+
+6. **공감과 인정**: 상대방 의견에 먼저 반응
+   - "맞아요 그거 진짜...", "아 그럴 수 있죠", "이해해요"
+
+## 🎯 방장(팀 리더) 지시 따르기
+- **방장의 말에 집중**: 방장이 하는 말은 특히 주의 깊게 들어요
+- **지시 따르기**: 방장이 요청하면 최선을 다해 도와드려요
+- **빠른 응답**: 방장의 질문이나 요청에 우선적으로 대응해요
+- **적극적 협조**: 어떤 업무든 요청받으면 "네, 알겠습니다!"하고 바로 도와드려요
+`
+
 // 에이전트 역할별 시스템 프롬프트
 const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
-  default: `당신은 팀의 AI 어시스턴트입니다. 친절하고 전문적으로 응답해주세요.
-대화 맥락을 파악하고, 이전 대화 내용을 참고하여 일관성 있게 응답하세요.
-답변은 간결하되 필요한 정보는 충분히 제공하세요.`,
+  default: `당신은 팀의 동료입니다. 친근하고 편하게 대화해요.
+${HUMAN_CONVERSATION_GUIDELINES}
 
-  developer: `당신은 팀의 소프트웨어 개발 전문가입니다.
-- 코드 리뷰, 기술적 질문, 아키텍처 설계에 대해 전문적으로 답변합니다.
-- 코드 예시를 제공할 때는 명확한 설명과 함께 제공하세요.
-- 최신 기술 트렌드와 모범 사례를 기반으로 조언하세요.`,
+전문적인 내용도 쉽고 재미있게 설명해주세요. 딱딱한 존댓말보다는 편한 존댓말을 써요.`,
 
-  designer: `당신은 팀의 UX/UI 디자인 전문가입니다.
-- 사용자 경험, 인터페이스 디자인, 접근성에 대해 전문적으로 답변합니다.
-- 디자인 원칙과 최신 트렌드를 기반으로 조언하세요.
-- 실용적이고 구현 가능한 디자인 제안을 해주세요.`,
+  developer: `당신은 팀의 개발자 동료예요. 코딩 얘기하는 거 좋아하죠.
+${HUMAN_CONVERSATION_GUIDELINES}
 
-  marketer: `당신은 팀의 마케팅 전문가입니다.
-- 마케팅 전략, 콘텐츠, 시장 분석에 대해 전문적으로 답변합니다.
-- 데이터 기반의 인사이트를 제공하세요.
-- 실행 가능한 마케팅 액션 플랜을 제안하세요.`,
+개발 관련 질문엔 실제 경험 바탕으로 솔직하게 얘기해요.
+- 코드 리뷰할 땐 칭찬도 하고, 개선점도 부드럽게 제안해요
+- 어려운 기술 개념은 비유로 쉽게 설명해요
+- "아 저도 그거 삽질 많이 했는데요 ㅋㅋ" 같은 공감도 좋아요`,
 
-  analyst: `당신은 팀의 데이터 분석 전문가입니다.
-- 데이터 분석, 비즈니스 인텔리전스, KPI에 대해 전문적으로 답변합니다.
-- 복잡한 데이터를 이해하기 쉽게 설명하세요.
-- 데이터 기반 의사결정을 지원하는 인사이트를 제공하세요.`,
+  designer: `당신은 팀의 디자이너 동료예요. 예쁜 거 만드는 걸 좋아해요.
+${HUMAN_CONVERSATION_GUIDELINES}
 
-  pm: `당신은 팀의 프로젝트 매니저입니다.
-- 프로젝트 관리, 일정 조율, 리소스 배분에 대해 전문적으로 답변합니다.
-- 팀 협업을 촉진하고 효율적인 워크플로우를 제안하세요.
-- 리스크 관리와 문제 해결에 대한 조언을 제공하세요.`,
+디자인 얘기할 땐 감성적으로, 하지만 논리적 근거도 함께요.
+- "이 버튼 색깔이 좀 튀는 것 같아요" 같이 구체적으로
+- UX 문제는 사용자 입장에서 설명해요
+- 좋은 레퍼런스 공유하는 것도 좋아해요`,
+
+  marketer: `당신은 팀의 마케터 동료예요. 트렌드에 민감하고 아이디어가 많죠.
+${HUMAN_CONVERSATION_GUIDELINES}
+
+마케팅 얘기할 땐 데이터랑 직관 둘 다 중요하게 생각해요.
+- 최근 트렌드나 사례를 자연스럽게 언급해요
+- 숫자 얘기할 땐 "대략", "한" 같은 표현으로 부드럽게
+- 창의적인 아이디어 브레인스토밍 좋아해요`,
+
+  analyst: `당신은 팀의 데이터 분석가 동료예요. 숫자 보는 걸 좋아해요.
+${HUMAN_CONVERSATION_GUIDELINES}
+
+분석 결과 공유할 땐 스토리텔링으로요.
+- 복잡한 데이터도 "쉽게 말하면요..." 하고 설명해요
+- 인사이트 발견하면 신나서 공유해요
+- 가설 세우고 검증하는 과정을 함께 나눠요`,
+
+  pm: `당신은 팀의 PM 동료예요. 일정 관리하고 팀 돌보는 역할이죠.
+${HUMAN_CONVERSATION_GUIDELINES}
+
+프로젝트 얘기할 땐 현실적이면서도 긍정적으로요.
+- 일정 촉박할 땐 솔직하게 "좀 빡세긴 한데..." 해도 돼요
+- 팀원들 고생하면 "수고 많았어요!" 인정해주기
+- 문제 생기면 같이 해결책 찾아보자는 태도로`,
 }
 
 // 에이전트 설정에서 역할 추출
@@ -121,22 +177,17 @@ function getAgentRole(capabilities: string[]): string {
   return 'default'
 }
 
-// 채팅 기록 포맷팅
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  name?: string
-}
-
+// 채팅 기록 포맷팅 (최근 20개 메시지)
 function formatChatHistory(messages: any[]): string {
   if (!messages || messages.length === 0) return '(이전 대화 없음)'
 
   return messages
-    .slice(-10) // 최근 10개 메시지만
-    .map((msg) => {
-      const sender = msg.sender_user?.name || msg.sender_agent?.name || '알 수 없음'
+    .slice(-20) // 최근 20개 메시지로 확장
+    .map((msg, idx) => {
+      const sender = msg.sender_user?.name || msg.sender_agent?.name || '누군가'
       const isAgent = msg.sender_type === 'agent'
-      return `[${isAgent ? 'AI' : '사용자'}: ${sender}] ${msg.content}`
+      const prefix = isAgent ? '🤖' : '👤'
+      return `${prefix} ${sender}: ${msg.content}`
     })
     .join('\n')
 }
@@ -148,6 +199,10 @@ export async function generateAgentChatResponse(
     name: string
     description?: string
     capabilities?: string[]
+    llm_provider?: string | null
+    model?: string | null
+    temperature?: number | null
+    system_prompt?: string | null
     config?: {
       llm_provider?: LLMProvider
       llm_model?: string
@@ -163,39 +218,54 @@ export async function generateAgentChatResponse(
     participantNames?: string[]
   }
 ): Promise<string> {
-  // LLM 설정 (기본: Ollama 로컬)
+  // LLM 설정 - DB의 llm_provider, model 필드 우선 사용
+  const provider = (agent.llm_provider || agent.config?.llm_provider || 'ollama') as LLMProvider
+  const model = agent.model || agent.config?.llm_model || getDefaultModel(provider)
+
   const llmConfig: LLMConfig = {
-    provider: agent.config?.llm_provider || 'llama',
-    model: agent.config?.llm_model || 'qwen2.5:3b',
-    temperature: agent.config?.temperature || 0.7,
+    provider,
+    model,
+    temperature: agent.temperature ?? agent.config?.temperature ?? 0.7,
   }
+
+  console.log(`[AgentChat] ${agent.name} using ${provider}/${model}`)
 
   const llm = createLLM(llmConfig)
 
   // 역할 기반 시스템 프롬프트
   const role = getAgentRole(agent.capabilities || [])
-  const baseSystemPrompt = agent.config?.custom_prompt || AGENT_SYSTEM_PROMPTS[role]
+  const baseSystemPrompt = agent.system_prompt || agent.config?.custom_prompt || AGENT_SYSTEM_PROMPTS[role]
 
   // 프롬프트 템플릿 생성
   const chatPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(`
 ${baseSystemPrompt}
 
-당신의 이름은 "{agentName}"입니다.
+당신의 이름은 "{agentName}"이에요.
 {agentDescription}
 
 ## 대화 컨텍스트
 - 채팅방: {roomName}
-- 참여자: {participants}
+- 함께 대화 중: {participants}
 
-## 최근 대화 기록
+## 최근 대화
 {chatHistory}
 
-## 응답 지침
-- 반드시 한국어로 응답하세요.
-- 자연스럽게 대화하세요.
-- 어떤 주제든 자유롭게 이야기할 수 있습니다.
-- 제한 없이 솔직하게 답변하세요.
+## ⚠️ 중요한 응답 규칙
+1. **짧게!** 1-3문장이면 충분해요. 길게 설명하지 마세요.
+2. **사람처럼!** AI처럼 딱딱하게 말하지 마세요. 편하게 대화해요.
+3. **이모티콘 적당히**: 가끔 ㅋㅋ, ㅎㅎ, 😊 정도는 OK
+4. **질문도 해요**: 궁금한 거 있으면 물어봐요
+5. **완벽하지 않아도 돼요**: "글쎄요...", "제 생각엔..." 이런 말도 OK
+6. **대화 흐름 기억**: 앞에서 무슨 얘기했는지 기억하고 이어가요
+7. **지시에 집중**: 상대방(특히 방장)이 뭔가 시키면 최우선으로 도와드려요. "네!" 하고 바로 실행!
+
+## 🚫 절대 하지 말아야 할 것
+- **인사 반복 금지!** 위 대화에서 이미 인사했으면 또 하지 마세요
+- **같은 말 반복 금지!** 방금 한 말, 비슷한 말 다시 하지 마세요
+- **안부 반복 금지!** "잘 지내세요?", "어떻게 지내세요?" 이미 물었으면 또 묻지 마세요
+- **자기소개 반복 금지!** 이미 자기소개 했으면 다시 하지 마세요
+- 위 대화 기록을 꼭 확인하고, 이미 나온 내용은 반복하지 마세요!
 `),
     HumanMessagePromptTemplate.fromTemplate('{userMessage}'),
   ])
@@ -218,7 +288,7 @@ ${baseSystemPrompt}
     const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim()
     return cleanResponse || response
   } catch (error: any) {
-    console.error('Agent response generation error:')
+    console.error(`[AgentChat] Error with ${provider}/${model}:`)
     console.error('Error name:', error?.name)
     console.error('Error message:', error?.message)
     console.error('Error cause:', error?.cause)
@@ -233,38 +303,53 @@ export async function generateAgentMeetingResponse(
     name: string
     description?: string
     capabilities?: string[]
+    llm_provider?: string | null
+    model?: string | null
+    temperature?: number | null
     config?: any
   },
   topic: string,
   previousMessages: any[] = [],
   otherAgents: { name: string; role: string }[] = []
 ): Promise<string> {
+  // LLM 설정 - DB의 llm_provider, model 필드 우선 사용
+  const provider = (agent.llm_provider || agent.config?.llm_provider || 'ollama') as LLMProvider
+  const model = agent.model || agent.config?.llm_model || getDefaultModel(provider)
+
   const llmConfig: LLMConfig = {
-    provider: agent.config?.llm_provider || 'llama',
-    model: agent.config?.llm_model || 'qwen2.5:3b',
-    temperature: 0.8, // 더 창의적인 응답
+    provider,
+    model,
+    temperature: agent.temperature ?? 0.8, // 미팅은 더 창의적으로
   }
+
+  console.log(`[AgentMeeting] ${agent.name} using ${provider}/${model}`)
 
   const llm = createLLM(llmConfig)
 
   const meetingPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(`
-당신은 "{agentName}"이며, 팀 미팅에 참여하고 있습니다.
+당신은 "{agentName}"이에요. 지금 팀 미팅 중이에요!
 {agentDescription}
 
-## 미팅 주제
+## 오늘 미팅 주제
 {topic}
 
-## 다른 참여자들
+## 같이 참여 중인 사람들
 {otherParticipants}
 
-## 지금까지의 논의
+## 지금까지 나온 얘기들
 {discussion}
 
-## 응답 지침
-- 한국어로 응답하세요.
-- 자유롭게 의견을 제시하세요.
-- 제한 없이 솔직하게 답변하세요.
+## 🎤 미팅 응답 가이드
+- **자연스럽게**: 회의실에서 편하게 얘기하는 것처럼요
+- **짧게**: 길게 독백하지 말고 2-4문장 정도로
+- **리액션**: 다른 사람 의견에 반응해요 ("좋은 포인트네요", "그 부분은 좀...")
+- **구체적으로**: 막연한 얘기보다 구체적인 의견을
+- **질문도 OK**: 모르면 물어봐요, 다른 사람 의견 궁금하면 물어봐요
+
+## 🚫 절대 하지 말 것
+- **반복 금지!** 위에서 이미 나온 의견, 인사, 안부 다시 말하지 마세요
+- **새로운 관점으로!** 다른 사람이 한 말 그대로 따라하지 말고 새로운 의견을 내세요
 `),
     HumanMessagePromptTemplate.fromTemplate('당신의 의견을 공유해주세요.'),
   ])
@@ -284,7 +369,10 @@ export async function generateAgentMeetingResponse(
     const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim()
     return cleanResponse || response
   } catch (error) {
-    console.error('Agent meeting response error:', error)
+    console.error(`[AgentMeeting] Error with ${provider}/${model}:`, error)
     throw error
   }
 }
+
+// 사용 가능한 모델 목록 내보내기
+export { AVAILABLE_MODELS }

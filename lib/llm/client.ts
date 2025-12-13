@@ -1,18 +1,35 @@
-// Multi-LLM Client - OpenAI + Qwen3 (DashScope) + Ollama
+// Multi-LLM Client - OpenAI, Grok, Gemini, Qwen, Ollama
+// Server-only: Do NOT import this in client components
 import OpenAI from 'openai'
 
-export type LLMProvider = 'openai' | 'qwen' | 'llama'
+// Re-export from models.ts for convenience
+export {
+  type LLMProvider,
+  type LLMConfig,
+  AVAILABLE_MODELS,
+  PROVIDER_INFO,
+  getDefaultModel,
+  isProviderAvailable
+} from './models'
 
-export interface LLMConfig {
-  provider: LLMProvider
-  model: string
-  temperature?: number
-  maxTokens?: number
-}
+import type { LLMProvider, LLMConfig } from './models'
+import { getDefaultModel, isProviderAvailable } from './models'
 
 // OpenAI 클라이언트
 export const openaiClient = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || '',
+})
+
+// Grok 클라이언트 (xAI - OpenAI 호환 API)
+export const grokClient = new OpenAI({
+  apiKey: process.env.XAI_API_KEY || '',
+  baseURL: 'https://api.x.ai/v1',
+})
+
+// Gemini 클라이언트 (Google - OpenAI 호환 API)
+export const geminiClient = new OpenAI({
+  apiKey: process.env.GOOGLE_API_KEY || '',
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
 })
 
 // Qwen 클라이언트 (DashScope - OpenAI 호환 API)
@@ -23,35 +40,25 @@ export const qwenClient = new OpenAI({
 
 // Ollama 클라이언트 (로컬 LLM - OpenAI 호환 API)
 export const ollamaClient = new OpenAI({
-  apiKey: 'ollama',  // Ollama는 API key가 필요 없지만 OpenAI 클라이언트가 요구함
+  apiKey: 'ollama',
   baseURL: 'http://localhost:11434/v1',
 })
-
-// 사용 가능한 모델 목록
-export const AVAILABLE_MODELS = {
-  openai: [
-    { id: 'gpt-4o', name: 'GPT-4o', description: '가장 강력한 모델', costTier: 'high' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: '빠르고 저렴한 GPT-4', costTier: 'medium' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: '빠르고 저렴', costTier: 'low' },
-  ],
-  qwen: [
-    { id: 'qwen-max', name: 'Qwen Max', description: '최고 성능 Qwen', costTier: 'free' },
-    { id: 'qwen-plus', name: 'Qwen Plus', description: '균형 잡힌 성능', costTier: 'free' },
-    { id: 'qwen-turbo', name: 'Qwen Turbo', description: '빠른 응답', costTier: 'free' },
-  ],
-} as const
 
 // 클라이언트 선택
 export function getClient(provider: LLMProvider): OpenAI {
   switch (provider) {
     case 'openai':
       return openaiClient
+    case 'grok':
+      return grokClient
+    case 'gemini':
+      return geminiClient
     case 'qwen':
       return qwenClient
-    case 'llama':
+    case 'ollama':
       return ollamaClient
     default:
-      return ollamaClient  // 기본값: Ollama 로컬 LLM
+      return ollamaClient
   }
 }
 
@@ -93,6 +100,22 @@ export async function* chatStream(
   }
 }
 
+// 에이전트 설정에서 LLM Config 생성
+export function createLLMConfigFromAgent(agent: {
+  llm_provider?: string | null
+  model?: string | null
+  temperature?: number | null
+}): LLMConfig {
+  const provider = (agent.llm_provider as LLMProvider) || 'ollama'
+  const model = agent.model || getDefaultModel(provider)
+
+  return {
+    provider,
+    model,
+    temperature: agent.temperature ?? 0.7,
+  }
+}
+
 // 비용 최적화 자동 선택
 export interface SmartChatOptions {
   priority: 'cost' | 'quality' | 'balanced'
@@ -106,26 +129,47 @@ export function selectOptimalLLM(options: SmartChatOptions): LLMConfig {
 
   // 품질 우선
   if (priority === 'quality') {
-    return { provider: 'openai', model: 'gpt-4o-mini' }
+    if (isProviderAvailable('openai')) {
+      return { provider: 'openai', model: 'gpt-4o-mini' }
+    }
+    if (isProviderAvailable('grok')) {
+      return { provider: 'grok', model: 'grok-3' }
+    }
   }
 
-  // 비용 우선 (Qwen 무료)
+  // 비용 우선 (Grok 4.1 Fast > Gemini > Qwen > Ollama)
   if (priority === 'cost') {
-    return { provider: 'qwen', model: 'qwen-max' }
+    if (isProviderAvailable('grok')) {
+      return { provider: 'grok', model: 'grok-4-1-fast' }
+    }
+    if (isProviderAvailable('gemini')) {
+      return { provider: 'gemini', model: 'gemini-2.0-flash-lite' }
+    }
+    if (isProviderAvailable('qwen')) {
+      return { provider: 'qwen', model: 'qwen-turbo' }
+    }
+    return { provider: 'ollama', model: 'qwen2.5:3b' }
   }
 
   // 균형: 상황에 따라 선택
   if (isFirstResponse || isFinalSummary) {
-    return { provider: 'openai', model: 'gpt-4o-mini' }
+    if (isProviderAvailable('grok')) {
+      return { provider: 'grok', model: 'grok-4-1-fast' }
+    }
+    if (isProviderAvailable('openai')) {
+      return { provider: 'openai', model: 'gpt-4o-mini' }
+    }
   }
 
-  // 긴 컨텍스트는 Qwen (256K 지원)
-  if (contextLength && contextLength > 32000) {
-    return { provider: 'qwen', model: 'qwen-max' }
+  // 긴 컨텍스트는 Gemini (1M 지원)
+  if (contextLength && contextLength > 100000) {
+    if (isProviderAvailable('gemini')) {
+      return { provider: 'gemini', model: 'gemini-1.5-flash' }
+    }
   }
 
-  // 기본: Qwen (무료)
-  return { provider: 'qwen', model: 'qwen-max' }
+  // 기본: Ollama (무료)
+  return { provider: 'ollama', model: 'qwen2.5:3b' }
 }
 
 // Fallback 로직이 있는 스마트 채팅
@@ -141,15 +185,26 @@ export async function smartChat(
   } catch (error) {
     console.warn(`${config.provider} failed, falling back...`, error)
 
-    // Fallback: 다른 provider로 시도
-    const fallbackProvider: LLMProvider = config.provider === 'openai' ? 'qwen' : 'openai'
-    const fallbackModel = fallbackProvider === 'openai' ? 'gpt-3.5-turbo' : 'qwen-turbo'
+    // Fallback 순서: grok → gemini → openai → ollama
+    const fallbackOrder: LLMProvider[] = ['grok', 'gemini', 'openai', 'qwen', 'ollama']
 
-    const response = await chat(messages, {
-      provider: fallbackProvider,
-      model: fallbackModel
-    })
+    for (const fallbackProvider of fallbackOrder) {
+      if (fallbackProvider === config.provider) continue
+      if (!isProviderAvailable(fallbackProvider) && fallbackProvider !== 'ollama') continue
 
-    return { response, provider: fallbackProvider }
+      try {
+        const fallbackModel = getDefaultModel(fallbackProvider)
+        const response = await chat(messages, {
+          provider: fallbackProvider,
+          model: fallbackModel
+        })
+        return { response, provider: fallbackProvider }
+      } catch (fallbackError) {
+        console.warn(`${fallbackProvider} fallback also failed`, fallbackError)
+        continue
+      }
+    }
+
+    throw new Error('All LLM providers failed')
   }
 }

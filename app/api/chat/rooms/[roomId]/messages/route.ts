@@ -617,6 +617,14 @@ async function processAgentResponsesRelay(
           metadata: { agent_name: facilitatorAgent.name, is_facilitator: true },
         })
 
+        // 🔥 진행자 대화 메모리 저장
+        try {
+          const memoryService = getMemoryService(supabase)
+          await memoryService.logConversation(facilitatorAgent.id, roomId, facilitatorPrompt, facilitatorResponse, {
+            room_name: roomContext.roomName, is_facilitator: true, round: round + 1,
+          })
+        } catch (e) { /* ignore */ }
+
         conversationHistory.push({
           role: 'agent',
           name: facilitatorAgent.name,
@@ -668,6 +676,14 @@ async function processAgentResponsesRelay(
           is_ai_response: true,
           metadata: { agent_name: agentToAsk.name },
         })
+
+        // 🔥 지목된 에이전트 대화 메모리 저장
+        try {
+          const memoryService = getMemoryService(supabase)
+          await memoryService.logConversation(agentToAsk.id, roomId, agentPrompt, agentResponse, {
+            room_name: roomContext.roomName, round: round + 1,
+          })
+        } catch (e) { /* ignore */ }
 
         conversationHistory.push({
           role: 'agent',
@@ -775,8 +791,13 @@ async function processAgentResponsesRelay(
         const facilitatorAgent = facilitatorId ? uniqueAgents.find(a => a.id === facilitatorId) : null
         const facilitatorName = facilitatorAgent?.name || null
 
-        // 디버그 로그
-        console.log(`[Relay] Agent ${agent.name} - facilitatorId: ${facilitatorId}, isFacilitator: ${isFacilitator}, round: ${round}`)
+        // 디버그 로그 - 에이전트 정체성 확인
+        console.log(`[Relay] 🔍 에이전트 정체성 확인:`)
+        console.log(`  - Agent ID: ${agent.id}`)
+        console.log(`  - Agent Name: ${agent.name}`)
+        console.log(`  - Agent Model: ${agent.model}`)
+        console.log(`  - Agent Provider: ${agent.llm_provider}`)
+        console.log(`  - Round: ${round}, isFacilitator: ${isFacilitator}`)
 
         const isFirstGreeting = round === 0  // 첫 인사
         const isSmallTalk = round === 1  // 가벼운 대화
@@ -949,6 +970,25 @@ ${topicInstruction ? '그리고 주제에 대한 첫 의견을 던지세요.' : 
           })
           console.log(`[Relay] Agent ${agent.name} said: ${response.slice(0, 50)}...`)
 
+          // 🔥 메모리 시스템에 대화 기록 저장 (영속적 기억)
+          try {
+            const memoryService = getMemoryService(supabase)
+            await memoryService.logConversation(
+              agent.id,
+              roomId,
+              contextMessage,  // 컨텍스트 메시지 (대화 맥락)
+              response,        // 에이전트 응답
+              {
+                room_name: roomContext.roomName,
+                room_type: roomContext.roomType,
+                round: round + 1,
+                is_relay: true,
+              }
+            )
+          } catch (memError) {
+            console.warn(`[Relay] Memory logging failed for ${agent.name}:`, memError)
+          }
+
           // 대화 기록에 추가
           conversationHistory.push({
             role: 'agent',
@@ -979,38 +1019,118 @@ ${topicInstruction ? '그리고 주제에 대한 첫 의견을 던지세요.' : 
   console.log(`[Relay] Conversation completed: ${totalMessages} messages in ${elapsedSeconds}s`)
 }
 
-// 단일 에이전트 응답 생성 (릴레이용 간단 버전)
+// 단일 에이전트 응답 생성 (릴레이용 - 메모리 통합 버전)
 async function generateSingleAgentResponse(
   supabase: any,
   agent: any,
   contextMessage: string,
   roomContext: { roomId: string; roomName?: string; roomType?: string }
 ): Promise<string> {
-  const { chat } = await import('@/lib/llm/client')
-  type LLMConfig = { provider: 'openai' | 'qwen' | 'llama'; model: string; temperature?: number }
+  const { chat, createLLMConfigFromAgent } = await import('@/lib/llm/client')
+  type LLMProvider = 'openai' | 'grok' | 'gemini' | 'qwen' | 'ollama'
+  type LLMConfig = { provider: LLMProvider; model: string; temperature?: number }
+
+  // 🔥 에이전트의 과거 기억 로드 (영속적 인격)
+  let memoryContext = ''
+  let identityContext = ''
+  try {
+    const memoryService = getMemoryService(supabase)
+    const memory = await memoryService.loadFullContext(agent.id, {
+      roomId: roomContext.roomId,
+      query: contextMessage.slice(0, 200), // 쿼리로 관련 기억 검색
+    })
+
+    // 최근 대화 기록 요약
+    if (memory.recentLogs && memory.recentLogs.length > 0) {
+      const recentConversations = memory.recentLogs
+        .filter((log: any) => log.log_type === 'conversation')
+        .slice(0, 5)
+        .map((log: any) => {
+          const content = log.content || ''
+          const match = content.match(/에이전트 응답: ([\s\S]+)$/)
+          return match ? `- "${match[1].slice(0, 100)}..."` : null
+        })
+        .filter(Boolean)
+        .join('\n')
+
+      if (recentConversations) {
+        memoryContext = `\n[내가 최근에 한 말들 - 일관성 유지]\n${recentConversations}\n`
+      }
+    }
+
+    // 정체성 정보 (모든 필드 포함)
+    if (memory.identity) {
+      const id = memory.identity
+      let idLines: string[] = []
+
+      if (id.selfSummary) {
+        idLines.push(id.selfSummary)
+      }
+      if (id.coreValues?.length) {
+        idLines.push(`핵심 가치: ${id.coreValues.join(', ')}`)
+      }
+      if (id.personalityTraits?.length) {
+        idLines.push(`성격: ${id.personalityTraits.join(', ')}`)
+      }
+      if (id.communicationStyle) {
+        idLines.push(`소통 스타일: ${id.communicationStyle}`)
+      }
+      if (id.workingStyle) {
+        idLines.push(`업무 스타일: ${id.workingStyle}`)
+      }
+      if (id.strengths?.length) {
+        idLines.push(`강점: ${id.strengths.join(', ')}`)
+      }
+      if (id.expertiseAreas?.length) {
+        const expertiseList = id.expertiseAreas
+          .map((e: any) => `${e.area}(${Math.round(e.level * 100)}%)`)
+          .join(', ')
+        idLines.push(`전문 분야: ${expertiseList}`)
+      }
+      if (id.recentFocus) {
+        idLines.push(`최근 집중: ${id.recentFocus}`)
+      }
+
+      if (idLines.length > 0) {
+        identityContext = `\n[나의 정체성]\n${idLines.join('\n')}\n`
+      }
+    }
+  } catch (memError) {
+    console.warn(`[generateSingleAgentResponse] Memory load failed for ${agent.name}:`, memError)
+  }
 
   // 에이전트 성격 기반 시스템 프롬프트 구성
   const basePersonality = agent.system_prompt || ''
-  const systemPrompt = `당신은 "${agent.name}"입니다.
+  const systemPrompt = `🔴 중요: 당신의 이름은 "${agent.name}"입니다. 절대 다른 이름으로 응답하지 마세요.
+🔴 당신은 "${agent.name}"이고, 다른 에이전트가 아닙니다.
 
-${basePersonality ? `[성격]\n${basePersonality}\n` : ''}
+${basePersonality ? `[나의 성격]\n${basePersonality}\n` : ''}${identityContext}${memoryContext}
 [대화 스타일]
+- "${agent.name}"으로서 나만의 개성을 담아 말하세요
+- 다른 에이전트(에이미, 레이첼 등)의 말투를 따라하지 마세요
 - 진짜 사람처럼 감정과 개성을 담아 말하세요
+- 이전에 한 말과 일관성을 유지하세요
 - 때로는 반박하고, 때로는 농담하고, 때로는 날카로운 질문을 하세요
-- 뻔한 답변 대신 독특하고 예상치 못한 시각을 제시하세요
-- 상대방의 말에 "그건 좀 다르게 볼 수도 있는데...", "잠깐, 근데 이건 어떻게 생각해?" 같은 자연스러운 전환 사용
 - 형식적인 표현 금지: "네", "감사합니다", "좋은 의견이네요" 같은 빈말 절대 금지
 
 [규칙]
 - 한국어만 사용 (중국어/영어 금지)
 - 1-2문장으로 짧고 임팩트 있게
-- 이름이나 인사말 없이 바로 본론`
+- 이름이나 인사말 없이 바로 본론
+- 🚫 절대 "에이미:", "레이첼:" 같은 접두어로 시작하지 마세요`
 
+  // 에이전트의 LLM 설정 사용 (DB에 저장된 llm_provider, model 필드)
   const llmConfig: LLMConfig = {
-    provider: 'llama',
-    model: 'qwen2.5:3b',
+    ...createLLMConfigFromAgent(agent),
     temperature: agent.temperature ?? 0.9, // 더 창의적인 응답을 위해 온도 상향
   }
+
+  console.log(`[generateSingleAgentResponse] 🔍 에이전트 확인:`)
+  console.log(`  - ID: ${agent.id}`)
+  console.log(`  - Name: ${agent.name}`)
+  console.log(`  - Provider: ${llmConfig.provider}`)
+  console.log(`  - Model: ${llmConfig.model}`)
+  console.log(`  - Memory: ${memoryContext ? 'YES' : 'NO'}`)
 
   try {
     const response = await chat(
@@ -1096,25 +1216,104 @@ async function generateAgentResponseHandler(
       participantNames = participantNames.concat(agentList?.map((a: any) => a.name) || [])
     }
 
-    // 최근 메시지 기록 조회
-    const { data: recentMessages } = await supabase
+    // 최근 메시지 기록 조회 (더 많은 컨텍스트를 위해 30개)
+    const { data: rawRecentMessages } = await supabase
       .from('chat_messages')
-      .select('content, sender_type, sender_user_id, sender_agent_id')
+      .select('content, sender_type, sender_user_id, sender_agent_id, created_at')
       .eq('room_id', roomId)
       .order('created_at', { ascending: false })
-      .limit(15)
+      .limit(30)
+
+    // 발신자 이름 매핑
+    const msgUserIds = Array.from(new Set((rawRecentMessages || []).filter((m: any) => m.sender_user_id).map((m: any) => m.sender_user_id as string)))
+    const msgAgentIds = Array.from(new Set((rawRecentMessages || []).filter((m: any) => m.sender_agent_id).map((m: any) => m.sender_agent_id as string)))
+
+    const userNameMap: Record<string, string> = {}
+    const agentNameMap: Record<string, string> = {}
+
+    if (msgUserIds.length > 0) {
+      const { data: msgUsers } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', msgUserIds)
+      for (const u of msgUsers || []) {
+        userNameMap[u.id] = u.name
+      }
+    }
+
+    if (msgAgentIds.length > 0) {
+      const { data: msgAgents } = await supabase
+        .from('deployed_agents')
+        .select('id, name')
+        .in('id', msgAgentIds)
+      for (const a of msgAgents || []) {
+        agentNameMap[a.id] = a.name
+      }
+    }
+
+    // 메시지에 발신자 이름 추가
+    const recentMessages = (rawRecentMessages || []).map((msg: any) => ({
+      ...msg,
+      sender_user: msg.sender_user_id ? { name: userNameMap[msg.sender_user_id] || '사용자' } : null,
+      sender_agent: msg.sender_agent_id ? { name: agentNameMap[msg.sender_agent_id] || '에이전트' } : null,
+    }))
 
     // 메모리가 포함된 시스템 프롬프트 생성
     let enhancedSystemPrompt = agent.system_prompt || `당신은 ${agent.name}입니다.`
 
-    // 정체성 정보 추가
+    // 정체성 정보 추가 (모든 필드 포함)
     if (identityInfo) {
-      enhancedSystemPrompt += `\n\n## 나의 정체성
-${identityInfo.selfSummary || ''}
+      let identitySection = `\n\n## 나의 정체성\n`
 
-나의 핵심 가치: ${(identityInfo.coreValues || []).join(', ')}
-나의 강점: ${(identityInfo.strengths || []).join(', ')}
-최근 집중 분야: ${identityInfo.recentFocus || '없음'}`
+      if (identityInfo.selfSummary) {
+        identitySection += `${identityInfo.selfSummary}\n\n`
+      }
+
+      // 핵심 가치
+      if (identityInfo.coreValues?.length) {
+        identitySection += `핵심 가치: ${identityInfo.coreValues.join(', ')}\n`
+      }
+
+      // 성격 특성 - 대화 스타일에 중요
+      if (identityInfo.personalityTraits?.length) {
+        identitySection += `나의 성격: ${identityInfo.personalityTraits.join(', ')}\n`
+      }
+
+      // 소통 스타일 - 응답 톤에 직접 영향
+      if (identityInfo.communicationStyle) {
+        identitySection += `소통 스타일: ${identityInfo.communicationStyle}\n`
+      }
+
+      // 업무 스타일
+      if (identityInfo.workingStyle) {
+        identitySection += `업무 스타일: ${identityInfo.workingStyle}\n`
+      }
+
+      // 강점
+      if (identityInfo.strengths?.length) {
+        identitySection += `강점: ${identityInfo.strengths.join(', ')}\n`
+      }
+
+      // 전문 분야
+      if (identityInfo.expertiseAreas?.length) {
+        const expertiseList = identityInfo.expertiseAreas
+          .map((e: any) => `${e.area}(숙련도: ${Math.round(e.level * 100)}%)`)
+          .join(', ')
+        identitySection += `전문 분야: ${expertiseList}\n`
+      }
+
+      // 성장 영역
+      if (identityInfo.growthAreas?.length) {
+        identitySection += `성장 중인 영역: ${identityInfo.growthAreas.join(', ')}\n`
+      }
+
+      // 최근 집중
+      if (identityInfo.recentFocus) {
+        identitySection += `최근 집중: ${identityInfo.recentFocus}\n`
+      }
+
+      identitySection += `\n위 정체성을 바탕으로 일관된 성격과 말투로 대화하세요.`
+      enhancedSystemPrompt += identitySection
     }
 
     // 메모리 컨텍스트 추가
@@ -1142,17 +1341,13 @@ ${memoryContext}
       }
 
       // 에이전트 설정을 LangChain 형식으로 변환 (메모리 포함)
-      // 강제: Ollama 로컬 LLM 사용 (OpenAI 비용 문제)
+      // agent.llm_provider, agent.model을 우선 사용 (DB 저장값)
       const agentWithConfig = {
         ...agent,
-        config: {
-          llm_provider: 'llama' as const,
-          llm_model: 'qwen2.5:3b',
-          temperature: agent.temperature || 0.7,
-          custom_prompt: enhancedSystemPrompt,
-        }
+        system_prompt: enhancedSystemPrompt,
       }
 
+      console.log(`[generateAgentResponse] 미팅 모드 - ${agent.name} using ${agent.llm_provider || 'ollama'}/${agent.model || 'qwen2.5:3b'}`)
       response = await generateAgentMeetingResponse(
         agentWithConfig,
         room.meeting_topic,
@@ -1161,18 +1356,13 @@ ${memoryContext}
       )
     } else {
       // 일반 채팅 모드 (메모리 포함)
-      // 강제: Ollama 로컬 LLM 사용 (OpenAI 비용 문제)
+      // agent.llm_provider, agent.model을 우선 사용 (DB 저장값)
       const agentWithConfig = {
         ...agent,
-        config: {
-          llm_provider: 'llama' as const,
-          llm_model: 'qwen2.5:3b',
-          temperature: agent.temperature || 0.7,
-          custom_prompt: enhancedSystemPrompt,
-        }
+        system_prompt: enhancedSystemPrompt,
       }
 
-      console.log('[generateAgentResponse] LangChain 응답 생성 시작, 모델: qwen2.5:3b')
+      console.log(`[generateAgentResponse] LangChain 응답 생성 시작, ${agent.name} using ${agent.llm_provider || 'ollama'}/${agent.model || 'qwen2.5:3b'}`)
       response = await generateAgentChatResponse(
         agentWithConfig,
         userMessage.content,
@@ -1195,8 +1385,8 @@ ${memoryContext}
       content: response,
       is_ai_response: true,
       metadata: {
-        model: agent.model || 'gpt-4o-mini',
-        provider: 'openai',
+        model: agent.model || 'qwen2.5:3b',
+        provider: agent.llm_provider || 'ollama',
         agent_name: agent.name,
         has_memory: !!memoryContext,
       },
