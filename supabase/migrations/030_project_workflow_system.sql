@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS project_tasks (
   -- Polymorphic Assignment (human OR agent)
   assignee_type TEXT CHECK (assignee_type IN ('human', 'agent')),
   assignee_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  assignee_agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
+  assignee_agent_id UUID REFERENCES deployed_agents(id) ON DELETE SET NULL,
 
   -- Workflow Info
   position INTEGER DEFAULT 0,
