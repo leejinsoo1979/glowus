@@ -12,6 +12,12 @@ export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'c
 export type ProjectPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type ProjectMemberRole = 'lead' | 'member' | 'observer'
 
+// Project Workflow Types
+export type ProjectTaskStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' | 'CANCELLED'
+export type ProjectTaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+export type AssigneeType = 'human' | 'agent'
+export type ProjectType = 'web_app' | 'mobile_app' | 'marketing' | 'content' | 'general' | string
+
 // Agent System Types
 export type AgentStatus = 'ACTIVE' | 'INACTIVE' | 'BUSY' | 'ERROR'
 export type AgentMessageType = 'USER_TO_AGENT' | 'AGENT_TO_USER' | 'AGENT_TO_AGENT' | 'SYSTEM'
@@ -215,6 +221,80 @@ export interface ProjectWithRelations extends Project {
   members?: (ProjectMember & { user?: User })[]
   agents?: (ProjectAgent & { agent?: DeployedAgent })[]
   owner?: User
+  tasks?: ProjectTask[]
+}
+
+// ============================================
+// Project Workflow Types
+// ============================================
+
+export interface ProjectTask {
+  id: string
+  project_id: string
+
+  // Task Info
+  title: string
+  description: string | null
+  status: ProjectTaskStatus
+  priority: ProjectTaskPriority
+
+  // Polymorphic Assignment
+  assignee_type: AssigneeType | null
+  assignee_user_id: string | null
+  assignee_agent_id: string | null
+
+  // Workflow Info
+  position: number
+  depends_on: string[]
+
+  // Schedule
+  start_date: string | null
+  due_date: string | null
+  estimated_hours: number | null
+  actual_hours: number | null
+  completed_at: string | null
+
+  // Agent Execution Results
+  agent_result: Record<string, unknown> | null
+  agent_executed_at: string | null
+  agent_error: string | null
+
+  // Metadata
+  tags: string[]
+  category: string | null
+
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectTaskWithAssignee extends ProjectTask {
+  assignee_user?: User
+  assignee_agent?: DeployedAgent
+}
+
+export interface WorkflowTemplate {
+  id: string
+  name: string
+  description: string | null
+  project_type: ProjectType
+  tasks: WorkflowTemplateTask[]
+  is_system: boolean
+  team_id: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowTemplateTask {
+  title: string
+  description?: string
+  position: number
+  estimated_hours?: number
+  priority?: ProjectTaskPriority
+  depends_on?: number[]  // Position references
+  category?: string
+  tags?: string[]
 }
 
 // ============================================
@@ -540,6 +620,56 @@ export interface AddProjectMemberInput {
 export interface AddProjectAgentInput {
   agent_id: string
   role?: string
+}
+
+// Project Task Input Types
+export interface CreateProjectTaskInput {
+  project_id: string
+  title: string
+  description?: string
+  status?: ProjectTaskStatus
+  priority?: ProjectTaskPriority
+  assignee_type?: AssigneeType
+  assignee_user_id?: string
+  assignee_agent_id?: string
+  position?: number
+  depends_on?: string[]
+  start_date?: string
+  due_date?: string
+  estimated_hours?: number
+  tags?: string[]
+  category?: string
+}
+
+export interface UpdateProjectTaskInput extends Partial<Omit<CreateProjectTaskInput, 'project_id'>> {
+  actual_hours?: number
+  completed_at?: string
+  agent_result?: Record<string, unknown>
+  agent_executed_at?: string
+  agent_error?: string
+}
+
+export interface AssignTaskInput {
+  assignee_type: AssigneeType
+  assignee_user_id?: string
+  assignee_agent_id?: string
+  auto_execute?: boolean  // If true, immediately execute for agent assignees
+}
+
+// Workflow Template Input Types
+export interface CreateWorkflowTemplateInput {
+  name: string
+  description?: string
+  project_type: string
+  tasks: WorkflowTemplateTask[]
+  team_id?: string
+}
+
+export interface GenerateWorkflowInput {
+  project_id: string
+  project_type?: string
+  template_id?: string  // Use existing template
+  custom_prompt?: string  // Additional instructions for AI
 }
 
 // ============================================
