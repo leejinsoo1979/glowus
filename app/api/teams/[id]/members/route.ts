@@ -111,11 +111,11 @@ export async function GET(
       }
     }
 
-    // Add AI agents - capabilities에 팀 ID가 포함된 에이전트 조회
+    // Add AI agents - team_id가 일치하는 에이전트 조회
     const { data: agents } = await (adminClient
       .from('deployed_agents') as any)
       .select('id, name, description, avatar_url, status, capabilities')
-      .contains('capabilities', [`team:${teamId}`])
+      .eq('team_id', teamId)
 
     if (agents) {
       for (const agent of agents) {

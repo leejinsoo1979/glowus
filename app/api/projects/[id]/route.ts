@@ -14,7 +14,7 @@ export async function GET(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -24,7 +24,7 @@ export async function GET(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('projects')
       .select(`
         *,
@@ -74,7 +74,7 @@ export async function PATCH(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -113,7 +113,7 @@ export async function PATCH(
 
     updates.updated_at = new Date().toISOString()
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('projects')
       .update(updates)
       .eq('id', id)
@@ -143,7 +143,7 @@ export async function DELETE(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -153,7 +153,7 @@ export async function DELETE(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { error } = await adminClient
+    const { error } = await (adminClient as any)
       .from('projects')
       .delete()
       .eq('id', id)

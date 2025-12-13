@@ -8,10 +8,10 @@
 export const DEV_USER = {
   id: '00000000-0000-0000-0000-000000000001',
   email: 'dev@startupshow.local',
-  name: 'Dev Tester',
-  role: 'founder' as const,
+  name: '진수',
+  role: '대표',
   avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=DevTester&backgroundColor=3B82F6',
-  company: 'StartupShow Dev',
+  company: 'StartupShow',
   created_at: new Date().toISOString(),
 }
 

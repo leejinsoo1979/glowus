@@ -327,15 +327,12 @@ export function MemberAddModal({ isOpen, onClose, onSubmit }: MemberAddModalProp
                       )}
                     >
                       <div className={cn(
-                        "w-14 h-14 rounded-xl overflow-hidden mb-4 shadow-lg ring-2",
+                        "w-14 h-14 rounded-xl mb-4 shadow-lg ring-2 flex items-center justify-center",
+                        "bg-gradient-to-br from-purple-500 to-pink-500",
                         secondaryAccent.shadow,
                         "ring-white/20"
                       )}>
-                        <img
-                          src="/agent_image.jpg"
-                          alt="AI Agent"
-                          className="w-full h-full object-cover"
-                        />
+                        <Sparkles className="w-7 h-7 text-white" />
                       </div>
                       <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-1">
                         AI 에이전트
@@ -527,15 +524,12 @@ export function MemberAddModal({ isOpen, onClose, onSubmit }: MemberAddModalProp
                           <ArrowLeft className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
                         </button>
                         <div className={cn(
-                          "w-12 h-12 rounded-xl overflow-hidden shadow-lg ring-2",
+                          "w-12 h-12 rounded-xl shadow-lg ring-2 flex items-center justify-center",
+                          "bg-gradient-to-br from-purple-500 to-pink-500",
                           secondaryAccent.shadow,
                           "ring-white/20"
                         )}>
-                          <img
-                            src="/agent_image.jpg"
-                            alt="AI Agent"
-                            className="w-full h-full object-cover"
-                          />
+                          <Sparkles className="w-6 h-6 text-white" />
                         </div>
                         <div>
                           <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
@@ -564,8 +558,8 @@ export function MemberAddModal({ isOpen, onClose, onSubmit }: MemberAddModalProp
                           에이전트 이름 <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full overflow-hidden">
-                            <img src="/agent_image.jpg" alt="" className="w-full h-full object-cover" />
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                            <Sparkles className="w-3 h-3 text-white" />
                           </div>
                           <input
                             type="text"

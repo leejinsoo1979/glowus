@@ -109,6 +109,25 @@
 - [ ] 분석 도구 연동 (GA, Mixpanel)
 - [ ] Vercel 프로덕션 배포
 
+### Phase 13: 프로젝트 워크플로우 자동화
+- [x] `project_tasks` 테이블 (다형적 할당 - 사람/에이전트)
+- [x] `workflow_templates` 테이블 (기본 템플릿 5개)
+- [x] 태스크 CRUD API (`/api/projects/[id]/tasks`)
+- [x] 태스크 할당 API (`/api/projects/[id]/tasks/[taskId]/assign`)
+- [x] AI 워크플로우 생성 API (`/api/projects/[id]/generate-workflow`)
+- [x] 칸반 보드 UI (`TaskKanbanBoard`)
+- [x] 태스크 할당 모달 (`TaskAssignModal`)
+- [ ] 간트 차트 UI
+- [ ] 에이전트 태스크 자동 실행
+
+### Phase 14: 에이전트 음성 채팅 & 아바타
+- [ ] 음성 입력 컴포넌트 (Web Speech API STT)
+- [ ] TTS 재생 컴포넌트 (OpenAI TTS)
+- [ ] 아바타 립싱크 애니메이션 (볼륨 기반)
+- [ ] 채팅방 UI 통합 (텍스트/음성 모드 전환)
+- [ ] 실시간 아바타 표정 애니메이션
+- [ ] (선택) D-ID API 연동으로 고품질 립싱크
+
 ---
 
 ## 기술 스택
@@ -128,6 +147,14 @@
 ---
 
 ## 변경 이력
+
+### 2024-12-13
+- **Phase 13: 프로젝트 워크플로우 자동화** 추가
+  - 프로젝트 생성 시 에이전트 선택 제거 (태스크에서 할당하는 구조로 변경)
+  - 칸반 보드, 태스크 할당 시스템 완료
+- **Phase 14: 에이전트 음성 채팅 & 아바타** 로드맵 추가
+  - 텍스트/음성 채팅 지원
+  - 립싱크 아바타 애니메이션
 
 ### 2024-12-10 (Phase 7-11 완료)
 - **Phase 7: AI 기능**

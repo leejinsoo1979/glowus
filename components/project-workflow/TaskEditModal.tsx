@@ -209,14 +209,43 @@ export function TaskEditModal({ task, projectId, defaultStatus, onSave, onClose 
           {task?.agent_result && (
             <div>
               <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                에이전트 실행 결과
+                🤖 에이전트 실행 결과
               </label>
-              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                <pre className="text-xs text-green-800 dark:text-green-200 whitespace-pre-wrap">
-                  {typeof task.agent_result === 'string'
-                    ? task.agent_result
-                    : JSON.stringify(task.agent_result, null, 2)}
-                </pre>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 border border-violet-200 dark:border-violet-800">
+                {/* 실행 시간 */}
+                {(task.agent_result as any).executed_at && (
+                  <div className="flex items-center gap-2 mb-3 pb-3 border-b border-violet-200 dark:border-violet-700">
+                    <span className="text-xs text-violet-600 dark:text-violet-400">
+                      ✅ 완료: {new Date((task.agent_result as any).executed_at).toLocaleString('ko-KR')}
+                    </span>
+                  </div>
+                )}
+                {/* 결과 내용 */}
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                    {(task.agent_result as any).output || '결과 없음'}
+                  </div>
+                </div>
+                {/* 출처 */}
+                {(task.agent_result as any).sources?.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-violet-200 dark:border-violet-700">
+                    <p className="text-xs font-medium text-violet-600 dark:text-violet-400 mb-2">📎 출처</p>
+                    <ul className="space-y-1">
+                      {(task.agent_result as any).sources.map((src: string, idx: number) => (
+                        <li key={idx}>
+                          <a
+                            href={src}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
+                          >
+                            {src}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )}

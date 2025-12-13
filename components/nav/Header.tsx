@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Command,
   Bot,
+  MessageSquare,
 } from 'lucide-react'
 
 export function Header() {
@@ -202,6 +203,19 @@ export function Header() {
                       >
                         <Settings className="w-4 h-4 text-theme-muted" />
                         설정
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false)
+                          router.push('/dashboard-group/conversations')
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isDark
+                          ? 'text-zinc-300 hover:bg-zinc-800'
+                          : 'text-zinc-700 hover:bg-zinc-100'
+                          }`}
+                      >
+                        <MessageSquare className="w-4 h-4 text-theme-muted" />
+                        대화목록
                       </button>
                     </div>
 

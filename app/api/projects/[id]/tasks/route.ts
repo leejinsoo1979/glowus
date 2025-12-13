@@ -14,7 +14,7 @@ export async function GET(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -80,7 +80,7 @@ export async function POST(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -108,7 +108,7 @@ export async function POST(
     // Get max position if not provided
     let position = body.position
     if (position === undefined) {
-      const { data: lastTask } = await adminClient
+      const { data: lastTask } = await (adminClient as any)
         .from('project_tasks')
         .select('position')
         .eq('project_id', projectId)
@@ -119,7 +119,7 @@ export async function POST(
       position = (lastTask?.position || 0) + 1
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_tasks')
       .insert({
         project_id: projectId,
@@ -170,7 +170,7 @@ export async function PATCH(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -198,7 +198,7 @@ export async function PATCH(
         updates.assignee_user_id = undefined
       }
 
-      const { data, error } = await adminClient
+      const { data, error } = await (adminClient as any)
         .from('project_tasks')
         .update({
           ...updates,

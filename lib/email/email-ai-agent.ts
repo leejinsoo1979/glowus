@@ -72,10 +72,13 @@ const dailySummaryPrompt = PromptTemplate.fromTemplate(`
 `)
 
 export class EmailAIAgent {
-  private supabase: ReturnType<typeof createClient>
+  private _supabase: ReturnType<typeof createClient> | null = null
 
-  constructor() {
-    this.supabase = createClient()
+  private get supabase(): ReturnType<typeof createClient> {
+    if (!this._supabase) {
+      this._supabase = createClient()
+    }
+    return this._supabase
   }
 
   // Analyze a single email
@@ -99,7 +102,7 @@ export class EmailAIAgent {
       const parsed = JSON.parse(content)
 
       // Update email in database with AI analysis
-      await this.supabase
+      await (this.supabase as any)
         .from('email_messages')
         .update({
           ai_summary: parsed.summary,
@@ -127,7 +130,7 @@ export class EmailAIAgent {
   // Analyze multiple emails in batch
   async analyzeEmails(accountId: string, limit: number = 10): Promise<number> {
     // Get unanalyzed emails
-    const { data: emails, error } = await this.supabase
+    const { data: emails, error } = await (this.supabase as any)
       .from('email_messages')
       .select('*')
       .eq('account_id', accountId)
@@ -197,7 +200,7 @@ export class EmailAIAgent {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
 
-      let query = this.supabase
+      let query = (this.supabase as any)
         .from('email_messages')
         .select('*')
         .gte('received_at', today.toISOString())
@@ -216,7 +219,7 @@ export class EmailAIAgent {
       }
 
       // Format emails for prompt
-      const emailsList = emails.map((e, i) =>
+      const emailsList = emails.map((e: any, i: number) =>
         `${i + 1}. [ID: ${e.id}] 발신자: ${e.from_name || e.from_address}, 제목: ${e.subject || '(제목 없음)'}, 읽음: ${e.is_read ? '예' : '아니오'}`
       ).join('\n')
 
@@ -229,8 +232,8 @@ export class EmailAIAgent {
       const parsed = JSON.parse(content)
 
       // Calculate counts
-      const unreadCount = emails.filter(e => !e.is_read).length
-      const urgentCount = emails.filter(e => e.ai_priority === 'urgent' || e.ai_priority === 'high').length
+      const unreadCount = emails.filter((e: any) => !e.is_read).length
+      const urgentCount = emails.filter((e: any) => e.ai_priority === 'urgent' || e.ai_priority === 'high').length
 
       // Save summary to database
       const summaryData = {
@@ -248,7 +251,7 @@ export class EmailAIAgent {
         categories_breakdown: parsed.categories_breakdown,
       }
 
-      const { data: summary, error: insertError } = await this.supabase
+      const { data: summary, error: insertError } = await (this.supabase as any)
         .from('email_summaries')
         .insert(summaryData)
         .select()
@@ -272,7 +275,7 @@ export class EmailAIAgent {
 
   // Get latest summary
   async getLatestSummary(userId: string, accountId?: string): Promise<EmailSummary | null> {
-    let query = this.supabase
+    let query = (this.supabase as any)
       .from('email_summaries')
       .select('*')
       .eq('user_id', userId)
@@ -295,7 +298,7 @@ export class EmailAIAgent {
   // Auto-categorize unread emails
   async autoCategorize(accountId: string): Promise<number> {
     // Get uncategorized emails
-    const { data: emails, error } = await this.supabase
+    const { data: emails, error } = await (this.supabase as any)
       .from('email_messages')
       .select('*')
       .eq('account_id', accountId)

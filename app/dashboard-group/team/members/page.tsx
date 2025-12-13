@@ -174,7 +174,12 @@ export default function TeamMembersPage() {
   }
 
   const handleMemberClick = (member: Member) => {
-    router.push(`/dashboard-group/team/members/${member.id}`)
+    // 에이전트는 에이전트 프로필 페이지로, 일반 멤버는 멤버 프로필 페이지로
+    if (member.type === 'agent') {
+      router.push(`/dashboard-group/agents/${member.id}`)
+    } else {
+      router.push(`/dashboard-group/team/members/${member.id}`)
+    }
   }
 
   const getAccentBg = () => {
@@ -344,7 +349,7 @@ export default function TeamMembersPage() {
             whileHover={{ y: -4 }}
             onClick={() => setIsMemberModalOpen(true)}
             className={cn(
-              "group rounded-2xl cursor-pointer min-h-[240px]",
+              "group rounded-2xl cursor-pointer min-h-[280px]",
               "border-2 border-dashed border-zinc-300 dark:border-zinc-600",
               "bg-zinc-50 dark:bg-zinc-800/30",
               "hover:border-zinc-400 dark:hover:border-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800/50",
@@ -352,8 +357,8 @@ export default function TeamMembersPage() {
             )}
           >
             <div className="h-full flex flex-col items-center justify-center gap-3 p-6">
-              <div className="w-16 h-16 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center group-hover:bg-zinc-300 dark:group-hover:bg-zinc-600 transition-colors">
-                <Plus className="w-7 h-7 text-zinc-500 dark:text-zinc-400" />
+              <div className="w-20 h-20 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center group-hover:bg-zinc-300 dark:group-hover:bg-zinc-600 transition-colors">
+                <Plus className="w-8 h-8 text-zinc-500 dark:text-zinc-400" />
               </div>
               <span className="font-medium text-zinc-600 dark:text-zinc-400">
                 팀원 추가
@@ -408,34 +413,31 @@ export default function TeamMembersPage() {
               </div>
 
               {/* Card Content */}
-              <div className="p-5 pt-6 flex flex-col items-center min-h-[240px]">
+              <div className="p-5 pt-6 flex flex-col items-center min-h-[280px]">
                 {/* Avatar */}
                 <div className="relative mb-4">
-                  {member.type === 'agent' ? (
-                    <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
-                      <Image
-                        src="/agent_image.jpg"
-                        alt={member.name}
-                        width={72}
-                        height={72}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : member.avatar_url ? (
-                    <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
+                  {member.avatar_url ? (
+                    <div className="w-[96px] h-[96px] rounded-full overflow-hidden ring-2 ring-white dark:ring-zinc-800 shadow-lg">
                       <img
                         src={member.avatar_url}
                         alt={member.name}
                         className="w-full h-full object-cover"
                       />
                     </div>
+                  ) : member.type === 'agent' ? (
+                    <div className={cn(
+                      "w-[96px] h-[96px] rounded-full flex items-center justify-center ring-2 ring-white dark:ring-zinc-800 shadow-lg",
+                      "bg-gradient-to-br from-purple-500 to-pink-500"
+                    )}>
+                      <Users className="w-10 h-10 text-white" />
+                    </div>
                   ) : (
                     <div className={cn(
-                      "w-18 h-18 rounded-full flex items-center justify-center text-lg font-semibold text-white",
+                      "rounded-full flex items-center justify-center text-xl font-semibold text-white ring-2 ring-white dark:ring-zinc-800 shadow-lg",
                       "bg-gradient-to-br",
                       getAvatarGradient(index)
                     )}
-                    style={{ width: '72px', height: '72px' }}
+                    style={{ width: '96px', height: '96px' }}
                     >
                       {member.avatar}
                     </div>
@@ -548,27 +550,24 @@ export default function TeamMembersPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   {/* Avatar */}
-                  {member.type === 'agent' ? (
-                    <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
-                      <Image
-                        src="/agent_image.jpg"
-                        alt={member.name}
-                        width={48}
-                        height={48}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : member.avatar_url ? (
-                    <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
+                  {member.avatar_url ? (
+                    <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-zinc-100 dark:ring-zinc-700">
                       <img
                         src={member.avatar_url}
                         alt={member.name}
                         className="w-full h-full object-cover"
                       />
                     </div>
+                  ) : member.type === 'agent' ? (
+                    <div className={cn(
+                      "w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 ring-2 ring-zinc-100 dark:ring-zinc-700",
+                      "bg-gradient-to-br from-purple-500 to-pink-500"
+                    )}>
+                      <Users className="w-6 h-6 text-white" />
+                    </div>
                   ) : (
                     <div className={cn(
-                      "w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0",
+                      "w-14 h-14 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0",
                       getAccentBg()
                     )}>
                       {member.avatar}

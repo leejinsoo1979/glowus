@@ -38,7 +38,7 @@ export async function POST(
     const body: GenerateWorkflowInput & { clear_existing?: boolean } = await request.json()
 
     // Get project info
-    const { data: projectData, error: projectError } = await adminClient
+    const { data: projectData, error: projectError } = await (adminClient as any)
       .from('projects')
       .select('id, name, description, start_date, end_date, deadline')
       .eq('id', projectId)
@@ -56,7 +56,7 @@ export async function POST(
 
     // Option 1: Use existing template
     if (body.template_id) {
-      const { data: template, error: templateError } = await adminClient
+      const { data: template, error: templateError } = await (adminClient as any)
         .from('workflow_templates')
         .select('*')
         .eq('id', body.template_id)
@@ -66,8 +66,8 @@ export async function POST(
         return NextResponse.json({ error: '워크플로우 템플릿을 찾을 수 없습니다' }, { status: 404 })
       }
 
-      tasks = generateWorkflowFromTemplate(template, project.start_date)
-      summary = `"${template.name}" 템플릿을 기반으로 워크플로우가 생성되었습니다.`
+      tasks = generateWorkflowFromTemplate(template, project.start_date || undefined)
+      summary = `"${(template as any).name}" 템플릿을 기반으로 워크플로우가 생성되었습니다.`
       estimatedTotalHours = tasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0)
     }
     // Option 2: Generate with AI
@@ -76,7 +76,7 @@ export async function POST(
         projectName: project.name,
         projectDescription: project.description || '',
         projectType: body.project_type || 'general',
-        deadline: project.deadline || project.end_date,
+        deadline: project.deadline || project.end_date || undefined,
         teamSize: 3, // TODO: Get from project members
         customInstructions: body.custom_prompt,
       })
@@ -88,7 +88,7 @@ export async function POST(
 
     // Clear existing tasks if requested
     if (body.clear_existing) {
-      await adminClient
+      await (adminClient as any)
         .from('project_tasks')
         .delete()
         .eq('project_id', projectId)
@@ -105,7 +105,7 @@ export async function POST(
         .map(pos => positionToId[pos])
         .filter((id): id is string => id !== undefined)
 
-      const { data: createdTask, error: insertError } = await adminClient
+      const { data: createdTask, error: insertError } = await (adminClient as any)
         .from('project_tasks')
         .insert({
           project_id: projectId,
@@ -135,7 +135,7 @@ export async function POST(
     }
 
     // Update project with workflow info
-    await adminClient
+    await (adminClient as any)
       .from('projects')
       .update({
         workflow_config: {

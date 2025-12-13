@@ -23,6 +23,51 @@ export type AgentStatus = 'ACTIVE' | 'INACTIVE' | 'BUSY' | 'ERROR'
 export type AgentMessageType = 'USER_TO_AGENT' | 'AGENT_TO_USER' | 'AGENT_TO_AGENT' | 'SYSTEM'
 export type AgentTaskStatus = 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
 
+// Agent Chaining Types (에이전트 자동 업무 전달)
+export type ChainRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+export type ChainInputMapping = 'full' | 'summary' | 'custom'
+
+export interface ChainConfig {
+  auto_trigger: boolean           // 이전 에이전트 완료 시 자동 실행
+  input_mapping: ChainInputMapping // full: 전체 결과, summary: 요약만, custom: 커스텀
+  delay_seconds: number           // 지연 시간 (초)
+  condition?: string | null       // 조건부 실행 (null이면 항상)
+  custom_prompt?: string          // 커스텀 입력 프롬프트
+}
+
+export interface AgentChain {
+  id: string
+  name: string
+  description: string | null
+  start_agent_id: string | null
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChainStepResult {
+  agent_id: string
+  agent_name: string
+  output: string
+  sources?: string[]
+  tools_used?: string[]
+  completed_at: string
+}
+
+export interface ChainRun {
+  id: string
+  chain_id: string | null
+  status: ChainRunStatus
+  current_agent_id: string | null
+  initial_input: Record<string, unknown> | null
+  final_output: Record<string, unknown> | null
+  step_results: ChainStepResult[]
+  started_at: string
+  completed_at: string | null
+  error: string | null
+}
+
 // ============================================
 // Table Types
 // ============================================
@@ -328,8 +373,15 @@ export interface DeployedAgent {
   // Avatar for chat
   avatar_url: string | null
 
-  // Profile video
-  video_url: string | null
+  // Chat-specific images
+  chat_main_gif: string | null
+  emotion_avatars: Record<string, string> | null
+  custom_emotions: Array<{
+    id: string
+    name: string
+    keywords: string[]
+    isDefault?: boolean
+  }> | null
 
   // Execution context
   system_prompt: string | null
@@ -343,6 +395,11 @@ export interface DeployedAgent {
   speak_order: number
   collaborates_with: string[]
   supervisor_id: string | null
+
+  // Agent Chaining (자동 업무 전달)
+  next_agent_id: string | null
+  chain_config: ChainConfig | null
+  chain_order: number
 
   created_at: string
   updated_at: string
@@ -468,6 +525,16 @@ export interface AgentTask {
   // Time tracking
   started_at: string | null
   completed_at: string | null
+
+  // Chain related (에이전트 체이닝)
+  chain_run_id: string | null
+  previous_agent_output: {
+    agent_name: string
+    output: string
+    sources?: string[]
+    tools_used?: string[]
+  } | null
+  is_chain_task: boolean
 
   created_at: string
   updated_at: string
@@ -720,6 +787,67 @@ export interface UrgentTask {
   status: string
   priority: string
   assignee_name?: string
+}
+
+// ============================================
+// Project Documents
+// ============================================
+
+export type ProjectDocumentType =
+  | 'analysis'
+  | 'summary'
+  | 'report'
+  | 'research'
+  | 'transcript'
+  | 'meeting_notes'
+  | 'deliverable'
+  | 'other'
+
+export type ProjectDocumentStatus = 'draft' | 'published' | 'archived'
+
+export interface ProjectDocument {
+  id: string
+  project_id: string
+  task_id?: string | null
+  agent_task_id?: string | null
+  title: string
+  content: string
+  summary?: string | null
+  doc_type: ProjectDocumentType
+  source_url?: string | null
+  source_type?: string | null
+  created_by_type: 'agent' | 'user'
+  created_by_agent_id?: string | null
+  created_by_user_id?: string | null
+  tags: string[]
+  metadata: Record<string, any>
+  status: ProjectDocumentStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectDocumentWithCreator extends ProjectDocument {
+  created_by_agent?: DeployedAgent | null
+  created_by_user?: User | null
+  project?: Project | null
+}
+
+export interface CreateProjectDocumentInput {
+  project_id: string
+  task_id?: string | null
+  agent_task_id?: string | null
+  title: string
+  content: string
+  summary?: string | null
+  doc_type: ProjectDocumentType
+  source_url?: string | null
+  source_type?: string | null
+  created_by_type: 'agent' | 'user'
+  created_by_agent_id?: string | null
+  created_by_user_id?: string | null
+  tags?: string[]
+  metadata?: Record<string, any>
+  status?: ProjectDocumentStatus
 }
 
 // ============================================

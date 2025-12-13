@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const adminClient = createAdminClient()
 
     // 개발 모드: DEV_USER 사용
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     const adminClient = createAdminClient()
 
     // 개발 모드: DEV_USER 사용
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user

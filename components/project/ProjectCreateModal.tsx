@@ -2,20 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, FolderKanban, Users, Bot, ChevronDown, Calendar } from 'lucide-react'
+import { X, FolderKanban, Users, ChevronDown, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/stores/themeStore'
-import type { User, DeployedAgent } from '@/types/database'
+import type { User } from '@/types/database'
 
 interface ProjectCreateModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: ProjectFormData, members: string[], agents: string[]) => void
+  onSubmit: (data: ProjectFormData, members: string[]) => void
   isLoading?: boolean
   teams: { id: string; name: string }[]
   onTeamChange?: (teamId: string) => void
   teamMembers: User[]
-  agents: DeployedAgent[]
 }
 
 export interface ProjectFormData {
@@ -35,7 +34,6 @@ export function ProjectCreateModal({
   teams,
   onTeamChange,
   teamMembers,
-  agents,
 }: ProjectCreateModalProps) {
   const { accentColor } = useThemeStore()
   const [formData, setFormData] = useState<ProjectFormData>({
@@ -47,13 +45,8 @@ export function ProjectCreateModal({
     deadline: '',
   })
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([])
 
-  useEffect(() => {
-    if (teams.length > 0 && !formData.team_id) {
-      setFormData(prev => ({ ...prev, team_id: teams[0].id }))
-    }
-  }, [teams, formData.team_id])
+  // 팀은 선택사항이므로 자동 선택하지 않음
 
   useEffect(() => {
     if (formData.team_id && onTeamChange) {
@@ -81,7 +74,7 @@ export function ProjectCreateModal({
     e.preventDefault()
     if (!formData.name.trim() || isLoading) return
 
-    onSubmit(formData, selectedMembers, selectedAgents)
+    onSubmit(formData, selectedMembers)
   }
 
   const handleClose = () => {
@@ -89,13 +82,12 @@ export function ProjectCreateModal({
     setFormData({
       name: '',
       description: '',
-      team_id: teams[0]?.id || '',
+      team_id: '',
       status: 'planning',
       priority: 'medium',
       deadline: '',
     })
     setSelectedMembers([])
-    setSelectedAgents([])
     onClose()
   }
 
@@ -104,14 +96,6 @@ export function ProjectCreateModal({
       prev.includes(memberId)
         ? prev.filter(id => id !== memberId)
         : [...prev, memberId]
-    )
-  }
-
-  const toggleAgent = (agentId: string) => {
-    setSelectedAgents(prev =>
-      prev.includes(agentId)
-        ? prev.filter(id => id !== agentId)
-        : [...prev, agentId]
     )
   }
 
@@ -184,7 +168,7 @@ export function ProjectCreateModal({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-zinc-900 dark:text-white mb-1.5">
-                      팀
+                      팀 <span className="text-zinc-400 font-normal">(선택)</span>
                     </label>
                     <div className="relative">
                       <select
@@ -192,13 +176,10 @@ export function ProjectCreateModal({
                         onChange={(e) => setFormData({ ...formData, team_id: e.target.value })}
                         className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-all appearance-none cursor-pointer"
                       >
-                        {teams.length === 0 ? (
-                          <option value="">팀 없음</option>
-                        ) : (
-                          teams.map((team) => (
-                            <option key={team.id} value={team.id}>{team.name}</option>
-                          ))
-                        )}
+                        <option value="">팀 없음 (나중에 배치)</option>
+                        {teams.map((team) => (
+                          <option key={team.id} value={team.id}>{team.name}</option>
+                        ))}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
                     </div>
@@ -258,34 +239,6 @@ export function ProjectCreateModal({
                             className="w-5 h-5 rounded-full"
                           />
                           {member.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* AI Agents */}
-                {agents.length > 0 && (
-                  <div className="pb-2">
-                    <label className="block text-sm font-medium text-zinc-900 dark:text-white mb-2">
-                      <Bot className="w-4 h-4 inline mr-1.5" />
-                      AI 에이전트
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {agents.map((agent) => (
-                        <button
-                          key={agent.id}
-                          type="button"
-                          onClick={() => toggleAgent(agent.id)}
-                          className={cn(
-                            "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all",
-                            selectedAgents.includes(agent.id)
-                              ? cn(accent.bg, "text-white")
-                              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                          )}
-                        >
-                          <Bot className="w-4 h-4" />
-                          {agent.name}
                         </button>
                       ))}
                     </div>

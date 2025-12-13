@@ -751,10 +751,11 @@ export default function MessengerPage() {
                         {msg.content}
                       </div>
                     )}
-                    <span className="text-[11px] text-zinc-400 px-1">
-                      {formatTime(msg.created_at)}
-                    </span>
                   </div>
+                  {/* 시간 - 메시지 박스 외부에 표시 */}
+                  <span className={`text-[10px] text-zinc-400 mt-1 ${isMe ? 'text-right pr-1' : 'pl-1'}`}>
+                    {formatTime(msg.created_at)}
+                  </span>
                 </motion.div>
               )
             })
@@ -1012,8 +1013,8 @@ export default function MessengerPage() {
                             <span className="text-xs text-zinc-500 flex items-center gap-1">
                               {isAgentParticipant ? (
                                 <>
-                                  <span>{PROVIDER_INFO[(participant.agent?.llm_provider as LLMProvider) || 'ollama']?.icon || '🤖'}</span>
-                                  <span>{participant.agent?.model || 'qwen2.5:3b'}</span>
+                                  <span>{PROVIDER_INFO[((participant.agent as any)?.llm_provider as LLMProvider) || 'ollama']?.icon || '🤖'}</span>
+                                  <span>{(participant.agent as any)?.model || 'qwen2.5:3b'}</span>
                                 </>
                               ) : (
                                 participant.user?.email || ''

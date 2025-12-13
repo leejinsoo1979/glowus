@@ -14,7 +14,7 @@ export async function POST(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -49,7 +49,7 @@ export async function POST(
 
     // If assigning to agent and task is TODO, change to IN_PROGRESS
     if (body.assignee_type === 'agent') {
-      const { data: currentTask } = await adminClient
+      const { data: currentTask } = await (adminClient as any)
         .from('project_tasks')
         .select('status')
         .eq('id', taskId)
@@ -60,7 +60,7 @@ export async function POST(
       }
     }
 
-    const { data: updatedTask, error } = await adminClient
+    const { data: updatedTask, error } = await (adminClient as any)
       .from('project_tasks')
       .update(updates)
       .eq('id', taskId)
@@ -80,7 +80,7 @@ export async function POST(
     if (body.auto_execute && body.assignee_type === 'agent' && body.assignee_agent_id) {
       try {
         // Create an agent task for execution
-        const { data: agentTask, error: taskError } = await adminClient
+        const { data: agentTask, error: taskError } = await (adminClient as any)
           .from('agent_tasks')
           .insert({
             title: updatedTask.title,
@@ -140,7 +140,7 @@ export async function DELETE(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -150,7 +150,7 @@ export async function DELETE(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_tasks')
       .update({
         assignee_type: null,

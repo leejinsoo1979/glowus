@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const adminClient = createAdminClient()
 
     // 개발 모드: DEV_USER 사용
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     const adminClient = createAdminClient()
 
     // 개발 모드: DEV_USER 사용
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -93,18 +93,18 @@ export async function POST(request: NextRequest) {
 
     const body: CreateProjectInput = await request.json()
 
-    if (!body.name || !body.team_id) {
+    if (!body.name) {
       return NextResponse.json(
-        { error: '프로젝트 이름과 팀 ID가 필요합니다' },
+        { error: '프로젝트 이름이 필요합니다' },
         { status: 400 }
       )
     }
 
     // 프로젝트 생성
-    const { data: project, error } = await adminClient
+    const { data: project, error } = await (adminClient as any)
       .from('projects')
       .insert({
-        team_id: body.team_id,
+        team_id: body.team_id || null,
         name: body.name,
         description: body.description || null,
         status: body.status || 'planning',
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 프로젝트 생성자를 리드로 자동 추가
-    await adminClient.from('project_members').insert({
+    await (adminClient as any).from('project_members').insert({
       project_id: project.id,
       user_id: user.id,
       role: 'lead',

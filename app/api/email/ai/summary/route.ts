@@ -16,13 +16,13 @@ export async function GET(request: Request) {
 
   // Verify account ownership if account_id provided
   if (accountId) {
-    const { data: account } = await supabase
+    const { data: account } = await (supabase as any)
       .from('email_accounts')
       .select('user_id')
       .eq('id', accountId)
       .single()
 
-    if (!account || account.user_id !== user.id) {
+    if (!account || (account as any).user_id !== user.id) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
     }
   }
@@ -52,13 +52,13 @@ export async function POST(request: Request) {
 
     // Verify account ownership if account_id provided
     if (account_id) {
-      const { data: account } = await supabase
+      const { data: account } = await (supabase as any)
         .from('email_accounts')
         .select('user_id')
         .eq('id', account_id)
         .single()
 
-      if (!account || account.user_id !== user.id) {
+      if (!account || (account as any).user_id !== user.id) {
         return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
       }
     }

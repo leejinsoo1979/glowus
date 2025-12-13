@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('workflow_templates')
       .insert({
         name: body.name,

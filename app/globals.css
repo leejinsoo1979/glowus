@@ -587,3 +587,136 @@
 .animate-spin-slow {
   animation: spin-slow 8s linear infinite;
 }
+
+/* Shimmer animation for progress bars */
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer-move 1.5s infinite;
+}
+
+@keyframes shimmer-move {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Gradient X animation for borders */
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x-move 3s ease infinite;
+}
+
+@keyframes gradient-x-move {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Pulse glow effect for executing tasks */
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.6);
+  }
+}
+
+/* Floating particles effect */
+.animate-float-particle {
+  animation: float-particle 3s ease-in-out infinite;
+}
+
+@keyframes float-particle {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-10px) scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* Typing cursor effect */
+.animate-cursor {
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Success check animation */
+.animate-check {
+  animation: check-bounce 0.5s ease-out;
+}
+
+@keyframes check-bounce {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Stagger delay utilities for children */
+.stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 100ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 200ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 300ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 400ms; }
+
+/* Gradient border animation */
+.gradient-border-animated {
+  position: relative;
+}
+
+.gradient-border-animated::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    90deg,
+    #8b5cf6,
+    #ec4899,
+    #8b5cf6
+  );
+  background-size: 200% 100%;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: gradient-x-move 3s ease infinite;
+}

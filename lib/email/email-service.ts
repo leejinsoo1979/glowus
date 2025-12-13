@@ -62,10 +62,13 @@ const PROVIDER_CONFIGS: Record<EmailProvider, {
 }
 
 export class EmailService {
-  private supabase: ReturnType<typeof createClient>
+  private _supabase: ReturnType<typeof createClient> | null = null
 
-  constructor() {
-    this.supabase = createClient()
+  private get supabase(): ReturnType<typeof createClient> {
+    if (!this._supabase) {
+      this._supabase = createClient()
+    }
+    return this._supabase
   }
 
   // Account Management
@@ -126,7 +129,7 @@ export class EmailService {
     // Encrypt password and save
     const encryptedPassword = encrypt(data.password)
 
-    const { data: account, error } = await this.supabase
+    const { data: account, error } = await (this.supabase as any)
       .from('email_accounts')
       .insert({
         user_id: userId,
@@ -154,7 +157,7 @@ export class EmailService {
   }
 
   async getAccounts(userId: string): Promise<EmailAccount[]> {
-    const { data, error } = await this.supabase
+    const { data, error } = await (this.supabase as any)
       .from('email_accounts')
       .select('*')
       .eq('user_id', userId)
@@ -170,7 +173,7 @@ export class EmailService {
   }
 
   async getAccount(accountId: string): Promise<EmailAccount | null> {
-    const { data, error } = await this.supabase
+    const { data, error } = await (this.supabase as any)
       .from('email_accounts')
       .select('*')
       .eq('id', accountId)
@@ -184,7 +187,7 @@ export class EmailService {
   }
 
   async deleteAccount(accountId: string): Promise<boolean> {
-    const { error } = await this.supabase
+    const { error } = await (this.supabase as any)
       .from('email_accounts')
       .delete()
       .eq('id', accountId)
@@ -198,7 +201,7 @@ export class EmailService {
     options: { folder?: string; limit?: number; since?: Date } = {}
   ): Promise<{ synced: number; error?: string }> {
     // Get account with password
-    const { data: account, error: accountError } = await this.supabase
+    const { data: account, error: accountError } = await (this.supabase as any)
       .from('email_accounts')
       .select('*')
       .eq('id', accountId)
@@ -227,7 +230,7 @@ export class EmailService {
       for (const email of emails) {
         const dbEmail = parsedEmailToDbFormat(email, accountId)
 
-        const { error } = await this.supabase
+        const { error } = await (this.supabase as any)
           .from('email_messages')
           .upsert(dbEmail, {
             onConflict: 'account_id,message_id',
@@ -237,7 +240,7 @@ export class EmailService {
       }
 
       // Update last sync time
-      await this.supabase
+      await (this.supabase as any)
         .from('email_accounts')
         .update({
           last_sync_at: new Date().toISOString(),
@@ -250,7 +253,7 @@ export class EmailService {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed'
 
       // Update sync error
-      await this.supabase
+      await (this.supabase as any)
         .from('email_accounts')
         .update({ sync_error: errorMessage })
         .eq('id', accountId)
@@ -270,7 +273,7 @@ export class EmailService {
       search?: string
     } = {}
   ): Promise<EmailMessage[]> {
-    let query = this.supabase
+    let query = (this.supabase as any)
       .from('email_messages')
       .select('*')
       .eq('account_id', accountId)
@@ -309,7 +312,7 @@ export class EmailService {
   }
 
   async getEmail(emailId: string): Promise<EmailMessage | null> {
-    const { data, error } = await this.supabase
+    const { data, error } = await (this.supabase as any)
       .from('email_messages')
       .select('*')
       .eq('id', emailId)
@@ -322,7 +325,7 @@ export class EmailService {
   // Send email
   async sendEmail(request: SendEmailRequest): Promise<{ success: boolean; messageId?: string; error?: string }> {
     // Get account with password
-    const { data: account, error: accountError } = await this.supabase
+    const { data: account, error: accountError } = await (this.supabase as any)
       .from('email_accounts')
       .select('*')
       .eq('id', request.account_id)
@@ -350,7 +353,7 @@ export class EmailService {
 
       if (result.success) {
         // Save sent email to database
-        await this.supabase.from('email_messages').insert({
+        await (this.supabase as any).from('email_messages').insert({
           account_id: request.account_id,
           message_id: result.messageId,
           uid: 0,
@@ -382,7 +385,7 @@ export class EmailService {
 
   // Mark email as read/unread
   async markAsRead(emailId: string, read: boolean = true): Promise<boolean> {
-    const { error } = await this.supabase
+    const { error } = await (this.supabase as any)
       .from('email_messages')
       .update({ is_read: read })
       .eq('id', emailId)
@@ -392,7 +395,7 @@ export class EmailService {
 
   // Star/unstar email
   async starEmail(emailId: string, starred: boolean = true): Promise<boolean> {
-    const { error } = await this.supabase
+    const { error } = await (this.supabase as any)
       .from('email_messages')
       .update({ is_starred: starred })
       .eq('id', emailId)
@@ -402,7 +405,7 @@ export class EmailService {
 
   // Move to trash
   async moveToTrash(emailId: string): Promise<boolean> {
-    const { error } = await this.supabase
+    const { error } = await (this.supabase as any)
       .from('email_messages')
       .update({ is_trash: true })
       .eq('id', emailId)
@@ -412,7 +415,7 @@ export class EmailService {
 
   // Delete permanently
   async deleteEmail(emailId: string): Promise<boolean> {
-    const { error } = await this.supabase
+    const { error } = await (this.supabase as any)
       .from('email_messages')
       .delete()
       .eq('id', emailId)
@@ -427,26 +430,26 @@ export class EmailService {
     starred: number
     trash: number
   }> {
-    const { data: total } = await this.supabase
+    const { data: total } = await (this.supabase as any)
       .from('email_messages')
       .select('id', { count: 'exact' })
       .eq('account_id', accountId)
       .eq('is_trash', false)
 
-    const { data: unread } = await this.supabase
+    const { data: unread } = await (this.supabase as any)
       .from('email_messages')
       .select('id', { count: 'exact' })
       .eq('account_id', accountId)
       .eq('is_read', false)
       .eq('is_trash', false)
 
-    const { data: starred } = await this.supabase
+    const { data: starred } = await (this.supabase as any)
       .from('email_messages')
       .select('id', { count: 'exact' })
       .eq('account_id', accountId)
       .eq('is_starred', true)
 
-    const { data: trash } = await this.supabase
+    const { data: trash } = await (this.supabase as any)
       .from('email_messages')
       .select('id', { count: 'exact' })
       .eq('account_id', accountId)

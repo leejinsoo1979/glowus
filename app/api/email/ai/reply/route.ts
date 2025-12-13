@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     // Get email and verify ownership
-    const { data: email, error: emailError } = await supabase
+    const { data: email, error: emailError } = await (supabase as any)
       .from('email_messages')
       .select('*, email_accounts!inner(user_id)')
       .eq('id', email_id)
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     })
 
     // Save as draft
-    const { data: draft, error: draftError } = await supabase
+    const { data: draft, error: draftError } = await (supabase as any)
       .from('email_drafts')
       .insert({
         account_id: email.account_id,

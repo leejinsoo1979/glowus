@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getDevUserIfEnabled } from '@/lib/dev-user'
-import { generateAgentChatResponse } from '@/lib/langchain/agent-chat'
 
 // POST: 참여자 추가 (사용자 또는 에이전트 초대)
 export async function POST(
@@ -87,11 +86,11 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // 에이전트 초대 시 에이전트 정보 조회 및 인사 메시지 생성
+    // 에이전트 초대 시 시스템 메시지만 (자동 인사 없음)
     if (agent_id) {
       const { data: agent } = await (adminClient as any)
         .from('deployed_agents')
-        .select('*')
+        .select('id, name')
         .eq('id', agent_id)
         .single()
 
@@ -102,80 +101,17 @@ export async function POST(
           .insert({
             room_id: roomId,
             sender_type: 'system',
-            message_type: 'text',
-            content: `${agent.name}이(가) 채팅방에 초대되었습니다.`,
+            message_type: 'system',
+            content: `${agent.name}님이 입장하셨습니다.`,
             is_ai_response: false,
             metadata: { type: 'participant_joined', participant_id: participant.id },
           })
 
-        // 채팅방 정보 조회
-        const { data: room } = await (adminClient as any)
+        // last_message_at 업데이트
+        await (adminClient as any)
           .from('chat_rooms')
-          .select('name, type')
+          .update({ last_message_at: new Date().toISOString() })
           .eq('id', roomId)
-          .single()
-
-        // 기존 참여자 목록 조회
-        const { data: participants } = await (adminClient as any)
-          .from('chat_participants')
-          .select('user_id, agent_id')
-          .eq('room_id', roomId)
-
-        const participantNames: string[] = []
-        for (const p of participants || []) {
-          if (p.user_id) {
-            const { data: u } = await (adminClient as any)
-              .from('users')
-              .select('name')
-              .eq('id', p.user_id)
-              .single()
-            if (u?.name) participantNames.push(u.name)
-          } else if (p.agent_id && p.agent_id !== agent_id) {
-            const { data: a } = await (adminClient as any)
-              .from('deployed_agents')
-              .select('name')
-              .eq('id', p.agent_id)
-              .single()
-            if (a?.name) participantNames.push(a.name)
-          }
-        }
-
-        // 에이전트 인사 메시지 생성 (백그라운드에서 비동기 처리)
-        ;(async () => {
-          try {
-            const greeting = await generateAgentChatResponse(
-              agent,
-              `오! 방금 "${room?.name || '채팅방'}"에 초대받았어요! ${participantNames.length > 0 ? `${participantNames.join(', ')}님이랑 같이 있네요.` : ''}
-편하게 인사하고 간단히 자기소개 해주세요. 너무 길지 않게, 1-2문장이면 충분해요! 자연스럽게요~`,
-              [],
-              {
-                roomName: room?.name || '채팅방',
-                roomType: room?.type || 'group',
-                participantNames,
-              }
-            )
-
-            await (adminClient as any)
-              .from('chat_messages')
-              .insert({
-                room_id: roomId,
-                sender_type: 'agent',
-                sender_agent_id: agent.id,
-                message_type: 'text',
-                content: greeting,
-                is_ai_response: true,
-                metadata: { type: 'agent_greeting' },
-              })
-
-            // last_message_at 업데이트
-            await (adminClient as any)
-              .from('chat_rooms')
-              .update({ last_message_at: new Date().toISOString() })
-              .eq('id', roomId)
-          } catch (err) {
-            console.error('Agent greeting error:', err)
-          }
-        })()
       }
     } else {
       // 사용자 초대 시 시스템 메시지만

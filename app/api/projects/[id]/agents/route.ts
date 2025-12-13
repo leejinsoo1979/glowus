@@ -13,7 +13,7 @@ export async function GET(
     const { id } = await params
     const adminClient = createAdminClient()
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_agents')
       .select(`
         *,
@@ -23,11 +23,13 @@ export async function GET(
       .order('assigned_at', { ascending: true })
 
     if (error) {
+      console.error('[GET /api/projects/[id]/agents] error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json(data || [])
   } catch (error) {
+    console.error('[GET /api/projects/[id]/agents] catch error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '서버 오류' },
       { status: 500 }
@@ -45,7 +47,7 @@ export async function POST(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -56,24 +58,27 @@ export async function POST(
     }
 
     const body: AddProjectAgentInput = await request.json()
+    console.log('[POST /api/projects/[id]/agents] body:', body, 'projectId:', projectId)
 
     if (!body.agent_id) {
       return NextResponse.json({ error: '에이전트 ID가 필요합니다' }, { status: 400 })
     }
 
     // 이미 프로젝트에 할당되었는지 확인
-    const { data: existing } = await adminClient
+    const { data: existing, error: existingError } = await (adminClient as any)
       .from('project_agents')
       .select('id')
       .eq('project_id', projectId)
       .eq('agent_id', body.agent_id)
       .single()
 
+    console.log('[POST /api/projects/[id]/agents] existing check:', { existing, existingError })
+
     if (existing) {
       return NextResponse.json({ error: '이미 프로젝트에 할당된 에이전트입니다' }, { status: 400 })
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_agents')
       .insert({
         project_id: projectId,
@@ -87,12 +92,16 @@ export async function POST(
       `)
       .single()
 
+    console.log('[POST /api/projects/[id]/agents] insert result:', { data, error })
+
     if (error) {
+      console.error('[POST /api/projects/[id]/agents] insert error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
+    console.error('[POST /api/projects/[id]/agents] catch error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '서버 오류' },
       { status: 500 }
@@ -106,7 +115,7 @@ export async function DELETE(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -123,7 +132,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: '할당 ID가 필요합니다' }, { status: 400 })
     }
 
-    const { error } = await adminClient
+    const { error } = await (adminClient as any)
       .from('project_agents')
       .delete()
       .eq('id', assignmentId)
@@ -150,7 +159,7 @@ export async function PATCH(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -171,7 +180,7 @@ export async function PATCH(
     if (role !== undefined) updates.role = role
     if (is_active !== undefined) updates.is_active = is_active
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_agents')
       .update(updates)
       .eq('id', assignment_id)

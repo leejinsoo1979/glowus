@@ -95,10 +95,16 @@ module.exports = {
         'scale-in': 'scaleIn 0.2s ease-out',
         'bounce-soft': 'bounceSoft 0.5s ease-out',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
+        'pulse-slow': 'pulseSlow 3s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',
         'float': 'float 6s ease-in-out infinite',
         'glow': 'glow 2s ease-in-out infinite alternate',
         'spotlight': 'spotlight 2s ease .75s 1 forwards',
+        'gradient-x': 'gradientX 3s ease infinite',
+        'gradient-xy': 'gradientXY 6s ease infinite',
+        'spin-slow': 'spin 3s linear infinite',
+        'bounce-slow': 'bounce 2s infinite',
+        'wiggle': 'wiggle 1s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -154,6 +160,24 @@ module.exports = {
             opacity: '1',
             transform: 'translate(-50%,-40%) scale(1)',
           },
+        },
+        pulseSlow: {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.95', transform: 'scale(1.01)' },
+        },
+        gradientX: {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
+        gradientXY: {
+          '0%, 100%': { backgroundPosition: '0% 0%' },
+          '25%': { backgroundPosition: '100% 0%' },
+          '50%': { backgroundPosition: '100% 100%' },
+          '75%': { backgroundPosition: '0% 100%' },
+        },
+        wiggle: {
+          '0%, 100%': { transform: 'rotate(-3deg)' },
+          '50%': { transform: 'rotate(3deg)' },
         },
       },
       borderRadius: {

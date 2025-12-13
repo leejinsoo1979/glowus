@@ -452,18 +452,19 @@ export default function TeamPage() {
                     )}
                   >
                     <div className="relative">
-                      {member.type === 'agent' ? (
-                        <img
-                          src="/agent_image.jpg"
-                          alt={member.name}
-                          className="w-10 h-10 rounded-xl object-cover"
-                        />
-                      ) : member.avatar_url ? (
+                      {member.avatar_url ? (
                         <img
                           src={member.avatar_url}
                           alt={member.name}
                           className="w-10 h-10 rounded-xl object-cover"
                         />
+                      ) : member.type === 'agent' ? (
+                        <div className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center",
+                          "bg-gradient-to-br from-purple-500 to-pink-500"
+                        )}>
+                          <Sparkles className="w-5 h-5 text-white" />
+                        </div>
                       ) : (
                         <div className={cn(
                           "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold",

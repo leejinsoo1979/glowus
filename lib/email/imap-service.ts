@@ -94,8 +94,9 @@ export class ImapService {
       }
 
       // Search for messages
+      const mailboxExists = this.client.mailbox && typeof this.client.mailbox !== 'boolean' ? this.client.mailbox.exists : 0
       const messages = this.client.fetch(
-        { seq: `${Math.max(1, this.client.mailbox?.exists || 0 - limit + 1)}:*` },
+        { seq: `${Math.max(1, mailboxExists - limit + 1)}:*` },
         {
           uid: true,
           envelope: true,
@@ -132,7 +133,7 @@ export class ImapService {
 
     try {
       const message = await this.client.fetchOne(
-        { uid },
+        uid.toString() as any,
         {
           uid: true,
           envelope: true,

@@ -24,13 +24,13 @@ export async function GET(request: Request) {
   }
 
   // Verify ownership
-  const { data: account } = await supabase
+  const { data: account } = await (supabase as any)
     .from('email_accounts')
     .select('user_id')
     .eq('id', accountId)
     .single()
 
-  if (!account || account.user_id !== user.id) {
+  if (!account || (account as any).user_id !== user.id) {
     return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
   }
 
@@ -67,7 +67,7 @@ export async function PATCH(request: Request) {
     }
 
     // Verify ownership through account
-    const { data: email } = await supabase
+    const { data: email } = await (supabase as any)
       .from('email_messages')
       .select('account_id')
       .eq('id', email_id)
@@ -77,13 +77,13 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: '이메일을 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const { data: account } = await supabase
+    const { data: account } = await (supabase as any)
       .from('email_accounts')
       .select('user_id')
-      .eq('id', email.account_id)
+      .eq('id', (email as any).account_id)
       .single()
 
-    if (!account || account.user_id !== user.id) {
+    if (!account || (account as any).user_id !== user.id) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
     }
 

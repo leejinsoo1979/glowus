@@ -28,6 +28,7 @@ import {
   LogOut,
   Mail,
   BrainCircuit,
+  MessageSquare,
 } from 'lucide-react'
 import { TbBrandWechat } from 'react-icons/tb'
 
@@ -199,12 +200,55 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Settings */}
-      <div className={`px-3 py-4 border-t ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+      {/* Chat History & Settings */}
+      <div className={`px-3 py-4 border-t space-y-1 ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+        {/* 채팅기록 */}
+        <Link
+          href="/dashboard-group/chat-history"
+          className={cn(
+            'relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group',
+            pathname === '/dashboard-group/chat-history'
+              ? isDark
+                ? 'bg-zinc-800 text-zinc-100'
+                : 'bg-zinc-100 text-zinc-900'
+              : isDark
+                ? 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+          )}
+        >
+          <MessageSquare className={`w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110 ${isDark ? 'text-zinc-500 group-hover:text-accent' : 'text-zinc-400 group-hover:text-accent'
+            }`} />
+          <AnimatePresence>
+            {sidebarOpen && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                채팅기록
+              </motion.span>
+            )}
+          </AnimatePresence>
+          {/* Tooltip for collapsed state */}
+          {!sidebarOpen && (
+            <div className={`absolute left-full ml-2 px-3 py-2 text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg ${isDark
+              ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+              : 'bg-white text-zinc-900 border border-zinc-200'
+              }`}>
+              채팅기록
+              <div className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rotate-45 border-l border-b ${isDark
+                ? 'bg-zinc-800 border-zinc-700'
+                : 'bg-white border-zinc-200'
+                }`} />
+            </div>
+          )}
+        </Link>
+
+        {/* 설정 */}
         <Link
           href="/dashboard-group/settings"
           className={cn(
-            'flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group',
+            'relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group',
             pathname === '/dashboard-group/settings'
               ? isDark
                 ? 'bg-zinc-800 text-zinc-100'
@@ -227,6 +271,19 @@ export function Sidebar() {
               </motion.span>
             )}
           </AnimatePresence>
+          {/* Tooltip for collapsed state */}
+          {!sidebarOpen && (
+            <div className={`absolute left-full ml-2 px-3 py-2 text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg ${isDark
+              ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+              : 'bg-white text-zinc-900 border border-zinc-200'
+              }`}>
+              설정
+              <div className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rotate-45 border-l border-b ${isDark
+                ? 'bg-zinc-800 border-zinc-700'
+                : 'bg-white border-zinc-200'
+                }`} />
+            </div>
+          )}
         </Link>
       </div>
 

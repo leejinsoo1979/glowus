@@ -14,7 +14,7 @@ export async function GET(
     const adminClient = createAdminClient()
 
     // 개발 모드: DEV_USER 사용
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -27,7 +27,10 @@ export async function GET(
     // DEV 모드에서는 owner_id 체크 없이 조회
     let query = (adminClient as any)
       .from('deployed_agents')
-      .select('*')
+      .select(`
+        *,
+        next_agent:next_agent_id(id, name, avatar_url, capabilities)
+      `)
       .eq('id', id)
 
     if (!isDevMode()) {
@@ -178,7 +181,7 @@ export async function PATCH(
     const adminClient = createAdminClient()
 
     // 개발 모드: DEV_USER 사용
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -197,7 +200,6 @@ export async function PATCH(
       'workflow_edges',
       'capabilities',
       'avatar_url',
-      'video_url', // 프로필 비디오 URL
       'system_prompt',
       'model',
       'temperature',
@@ -207,6 +209,16 @@ export async function PATCH(
       'llm_provider',
       'llm_model',
       'speak_order',
+      // 감정별 표정 이미지
+      'emotion_avatars',
+      // 커스텀 감정 타입
+      'custom_emotions',
+      // 채팅 메인 GIF
+      'chat_main_gif',
+      // 체이닝 필드 (에이전트 자동 연결)
+      'next_agent_id',
+      'chain_config',
+      'chain_order',
     ]
 
     const updates: Record<string, unknown> = {}

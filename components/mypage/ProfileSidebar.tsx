@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { Mail, Phone, Calendar, MapPin, Camera, Loader2, ZoomIn, ZoomOut, Check, X } from 'lucide-react'
+import { Mail, Phone, Calendar, MapPin, Camera, Loader2, ZoomIn, ZoomOut, Check, X, Smile, ChevronRight } from 'lucide-react'
 import { Github, Twitter, Linkedin } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { profileData } from '@/lib/mypage-data'
 import { useAuthStore } from '@/stores/authStore'
@@ -492,6 +493,43 @@ export function ProfileSidebar({ data = profileData, className }: ProfileSidebar
         >
           <Linkedin className="w-5 h-5" />
         </a>
+      </div>
+
+      {/* 이모티콘 라이브러리 링크 */}
+      <div className={cn(
+        'mt-6 pt-6 border-t',
+        isDark ? 'border-zinc-800' : 'border-zinc-200'
+      )}>
+        <Link
+          href="/dashboard-group/mypage/emoticons"
+          className={cn(
+            'flex items-center justify-between p-4 rounded-xl transition-colors group',
+            isDark
+              ? 'bg-zinc-800/50 hover:bg-zinc-800'
+              : 'bg-zinc-50 hover:bg-zinc-100'
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              'w-10 h-10 rounded-lg flex items-center justify-center',
+              isDark ? 'bg-zinc-700' : 'bg-white'
+            )}>
+              <Smile className="w-5 h-5 text-yellow-500" />
+            </div>
+            <div>
+              <p className={cn('font-medium text-sm', isDark ? 'text-white' : 'text-zinc-900')}>
+                이모티콘 라이브러리
+              </p>
+              <p className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                나만의 이모티콘 관리
+              </p>
+            </div>
+          </div>
+          <ChevronRight className={cn(
+            'w-5 h-5 transition-transform group-hover:translate-x-1',
+            isDark ? 'text-zinc-500' : 'text-zinc-400'
+          )} />
+        </Link>
       </div>
 
     </aside>

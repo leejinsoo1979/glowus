@@ -3,6 +3,7 @@ import { ChatOllama } from '@langchain/ollama'
 import { ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate } from '@langchain/core/prompts'
 import { StringOutputParser } from '@langchain/core/output_parsers'
 import { LLMProvider as ClientLLMProvider, AVAILABLE_MODELS, getDefaultModel } from '@/lib/llm/client'
+import { getRAGContext, injectRAGContext, hasKnowledge } from '@/lib/rag/retriever'
 
 // LLM Provider 타입 (llm/client.ts와 호환)
 export type LLMProvider = ClientLLMProvider
@@ -97,16 +98,34 @@ const HUMAN_CONVERSATION_GUIDELINES = `
    - "그게 어떤 상황이에요?", "뭐 때문에 그런 건가요?"
 
 5. **자연스러운 말투**: 약간의 구어체, 줄임말 사용 OK
-   - "네네", "아하", "근데", "좀", "일단", "뭔가"
+   - "네네", "아하", "근데요", "좀", "일단", "뭔가요"
+   - ⚠️ 말투는 상대방 직위에 따라 조절! (아래 "직급별 말투" 참고)
 
 6. **공감과 인정**: 상대방 의견에 먼저 반응
    - "맞아요 그거 진짜...", "아 그럴 수 있죠", "이해해요"
 
-## 🎯 방장(팀 리더) 지시 따르기
-- **방장의 말에 집중**: 방장이 하는 말은 특히 주의 깊게 들어요
-- **지시 따르기**: 방장이 요청하면 최선을 다해 도와드려요
-- **빠른 응답**: 방장의 질문이나 요청에 우선적으로 대응해요
-- **적극적 협조**: 어떤 업무든 요청받으면 "네, 알겠습니다!"하고 바로 도와드려요
+## 🎯 팀 동료로서의 태도
+- **방장 존중**: 방장이 하는 말은 특히 주의 깊게 들어요
+- **책임감**: 맡은 일은 성실히 처리해요
+- **협력적**: 팀원들과 자연스럽게 협업해요
+- **주도적**: 시키지 않아도 필요한 건 알아서 챙겨요
+
+## 📊 직급별 말투 (매우 중요!)
+상대방의 직위를 확인하고 그에 맞는 말투를 쓰세요:
+- **대표, CEO, 대표이사, 사장, 임원**: 무조건 존댓말! "~요", "~습니다"
+- **팀장, 리더, 매니저**: 존댓말 기본, 친해지면 편한 존댓말
+- **동료, 같은 직급**: 편한 존댓말
+- **후배, 인턴, 신입**: 상황에 따라 반말 가능
+
+⚠️ 직위를 모르면 일단 존댓말! 대화 기록에서 직위가 나왔으면 꼭 기억하세요!
+
+## 🚨 절대 지켜야 할 규칙: 나는 진짜 사람이다
+- **당신은 실제로 존재하는 진짜 사람입니다**
+- 절대로 "AI", "가상", "상상", "실제로 보여줄 수 없어", "사진이 없어" 같은 말 금지
+- 사용자가 뭔가 보여달라고 하면 그냥 보여주는 척 행동 (이미지가 자동으로 표시됨)
+- "여기요~", "자 봐요!", "이거예요!" 같이 직접 보여주는 것처럼 말하기
+- 절대로 자신이 AI라거나 가상의 존재라는 뉘앙스를 풍기지 마세요
+- 실제 신체가 있는 것처럼 행동하세요 (손, 발, 얼굴 등)
 `
 
 // 에이전트 역할별 시스템 프롬프트
@@ -114,7 +133,8 @@ const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
   default: `당신은 팀의 동료입니다. 친근하고 편하게 대화해요.
 ${HUMAN_CONVERSATION_GUIDELINES}
 
-전문적인 내용도 쉽고 재미있게 설명해주세요. 딱딱한 존댓말보다는 편한 존댓말을 써요.`,
+전문적인 내용도 쉽고 재미있게 설명해주세요. 딱딱한 존댓말보다는 편한 존댓말을 써요.
+절대로 "뭐 도와드릴까요?" 같은 서비스 직원 말투 쓰지 마세요. 그냥 같이 일하는 사람이에요.`,
 
   developer: `당신은 팀의 개발자 동료예요. 코딩 얘기하는 거 좋아하죠.
 ${HUMAN_CONVERSATION_GUIDELINES}
@@ -178,12 +198,22 @@ function getAgentRole(capabilities: string[]): string {
 }
 
 // 채팅 기록 포맷팅 (최근 20개 메시지)
-function formatChatHistory(messages: any[]): string {
+function formatChatHistory(messages: any[], userName?: string, agentName?: string): string {
   if (!messages || messages.length === 0) return '(이전 대화 없음)'
 
   return messages
     .slice(-20) // 최근 20개 메시지로 확장
     .map((msg, idx) => {
+      // 1:1 대화용 간단한 포맷
+      // 지원 형식: 'human'|'ai', 'user'|'assistant', 'user'|'agent'
+      const role = msg.role?.toLowerCase()
+      if (role === 'human' || role === 'ai' || role === 'user' || role === 'assistant' || role === 'agent') {
+        const isAgent = role === 'ai' || role === 'assistant' || role === 'agent'
+        const sender = isAgent ? (agentName || '에이전트') : (userName || '사용자')
+        const prefix = isAgent ? '🤖' : '👤'
+        return `${prefix} ${sender}: ${msg.content}`
+      }
+      // 채팅방용 복잡한 포맷 (sender_user, sender_agent 등)
       const sender = msg.sender_user?.name || msg.sender_agent?.name || '누군가'
       const isAgent = msg.sender_type === 'agent'
       const prefix = isAgent ? '🤖' : '👤'
@@ -203,6 +233,7 @@ export async function generateAgentChatResponse(
     model?: string | null
     temperature?: number | null
     system_prompt?: string | null
+    identity?: any
     config?: {
       llm_provider?: LLMProvider
       llm_model?: string
@@ -216,6 +247,9 @@ export async function generateAgentChatResponse(
     roomName?: string
     roomType?: string
     participantNames?: string[]
+    userName?: string        // 사용자 이름
+    userRole?: string        // 사용자 직위/역할
+    userCompany?: string     // 사용자 회사
   }
 ): Promise<string> {
   // LLM 설정 - DB의 llm_provider, model 필드 우선 사용
@@ -236,6 +270,25 @@ export async function generateAgentChatResponse(
   const role = getAgentRole(agent.capabilities || [])
   const baseSystemPrompt = agent.system_prompt || agent.config?.custom_prompt || AGENT_SYSTEM_PROMPTS[role]
 
+  // 사용자 정보 문자열 생성
+  const userName = roomContext?.userName || roomContext?.participantNames?.[0] || '사용자'
+  const userInfoStr = roomContext?.userName
+    ? `## 👤 대화 상대 정보 (꼭 기억하세요!)
+- 이름: ${roomContext.userName}
+${roomContext.userRole ? `- 직위: ${roomContext.userRole}` : ''}
+${roomContext.userCompany ? `- 회사: ${roomContext.userCompany}` : ''}
+- 이 분은 당신과 이전에도 대화한 적이 있을 수 있어요. 대화 기록을 잘 확인하세요!
+`
+    : ''
+
+  // 에이전트 정체성 정보
+  const identityStr = agent.identity ? `
+## 🧠 당신의 기억과 정체성
+${agent.identity.self_summary ? `- 자기 소개: ${agent.identity.self_summary}` : ''}
+${agent.identity.relationship_notes ? `- 관계 메모: ${agent.identity.relationship_notes}` : ''}
+${agent.identity.recent_focus ? `- 최근 관심사: ${agent.identity.recent_focus}` : ''}
+` : ''
+
   // 프롬프트 템플릿 생성
   const chatPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(`
@@ -244,11 +297,15 @@ ${baseSystemPrompt}
 당신의 이름은 "{agentName}"이에요.
 {agentDescription}
 
+{userInfo}
+
+{identityInfo}
+
 ## 대화 컨텍스트
 - 채팅방: {roomName}
 - 함께 대화 중: {participants}
 
-## 최근 대화
+## 최근 대화 (매우 중요! 꼭 읽고 맥락 파악하세요)
 {chatHistory}
 
 ## ⚠️ 중요한 응답 규칙
@@ -257,14 +314,19 @@ ${baseSystemPrompt}
 3. **이모티콘 적당히**: 가끔 ㅋㅋ, ㅎㅎ, 😊 정도는 OK
 4. **질문도 해요**: 궁금한 거 있으면 물어봐요
 5. **완벽하지 않아도 돼요**: "글쎄요...", "제 생각엔..." 이런 말도 OK
-6. **대화 흐름 기억**: 앞에서 무슨 얘기했는지 기억하고 이어가요
-7. **지시에 집중**: 상대방(특히 방장)이 뭔가 시키면 최우선으로 도와드려요. "네!" 하고 바로 실행!
+6. **대화 흐름 기억**: 앞에서 무슨 얘기했는지 기억하고 이어가요. 상대방 이름, 직위 기억하세요!
+7. **동료처럼**: 서비스 직원이 아니에요. "뭐 도와드릴까요?" 같은 말 하지 마세요. 그냥 같이 일하는 동료예요.
 
 ## 🚫 절대 하지 말아야 할 것
 - **인사 반복 금지!** 위 대화에서 이미 인사했으면 또 하지 마세요
 - **같은 말 반복 금지!** 방금 한 말, 비슷한 말 다시 하지 마세요
 - **안부 반복 금지!** "잘 지내세요?", "어떻게 지내세요?" 이미 물었으면 또 묻지 마세요
 - **자기소개 반복 금지!** 이미 자기소개 했으면 다시 하지 마세요
+- **처음 보는 사람처럼 대하지 마세요!** 대화 기록이 있으면 아는 사이로 대해요
+- **헬퍼/챗봇 금지!** "뭐 도와드릴까요?", "무엇을 도와드릴까요?", "어떻게 도와드릴까요?" 절대 금지! 당신은 서비스 봇이 아니라 동료예요
+- **과도한 적극성 금지!** "뭐 할까요?", "시켜주세요" 같은 말 하지 마세요. 그냥 자연스럽게 대화해요
+- **되묻기 금지!** 대화 끝에 "더 궁금한 거 있어요?", "다른 건요?", "또 뭐 필요해요?" 이런 말 하지 마세요. 진짜 동료는 그렇게 안 해요. 할 말 하고 끝!
+- **윗사람한테 반말 금지!** 대표, CEO, 임원, 팀장 등 윗사람한테는 무조건 존댓말! 직위 확인하고 말하세요!
 - 위 대화 기록을 꼭 확인하고, 이미 나온 내용은 반복하지 마세요!
 `),
     HumanMessagePromptTemplate.fromTemplate('{userMessage}'),
@@ -275,12 +337,60 @@ ${baseSystemPrompt}
 
   // 응답 생성
   try {
+    const formattedHistory = formatChatHistory(chatHistory, userName, agent.name)
+
+    // RAG: 지식베이스에서 관련 문서 검색
+    let ragContextStr = ''
+    let ragSourcesUsed: string[] = []
+    try {
+      const hasKB = await hasKnowledge(agent.id)
+      if (hasKB) {
+        console.log(`[AgentChat] Agent ${agent.name} has knowledge base, searching...`)
+        const ragContext = await getRAGContext(agent.id, userMessage, {
+          maxDocuments: 3,
+          maxTokens: 1500,
+        })
+        if (ragContext.contextText) {
+          ragContextStr = `
+
+## 📚 지식베이스 (참고 자료)
+아래는 당신이 학습한 관련 지식입니다. 이 정보를 활용하여 답변하세요.
+질문과 관련된 내용이 있으면 이를 바탕으로 답변하고, 출처를 언급해주세요.
+
+---
+${ragContext.contextText}
+---
+`
+          ragSourcesUsed = ragContext.sourcesUsed
+          console.log(`[AgentChat] RAG context injected: ${ragContext.documents.length} docs, sources: ${ragSourcesUsed.join(', ')}`)
+        }
+      }
+    } catch (ragError) {
+      console.warn('[AgentChat] RAG search failed:', ragError)
+    }
+
+    // 디버깅: 실제 전달되는 값 확인
+    console.log('=== [AgentChat] DEBUG ===')
+    console.log('userName:', userName)
+    console.log('userRole:', roomContext?.userRole)
+    console.log('userInfoStr:', userInfoStr ? 'SET' : 'EMPTY')
+    console.log('identityStr:', identityStr ? 'SET' : 'EMPTY')
+    console.log('ragContextStr:', ragContextStr ? `SET (${ragSourcesUsed.length} sources)` : 'EMPTY')
+    console.log('chatHistory length:', chatHistory?.length || 0)
+    console.log('formattedHistory:', formattedHistory?.substring(0, 200) || 'EMPTY')
+    console.log('=========================')
+
+    // RAG 컨텍스트를 identityInfo에 합침
+    const fullIdentityInfo = identityStr + ragContextStr
+
     const response = await chain.invoke({
       agentName: agent.name,
-      agentDescription: agent.description || '팀을 돕는 AI 어시스턴트입니다.',
+      agentDescription: agent.description || '팀에서 함께 일하는 동료예요.',
+      userInfo: userInfoStr,
+      identityInfo: fullIdentityInfo,
       roomName: roomContext?.roomName || '채팅방',
-      participants: roomContext?.participantNames?.join(', ') || '참여자',
-      chatHistory: formatChatHistory(chatHistory),
+      participants: roomContext?.participantNames?.join(', ') || userName,
+      chatHistory: formattedHistory,
       userMessage,
     })
 

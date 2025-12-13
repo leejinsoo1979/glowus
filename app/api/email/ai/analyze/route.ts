@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     // Single email analysis
     if (email_id) {
       // Get email and verify ownership
-      const { data: email, error: emailError } = await supabase
+      const { data: email, error: emailError } = await (supabase as any)
         .from('email_messages')
         .select('*, email_accounts!inner(user_id)')
         .eq('id', email_id)
@@ -42,13 +42,13 @@ export async function POST(request: Request) {
     // Batch analysis for account
     if (account_id && batch) {
       // Verify account ownership
-      const { data: account } = await supabase
+      const { data: account } = await (supabase as any)
         .from('email_accounts')
         .select('user_id')
         .eq('id', account_id)
         .single()
 
-      if (!account || account.user_id !== user.id) {
+      if (!account || (account as any).user_id !== user.id) {
         return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
       }
 

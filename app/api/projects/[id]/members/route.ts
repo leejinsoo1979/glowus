@@ -13,7 +13,7 @@ export async function GET(
     const { id } = await params
     const adminClient = createAdminClient()
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_members')
       .select(`
         *,
@@ -45,7 +45,7 @@ export async function POST(
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -62,7 +62,7 @@ export async function POST(
     }
 
     // 이미 멤버인지 확인
-    const { data: existing } = await adminClient
+    const { data: existing } = await (adminClient as any)
       .from('project_members')
       .select('id')
       .eq('project_id', projectId)
@@ -73,7 +73,7 @@ export async function POST(
       return NextResponse.json({ error: '이미 프로젝트 멤버입니다' }, { status: 400 })
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await (adminClient as any)
       .from('project_members')
       .insert({
         project_id: projectId,
@@ -105,7 +105,7 @@ export async function DELETE(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    let user = isDevMode() ? DEV_USER : null
+    let user: any = isDevMode() ? DEV_USER : null
     if (!user) {
       const { data } = await supabase.auth.getUser()
       user = data.user
@@ -122,7 +122,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: '멤버 ID가 필요합니다' }, { status: 400 })
     }
 
-    const { error } = await adminClient
+    const { error } = await (adminClient as any)
       .from('project_members')
       .delete()
       .eq('id', memberId)

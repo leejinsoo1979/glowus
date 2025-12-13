@@ -314,22 +314,24 @@ export function TaskKanbanBoard({ projectId, className }: TaskKanbanBoardProps) 
                     ))}
                     {provided.placeholder}
 
-                    {/* Add Task Button */}
-                    <button
-                      onClick={() => {
-                        setNewTaskColumn(column.id)
-                        setShowNewTaskModal(true)
-                      }}
-                      className={cn(
-                        'w-full p-2 mt-1 rounded-lg border-2 border-dashed',
-                        'border-zinc-300 dark:border-zinc-700',
-                        'text-zinc-500 hover:text-accent hover:border-accent',
-                        'transition-colors flex items-center justify-center gap-1'
-                      )}
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">태스크 추가</span>
-                    </button>
+                    {/* Add Task Button - TODO 컬럼에만 표시 */}
+                    {column.id === 'TODO' && (
+                      <button
+                        onClick={() => {
+                          setNewTaskColumn(column.id)
+                          setShowNewTaskModal(true)
+                        }}
+                        className={cn(
+                          'w-full p-2 mt-1 rounded-lg border-2 border-dashed',
+                          'border-zinc-300 dark:border-zinc-700',
+                          'text-zinc-500 hover:text-accent hover:border-accent',
+                          'transition-colors flex items-center justify-center gap-1'
+                        )}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span className="text-sm">태스크 추가</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </Droppable>
