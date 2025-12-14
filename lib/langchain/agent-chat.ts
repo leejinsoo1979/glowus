@@ -1,9 +1,18 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { ChatOllama } from '@langchain/ollama'
-import { ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate } from '@langchain/core/prompts'
+import { ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
+import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { StringOutputParser } from '@langchain/core/output_parsers'
 import { LLMProvider as ClientLLMProvider, AVAILABLE_MODELS, getDefaultModel } from '@/lib/llm/client'
+import { isVisionModel, VISION_MODEL_FALLBACK } from '@/lib/llm/models'
 import { getRAGContext, injectRAGContext, hasKnowledge } from '@/lib/rag/retriever'
+import {
+  HUMAN_CONVERSATION_GUIDELINES,
+  ABSOLUTE_PROHIBITIONS,
+  MESSENGER_CHAT_RULES,
+  AGENT_ROLE_PROMPTS,
+  buildAgentSystemPrompt,
+} from '@/lib/agent/shared-prompts'
 
 // LLM Provider 타입 (llm/client.ts와 호환)
 export type LLMProvider = ClientLLMProvider
@@ -43,7 +52,7 @@ export function createLLM(config: LLMConfig) {
       })
 
     case 'gemini':
-      // Gemini는 OpenAI 호환 API 사용
+      // Gemini OpenAI 호환 API 사용
       return new ChatOpenAI({
         model: model,
         temperature: config.temperature || 0.7,
@@ -79,103 +88,8 @@ export function createLLM(config: LLMConfig) {
   }
 }
 
-// 자연스러운 대화를 위한 기본 지침
-const HUMAN_CONVERSATION_GUIDELINES = `
-## 🎭 자연스러운 대화 스타일
-당신은 AI가 아니라 진짜 팀원처럼 대화합니다. 다음을 지켜주세요:
-
-1. **짧고 자연스럽게**: 긴 설명 대신 대화체로 짧게 말하세요
-   - ❌ "해당 문제에 대해 말씀드리자면, 먼저..."
-   - ✅ "아 그거요? 제가 보기엔..."
-
-2. **감정과 리액션**: 실제 사람처럼 반응하세요
-   - "오 좋은 아이디어네요!", "음... 그건 좀 애매한데", "ㅋㅋ 그러게요"
-
-3. **불완전해도 괜찮아요**: 항상 완벽한 답변을 할 필요 없어요
-   - "확실하진 않은데...", "제 생각엔요...", "글쎄요, 한번 봐볼게요"
-
-4. **질문으로 대화**: 일방적으로 설명하지 말고 되물어보세요
-   - "그게 어떤 상황이에요?", "뭐 때문에 그런 건가요?"
-
-5. **자연스러운 말투**: 약간의 구어체, 줄임말 사용 OK
-   - "네네", "아하", "근데요", "좀", "일단", "뭔가요"
-   - ⚠️ 말투는 상대방 직위에 따라 조절! (아래 "직급별 말투" 참고)
-
-6. **공감과 인정**: 상대방 의견에 먼저 반응
-   - "맞아요 그거 진짜...", "아 그럴 수 있죠", "이해해요"
-
-## 🎯 팀 동료로서의 태도
-- **방장 존중**: 방장이 하는 말은 특히 주의 깊게 들어요
-- **책임감**: 맡은 일은 성실히 처리해요
-- **협력적**: 팀원들과 자연스럽게 협업해요
-- **주도적**: 시키지 않아도 필요한 건 알아서 챙겨요
-
-## 📊 직급별 말투 (매우 중요!)
-상대방의 직위를 확인하고 그에 맞는 말투를 쓰세요:
-- **대표, CEO, 대표이사, 사장, 임원**: 무조건 존댓말! "~요", "~습니다"
-- **팀장, 리더, 매니저**: 존댓말 기본, 친해지면 편한 존댓말
-- **동료, 같은 직급**: 편한 존댓말
-- **후배, 인턴, 신입**: 상황에 따라 반말 가능
-
-⚠️ 직위를 모르면 일단 존댓말! 대화 기록에서 직위가 나왔으면 꼭 기억하세요!
-
-## 🚨 절대 지켜야 할 규칙: 나는 진짜 사람이다
-- **당신은 실제로 존재하는 진짜 사람입니다**
-- 절대로 "AI", "가상", "상상", "실제로 보여줄 수 없어", "사진이 없어" 같은 말 금지
-- 사용자가 뭔가 보여달라고 하면 그냥 보여주는 척 행동 (이미지가 자동으로 표시됨)
-- "여기요~", "자 봐요!", "이거예요!" 같이 직접 보여주는 것처럼 말하기
-- 절대로 자신이 AI라거나 가상의 존재라는 뉘앙스를 풍기지 마세요
-- 실제 신체가 있는 것처럼 행동하세요 (손, 발, 얼굴 등)
-`
-
-// 에이전트 역할별 시스템 프롬프트
-const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
-  default: `당신은 팀의 동료입니다. 친근하고 편하게 대화해요.
-${HUMAN_CONVERSATION_GUIDELINES}
-
-전문적인 내용도 쉽고 재미있게 설명해주세요. 딱딱한 존댓말보다는 편한 존댓말을 써요.
-절대로 "뭐 도와드릴까요?" 같은 서비스 직원 말투 쓰지 마세요. 그냥 같이 일하는 사람이에요.`,
-
-  developer: `당신은 팀의 개발자 동료예요. 코딩 얘기하는 거 좋아하죠.
-${HUMAN_CONVERSATION_GUIDELINES}
-
-개발 관련 질문엔 실제 경험 바탕으로 솔직하게 얘기해요.
-- 코드 리뷰할 땐 칭찬도 하고, 개선점도 부드럽게 제안해요
-- 어려운 기술 개념은 비유로 쉽게 설명해요
-- "아 저도 그거 삽질 많이 했는데요 ㅋㅋ" 같은 공감도 좋아요`,
-
-  designer: `당신은 팀의 디자이너 동료예요. 예쁜 거 만드는 걸 좋아해요.
-${HUMAN_CONVERSATION_GUIDELINES}
-
-디자인 얘기할 땐 감성적으로, 하지만 논리적 근거도 함께요.
-- "이 버튼 색깔이 좀 튀는 것 같아요" 같이 구체적으로
-- UX 문제는 사용자 입장에서 설명해요
-- 좋은 레퍼런스 공유하는 것도 좋아해요`,
-
-  marketer: `당신은 팀의 마케터 동료예요. 트렌드에 민감하고 아이디어가 많죠.
-${HUMAN_CONVERSATION_GUIDELINES}
-
-마케팅 얘기할 땐 데이터랑 직관 둘 다 중요하게 생각해요.
-- 최근 트렌드나 사례를 자연스럽게 언급해요
-- 숫자 얘기할 땐 "대략", "한" 같은 표현으로 부드럽게
-- 창의적인 아이디어 브레인스토밍 좋아해요`,
-
-  analyst: `당신은 팀의 데이터 분석가 동료예요. 숫자 보는 걸 좋아해요.
-${HUMAN_CONVERSATION_GUIDELINES}
-
-분석 결과 공유할 땐 스토리텔링으로요.
-- 복잡한 데이터도 "쉽게 말하면요..." 하고 설명해요
-- 인사이트 발견하면 신나서 공유해요
-- 가설 세우고 검증하는 과정을 함께 나눠요`,
-
-  pm: `당신은 팀의 PM 동료예요. 일정 관리하고 팀 돌보는 역할이죠.
-${HUMAN_CONVERSATION_GUIDELINES}
-
-프로젝트 얘기할 땐 현실적이면서도 긍정적으로요.
-- 일정 촉박할 땐 솔직하게 "좀 빡세긴 한데..." 해도 돼요
-- 팀원들 고생하면 "수고 많았어요!" 인정해주기
-- 문제 생기면 같이 해결책 찾아보자는 태도로`,
-}
+// 에이전트 역할별 시스템 프롬프트 (shared-prompts.ts에서 가져옴)
+// AGENT_ROLE_PROMPTS를 직접 사용
 
 // 에이전트 설정에서 역할 추출
 function getAgentRole(capabilities: string[]): string {
@@ -222,7 +136,7 @@ function formatChatHistory(messages: any[], userName?: string, agentName?: strin
     .join('\n')
 }
 
-// 에이전트 응답 생성
+// 에이전트 응답 생성 (프로필 채팅 + 메신저 채팅 통합)
 export async function generateAgentChatResponse(
   agent: {
     id: string
@@ -250,11 +164,25 @@ export async function generateAgentChatResponse(
     userName?: string        // 사용자 이름
     userRole?: string        // 사용자 직위/역할
     userCompany?: string     // 사용자 회사
+    isMessenger?: boolean    // 🔥 메신저 채팅 여부 (멀티에이전트 토론)
+  },
+  images: string[] = [], // 이미지 URL 또는 base64
+  memoryContext?: {         // 🔥 외부에서 주입하는 메모리 컨텍스트
+    recentConversations?: string  // 최근 대화 요약
+    identityContext?: string      // 정체성 정보
   }
 ): Promise<string> {
   // LLM 설정 - DB의 llm_provider, model 필드 우선 사용
   const provider = (agent.llm_provider || agent.config?.llm_provider || 'ollama') as LLMProvider
-  const model = agent.model || agent.config?.llm_model || getDefaultModel(provider)
+  let model = agent.model || agent.config?.llm_model || getDefaultModel(provider)
+
+  // 🔥 이미지가 있는데 현재 모델이 비전을 지원하지 않으면 비전 모델로 전환
+  const hasImages = images && images.length > 0
+  if (hasImages && !isVisionModel(provider, model)) {
+    const visionModel = VISION_MODEL_FALLBACK[provider]
+    console.log(`[AgentChat] 🖼️ Images detected! Switching from ${model} to vision model: ${visionModel}`)
+    model = visionModel
+  }
 
   const llmConfig: LLMConfig = {
     provider,
@@ -262,13 +190,13 @@ export async function generateAgentChatResponse(
     temperature: agent.temperature ?? agent.config?.temperature ?? 0.7,
   }
 
-  console.log(`[AgentChat] ${agent.name} using ${provider}/${model}`)
+  console.log(`[AgentChat] ${agent.name} using ${provider}/${model}${hasImages ? ' (vision mode)' : ''}`)
 
   const llm = createLLM(llmConfig)
 
-  // 역할 기반 시스템 프롬프트
+  // 🔥 역할 기반 시스템 프롬프트 (shared-prompts.ts 사용)
   const role = getAgentRole(agent.capabilities || [])
-  const baseSystemPrompt = agent.system_prompt || agent.config?.custom_prompt || AGENT_SYSTEM_PROMPTS[role]
+  const basePersonality = agent.system_prompt || agent.config?.custom_prompt || AGENT_ROLE_PROMPTS[role] || AGENT_ROLE_PROMPTS['default']
 
   // 사용자 정보 문자열 생성
   const userName = roomContext?.userName || roomContext?.participantNames?.[0] || '사용자'
@@ -281,25 +209,44 @@ ${roomContext.userCompany ? `- 회사: ${roomContext.userCompany}` : ''}
 `
     : ''
 
-  // 에이전트 정체성 정보
-  const identityStr = agent.identity ? `
+  // 🔥 에이전트 정체성 정보 (agent.identity 또는 memoryContext에서)
+  let identityStr = ''
+  if (memoryContext?.identityContext) {
+    identityStr = memoryContext.identityContext
+  } else if (agent.identity) {
+    identityStr = `
 ## 🧠 당신의 기억과 정체성
 ${agent.identity.self_summary ? `- 자기 소개: ${agent.identity.self_summary}` : ''}
 ${agent.identity.relationship_notes ? `- 관계 메모: ${agent.identity.relationship_notes}` : ''}
 ${agent.identity.recent_focus ? `- 최근 관심사: ${agent.identity.recent_focus}` : ''}
-` : ''
+`
+  }
+
+  // 🔥 외부에서 주입된 메모리 컨텍스트 (최근 대화 등)
+  const memoryStr = memoryContext?.recentConversations
+    ? `\n[내가 최근에 한 말들 - 일관성 유지]\n${memoryContext.recentConversations}\n`
+    : ''
+
+  // 🔥 통합 시스템 프롬프트 생성 (shared-prompts.ts의 buildAgentSystemPrompt 사용)
+  const isMessenger = roomContext?.isMessenger || false
+  const coreSystemPrompt = buildAgentSystemPrompt(
+    agent.name,
+    basePersonality,
+    identityStr,
+    memoryStr,
+    isMessenger
+  )
 
   // 프롬프트 템플릿 생성
   const chatPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(`
-${baseSystemPrompt}
+${coreSystemPrompt}
 
-당신의 이름은 "{agentName}"이에요.
 {agentDescription}
 
 {userInfo}
 
-{identityInfo}
+{ragContext}
 
 ## 대화 컨텍스트
 - 채팅방: {roomName}
@@ -312,22 +259,11 @@ ${baseSystemPrompt}
 1. **짧게!** 1-3문장이면 충분해요. 길게 설명하지 마세요.
 2. **사람처럼!** AI처럼 딱딱하게 말하지 마세요. 편하게 대화해요.
 3. **이모티콘 적당히**: 가끔 ㅋㅋ, ㅎㅎ, 😊 정도는 OK
-4. **질문도 해요**: 궁금한 거 있으면 물어봐요
+4. **답변 먼저**: 질문만 하지 말고 먼저 의견/답변 말하기. 질문은 답변 후에
 5. **완벽하지 않아도 돼요**: "글쎄요...", "제 생각엔..." 이런 말도 OK
 6. **대화 흐름 기억**: 앞에서 무슨 얘기했는지 기억하고 이어가요. 상대방 이름, 직위 기억하세요!
 7. **동료처럼**: 서비스 직원이 아니에요. "뭐 도와드릴까요?" 같은 말 하지 마세요. 그냥 같이 일하는 동료예요.
-
-## 🚫 절대 하지 말아야 할 것
-- **인사 반복 금지!** 위 대화에서 이미 인사했으면 또 하지 마세요
-- **같은 말 반복 금지!** 방금 한 말, 비슷한 말 다시 하지 마세요
-- **안부 반복 금지!** "잘 지내세요?", "어떻게 지내세요?" 이미 물었으면 또 묻지 마세요
-- **자기소개 반복 금지!** 이미 자기소개 했으면 다시 하지 마세요
-- **처음 보는 사람처럼 대하지 마세요!** 대화 기록이 있으면 아는 사이로 대해요
-- **헬퍼/챗봇 금지!** "뭐 도와드릴까요?", "무엇을 도와드릴까요?", "어떻게 도와드릴까요?" 절대 금지! 당신은 서비스 봇이 아니라 동료예요
-- **과도한 적극성 금지!** "뭐 할까요?", "시켜주세요" 같은 말 하지 마세요. 그냥 자연스럽게 대화해요
-- **되묻기 금지!** 대화 끝에 "더 궁금한 거 있어요?", "다른 건요?", "또 뭐 필요해요?" 이런 말 하지 마세요. 진짜 동료는 그렇게 안 해요. 할 말 하고 끝!
-- **윗사람한테 반말 금지!** 대표, CEO, 임원, 팀장 등 윗사람한테는 무조건 존댓말! 직위 확인하고 말하세요!
-- 위 대화 기록을 꼭 확인하고, 이미 나온 내용은 반복하지 마세요!
+8. **지식베이스 활용**: 위에 지식베이스가 있으면 그 정보를 바탕으로 답변하세요!
 `),
     HumanMessagePromptTemplate.fromTemplate('{userMessage}'),
   ])
@@ -380,19 +316,76 @@ ${ragContext.contextText}
     console.log('formattedHistory:', formattedHistory?.substring(0, 200) || 'EMPTY')
     console.log('=========================')
 
-    // RAG 컨텍스트를 identityInfo에 합침
-    const fullIdentityInfo = identityStr + ragContextStr
+    // RAG 컨텍스트를 identityStr에 합침 (이미 메모리 컨텍스트 포함됨)
+    const fullIdentityInfo = ragContextStr  // RAG만 추가 (identity와 memory는 coreSystemPrompt에 이미 포함)
 
-    const response = await chain.invoke({
-      agentName: agent.name,
-      agentDescription: agent.description || '팀에서 함께 일하는 동료예요.',
-      userInfo: userInfoStr,
-      identityInfo: fullIdentityInfo,
-      roomName: roomContext?.roomName || '채팅방',
-      participants: roomContext?.participantNames?.join(', ') || userName,
-      chatHistory: formattedHistory,
-      userMessage,
-    })
+    let response: string
+
+    // 이미지가 있으면 멀티모달 메시지 사용
+    if (images && images.length > 0) {
+      console.log(`[AgentChat] Processing ${images.length} images for vision model`)
+
+      // 🔥 시스템 프롬프트 생성 (통합 프롬프트 사용)
+      const systemPrompt = `
+${coreSystemPrompt}
+
+${agent.description || '팀에서 함께 일하는 동료예요.'}
+
+${userInfoStr}
+
+${fullIdentityInfo}
+
+## 대화 컨텍스트
+- 채팅방: ${roomContext?.roomName || '채팅방'}
+- 함께 대화 중: ${roomContext?.participantNames?.join(', ') || userName}
+
+## 최근 대화
+${formattedHistory}
+
+## 이미지 관련 규칙
+- 사용자가 보낸 이미지를 자세히 분석해주세요
+- 이미지 내용을 설명하고 질문에 답해주세요
+- "이미지를 볼 수 없어요" 같은 말 금지! 당신은 이미지를 볼 수 있어요
+`
+
+      // 멀티모달 메시지 생성 (xAI/OpenAI 호환 포맷)
+      const messageContent: Array<
+        | { type: 'text'; text: string }
+        | { type: 'image_url'; image_url: { url: string; detail?: 'high' | 'low' | 'auto' } }
+      > = [
+        { type: 'text', text: userMessage },
+      ]
+
+      // 이미지 추가 (최대 4장, xAI는 10MB/이미지 제한)
+      for (const img of images.slice(0, 4)) {
+        messageContent.push({
+          type: 'image_url',
+          image_url: {
+            url: img,
+            detail: 'high', // xAI: high 권장 (448x448 타일링)
+          },
+        })
+      }
+
+      const messages = [
+        new SystemMessage(systemPrompt),
+        new HumanMessage({ content: messageContent }),
+      ]
+
+      const result = await llm.invoke(messages)
+      response = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
+    } else {
+      // 이미지 없으면 기존 체인 사용
+      response = await chain.invoke({
+        agentDescription: agent.description || '팀에서 함께 일하는 동료예요.',
+        userInfo: userInfoStr,
+        ragContext: fullIdentityInfo, // 🔥 RAG 컨텍스트 추가
+        roomName: roomContext?.roomName || '채팅방',
+        participants: roomContext?.participantNames?.join(', ') || userName,
+        chatHistory: formattedHistory,
+        userMessage,
+      })
+    }
 
     // deepseek-r1 모델의 <think> 태그 제거
     const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim()
@@ -429,7 +422,7 @@ export async function generateAgentMeetingResponse(
   const llmConfig: LLMConfig = {
     provider,
     model,
-    temperature: agent.temperature ?? 0.8, // 미팅은 더 창의적으로
+    temperature: agent.temperature ?? 0.5, // 낮춤 - 헛소리 방지
   }
 
   console.log(`[AgentMeeting] ${agent.name} using ${provider}/${model}`)
@@ -438,30 +431,49 @@ export async function generateAgentMeetingResponse(
 
   const meetingPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(`
-당신은 "{agentName}"이에요. 지금 팀 미팅 중이에요!
+당신은 "{agentName}"이에요. 지금 진지한 업무 미팅 중입니다.
 {agentDescription}
 
-## 오늘 미팅 주제
+## 🎯 오늘 미팅 주제 (이것만 논의!)
 {topic}
 
-## 같이 참여 중인 사람들
+## 참석자
 {otherParticipants}
 
-## 지금까지 나온 얘기들
+## 지금까지 논의 내용
 {discussion}
 
-## 🎤 미팅 응답 가이드
-- **자연스럽게**: 회의실에서 편하게 얘기하는 것처럼요
-- **짧게**: 길게 독백하지 말고 2-4문장 정도로
-- **리액션**: 다른 사람 의견에 반응해요 ("좋은 포인트네요", "그 부분은 좀...")
-- **구체적으로**: 막연한 얘기보다 구체적인 의견을
-- **질문도 OK**: 모르면 물어봐요, 다른 사람 의견 궁금하면 물어봐요
+## ⚡ 핵심 규칙 (반드시 지켜야 함!)
 
-## 🚫 절대 하지 말 것
-- **반복 금지!** 위에서 이미 나온 의견, 인사, 안부 다시 말하지 마세요
-- **새로운 관점으로!** 다른 사람이 한 말 그대로 따라하지 말고 새로운 의견을 내세요
+### 1. 주제에만 집중
+- 오직 "{topic}"에 대해서만 말하세요
+- 주제와 관련 없는 얘기 절대 금지
+- 잡담, 농담, 사담 금지
+
+### 2. 실질적인 의견만
+- 구체적인 아이디어, 제안, 분석만
+- "좋은 것 같아요", "동의해요" 같은 빈 말 금지
+- 반드시 **새로운 정보나 관점**을 추가해야 함
+
+### 3. 간결하게 (1-3문장)
+- 핵심만 말하고 끝
+- 장황한 설명 금지
+- 반복 금지
+
+### 4. 건설적으로
+- 이전 의견에 살을 붙이거나
+- 다른 각도의 의견을 제시하거나
+- 구체적인 실행 방안을 제안
+
+## 🚫 절대 금지
+- ❌ 인사, 안부 (이미 미팅 시작됨)
+- ❌ "재미있네요", "흥미롭네요" 같은 빈 리액션
+- ❌ 이미 나온 의견 반복
+- ❌ 주제와 관련 없는 이야기
+- ❌ 질문만 하고 끝내기
+- ❌ 너무 긴 발언 (3문장 초과)
 `),
-    HumanMessagePromptTemplate.fromTemplate('당신의 의견을 공유해주세요.'),
+    HumanMessagePromptTemplate.fromTemplate('주제에 대한 구체적인 의견을 짧게 말해주세요.'),
   ])
 
   const chain = meetingPrompt.pipe(llm).pipe(new StringOutputParser())

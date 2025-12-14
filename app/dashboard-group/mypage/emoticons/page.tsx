@@ -63,12 +63,15 @@ export default function EmoticonsPage() {
     if (!files || files.length === 0) return
 
     setUploading(true)
+    let successCount = 0
+    let failCount = 0
 
     try {
       for (const file of Array.from(files)) {
         // 파일 크기 체크 (5MB)
         if (file.size > 5 * 1024 * 1024) {
           alert(`${file.name}: 파일 크기는 5MB 이하여야 합니다.`)
+          failCount++
           continue
         }
 
@@ -82,7 +85,9 @@ export default function EmoticonsPage() {
           })
 
         if (uploadError) {
-          console.error('Upload error:', uploadError)
+          console.error('Storage upload error:', uploadError)
+          alert(`${file.name}: 스토리지 업로드 실패 - ${uploadError.message}`)
+          failCount++
           continue
         }
 
@@ -90,6 +95,8 @@ export default function EmoticonsPage() {
         const { data: urlData } = supabase.storage
           .from('profile-images')
           .getPublicUrl(`emoticons/${fileName}`)
+
+        console.log('Uploaded URL:', urlData.publicUrl)
 
         // DB에 저장
         const res = await fetch('/api/emoticons', {
@@ -103,13 +110,26 @@ export default function EmoticonsPage() {
         })
 
         if (!res.ok) {
-          console.error('Save emoticon error')
+          const errorData = await res.json().catch(() => ({}))
+          console.error('DB save error:', errorData)
+          alert(`${file.name}: DB 저장 실패 - ${errorData.error || res.statusText}`)
+          failCount++
+          continue
         }
+
+        successCount++
       }
 
       // 목록 새로고침
       await fetchEmoticons()
-      alert('이모티콘이 업로드되었습니다!')
+
+      if (successCount > 0 && failCount === 0) {
+        alert(`${successCount}개의 이모티콘이 업로드되었습니다!`)
+      } else if (successCount > 0 && failCount > 0) {
+        alert(`${successCount}개 성공, ${failCount}개 실패`)
+      } else if (failCount > 0) {
+        alert('업로드에 실패했습니다. 콘솔을 확인해주세요.')
+      }
     } catch (err) {
       console.error('Upload error:', err)
       alert('업로드 중 오류가 발생했습니다.')

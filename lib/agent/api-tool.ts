@@ -5,11 +5,37 @@
 
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
 import type {
   AgentApiConnection,
   ApiEndpoint,
   AuthConfig,
 } from '@/types/api-connection'
+
+/**
+ * 에이전트의 활성화된 API 연결 목록을 DB에서 로드
+ */
+export async function loadAgentApiConnections(agentId: string): Promise<AgentApiConnection[]> {
+  try {
+    const supabase = createClient()
+
+    const { data, error } = await (supabase as any)
+      .from('agent_api_connections')
+      .select('*')
+      .eq('agent_id', agentId)
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('[API Tool] Failed to load API connections:', error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
+    console.error('[API Tool] Error loading API connections:', error)
+    return []
+  }
+}
 
 // 암호 복호화
 function decryptSecret(encrypted: string): string {
@@ -22,34 +48,33 @@ function decryptSecret(encrypted: string): string {
 
 // 파라미터 스키마를 Zod로 변환
 function paramToZodSchema(param: any): z.ZodTypeAny {
-  let schema: z.ZodTypeAny
+  // 기본 스키마 생성 (설명 포함)
+  const desc = param.description || ''
 
+  let baseSchema: z.ZodTypeAny
   switch (param.type) {
     case 'number':
-      schema = z.number()
+      baseSchema = desc ? z.number().describe(desc) : z.number()
       break
     case 'boolean':
-      schema = z.boolean()
+      baseSchema = desc ? z.boolean().describe(desc) : z.boolean()
       break
     case 'array':
-      schema = z.array(z.any())
+      baseSchema = desc ? z.array(z.any()).describe(desc) : z.array(z.any())
       break
     case 'object':
-      schema = z.record(z.any())
+      baseSchema = desc ? z.record(z.string(), z.any()).describe(desc) : z.record(z.string(), z.any())
       break
     default:
-      schema = z.string()
+      baseSchema = desc ? z.string().describe(desc) : z.string()
   }
 
+  // optional 처리
   if (!param.required) {
-    schema = schema.optional()
+    return baseSchema.optional()
   }
 
-  if (param.description) {
-    schema = schema.describe(param.description)
-  }
-
-  return schema
+  return baseSchema
 }
 
 // 엔드포인트에서 Zod 스키마 생성
@@ -64,7 +89,7 @@ function createSchemaFromEndpoint(endpoint: ApiEndpoint): z.ZodObject<any> {
 
   // body가 필요한 메서드면 body 필드 추가
   if (['POST', 'PUT', 'PATCH'].includes(endpoint.method)) {
-    shape['body'] = z.record(z.any()).optional().describe('요청 본문 데이터')
+    shape['body'] = z.record(z.string(), z.any()).describe('요청 본문 데이터').optional()
   }
 
   return z.object(shape)

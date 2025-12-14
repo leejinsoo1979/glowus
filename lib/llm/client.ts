@@ -9,7 +9,10 @@ export {
   AVAILABLE_MODELS,
   PROVIDER_INFO,
   getDefaultModel,
-  isProviderAvailable
+  isProviderAvailable,
+  isVisionModel,
+  getVisionModel,
+  VISION_MODEL_FALLBACK
 } from './models'
 
 import type { LLMProvider, LLMConfig } from './models'

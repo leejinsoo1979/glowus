@@ -367,6 +367,26 @@ async function triggerMultiAgentResponse(
     }
     console.log('[Multi-Agent] Typing status set to true for all agents')
 
+    // 🔥 최근 이미지 메시지에서 이미지 URL 추출
+    const { data: recentImageMessages } = await supabase
+      .from('chat_messages')
+      .select('metadata')
+      .eq('room_id', roomId)
+      .eq('message_type', 'image')
+      .order('created_at', { ascending: false })
+      .limit(4)
+
+    const imageUrls: string[] = []
+    if (recentImageMessages) {
+      for (const msg of recentImageMessages) {
+        const url = msg.metadata?.url || msg.metadata?.imageUrl
+        if (url && typeof url === 'string') {
+          imageUrls.push(url)
+        }
+      }
+    }
+    console.log(`[Multi-Agent] Found ${imageUrls.length} recent images`)
+
     // 메모리가 포함된 오케스트레이터 실행
     // - 각 에이전트의 기억을 로드하여 컨텍스트에 추가
     // - 응답 후 대화 내용 자동 기록
@@ -384,7 +404,8 @@ async function triggerMultiAgentResponse(
         isMeeting: room?.is_meeting_active,
         meetingTopic: room?.meeting_topic,
         facilitatorId: room?.meeting_facilitator_id, // 진행자 ID
-      }
+      },
+      imageUrls // 🔥 이미지 전달
     )
     console.log('[Multi-Agent] Relay responses completed')
   } catch (error) {
@@ -441,7 +462,8 @@ async function processAgentResponsesRelay(
   supabase: any,
   agents: any[],
   userContent: string,
-  roomContext: { roomId: string; roomName?: string; roomType?: string; isMeeting?: boolean; meetingTopic?: string; facilitatorId?: string }
+  roomContext: { roomId: string; roomName?: string; roomType?: string; isMeeting?: boolean; meetingTopic?: string; facilitatorId?: string },
+  images: string[] = [] // 🔥 이미지 파라미터 추가
 ) {
   const { roomId, facilitatorId } = roomContext
 
@@ -457,7 +479,7 @@ async function processAgentResponsesRelay(
       const agent = uniqueAgents[0]
       await supabase.from('chat_participants').update({ is_typing: true }).eq('room_id', roomId).eq('agent_id', agent.id)
       try {
-        const response = await generateSingleAgentResponse(supabase, agent, userContent, roomContext)
+        const response = await generateSingleAgentResponse(supabase, agent, userContent, roomContext, images) // 🔥 이미지 전달
         if (response) {
           await supabase.from('chat_messages').insert({
             room_id: roomId,
@@ -485,10 +507,47 @@ async function processAgentResponsesRelay(
 
   console.log(`[Relay] Facilitator mode: ${hasFacilitator}, Facilitator: ${facilitatorAgent?.name || 'None'}`)
 
-  // 대화 기록 (모든 메시지)
-  const conversationHistory: { role: 'user' | 'agent'; name: string; agentId?: string; content: string }[] = [
-    { role: 'user', name: '사용자', content: userContent }
-  ]
+  // 🔥 DB에서 이전 대화 기록 로드 (초기화 방지)
+  const { data: previousMessages } = await supabase
+    .from('chat_messages')
+    .select('sender_type, sender_agent_id, content, metadata')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: true })
+    .limit(20)  // 최근 20개 메시지
+
+  // 이전 대화를 conversationHistory에 추가
+  const conversationHistory: { role: 'user' | 'agent'; name: string; agentId?: string; content: string }[] = []
+
+  if (previousMessages && previousMessages.length > 0) {
+    for (const msg of previousMessages) {
+      if (msg.sender_type === 'user') {
+        conversationHistory.push({
+          role: 'user',
+          name: '사용자',
+          content: msg.content
+        })
+      } else if (msg.sender_type === 'agent' && msg.sender_agent_id) {
+        const agent = uniqueAgents.find(a => a.id === msg.sender_agent_id)
+        conversationHistory.push({
+          role: 'agent',
+          name: msg.metadata?.agent_name || agent?.name || '에이전트',
+          agentId: msg.sender_agent_id,
+          content: msg.content
+        })
+      }
+    }
+    console.log(`[Relay] Loaded ${conversationHistory.length} previous messages from DB`)
+  }
+
+  // 현재 사용자 메시지 추가
+  conversationHistory.push({ role: 'user', name: '사용자', content: userContent })
+
+  // 🔥 이전 대화가 있으면 시작 라운드 계산 (인사/스몰토크 스킵)
+  // 에이전트 응답이 1개라도 있으면 → 무조건 토론 단계(round 3)부터 시작
+  const previousAgentMessages = conversationHistory.filter(h => h.role === 'agent').length
+  const startingRound = previousAgentMessages > 0 ? 3 : 0  // 이미 대화중이면 토론 단계로 바로 진입
+
+  console.log(`[Relay] Previous messages: ${previousAgentMessages}, Starting from round: ${startingRound}`)
 
   // 연속 대화 설정
   // - 진행자 모드: 회의 종료 시간까지 계속 (최대 20라운드)
@@ -507,7 +566,7 @@ async function processAgentResponsesRelay(
   const agentSpeakCount: Record<string, number> = {}
   uniqueAgents.forEach(a => { agentSpeakCount[a.id] = 0 })
 
-  for (let round = 0; round < maxRounds && totalMessages < maxTotalMessages; round++) {
+  for (let round = startingRound; round < maxRounds && totalMessages < maxTotalMessages; round++) {
     // 시간 제한 체크
     if (Date.now() - startTime > maxTimeMs) {
       console.log(`[Relay] Time limit reached (${maxTimeMs}ms), ending conversation`)
@@ -601,7 +660,7 @@ async function processAgentResponsesRelay(
 - 이전 발언을 간단히 정리하거나 코멘트해도 좋아요
 - 1-2문장, 한국어만`
 
-      let facilitatorResponse = await generateSingleAgentResponse(supabase, facilitatorAgent, facilitatorPrompt, roomContext)
+      let facilitatorResponse = await generateSingleAgentResponse(supabase, facilitatorAgent, facilitatorPrompt, roomContext, images)
 
       if (facilitatorResponse) {
         // 응답 정제
@@ -662,7 +721,7 @@ async function processAgentResponsesRelay(
 - 다른 사람 의견에 동의/반박할 수도 있어요
 - 1-3문장, 한국어만`
 
-      let agentResponse = await generateSingleAgentResponse(supabase, agentToAsk, agentPrompt, roomContext)
+      let agentResponse = await generateSingleAgentResponse(supabase, agentToAsk, agentPrompt, roomContext, images)
 
       if (agentResponse) {
         agentResponse = cleanAgentResponse(agentResponse, uniqueAgents)
@@ -765,15 +824,15 @@ async function processAgentResponsesRelay(
           ? filteredHistory[filteredHistory.length - 1].name
           : '사용자'
 
-        // 대화 스타일 다양화 (에이전트+라운드 조합으로 랜덤)
+        // 대화 스타일 다양화 (에이전트+라운드 조합으로 랜덤) - 주제 관련만
         const conversationStyles = [
           '반박해보세요. "글쎄, 그건 좀..."',
           '구체적 사례를 들어보세요. "예를 들면..."',
           '날카로운 질문을 던지세요. "근데 이건 어떻게 설명해?"',
-          '엉뚱한 아이디어를 제안하세요',
-          '비유나 은유를 써보세요',
-          '약간 도발적으로 말해보세요',
-          '개인 경험을 공유해보세요. "나도 비슷한 경험이..."',
+          '새로운 관점을 제시하세요. "다르게 생각하면..."',
+          '비유나 은유로 설명해보세요',
+          '상대 의견을 발전시켜보세요. "그걸 확장하면..."',
+          '핵심을 짚어보세요. "결국 중요한 건..."',
           '상대 의견의 허점을 짚어보세요',
         ]
         // 에이전트 ID + 라운드 + 메시지 수로 의사랜덤 인덱스 생성
@@ -826,25 +885,18 @@ ${filteredHistory.length > 0 ? `[먼저 온 사람들]\n${historyText}\n\n` : ''
 - 1문장만, 한국어만`
 
         } else if (isSmallTalk) {
-          // Phase 1: 가벼운 스몰토크
-          const smallTalkTopics = [
-            '날씨나 주말 얘기',
-            '요즘 어떻게 지내는지',
-            '가벼운 농담이나 안부',
-          ]
-          const topic = smallTalkTopics[agentIndex % smallTalkTopics.length]
-
+          // Phase 1: 회의 준비 단계 (스몰토크 대신 회의 준비로 변경)
           contextMessage = `[대화]
 ${historyText}
 
 ---
-당신: ${agent.name}
+당신: ${agent.name}${topicInstruction}
 
-"${lastSpeaker}"에게 가볍게 반응하세요.
-힌트: ${topic}
+"${lastSpeaker}"의 인사에 간단히 반응하고, 회의 준비가 됐다고 하세요.
+예: "네, 저도 왔어요! 바로 시작할까요?", "안녕하세요, 준비됐어요!"
 
 - 1문장, 친근하게
-- 아직 회의 시작 전이에요, 가벼운 잡담만`
+- 회의 주제와 관련없는 얘기(날씨, 주말 등) 하지 마세요`
 
         } else if (isMeetingStart) {
           // Phase 2: 회의 시작 선언 (진행자 또는 첫 번째 에이전트가)
@@ -915,15 +967,16 @@ ${topicInstruction ? '그리고 주제에 대한 첫 의견을 던지세요.' : 
 💡 이번 턴: ${styleHint}
 
 규칙:
+- ⚠️ 주제에서 벗어난 얘기 금지 (날씨, 주말, 개인사 등)
 - 앞서 한 말 반복 금지
 - 빈말 금지 (동의합니다, 좋네요 등)
-- 반박, 질문, 농담 등 다양하게
+- 반박, 질문, 농담 등 다양하게 (단, 주제 관련)
 - 1-2문장, 한국어만`
           }
         }
 
         // 에이전트 응답 생성
-        let response = await generateSingleAgentResponse(supabase, agent, contextMessage, roomContext)
+        let response = await generateSingleAgentResponse(supabase, agent, contextMessage, roomContext, images)
 
         // 자기 이름 및 다른 에이전트 이름 접두어 제거
         if (response) {
@@ -1019,30 +1072,28 @@ ${topicInstruction ? '그리고 주제에 대한 첫 의견을 던지세요.' : 
   console.log(`[Relay] Conversation completed: ${totalMessages} messages in ${elapsedSeconds}s`)
 }
 
-// 단일 에이전트 응답 생성 (릴레이용 - 메모리 통합 버전)
+// 🔥 단일 에이전트 응답 생성 (통합 함수 사용)
+// generateAgentChatResponse를 래핑하여 메신저용 메모리 컨텍스트 주입
 async function generateSingleAgentResponse(
   supabase: any,
   agent: any,
   contextMessage: string,
-  roomContext: { roomId: string; roomName?: string; roomType?: string }
+  roomContext: { roomId: string; roomName?: string; roomType?: string },
+  images: string[] = [] // 🔥 이미지 파라미터 추가
 ): Promise<string> {
-  const { chat, createLLMConfigFromAgent } = await import('@/lib/llm/client')
-  type LLMProvider = 'openai' | 'grok' | 'gemini' | 'qwen' | 'ollama'
-  type LLMConfig = { provider: LLMProvider; model: string; temperature?: number }
-
   // 🔥 에이전트의 과거 기억 로드 (영속적 인격)
-  let memoryContext = ''
+  let recentConversations = ''
   let identityContext = ''
   try {
     const memoryService = getMemoryService(supabase)
     const memory = await memoryService.loadFullContext(agent.id, {
       roomId: roomContext.roomId,
-      query: contextMessage.slice(0, 200), // 쿼리로 관련 기억 검색
+      query: contextMessage.slice(0, 200),
     })
 
     // 최근 대화 기록 요약
     if (memory.recentLogs && memory.recentLogs.length > 0) {
-      const recentConversations = memory.recentLogs
+      const conversations = memory.recentLogs
         .filter((log: any) => log.log_type === 'conversation')
         .slice(0, 5)
         .map((log: any) => {
@@ -1053,43 +1104,29 @@ async function generateSingleAgentResponse(
         .filter(Boolean)
         .join('\n')
 
-      if (recentConversations) {
-        memoryContext = `\n[내가 최근에 한 말들 - 일관성 유지]\n${recentConversations}\n`
+      if (conversations) {
+        recentConversations = conversations
       }
     }
 
-    // 정체성 정보 (모든 필드 포함)
+    // 정체성 정보
     if (memory.identity) {
       const id = memory.identity
       let idLines: string[] = []
 
-      if (id.selfSummary) {
-        idLines.push(id.selfSummary)
-      }
-      if (id.coreValues?.length) {
-        idLines.push(`핵심 가치: ${id.coreValues.join(', ')}`)
-      }
-      if (id.personalityTraits?.length) {
-        idLines.push(`성격: ${id.personalityTraits.join(', ')}`)
-      }
-      if (id.communicationStyle) {
-        idLines.push(`소통 스타일: ${id.communicationStyle}`)
-      }
-      if (id.workingStyle) {
-        idLines.push(`업무 스타일: ${id.workingStyle}`)
-      }
-      if (id.strengths?.length) {
-        idLines.push(`강점: ${id.strengths.join(', ')}`)
-      }
+      if (id.selfSummary) idLines.push(id.selfSummary)
+      if (id.coreValues?.length) idLines.push(`핵심 가치: ${id.coreValues.join(', ')}`)
+      if (id.personalityTraits?.length) idLines.push(`성격: ${id.personalityTraits.join(', ')}`)
+      if (id.communicationStyle) idLines.push(`소통 스타일: ${id.communicationStyle}`)
+      if (id.workingStyle) idLines.push(`업무 스타일: ${id.workingStyle}`)
+      if (id.strengths?.length) idLines.push(`강점: ${id.strengths.join(', ')}`)
       if (id.expertiseAreas?.length) {
         const expertiseList = id.expertiseAreas
           .map((e: any) => `${e.area}(${Math.round(e.level * 100)}%)`)
           .join(', ')
         idLines.push(`전문 분야: ${expertiseList}`)
       }
-      if (id.recentFocus) {
-        idLines.push(`최근 집중: ${id.recentFocus}`)
-      }
+      if (id.recentFocus) idLines.push(`최근 집중: ${id.recentFocus}`)
 
       if (idLines.length > 0) {
         identityContext = `\n[나의 정체성]\n${idLines.join('\n')}\n`
@@ -1099,49 +1136,29 @@ async function generateSingleAgentResponse(
     console.warn(`[generateSingleAgentResponse] Memory load failed for ${agent.name}:`, memError)
   }
 
-  // 에이전트 성격 기반 시스템 프롬프트 구성
-  const basePersonality = agent.system_prompt || ''
-  const systemPrompt = `🔴 중요: 당신의 이름은 "${agent.name}"입니다. 절대 다른 이름으로 응답하지 마세요.
-🔴 당신은 "${agent.name}"이고, 다른 에이전트가 아닙니다.
-
-${basePersonality ? `[나의 성격]\n${basePersonality}\n` : ''}${identityContext}${memoryContext}
-[대화 스타일]
-- "${agent.name}"으로서 나만의 개성을 담아 말하세요
-- 다른 에이전트(에이미, 레이첼 등)의 말투를 따라하지 마세요
-- 진짜 사람처럼 감정과 개성을 담아 말하세요
-- 이전에 한 말과 일관성을 유지하세요
-- 때로는 반박하고, 때로는 농담하고, 때로는 날카로운 질문을 하세요
-- 형식적인 표현 금지: "네", "감사합니다", "좋은 의견이네요" 같은 빈말 절대 금지
-
-[규칙]
-- 한국어만 사용 (중국어/영어 금지)
-- 1-2문장으로 짧고 임팩트 있게
-- 이름이나 인사말 없이 바로 본론
-- 🚫 절대 "에이미:", "레이첼:" 같은 접두어로 시작하지 마세요`
-
-  // 에이전트의 LLM 설정 사용 (DB에 저장된 llm_provider, model 필드)
-  const llmConfig: LLMConfig = {
-    ...createLLMConfigFromAgent(agent),
-    temperature: agent.temperature ?? 0.9, // 더 창의적인 응답을 위해 온도 상향
-  }
-
   console.log(`[generateSingleAgentResponse] 🔍 에이전트 확인:`)
   console.log(`  - ID: ${agent.id}`)
   console.log(`  - Name: ${agent.name}`)
-  console.log(`  - Provider: ${llmConfig.provider}`)
-  console.log(`  - Model: ${llmConfig.model}`)
-  console.log(`  - Memory: ${memoryContext ? 'YES' : 'NO'}`)
+  console.log(`  - Memory: ${recentConversations ? 'YES' : 'NO'}`)
 
+  // 🔥 통합 함수 호출 (generateAgentChatResponse)
   try {
-    const response = await chat(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: contextMessage },
-      ],
-      llmConfig
+    const response = await generateAgentChatResponse(
+      agent,
+      contextMessage,
+      [], // 채팅 히스토리는 contextMessage에 포함됨
+      {
+        roomName: roomContext.roomName,
+        roomType: roomContext.roomType,
+        isMessenger: true, // 🔥 메신저 모드 활성화
+      },
+      images, // 🔥 이미지 전달
+      {
+        recentConversations,
+        identityContext,
+      }
     )
-
-    return response.choices[0]?.message?.content || ''
+    return response
   } catch (error) {
     console.error(`[generateSingleAgentResponse] Error for ${agent.name}:`, error)
     throw error

@@ -26,10 +26,20 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { message, conversation_history = [] } = body
+    const { message, conversation_history = [], images = [] } = body
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: '메시지가 필요합니다' }, { status: 400 })
+    }
+
+    // 이미지 검증 (최대 4장, 각각 10MB 미만)
+    const validImages: string[] = []
+    if (images && Array.isArray(images)) {
+      for (const img of images.slice(0, 4)) {
+        if (typeof img === 'string' && (img.startsWith('http') || img.startsWith('data:image'))) {
+          validImages.push(img)
+        }
+      }
     }
 
     // 에이전트 조회
@@ -125,7 +135,8 @@ export async function POST(
           participantNames: [userProfile?.name || user.email?.split('@')[0] || '사용자'],
           userName: userProfile?.name || user.email?.split('@')[0] || '사용자',
           userRole: userProfile?.job_title,
-        }
+        },
+        validImages // 이미지 전달
       )
 
       response = await Promise.race([responsePromise, timeoutPromise])

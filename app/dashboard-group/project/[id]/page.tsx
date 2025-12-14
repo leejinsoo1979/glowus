@@ -8,7 +8,6 @@ import {
   Users,
   Bot,
   Calendar,
-  Edit2,
   Trash2,
   Plus,
   X,
@@ -16,30 +15,26 @@ import {
   Settings,
   UserPlus,
   Play,
-  MoreHorizontal,
-  CheckCircle2,
-  Clock,
   AlertCircle,
+  DollarSign,
+  BarChart3,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
-import { TaskKanbanBoard, ProjectDocuments } from "@/components/project-workflow"
+import {
+  ProjectSidebar,
+  OverviewSection,
+  RoadmapSection,
+  CalendarSection,
+  UpdatesSection,
+  type ProjectSection,
+} from "@/components/project-dashboard"
+import {
+  TaskKanbanBoard,
+  ProjectDocuments,
+  ProjectOverview,
+} from "@/components/project-workflow"
 import type { ProjectWithRelations, User, DeployedAgent } from "@/types/database"
-
-const statusLabels: Record<string, { label: string; color: string }> = {
-  planning: { label: "계획중", color: "#6B7280" },
-  active: { label: "진행중", color: "#10B981" },
-  on_hold: { label: "보류", color: "#F59E0B" },
-  completed: { label: "완료", color: "#3B82F6" },
-  cancelled: { label: "취소", color: "#EF4444" },
-}
-
-const priorityLabels: Record<string, { label: string; color: string }> = {
-  low: { label: "낮음", color: "#6B7280" },
-  medium: { label: "보통", color: "#3B82F6" },
-  high: { label: "높음", color: "#F59E0B" },
-  urgent: { label: "긴급", color: "#EF4444" },
-}
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -50,6 +45,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true)
   const [teamMembers, setTeamMembers] = useState<User[]>([])
   const [agents, setAgents] = useState<DeployedAgent[]>([])
+  const [activeSection, setActiveSection] = useState<ProjectSection>("overview")
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false)
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -192,7 +188,6 @@ export default function ProjectDetailPage() {
     }
   }
 
-  // 프로젝트에 이미 있는 멤버/에이전트 필터링
   const availableMembers = teamMembers.filter(
     (member) => !project?.members?.some((pm) => pm.user_id === member.id)
   )
@@ -202,17 +197,20 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
+      <div className="flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-zinc-400" />
+          <p className="text-zinc-500">프로젝트 로딩 중...</p>
+        </div>
       </div>
     )
   }
 
   if (!project) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 text-zinc-500">
-        <AlertCircle className="w-12 h-12 mb-4" />
-        <p>프로젝트를 찾을 수 없습니다</p>
+      <div className="flex flex-col items-center justify-center h-screen text-zinc-500">
+        <AlertCircle className="w-16 h-16 mb-4" />
+        <p className="text-xl mb-2">프로젝트를 찾을 수 없습니다</p>
         <Button variant="outline" className="mt-4" onClick={() => router.back()}>
           돌아가기
         </Button>
@@ -220,254 +218,530 @@ export default function ProjectDetailPage() {
     )
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: `${project.color}20` }}
-          >
-            <span className="text-2xl" style={{ color: project.color }}>
-              {project.name.charAt(0)}
-            </span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">{project.name}</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <span
-                className="text-xs px-2 py-0.5 rounded-full"
-                style={{
-                  backgroundColor: `${statusLabels[project.status]?.color}20`,
-                  color: statusLabels[project.status]?.color,
-                }}
-              >
-                {statusLabels[project.status]?.label}
-              </span>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full"
-                style={{
-                  backgroundColor: `${priorityLabels[project.priority]?.color}20`,
-                  color: priorityLabels[project.priority]?.color,
-                }}
-              >
-                {priorityLabels[project.priority]?.label}
-              </span>
-              {project.deadline && (
-                <span className="text-xs text-zinc-500 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {new Date(project.deadline).toLocaleDateString("ko-KR")}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
-            <Edit2 className="w-4 h-4 mr-2" />
-            편집
-          </Button>
-          <Button variant="outline" size="sm" onClick={deleteProject}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            삭제
-          </Button>
-        </div>
-      </div>
+  const renderContent = () => {
+    switch (activeSection) {
+      case "overview":
+        return (
+          <OverviewSection
+            projectId={projectId}
+            project={{
+              name: project.name,
+              description: project.description,
+              status: project.status,
+              progress: project.progress,
+              deadline: project.deadline,
+              color: project.color,
+              mission: project.description,
+              stage: project.status === "planning" ? "planning" : project.status === "active" ? "development" : "production",
+              members: project.members,
+              agents: project.agents,
+            }}
+            onEdit={() => setIsEditOpen(true)}
+          />
+        )
 
-      {/* Description & Progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-          <h3 className="text-sm font-medium text-zinc-400 mb-2">설명</h3>
-          <p className="text-white">{project.description || "설명이 없습니다"}</p>
+      case "roadmap":
+        return (
+          <RoadmapSection
+            projectId={projectId}
+            project={{
+              name: project.name,
+              deadline: project.deadline,
+              stage: project.status === "planning" ? "planning" : project.status === "active" ? "development" : "production",
+            }}
+          />
+        )
 
-          <div className="mt-6">
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-zinc-400">진행률</span>
-              <span className="text-white font-medium">{project.progress}%</span>
+      case "team":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">조직 구성</h2>
+                <p className="text-sm text-zinc-500 mt-1">프로젝트 팀원 및 AI 에이전트 관리</p>
+              </div>
             </div>
-            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${project.progress}%`,
-                  backgroundColor: project.color,
-                }}
-              />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Team Members */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-400" />
+                    팀원
+                    <span className="text-sm text-zinc-500">({project.members?.length || 0})</span>
+                  </h3>
+                  <Button size="sm" onClick={() => setIsAddMemberOpen(true)}>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    추가
+                  </Button>
+                </div>
+                <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
+                  {project.members?.length === 0 ? (
+                    <div className="text-center text-zinc-500 py-12">
+                      <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>투입된 팀원이 없습니다</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4"
+                        onClick={() => setIsAddMemberOpen(true)}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        팀원 추가
+                      </Button>
+                    </div>
+                  ) : (
+                    project.members?.map((member) => (
+                      <motion.div
+                        key={member.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl group hover:bg-zinc-800 transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <img
+                            src={member.user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user?.name}`}
+                            alt={member.user?.name}
+                            className="w-12 h-12 rounded-full"
+                          />
+                          <div>
+                            <p className="text-white font-medium">{member.user?.name}</p>
+                            <p className="text-sm text-zinc-500">{member.user?.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-xs px-3 py-1 rounded-full ${
+                              member.role === "lead"
+                                ? "bg-amber-500/20 text-amber-400"
+                                : "bg-zinc-700 text-zinc-400"
+                            }`}
+                          >
+                            {member.role === "lead" ? "리드" : "멤버"}
+                          </span>
+                          <button
+                            onClick={() => removeMember(member.id)}
+                            className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-zinc-700 rounded-lg"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* AI Agents */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-purple-400" />
+                    AI 에이전트
+                    <span className="text-sm text-zinc-500">({project.agents?.length || 0})</span>
+                  </h3>
+                  <Button size="sm" onClick={() => setIsAddAgentOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    추가
+                  </Button>
+                </div>
+                <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
+                  {project.agents?.length === 0 ? (
+                    <div className="text-center text-zinc-500 py-12">
+                      <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>투입된 AI 에이전트가 없습니다</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4"
+                        onClick={() => setIsAddAgentOpen(true)}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        에이전트 추가
+                      </Button>
+                    </div>
+                  ) : (
+                    project.agents?.map((assignment) => (
+                      <motion.div
+                        key={assignment.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl group hover:bg-zinc-800 transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <img
+                            src={assignment.agent?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${assignment.agent?.name}`}
+                            alt={assignment.agent?.name}
+                            className="w-12 h-12 rounded-full"
+                          />
+                          <div>
+                            <p className="text-white font-medium">{assignment.agent?.name}</p>
+                            <p className="text-sm text-zinc-500 line-clamp-1">
+                              {assignment.agent?.description || assignment.role}
+                            </p>
+                            {assignment.agent?.capabilities && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {assignment.agent.capabilities.slice(0, 3).map((cap: string) => (
+                                  <span
+                                    key={cap}
+                                    className="text-xs px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded"
+                                  >
+                                    {cap}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-xs px-3 py-1 rounded-full ${
+                              assignment.is_active
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-zinc-700 text-zinc-400"
+                            }`}
+                          >
+                            {assignment.is_active ? "활성" : "비활성"}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => router.push(`/dashboard-group/agents/${assignment.agent_id}`)}
+                          >
+                            <Play className="w-4 h-4" />
+                          </Button>
+                          <button
+                            onClick={() => removeAgent(assignment.id)}
+                            className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-zinc-700 rounded-lg"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={project.progress}
-              onChange={(e) => updateProject({ progress: parseInt(e.target.value) })}
-              className="w-full mt-2 accent-white"
+          </div>
+        )
+
+      case "tasks":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">작업 관리</h2>
+                <p className="text-sm text-zinc-500 mt-1">칸반 보드로 태스크 상태 관리</p>
+              </div>
+            </div>
+            <TaskKanbanBoard projectId={projectId} />
+          </div>
+        )
+
+      case "calendar":
+        return (
+          <CalendarSection
+            projectId={projectId}
+            project={{
+              name: project.name,
+              deadline: project.deadline,
+            }}
+          />
+        )
+
+      case "progress":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">진행 현황</h2>
+                <p className="text-sm text-zinc-500 mt-1">프로젝트 전체 진행 상황 및 통계</p>
+              </div>
+            </div>
+            <ProjectOverview
+              projectId={projectId}
+              project={{
+                name: project.name,
+                progress: project.progress,
+                deadline: project.deadline,
+                status: project.status,
+                members: project.members,
+                agents: project.agents,
+              }}
             />
           </div>
-        </div>
+        )
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-          <h3 className="text-sm font-medium text-zinc-400 mb-4">프로젝트 정보</h3>
-          <dl className="space-y-3">
-            <div className="flex justify-between">
-              <dt className="text-zinc-500">생성일</dt>
-              <dd className="text-white">
-                {new Date(project.created_at).toLocaleDateString("ko-KR")}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-zinc-500">팀원</dt>
-              <dd className="text-white">{project.members?.length || 0}명</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-zinc-500">에이전트</dt>
-              <dd className="text-white">{project.agents?.length || 0}개</dd>
-            </div>
-            {project.budget && (
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">예산</dt>
-                <dd className="text-white">
-                  {project.budget.toLocaleString()}원
-                </dd>
+      case "updates":
+        return (
+          <UpdatesSection
+            projectId={projectId}
+            project={{
+              name: project.name,
+            }}
+          />
+        )
+
+      case "documents":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">문서 자료</h2>
+                <p className="text-sm text-zinc-500 mt-1">프로젝트 관련 문서 및 자료 관리</p>
               </div>
-            )}
-          </dl>
-        </div>
-      </div>
-
-      {/* Members & Agents */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Team Members */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              투입 인원
-            </h3>
-            <Button size="sm" variant="outline" onClick={() => setIsAddMemberOpen(true)}>
-              <UserPlus className="w-4 h-4 mr-2" />
-              추가
-            </Button>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <ProjectDocuments projectId={projectId} />
+            </div>
           </div>
-          <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
-            {project.members?.length === 0 ? (
-              <p className="text-center text-zinc-500 py-8">투입된 인원이 없습니다</p>
-            ) : (
-              project.members?.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg group"
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={member.user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user?.name}`}
-                      alt={member.user?.name}
-                      className="w-10 h-10 rounded-full"
+        )
+
+      case "budget":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">예산 관리</h2>
+                <p className="text-sm text-zinc-500 mt-1">프로젝트 비용 및 리소스 현황</p>
+              </div>
+              <Button variant="outline" size="sm">
+                <Plus className="w-4 h-4 mr-2" />
+                비용 추가
+              </Button>
+            </div>
+
+            {/* Budget Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5 text-green-400" />
+                  </div>
+                  <span className="text-sm text-zinc-500">총 예산</span>
+                </div>
+                <div className="text-2xl font-bold text-white">₩50,000,000</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <span className="text-sm text-zinc-500">사용 금액</span>
+                </div>
+                <div className="text-2xl font-bold text-white">₩32,500,000</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <span className="text-sm text-zinc-500">잔액</span>
+                </div>
+                <div className="text-2xl font-bold text-white">₩17,500,000</div>
+              </div>
+            </div>
+
+            {/* Budget Details */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <h3 className="font-semibold text-white mb-4">비용 내역</h3>
+              <div className="text-center py-12 text-zinc-500">
+                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>아직 등록된 비용 내역이 없습니다</p>
+                <p className="text-sm mt-2">비용 추가 버튼을 눌러 첫 내역을 등록하세요</p>
+              </div>
+            </div>
+          </div>
+        )
+
+      case "settings":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">프로젝트 설정</h2>
+                <p className="text-sm text-zinc-500 mt-1">프로젝트 정보 및 권한 관리</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Basic Info */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                <h3 className="font-semibold text-white mb-4">기본 정보</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">프로젝트 이름</label>
+                    <input
+                      type="text"
+                      value={project.name}
+                      onChange={(e) => setProject({ ...project, name: e.target.value })}
+                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">설명</label>
+                    <textarea
+                      value={project.description || ""}
+                      onChange={(e) => setProject({ ...project, description: e.target.value })}
+                      rows={4}
+                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-white font-medium">{member.user?.name}</p>
-                      <p className="text-xs text-zinc-500">{member.user?.email}</p>
+                      <label className="block text-sm text-zinc-400 mb-2">상태</label>
+                      <select
+                        value={project.status}
+                        onChange={(e) => setProject({ ...project, status: e.target.value as any })}
+                        className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="planning">계획중</option>
+                        <option value="active">진행중</option>
+                        <option value="on_hold">보류</option>
+                        <option value="completed">완료</option>
+                        <option value="cancelled">취소</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-zinc-400 mb-2">우선순위</label>
+                      <select
+                        value={project.priority}
+                        onChange={(e) => setProject({ ...project, priority: e.target.value as any })}
+                        className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="low">낮음</option>
+                        <option value="medium">보통</option>
+                        <option value="high">높음</option>
+                        <option value="urgent">긴급</option>
+                      </select>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        member.role === "lead"
-                          ? "bg-amber-500/20 text-amber-400"
-                          : "bg-zinc-700 text-zinc-400"
-                      }`}
-                    >
-                      {member.role === "lead" ? "리드" : "멤버"}
-                    </span>
-                    <button
-                      onClick={() => removeMember(member.id)}
-                      className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* AI Agents */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <Bot className="w-4 h-4" />
-              AI 에이전트
-            </h3>
-            <Button size="sm" variant="outline" onClick={() => setIsAddAgentOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              추가
-            </Button>
-          </div>
-          <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
-            {project.agents?.length === 0 ? (
-              <p className="text-center text-zinc-500 py-8">투입된 에이전트가 없습니다</p>
-            ) : (
-              project.agents?.map((assignment) => (
-                <div
-                  key={assignment.id}
-                  className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg group"
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={assignment.agent?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${assignment.agent?.name}`}
-                      alt={assignment.agent?.name}
-                      className="w-10 h-10 rounded-full"
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">마감일</label>
+                    <input
+                      type="date"
+                      value={project.deadline || ""}
+                      onChange={(e) => setProject({ ...project, deadline: e.target.value })}
+                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <div>
-                      <p className="text-white font-medium">{assignment.agent?.name}</p>
-                      <p className="text-xs text-zinc-500">{assignment.role}</p>
-                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        assignment.is_active
-                          ? "bg-green-500/20 text-green-400"
-                          : "bg-zinc-700 text-zinc-400"
-                      }`}
-                    >
-                      {assignment.is_active ? "활성" : "비활성"}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        router.push(`/dashboard-group/agents/${assignment.agent_id}`)
-                      }
-                    >
-                      <Play className="w-3 h-3" />
-                    </Button>
-                    <button
-                      onClick={() => removeAgent(assignment.id)}
-                      className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                  <Button
+                    onClick={() =>
+                      updateProject({
+                        name: project.name,
+                        description: project.description,
+                        status: project.status,
+                        priority: project.priority,
+                        deadline: project.deadline,
+                      })
+                    }
+                    disabled={saving}
+                    className="w-full"
+                    style={{ backgroundColor: currentAccent.color }}
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경사항 저장"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="space-y-6">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                  <h3 className="font-semibold text-white mb-4">진행률</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-400">현재 진행률</span>
+                      <span className="text-white font-medium">{project.progress}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={project.progress}
+                      onChange={(e) => updateProject({ progress: parseInt(e.target.value) })}
+                      className="w-full accent-emerald-500"
+                    />
                   </div>
                 </div>
-              ))
-            )}
+
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
+                  <h3 className="font-semibold text-red-400 mb-4">위험 구역</h3>
+                  <p className="text-sm text-zinc-400 mb-4">
+                    프로젝트를 삭제하면 모든 데이터가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    onClick={deleteProject}
+                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    프로젝트 삭제
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="flex h-full overflow-hidden bg-zinc-950">
+      {/* Sidebar - Fixed, no scroll with page */}
+      <ProjectSidebar
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        project={{
+          name: project.name,
+          color: project.color,
+          status: project.status,
+          progress: project.progress,
+        }}
+        taskCount={0}
+        updateCount={0}
+      />
+
+      {/* Main Content - Only this area scrolls */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Header - Fixed within content */}
+        <div className="flex-shrink-0 bg-zinc-950 border-b border-zinc-800 px-6 py-3">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => router.back()}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              프로젝트 목록
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsAddMemberOpen(true)}>
+                <UserPlus className="w-4 h-4 mr-2" />
+                팀원 추가
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setIsAddAgentOpen(true)}>
+                <Bot className="w-4 h-4 mr-2" />
+                에이전트 추가
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Task Kanban Board */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-        <TaskKanbanBoard projectId={projectId} />
-      </div>
-
-      {/* Project Documents */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-        <ProjectDocuments projectId={projectId} />
+        {/* Content Area - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSection}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderContent()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Add Member Modal */}
@@ -490,20 +764,18 @@ export default function ProjectDetailPage() {
               <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                 <h3 className="font-semibold text-white">팀원 추가</h3>
                 <button onClick={() => setIsAddMemberOpen(false)}>
-                  <X className="w-5 h-5 text-zinc-400" />
+                  <X className="w-5 h-5 text-zinc-400 hover:text-white" />
                 </button>
               </div>
               <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
                 {availableMembers.length === 0 ? (
-                  <p className="text-center text-zinc-500 py-4">
-                    추가 가능한 팀원이 없습니다
-                  </p>
+                  <p className="text-center text-zinc-500 py-8">추가 가능한 팀원이 없습니다</p>
                 ) : (
                   availableMembers.map((member) => (
                     <button
                       key={member.id}
                       onClick={() => addMember(member.id)}
-                      className="w-full flex items-center gap-3 p-3 bg-zinc-800/50 rounded-lg hover:bg-zinc-800 transition-colors"
+                      className="w-full flex items-center gap-3 p-4 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors"
                     >
                       <img
                         src={member.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.name}`}
@@ -512,7 +784,7 @@ export default function ProjectDetailPage() {
                       />
                       <div className="text-left">
                         <p className="text-white font-medium">{member.name}</p>
-                        <p className="text-xs text-zinc-500">{member.email}</p>
+                        <p className="text-sm text-zinc-500">{member.email}</p>
                       </div>
                     </button>
                   ))
@@ -543,20 +815,18 @@ export default function ProjectDetailPage() {
               <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                 <h3 className="font-semibold text-white">AI 에이전트 추가</h3>
                 <button onClick={() => setIsAddAgentOpen(false)}>
-                  <X className="w-5 h-5 text-zinc-400" />
+                  <X className="w-5 h-5 text-zinc-400 hover:text-white" />
                 </button>
               </div>
               <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
                 {availableAgents.length === 0 ? (
-                  <p className="text-center text-zinc-500 py-4">
-                    추가 가능한 에이전트가 없습니다
-                  </p>
+                  <p className="text-center text-zinc-500 py-8">추가 가능한 에이전트가 없습니다</p>
                 ) : (
                   availableAgents.map((agent) => (
                     <button
                       key={agent.id}
                       onClick={() => addAgent(agent.id)}
-                      className="w-full flex items-center gap-3 p-3 bg-zinc-800/50 rounded-lg hover:bg-zinc-800 transition-colors"
+                      className="w-full flex items-center gap-3 p-4 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors"
                     >
                       <img
                         src={agent.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${agent.name}`}
@@ -565,12 +835,12 @@ export default function ProjectDetailPage() {
                       />
                       <div className="text-left flex-1">
                         <p className="text-white font-medium">{agent.name}</p>
-                        <p className="text-xs text-zinc-500 line-clamp-1">
+                        <p className="text-sm text-zinc-500 line-clamp-1">
                           {agent.description || "설명 없음"}
                         </p>
                       </div>
                       <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
+                        className={`text-xs px-2 py-1 rounded-full ${
                           agent.status === "ACTIVE"
                             ? "bg-green-500/20 text-green-400"
                             : "bg-zinc-700 text-zinc-400"
@@ -581,130 +851,6 @@ export default function ProjectDetailPage() {
                     </button>
                   ))
                 )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Edit Project Modal */}
-      <AnimatePresence>
-        {isEditOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-            onClick={() => setIsEditOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-lg"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                <h3 className="font-semibold text-white">프로젝트 편집</h3>
-                <button onClick={() => setIsEditOpen(false)}>
-                  <X className="w-5 h-5 text-zinc-400" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm text-zinc-400 mb-2">이름</label>
-                  <input
-                    type="text"
-                    value={project.name}
-                    onChange={(e) =>
-                      setProject({ ...project, name: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-400 mb-2">설명</label>
-                  <textarea
-                    value={project.description || ""}
-                    onChange={(e) =>
-                      setProject({ ...project, description: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white resize-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-2">상태</label>
-                    <select
-                      value={project.status}
-                      onChange={(e) =>
-                        setProject({ ...project, status: e.target.value as any })
-                      }
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white"
-                    >
-                      <option value="planning">계획중</option>
-                      <option value="active">진행중</option>
-                      <option value="on_hold">보류</option>
-                      <option value="completed">완료</option>
-                      <option value="cancelled">취소</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-2">
-                      우선순위
-                    </label>
-                    <select
-                      value={project.priority}
-                      onChange={(e) =>
-                        setProject({ ...project, priority: e.target.value as any })
-                      }
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white"
-                    >
-                      <option value="low">낮음</option>
-                      <option value="medium">보통</option>
-                      <option value="high">높음</option>
-                      <option value="urgent">긴급</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-400 mb-2">마감일</label>
-                  <input
-                    type="date"
-                    value={project.deadline || ""}
-                    onChange={(e) =>
-                      setProject({ ...project, deadline: e.target.value })
-                    }
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 px-6 py-4 border-t border-zinc-800">
-                <Button variant="outline" onClick={() => setIsEditOpen(false)}>
-                  취소
-                </Button>
-                <Button
-                  onClick={() => {
-                    updateProject({
-                      name: project.name,
-                      description: project.description,
-                      status: project.status,
-                      priority: project.priority,
-                      deadline: project.deadline,
-                    })
-                    setIsEditOpen(false)
-                  }}
-                  disabled={saving}
-                  style={{ backgroundColor: currentAccent.color }}
-                  className="text-white"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    "저장"
-                  )}
-                </Button>
               </div>
             </motion.div>
           </motion.div>

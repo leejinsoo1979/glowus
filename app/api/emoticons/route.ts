@@ -81,6 +81,8 @@ export async function POST(request: NextRequest) {
 
     const sortOrder = (maxOrder?.sort_order || 0) + 1
 
+    console.log('[Emoticons API] Inserting:', { user_id: user.id, name, image_url, category, sort_order: sortOrder })
+
     const { data, error } = await (adminClient as any)
       .from('user_emoticons')
       .insert({
@@ -94,8 +96,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Create emoticon error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('[Emoticons API] Create error:', error)
+      console.error('[Emoticons API] Error details:', JSON.stringify(error, null, 2))
+      return NextResponse.json({ error: error.message, details: error }, { status: 500 })
     }
 
     return NextResponse.json({ data }, { status: 201 })

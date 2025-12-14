@@ -724,6 +724,7 @@ export interface AssignTaskInput {
   assignee_user_id?: string
   assignee_agent_id?: string
   auto_execute?: boolean  // If true, immediately execute for agent assignees
+  instructions?: string   // Custom instructions for the agent
 }
 
 // Workflow Template Input Types

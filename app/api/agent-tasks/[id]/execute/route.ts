@@ -139,6 +139,7 @@ export async function POST(
         task: { ...agentTask, project_id: projectIdForDoc } as AgentTask,
         result,
         projectId: projectIdForDoc || undefined,
+        existingProjectTaskId: project_task_id || undefined,
       })
 
       if (documentSaveResult.success) {

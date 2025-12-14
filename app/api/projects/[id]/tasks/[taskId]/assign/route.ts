@@ -80,19 +80,22 @@ export async function POST(
     if (body.auto_execute && body.assignee_type === 'agent' && body.assignee_agent_id) {
       try {
         // Create an agent task for execution
-        const { data: agentTask, error: taskError } = await (adminClient as any)
-          .from('agent_tasks')
-          .insert({
-            title: updatedTask.title,
-            description: updatedTask.description,
-            instructions: `프로젝트 태스크를 수행해주세요:
+        // Use custom instructions if provided, otherwise build from task info
+        const taskInstructions = body.instructions || `프로젝트 태스크를 수행해주세요:
 
 제목: ${updatedTask.title}
 설명: ${updatedTask.description || '없음'}
 우선순위: ${updatedTask.priority}
 마감일: ${updatedTask.due_date || '없음'}
 
-태스크를 완료하고 결과를 상세히 보고해주세요.`,
+태스크를 완료하고 결과를 상세히 보고해주세요.`
+
+        const { data: agentTask, error: taskError } = await (adminClient as any)
+          .from('agent_tasks')
+          .insert({
+            title: updatedTask.title,
+            description: updatedTask.description,
+            instructions: taskInstructions,
             assigner_type: 'USER',
             assigner_user_id: user.id,
             assignee_agent_id: body.assignee_agent_id,

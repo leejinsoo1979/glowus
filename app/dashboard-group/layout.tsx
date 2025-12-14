@@ -31,7 +31,7 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const { setUser, setCurrentStartup, setIsLoading, isLoading } = useAuthStore()
   const { sidebarOpen } = useUIStore()
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email')
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.match(/\/project\/[^/]+$/)
 
   useEffect(() => {
     const supabase = createClient()
@@ -139,10 +139,13 @@ export default function DashboardLayout({
       <Header />
       <CommitModal />
       <main
-        className="pt-16 min-h-screen transition-all duration-300"
+        className={cn(
+          "pt-16 transition-all duration-300",
+          isFullWidthPage ? "h-screen overflow-hidden" : "min-h-screen"
+        )}
         style={{ paddingLeft: `${sidebarWidth}px` }}
       >
-        <div className={isFullWidthPage ? "" : "p-8"}>
+        <div className={isFullWidthPage ? "h-[calc(100vh-64px)] overflow-hidden" : "p-8"}>
           {children}
         </div>
       </main>

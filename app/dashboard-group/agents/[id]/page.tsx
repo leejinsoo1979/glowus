@@ -1894,6 +1894,7 @@ export default function AgentProfilePage() {
   }>>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [chatTypingStatus, setChatTypingStatus] = useState<'none' | 'read' | 'typing'>('none')
   const [chatImage, setChatImage] = useState<string | null>(null)
   const [chatImageFile, setChatImageFile] = useState<File | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -1940,16 +1941,15 @@ export default function AgentProfilePage() {
   const [showMessageModal, setShowMessageModal] = useState(false)
   const [modalMessage, setModalMessage] = useState('')
 
+  // 에이전트 ID가 변경되면 상태 초기화
   useEffect(() => {
+    // 이전 에이전트의 채팅 기록 초기화
+    setChatMessages([])
+    setHistoryLoaded(false)
     fetchAgent()
   }, [agentId])
 
-  // 에이전트 로드 후 채팅 히스토리 로드
-  useEffect(() => {
-    if (agent && !historyLoaded) {
-      fetchChatHistory()
-    }
-  }, [agent, historyLoaded])
+  // 채팅 히스토리는 자동으로 로드하지 않음 (대화기록 탭에서만 조회)
 
   // 채팅 스크롤 자동 이동
   useEffect(() => {
@@ -2101,9 +2101,14 @@ export default function AgentProfilePage() {
     }
   }, [currentEmotion])
 
-  // 모든 감정 목록 (기본 + 커스텀)
+  // 모든 감정 목록 (기본 + 커스텀, 수정된 키워드 적용)
   const allEmotions: CustomEmotion[] = [
-    ...DEFAULT_EMOTIONS.map(e => ({ ...e, keywords: [...e.keywords] })),
+    // 기본 감정: customEmotions에 오버라이드가 있으면 그것을 사용
+    ...DEFAULT_EMOTIONS.map(defaultE => {
+      const override = customEmotions.find(c => c.id === defaultE.id && c.isDefault)
+      return override ? { ...override } : { ...defaultE, keywords: [...defaultE.keywords] }
+    }),
+    // 커스텀 감정 (기본 감정 오버라이드 제외)
     ...customEmotions.filter(e => !e.isDefault),
   ]
 
@@ -2326,13 +2331,25 @@ export default function AgentProfilePage() {
     }
   }
 
-  // 커스텀 감정 수정
+  // 감정 수정 (기본 감정 + 커스텀 감정 모두 지원)
   const handleUpdateCustomEmotion = async () => {
     if (!agent || !editingEmotion) return
 
-    const newCustomEmotions = customEmotions.map(e =>
-      e.id === editingEmotion.id ? editingEmotion : e
-    )
+    let newCustomEmotions: CustomEmotion[]
+
+    // 기본 감정인 경우: customEmotions에 오버라이드로 추가
+    const isDefaultEmotion = DEFAULT_EMOTIONS.some(e => e.id === editingEmotion.id)
+    const existsInCustom = customEmotions.some(e => e.id === editingEmotion.id)
+
+    if (isDefaultEmotion && !existsInCustom) {
+      // 기본 감정을 처음 수정하는 경우 - customEmotions에 추가
+      newCustomEmotions = [...customEmotions, { ...editingEmotion, isDefault: true }]
+    } else {
+      // 이미 customEmotions에 있는 경우 - 업데이트
+      newCustomEmotions = customEmotions.map(e =>
+        e.id === editingEmotion.id ? editingEmotion : e
+      )
+    }
 
     try {
       const res = await fetch(`/api/agents/${agent.id}`, {
@@ -2347,7 +2364,7 @@ export default function AgentProfilePage() {
         setEditingEmotion(null)
       }
     } catch (err) {
-      console.error('Update custom emotion error:', err)
+      console.error('Update emotion error:', err)
       alert('감정 수정 실패')
     }
   }
@@ -2567,15 +2584,22 @@ export default function AgentProfilePage() {
     setChatInput('')
     setChatImage(null)
     setChatImageFile(null)
+
+    // 자연스러운 딜레이: 먼저 "읽음" 표시, 랜덤 시간 후 "입력중" 표시
+    setChatTypingStatus('read')
+
+    // 1~3초 랜덤 딜레이 후 "입력중" 표시
+    const thinkingDelay = 1000 + Math.random() * 2000
+    await new Promise(resolve => setTimeout(resolve, thinkingDelay))
+
+    setChatTypingStatus('typing')
     setChatLoading(true)
 
     try {
-      // 이미지가 있으면 이미지 설명 추가
+      // 이미지가 있으면 이미지를 API에 전달
       let messageContent = userMessage.content
-      if (sentImage) {
-        messageContent = userMessage.content
-          ? `[사용자가 이미지를 첨부했습니다] ${userMessage.content}`
-          : '[사용자가 이미지를 첨부했습니다. 이미지에 대해 인사하거나 관련 대화를 이어가세요.]'
+      if (sentImage && !userMessage.content) {
+        messageContent = '이 이미지에 대해 말해줘'
       }
 
       const res = await fetch(`/api/agents/${agent.id}/chat`, {
@@ -2587,6 +2611,8 @@ export default function AgentProfilePage() {
             role: m.role === 'user' ? 'user' : 'assistant',
             content: m.content,
           })),
+          // 이미지가 있으면 API에 전달 (비전 모델이 처리)
+          images: sentImage ? [sentImage] : [],
         }),
       })
 
@@ -2642,6 +2668,7 @@ export default function AgentProfilePage() {
       ])
     } finally {
       setChatLoading(false)
+      setChatTypingStatus('none')
       // 메시지 전송 후 입력창에 포커스 유지
       setTimeout(() => chatInputRef.current?.focus(), 100)
     }
@@ -4076,6 +4103,7 @@ export default function AgentProfilePage() {
                             console.error('Greeting error:', err)
                           } finally {
                             setChatLoading(false)
+                            setChatTypingStatus('none')
                             // 채팅 시작 후 입력창에 포커스
                             setTimeout(() => chatInputRef.current?.focus(), 100)
                           }
@@ -4239,7 +4267,8 @@ export default function AgentProfilePage() {
                     </div>
                   ))
                 )}
-                {chatLoading && (
+                {/* 읽음/입력중 표시 - 자연스러운 딜레이 적용 */}
+                {chatTypingStatus !== 'none' && (
                   <div className="flex justify-start">
                     <div
                       className={cn(
@@ -4248,25 +4277,47 @@ export default function AgentProfilePage() {
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        {/* thinking 감정 아바타 표시 */}
-                        {emotionAvatars['thinking'] ? (
-                          <img
-                            src={emotionAvatars['thinking']}
-                            alt="입력중"
-                            className="w-8 h-8 rounded-full object-cover"
-                          />
-                        ) : agent?.avatar_url ? (
-                          <img
-                            src={agent.avatar_url}
-                            alt={agent.name}
-                            className="w-8 h-8 rounded-full object-cover"
-                          />
+                        {chatTypingStatus === 'read' ? (
+                          // "읽음" 상태 - 아바타만 표시
+                          <>
+                            {agent?.avatar_url ? (
+                              <img
+                                src={agent.avatar_url}
+                                alt={agent.name}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                                <span className="text-xs">👀</span>
+                              </div>
+                            )}
+                            <span className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                              읽음
+                            </span>
+                          </>
                         ) : (
-                          <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                          // "입력중" 상태
+                          <>
+                            {emotionAvatars['thinking'] ? (
+                              <img
+                                src={emotionAvatars['thinking']}
+                                alt="입력중"
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : agent?.avatar_url ? (
+                              <img
+                                src={agent.avatar_url}
+                                alt={agent.name}
+                                className="w-8 h-8 rounded-full object-cover animate-pulse"
+                              />
+                            ) : (
+                              <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                            )}
+                            <span className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+                              입력중...
+                            </span>
+                          </>
                         )}
-                        <span className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
-                          입력중...
-                        </span>
                       </div>
                     </div>
                   </div>
@@ -4342,6 +4393,8 @@ export default function AgentProfilePage() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => {
+                      // 한글 조합 중이면 무시 (IME 입력 중 Enter 두 번 전송 방지)
+                      if (e.nativeEvent.isComposing) return
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault()
                         handleSendChat()
@@ -5346,22 +5399,23 @@ export default function AgentProfilePage() {
                             {emotion.label}
                           </span>
                         </div>
-                        {/* 커스텀 감정 편집/삭제 버튼 */}
-                        {!emotion.isDefault && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => {
-                                setEditingEmotion({ ...emotion })
-                                setKeywordInput('')
-                              }}
-                              className={cn(
-                                'p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700',
-                                isDark ? 'text-zinc-400' : 'text-zinc-500'
-                              )}
-                              title="편집"
-                            >
-                              <Edit3 className="w-3 h-3" />
-                            </button>
+                        {/* 감정 편집/삭제 버튼 */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setEditingEmotion({ ...emotion })
+                              setKeywordInput('')
+                            }}
+                            className={cn(
+                              'p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700',
+                              isDark ? 'text-zinc-400' : 'text-zinc-500'
+                            )}
+                            title="키워드 편집"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </button>
+                          {/* 커스텀 감정만 삭제 가능 */}
+                          {!emotion.isDefault && (
                             <button
                               onClick={() => handleDeleteCustomEmotion(emotion.id)}
                               className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
@@ -5369,8 +5423,8 @@ export default function AgentProfilePage() {
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
 
                       {/* 이미지 영역 */}
@@ -5651,8 +5705,8 @@ export default function AgentProfilePage() {
         </div>
       )}
 
-      {/* 감정 편집 모달 */}
-      {editingEmotion && !editingEmotion.isDefault && (
+      {/* 감정 편집 모달 (기본 감정 + 커스텀 감정 모두 지원) */}
+      {editingEmotion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingEmotion(null)}>
           <div
             className={cn(
@@ -6003,6 +6057,7 @@ export default function AgentProfilePage() {
                     console.error('Chat error:', err)
                   } finally {
                     setChatLoading(false)
+                    setChatTypingStatus('none')
                   }
                 }}
                 disabled={!modalMessage.trim() || chatLoading}
