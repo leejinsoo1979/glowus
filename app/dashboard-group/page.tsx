@@ -239,14 +239,8 @@ export default function DashboardPage() {
         </motion.div>
 
         <motion.div variants={item} className="col-span-12 md:col-span-9 h-[380px]">
-          <TiltCard className="h-full p-6 flex flex-col">
-            <div className="flex items-center gap-2 mb-4">
-              <GitCommit className="w-5 h-5 text-zinc-500 dark:text-white/50" />
-              <span className="font-medium tracking-tight text-zinc-700 dark:text-white">COMMIT ACTIVITY</span>
-            </div>
-            <div className="flex-1 rounded-xl bg-zinc-50/50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 p-4">
-              <ActivityHeatmap />
-            </div>
+          <TiltCard className="h-full p-5">
+            <ActivityHeatmap />
           </TiltCard>
         </motion.div>
 
