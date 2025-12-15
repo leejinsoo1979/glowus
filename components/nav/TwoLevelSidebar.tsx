@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
@@ -12,6 +12,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { createClient } from '@/lib/supabase/client'
 import { Logo } from '@/components/ui'
 import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal'
+import { CreateWorkModal } from '@/app/dashboard-group/works/create-modal'
 import { useTeamStore } from '@/stores/teamStore'
 import { CgMenuGridO } from 'react-icons/cg'
 import { BsPersonWorkspace } from 'react-icons/bs'
@@ -19,6 +20,7 @@ import { IoCalendarNumberOutline, IoRocketOutline } from 'react-icons/io5'
 import { GoPerson, GoPeople } from 'react-icons/go'
 import { TbBrandWechat } from 'react-icons/tb'
 import { CiHardDrive } from 'react-icons/ci'
+import { ShieldCheck } from 'lucide-react'
 import {
   LayoutDashboard,
   ListTodo,
@@ -71,6 +73,9 @@ import {
   AlertCircle,
   Plus,
   CalendarDays,
+  Star,
+  Wrench,
+  Package,
 } from 'lucide-react'
 
 // 중첩 메뉴 아이템 타입
@@ -491,6 +496,7 @@ const categories: Category[] = [
     icon: BsPersonWorkspace,
     items: [
       { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },
+      { name: 'Works', href: '/dashboard-group/works', icon: Briefcase },
       {
         name: '빠른 액션',
         icon: Zap,
@@ -505,7 +511,73 @@ const categories: Category[] = [
       { name: '마감 임박', href: '/dashboard-group/tasks?filter=urgent', icon: AlertCircle },
       { name: '진행 중 프로젝트', href: '/dashboard-group/project?status=active', icon: Play },
       { name: '오늘 일정', href: '/dashboard-group/calendar?view=today', icon: CalendarDays },
+      {
+        name: '캘린더',
+        icon: IoCalendarNumberOutline,
+        children: [
+          { name: '전체 일정', href: '/dashboard-group/calendar', icon: IoCalendarNumberOutline },
+          { name: '개인 일정', href: '/dashboard-group/calendar?view=personal', icon: User },
+          { name: '프로젝트 일정', href: '/dashboard-group/calendar?view=projects', icon: FolderKanban },
+          { name: '마감일', href: '/dashboard-group/calendar?view=deadlines', icon: AlertCircle },
+          { name: '회의', href: '/dashboard-group/calendar?view=meetings', icon: Users },
+          { name: 'AI 일정 제안', href: '/dashboard-group/calendar?view=ai', icon: Sparkles },
+        ]
+      },
       { name: '개인 KPI', href: '/dashboard-group/kpis', icon: Target },
+    ]
+  },
+  // 앱 (Apps) - 도구 모음
+  {
+    id: 'apps',
+    name: 'Apps',
+    icon: CgMenuGridO,
+    items: [
+      { name: '모든 앱', href: '/dashboard-group/works?tab=tools', icon: CgMenuGridO },
+      {
+        name: '업무',
+        icon: Briefcase,
+        children: [
+          { name: 'AI 실시간 요약', href: '/dashboard-group/tools/ai-summary', icon: Sparkles },
+          { name: 'AI 완벽요약', href: '/dashboard-group/tools/ai-summary-perfect', icon: FileText },
+          { name: 'PPT 초안', href: '/dashboard-group/tools/ppt-draft', icon: FileText },
+          { name: '기사 초안', href: '/dashboard-group/tools/article-draft', icon: FileText },
+          { name: '상세페이지', href: '/dashboard-group/tools/detail-page', icon: FileText },
+          { name: '이미지 제작', href: '/dashboard-group/tools/image-gen', icon: Sparkles },
+          { name: '카피라이팅', href: '/dashboard-group/tools/copywriting', icon: FileText },
+        ]
+      },
+      {
+        name: '학업',
+        icon: GraduationCap,
+        children: [
+          { name: 'AI 탐지 방어', href: '/dashboard-group/tools/ai-detection', icon: ShieldCheck },
+          { name: '독후감', href: '/dashboard-group/tools/book-report', icon: FileText },
+          { name: '레포트', href: '/dashboard-group/tools/report', icon: FileText },
+          { name: '발표 대본', href: '/dashboard-group/tools/presentation-script', icon: FileText },
+          { name: '생활기록부', href: '/dashboard-group/tools/school-record', icon: FileText },
+          { name: '코딩 과제', href: '/dashboard-group/tools/coding-task', icon: FileText },
+        ]
+      },
+      {
+        name: '취업',
+        icon: UserCog,
+        children: [
+          { name: '면접 준비', href: '/dashboard-group/tools/interview-prep', icon: Users },
+          { name: '이력서', href: '/dashboard-group/tools/resume', icon: FileText },
+          { name: '자기소개서', href: '/dashboard-group/tools/cover-letter', icon: FileText },
+        ]
+      },
+      {
+        name: '부업',
+        icon: Wallet,
+        children: [
+          { name: 'SNS 게시물', href: '/dashboard-group/tools/sns-post', icon: FileText },
+          { name: '블로그', href: '/dashboard-group/tools/blog', icon: FileText },
+          { name: '상품 리뷰', href: '/dashboard-group/tools/product-review', icon: FileText },
+          { name: '영상 시나리오', href: '/dashboard-group/tools/video-scenario', icon: FileText },
+          { name: '전자책', href: '/dashboard-group/tools/ebook', icon: FileText },
+        ]
+      },
     ]
   },
   // 프로젝트 - 일을 묶는 단위
@@ -532,20 +604,7 @@ const categories: Category[] = [
       { name: 'AI 정리 문서', href: '/dashboard-group/files?view=ai', icon: Sparkles },
     ]
   },
-  // 캘린더 - 시간 관리
-  {
-    id: 'calendar',
-    name: '캘린더',
-    icon: IoCalendarNumberOutline,
-    items: [
-      { name: '전체 일정', href: '/dashboard-group/calendar', icon: IoCalendarNumberOutline },
-      { name: '개인 일정', href: '/dashboard-group/calendar?view=personal', icon: User },
-      { name: '프로젝트 일정', href: '/dashboard-group/calendar?view=projects', icon: FolderKanban },
-      { name: '마감일', href: '/dashboard-group/calendar?view=deadlines', icon: AlertCircle },
-      { name: '회의', href: '/dashboard-group/calendar?view=meetings', icon: Users },
-      { name: 'AI 일정 제안', href: '/dashboard-group/calendar?view=ai', icon: Sparkles },
-    ]
-  },
+
   // 이메일 - 외부 커뮤니케이션
   {
     id: 'email',
@@ -882,6 +941,7 @@ function NestedMenuItemComponent({
 export function TwoLevelSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, currentTeam, logout: clearAuth } = useAuthStore()
   const { activeCategory, setActiveCategory, sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const { resolvedTheme } = useTheme()
@@ -889,6 +949,7 @@ export function TwoLevelSidebar() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const [selectedCompanyMenu, setSelectedCompanyMenu] = useState<string | null>(null)
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false)
+  const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
   const { createTeam } = useTeamStore()
   const [isCreatingTeam, setIsCreatingTeam] = useState(false)
 
@@ -900,12 +961,12 @@ export function TwoLevelSidebar() {
   const currentCategory = (() => {
     if (pathname.startsWith('/dashboard-group/mypage')) return 'mypage'
     if (pathname.startsWith('/dashboard-group/company') ||
-        pathname.startsWith('/dashboard-group/hr') ||
-        pathname.startsWith('/dashboard-group/sales') ||
-        pathname.startsWith('/dashboard-group/finance') ||
-        pathname.startsWith('/dashboard-group/tax') ||
-        pathname.startsWith('/dashboard-group/payroll') ||
-        pathname.startsWith('/dashboard-group/expense')) return 'company'
+      pathname.startsWith('/dashboard-group/hr') ||
+      pathname.startsWith('/dashboard-group/sales') ||
+      pathname.startsWith('/dashboard-group/finance') ||
+      pathname.startsWith('/dashboard-group/tax') ||
+      pathname.startsWith('/dashboard-group/payroll') ||
+      pathname.startsWith('/dashboard-group/expense')) return 'company'
     if (pathname.startsWith('/dashboard-group/project')) return 'projects'
     if (pathname.startsWith('/dashboard-group/files')) return 'files'
     if (pathname.startsWith('/dashboard-group/calendar')) return 'calendar'
@@ -913,11 +974,15 @@ export function TwoLevelSidebar() {
     if (pathname.startsWith('/dashboard-group/messenger')) return 'messenger'
     if (pathname.startsWith('/dashboard-group/team')) return 'team'
     if (pathname.startsWith('/dashboard-group/agents') ||
-        pathname.startsWith('/dashboard-group/workflows') ||
-        pathname.startsWith('/agent-builder')) return 'agents'
-    if (pathname.startsWith('/dashboard-group/tasks') ||
-        pathname.startsWith('/dashboard-group/kpis') ||
-        pathname === '/dashboard-group') return 'workspace'
+      pathname.startsWith('/dashboard-group/workflows') ||
+      pathname.startsWith('/agent-builder')) return 'agents'
+    if (pathname.startsWith('/dashboard-group/works')) {
+      const tab = searchParams.get('tab')
+      if (tab === 'tools') return 'apps'
+      return 'workspace'
+    }
+    if (pathname.startsWith('/dashboard-group/kpis') ||
+      pathname === '/dashboard-group') return 'workspace'
     return activeCategory || 'workspace'
   })()
 
@@ -984,7 +1049,18 @@ export function TwoLevelSidebar() {
     }
   }
 
-  const activeItems = navCategories.find(cat => cat.id === currentCategory)?.items || []
+  const worksItems = [
+    { name: 'Works홈', href: '/dashboard-group/works?tab=home', icon: Home },
+    { name: '즐겨찾는 앱', href: '/dashboard-group/works?tab=favorites', icon: Star },
+    { name: '운영중인 앱', href: '/dashboard-group/works?tab=operating', icon: Wrench },
+
+    { name: '나의 폴더', href: '/dashboard-group/works?tab=folders', icon: FolderOpen },
+    { name: '앱 내보내기/가져오기', href: '/dashboard-group/works?tab=export', icon: ArrowRightFromLine },
+  ]
+
+  const activeItems = (pathname.startsWith('/dashboard-group/works') && currentCategory !== 'apps')
+    ? worksItems
+    : navCategories.find(cat => cat.id === currentCategory)?.items || []
   const isCompanyMenu = currentCategory === 'company'
 
   const isDashboardRoot = pathname === '/dashboard-group'
@@ -1138,175 +1214,310 @@ export function TwoLevelSidebar() {
       </motion.aside>
 
       {/* Level 2: 서브메뉴 사이드바 */}
-      <AnimatePresence>
-        {sidebarOpen && activeItems.length > 0 && (
-          <motion.aside
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 240, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className={cn(
-              'h-full border-r overflow-hidden',
-              isDashboardRoot
-                ? 'border-white/10'
-                : isDark ? 'border-zinc-800' : 'border-zinc-200'
-            )}
-          >
-            <div className="h-full flex flex-col w-[240px]">
-              {/* Category Header */}
-              <div className={cn(
-                'h-16 flex items-center px-4 border-b flex-shrink-0',
-                isDark ? 'border-zinc-800' : 'border-zinc-200'
-              )}>
-                <h2 className={cn(
-                  'text-sm font-semibold',
-                  isDark ? 'text-zinc-100' : 'text-zinc-900'
-                )}>
-                  {navCategories.find(c => c.id === currentCategory)?.name}
-                </h2>
-              </div>
-
-              {/* Team Info (for non-VC users) */}
-              {!isVC && currentTeam && !isCompanyMenu && (
+      {!(pathname?.includes('/works/new') || pathname?.includes('/tools/ai-summary')) && (
+        <AnimatePresence>
+          {sidebarOpen && activeItems.length > 0 && (
+            <motion.aside
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 240, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className={cn(
+                'fixed left-16 top-0 bottom-0 z-40 h-full border-r overflow-hidden bg-white dark:bg-zinc-950',
+                isDashboardRoot
+                  ? 'border-white/10'
+                  : isDark ? 'border-zinc-800' : 'border-zinc-200'
+              )}
+            >
+              <div className="h-full flex flex-col w-[240px]">
+                {/* Category Header */}
                 <div className={cn(
-                  'px-3 py-3 border-b flex-shrink-0',
+                  'h-16 flex items-center px-4 border-b flex-shrink-0',
                   isDark ? 'border-zinc-800' : 'border-zinc-200'
                 )}>
-                  <div className={cn(
-                    'flex items-center gap-2 p-2 rounded-lg',
-                    isDark
-                      ? 'bg-zinc-800/50'
-                      : 'bg-zinc-100'
-                  )}>
-                    <div className="w-8 h-8 bg-accent/20 rounded-lg flex items-center justify-center">
-                      <Building2 className="w-4 h-4 text-accent" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={cn(
-                        'text-xs font-medium truncate',
+                  {currentCategory === 'apps' ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <h2 className={cn(
+                        'text-lg font-bold',
                         isDark ? 'text-zinc-100' : 'text-zinc-900'
                       )}>
-                        {currentTeam.name}
-                      </p>
-                      <p className={cn(
-                        'text-[10px] truncate',
-                        isDark ? 'text-zinc-500' : 'text-zinc-500'
+                        Apps
+                      </h2>
+                    </div>
+                  ) : pathname.startsWith('/dashboard-group/works') ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <button
+                        onClick={() => router.push('/dashboard-group')}
+                        className={cn(
+                          "p-1 rounded-md transition-colors",
+                          isDark ? "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
+                        )}
+                      >
+                        <ChevronRight className="w-5 h-5 rotate-180" />
+                      </button>
+                      <h2 className={cn(
+                        'text-lg font-bold',
+                        isDark ? 'text-zinc-100' : 'text-zinc-900'
                       )}>
-                        {currentTeam.industry || '스타트업'}
-                      </p>
+                        Works
+                      </h2>
+                    </div>
+                  ) : (
+                    <h2 className={cn(
+                      'text-sm font-semibold',
+                      isDark ? 'text-zinc-100' : 'text-zinc-900'
+                    )}>
+                      {navCategories.find(c => c.id === currentCategory)?.name}
+                    </h2>
+                  )}
+                </div>
+
+                {/* Team Info (for non-VC users) */}
+                {!isVC && currentTeam && !isCompanyMenu && (
+                  <div className={cn(
+                    'px-3 py-3 border-b flex-shrink-0',
+                    isDark ? 'border-zinc-800' : 'border-zinc-200'
+                  )}>
+                    <div className={cn(
+                      'flex items-center gap-2 p-2 rounded-lg',
+                      isDark
+                        ? 'bg-zinc-800/50'
+                        : 'bg-zinc-100'
+                    )}>
+                      <div className="w-8 h-8 bg-accent/20 rounded-lg flex items-center justify-center">
+                        <Building2 className="w-4 h-4 text-accent" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          'text-xs font-medium truncate',
+                          isDark ? 'text-zinc-100' : 'text-zinc-900'
+                        )}>
+                          {currentTeam.name}
+                        </p>
+                        <p className={cn(
+                          'text-[10px] truncate',
+                          isDark ? 'text-zinc-500' : 'text-zinc-500'
+                        )}>
+                          {currentTeam.industry || '스타트업'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Sub Navigation */}
-              <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
-                {isCompanyMenu ? (
-                  // 회사 메뉴 - 드릴다운 네비게이션
-                  <AnimatePresence mode="wait">
-                    {selectedCompanyMenu === null ? (
-                      // 메인 카드 그리드 뷰
-                      <motion.div
-                        key="card-grid"
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        transition={{ duration: 0.2 }}
-                        className="grid grid-cols-2 gap-2"
-                      >
-                        {activeItems.map((item, index) => (
+                {/* Work Create Button */}
+                {pathname.startsWith('/dashboard-group/works') && (
+                  <div className="px-3 py-3 flex-shrink-0">
+                    <button
+                      onClick={() => setIsWorkModalOpen(true)}
+                      className="w-full py-2.5 px-4 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>만들기</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Sub Navigation */}
+                <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
+                  {isCompanyMenu ? (
+                    // 회사 메뉴 - 드릴다운 네비게이션
+                    <AnimatePresence mode="wait">
+                      {selectedCompanyMenu === null ? (
+                        // 메인 카드 그리드 뷰
+                        <motion.div
+                          key="card-grid"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -20 }}
+                          transition={{ duration: 0.2 }}
+                          className="grid grid-cols-2 gap-2"
+                        >
+                          {activeItems.map((item, index) => (
+                            <motion.div
+                              key={item.name}
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: index * 0.03 }}
+                            >
+                              <TopLevelCardMenu
+                                item={item}
+                                isDark={isDark}
+                                isExpanded={false}
+                                onToggle={() => setSelectedCompanyMenu(item.name)}
+                              />
+                            </motion.div>
+                          ))}
+                        </motion.div>
+                      ) : (
+                        // 선택된 메뉴의 하위 메뉴 뷰
+                        <motion.div
+                          key={`submenu-${selectedCompanyMenu}`}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 20 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          {/* 뒤로가기 버튼 */}
+                          <button
+                            onClick={() => setSelectedCompanyMenu(null)}
+                            className={cn(
+                              'flex items-center gap-2 w-full px-2 py-2 mb-3 rounded-lg text-sm font-medium transition-colors',
+                              isDark
+                                ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                                : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                            )}
+                          >
+                            <ChevronRight className="w-4 h-4 rotate-180" />
+                            <span>전체 메뉴</span>
+                          </button>
+
+                          {/* 현재 메뉴 타이틀 */}
+                          {(() => {
+                            const selectedItem = activeItems.find(item => item.name === selectedCompanyMenu)
+                            const IconComponent = selectedItem?.icon
+                            return (
+                              <div className={cn(
+                                'flex items-center gap-2 px-2 py-2 mb-2 rounded-lg',
+                                isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+                              )}>
+                                {IconComponent && (
+                                  <IconComponent className={cn(
+                                    'w-4 h-4',
+                                    isDark ? 'text-zinc-300' : 'text-zinc-700'
+                                  )} />
+                                )}
+                                <span className={cn(
+                                  'text-sm font-semibold',
+                                  isDark ? 'text-zinc-200' : 'text-zinc-800'
+                                )}>
+                                  {selectedCompanyMenu}
+                                </span>
+                              </div>
+                            )
+                          })()}
+
+                          {/* 하위 메뉴 목록 */}
+                          <div className="space-y-0.5">
+                            {activeItems
+                              .find(item => item.name === selectedCompanyMenu)
+                              ?.children?.map((child) => (
+                                <NestedMenuItemComponent
+                                  key={child.name}
+                                  item={child}
+                                  depth={0}
+                                  isDark={isDark}
+                                  pathname={pathname}
+                                  expandedItems={expandedItems}
+                                  toggleExpand={toggleExpand}
+                                />
+                              ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  ) : (
+                    // 일반 메뉴 - 중첩 메뉴 지원
+                    activeItems.map((item, index) => {
+                      const hasChildren = item.children && item.children.length > 0
+                      // 정확한 매칭: 쿼리 파라미터만 허용하고 하위 경로는 제외
+                      const isActive = item.href && (pathname === item.href || pathname.startsWith(item.href + '?'))
+                      const IconComponent = item.icon
+                      const isExpanded = expandedItems.has(item.name)
+
+                      if (hasChildren) {
+                        return (
                           <motion.div
                             key={item.name}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: index * 0.03 }}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.05 }}
                           >
-                            <TopLevelCardMenu
-                              item={item}
-                              isDark={isDark}
-                              isExpanded={false}
-                              onToggle={() => setSelectedCompanyMenu(item.name)}
-                            />
-                          </motion.div>
-                        ))}
-                      </motion.div>
-                    ) : (
-                      // 선택된 메뉴의 하위 메뉴 뷰
-                      <motion.div
-                        key={`submenu-${selectedCompanyMenu}`}
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        {/* 뒤로가기 버튼 */}
-                        <button
-                          onClick={() => setSelectedCompanyMenu(null)}
-                          className={cn(
-                            'flex items-center gap-2 w-full px-2 py-2 mb-3 rounded-lg text-sm font-medium transition-colors',
-                            isDark
-                              ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-                              : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                          )}
-                        >
-                          <ChevronRight className="w-4 h-4 rotate-180" />
-                          <span>전체 메뉴</span>
-                        </button>
-
-                        {/* 현재 메뉴 타이틀 */}
-                        {(() => {
-                          const selectedItem = activeItems.find(item => item.name === selectedCompanyMenu)
-                          const IconComponent = selectedItem?.icon
-                          return (
-                            <div className={cn(
-                              'flex items-center gap-2 px-2 py-2 mb-2 rounded-lg',
-                              isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
-                            )}>
-                              {IconComponent && (
-                                <IconComponent className={cn(
-                                  'w-4 h-4',
-                                  isDark ? 'text-zinc-300' : 'text-zinc-700'
-                                )} />
+                            <button
+                              onClick={() => toggleExpand(item.name)}
+                              className={cn(
+                                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                                isDark
+                                  ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
                               )}
-                              <span className={cn(
-                                'text-sm font-semibold',
-                                isDark ? 'text-zinc-200' : 'text-zinc-800'
-                              )}>
-                                {selectedCompanyMenu}
-                              </span>
-                            </div>
-                          )
-                        })()}
+                            >
+                              {IconComponent && (
+                                <IconComponent className="w-4 h-4 flex-shrink-0" />
+                              )}
+                              <span className="flex-1 text-left">{item.name}</span>
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </button>
+                            <AnimatePresence>
+                              {isExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.15 }}
+                                  className="overflow-hidden pl-4 space-y-0.5"
+                                >
+                                  {item.children!.map((child) => {
+                                    const childActive = child.href && (pathname === child.href || pathname.startsWith(child.href + '?'))
+                                    const ChildIcon = child.icon
+                                    return (
+                                      <Link
+                                        key={child.name}
+                                        href={child.href || '#'}
+                                        className={cn(
+                                          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200',
+                                          childActive
+                                            ? 'bg-accent text-white'
+                                            : isDark
+                                              ? 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                                              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                        )}
+                                      >
+                                        {ChildIcon && (
+                                          <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                                        )}
+                                        <span>{child.name}</span>
+                                      </Link>
+                                    )
+                                  })}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
+                        )
+                      }
 
-                        {/* 하위 메뉴 목록 */}
-                        <div className="space-y-0.5">
-                          {activeItems
-                            .find(item => item.name === selectedCompanyMenu)
-                            ?.children?.map((child) => (
-                              <NestedMenuItemComponent
-                                key={child.name}
-                                item={child}
-                                depth={0}
-                                isDark={isDark}
-                                pathname={pathname}
-                                expandedItems={expandedItems}
-                                toggleExpand={toggleExpand}
-                              />
-                            ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                ) : (
-                  // 일반 메뉴 - 중첩 메뉴 지원
-                  activeItems.map((item, index) => {
-                    const hasChildren = item.children && item.children.length > 0
-                    // 정확한 매칭: 쿼리 파라미터만 허용하고 하위 경로는 제외
-                    const isActive = item.href && (pathname === item.href || pathname.startsWith(item.href + '?'))
-                    const IconComponent = item.icon
-                    const isExpanded = expandedItems.has(item.name)
+                      // Handle "팀 생성" special case
+                      if (item.href === '#create-team') {
+                        return (
+                          <motion.div
+                            key={item.name}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                          >
+                            <button
+                              onClick={() => setIsTeamModalOpen(true)}
+                              className={cn(
+                                'w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-2 border-dashed',
+                                isDark
+                                  ? 'border-zinc-700 text-zinc-400 hover:border-accent hover:text-accent hover:bg-accent/10'
+                                  : 'border-zinc-300 text-zinc-500 hover:border-accent hover:text-accent hover:bg-accent/10'
+                              )}
+                            >
+                              {IconComponent && (
+                                <IconComponent className="w-4 h-4 flex-shrink-0" />
+                              )}
+                              <span>{item.name}</span>
+                            </button>
+                          </motion.div>
+                        )
+                      }
 
-                    if (hasChildren) {
                       return (
                         <motion.div
                           key={item.name}
@@ -1314,126 +1525,35 @@ export function TwoLevelSidebar() {
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
                         >
-                          <button
-                            onClick={() => toggleExpand(item.name)}
+                          <Link
+                            href={item.href || '#'}
                             className={cn(
-                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                              isDark
-                                ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                                : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                              isActive
+                                ? 'bg-accent text-white shadow-md shadow-accent/20'
+                                : isDark
+                                  ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
                             )}
                           >
                             {IconComponent && (
-                              <IconComponent className="w-4 h-4 flex-shrink-0" />
-                            )}
-                            <span className="flex-1 text-left">{item.name}</span>
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                          </button>
-                          <AnimatePresence>
-                            {isExpanded && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.15 }}
-                                className="overflow-hidden pl-4 space-y-0.5"
-                              >
-                                {item.children!.map((child) => {
-                                  const childActive = child.href && (pathname === child.href || pathname.startsWith(child.href + '?'))
-                                  const ChildIcon = child.icon
-                                  return (
-                                    <Link
-                                      key={child.name}
-                                      href={child.href || '#'}
-                                      className={cn(
-                                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200',
-                                        childActive
-                                          ? 'bg-accent text-white'
-                                          : isDark
-                                            ? 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                                            : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
-                                      )}
-                                    >
-                                      {ChildIcon && (
-                                        <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                                      )}
-                                      <span>{child.name}</span>
-                                    </Link>
-                                  )
-                                })}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      )
-                    }
-
-                    // Handle "팀 생성" special case
-                    if (item.href === '#create-team') {
-                      return (
-                        <motion.div
-                          key={item.name}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                        >
-                          <button
-                            onClick={() => setIsTeamModalOpen(true)}
-                            className={cn(
-                              'w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-2 border-dashed',
-                              isDark
-                                ? 'border-zinc-700 text-zinc-400 hover:border-accent hover:text-accent hover:bg-accent/10'
-                                : 'border-zinc-300 text-zinc-500 hover:border-accent hover:text-accent hover:bg-accent/10'
-                            )}
-                          >
-                            {IconComponent && (
-                              <IconComponent className="w-4 h-4 flex-shrink-0" />
+                              <IconComponent className={cn(
+                                'w-4 h-4 flex-shrink-0',
+                                isActive ? 'text-white' : ''
+                              )} />
                             )}
                             <span>{item.name}</span>
-                          </button>
+                          </Link>
                         </motion.div>
                       )
-                    }
-
-                    return (
-                      <motion.div
-                        key={item.name}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                      >
-                        <Link
-                          href={item.href || '#'}
-                          className={cn(
-                            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                            isActive
-                              ? 'bg-accent text-white shadow-md shadow-accent/20'
-                              : isDark
-                                ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                                : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                          )}
-                        >
-                          {IconComponent && (
-                            <IconComponent className={cn(
-                              'w-4 h-4 flex-shrink-0',
-                              isActive ? 'text-white' : ''
-                            )} />
-                          )}
-                          <span>{item.name}</span>
-                        </Link>
-                      </motion.div>
-                    )
-                  })
-                )}
-              </nav>
-            </div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
+                    })
+                  )}
+                </nav>
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* Team Create Modal */}
       <TeamCreateModal
@@ -1442,6 +1562,11 @@ export function TwoLevelSidebar() {
         onSubmit={handleTeamCreate}
         isLoading={isCreatingTeam}
       />
-    </div>
+
+      <CreateWorkModal
+        isOpen={isWorkModalOpen}
+        onClose={() => setIsWorkModalOpen(false)}
+      />
+    </div >
   )
 }
