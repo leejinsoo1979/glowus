@@ -80,10 +80,10 @@ export default function EmoticonsPage() {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    // 최대 3개까지만
-    const selectedFiles = Array.from(files).slice(0, 3)
-    if (files.length > 3) {
-      alert('카드당 최대 3개의 GIF만 등록 가능합니다. 처음 3개만 업로드됩니다.')
+    // 최대 4개까지만
+    const selectedFiles = Array.from(files).slice(0, 4)
+    if (files.length > 4) {
+      alert('카드당 최대 4개의 GIF만 등록 가능합니다. 처음 4개만 업로드됩니다.')
     }
 
     setUploading(true)
@@ -155,8 +155,8 @@ export default function EmoticonsPage() {
   const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0 || !editingEmoticon) return
-    if (editImageUrls.length >= 3) {
-      alert('카드당 최대 3개의 GIF만 등록 가능합니다.')
+    if (editImageUrls.length >= 4) {
+      alert('카드당 최대 4개의 GIF만 등록 가능합니다.')
       return
     }
 
@@ -434,7 +434,7 @@ export default function EmoticonsPage() {
             <p className={cn('text-lg font-medium mb-2', isDark ? 'text-zinc-300' : 'text-zinc-600')}>
               이모티콘이 없어요
             </p>
-            <p className="text-sm mb-6">카드당 최대 3개의 GIF를 등록할 수 있어요!</p>
+            <p className="text-sm mb-6">카드당 최대 4개의 GIF를 등록할 수 있어요!</p>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -463,18 +463,18 @@ export default function EmoticonsPage() {
                   selectedIds.includes(emoticon.id) && 'ring-2 ring-accent'
                 )}
               >
-                {/* 이미지 그리드 (1~3개) */}
+                {/* 이미지 그리드 (1~4개, 2x2) */}
                 <div className={cn(
                   'aspect-square grid gap-0.5 p-1',
                   emoticon.image_urls.length === 1 && 'grid-cols-1',
-                  emoticon.image_urls.length === 2 && 'grid-cols-2',
-                  emoticon.image_urls.length === 3 && 'grid-cols-2'
+                  emoticon.image_urls.length >= 2 && 'grid-cols-2 grid-rows-2'
                 )}>
-                  {emoticon.image_urls.slice(0, 3).map((url, idx) => (
+                  {emoticon.image_urls.slice(0, 4).map((url, idx) => (
                     <div
                       key={idx}
                       className={cn(
                         'rounded-lg overflow-hidden',
+                        emoticon.image_urls.length === 2 && 'row-span-1',
                         emoticon.image_urls.length === 3 && idx === 2 && 'col-span-2'
                       )}
                     >
@@ -546,7 +546,7 @@ export default function EmoticonsPage() {
         'mt-4 p-4 rounded-xl text-sm',
         isDark ? 'bg-zinc-900/50 text-zinc-500' : 'bg-zinc-50 text-zinc-400'
       )}>
-        <p>💡 카드당 최대 3개의 GIF를 등록하면 키워드 입력 시 랜덤으로 표시됩니다.</p>
+        <p>💡 카드당 최대 4개의 GIF를 등록하면 키워드 입력 시 랜덤으로 표시됩니다.</p>
         <p className="mt-1">💬 카드를 클릭하여 이미지와 키워드를 편집하세요.</p>
       </div>
 
@@ -593,12 +593,12 @@ export default function EmoticonsPage() {
               </button>
             </div>
 
-            {/* 이미지 섹션 */}
+            {/* 이미지 섹션 (2x2 그리드) */}
             <div className="mb-6">
               <label className={cn('text-sm font-medium mb-3 block', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
-                이미지 ({editImageUrls.length}/3)
+                이미지 ({editImageUrls.length}/4)
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {editImageUrls.map((url, idx) => (
                   <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group">
                     <img src={url} alt={`${editingEmoticon.name}-${idx + 1}`} className="w-full h-full object-cover" />
@@ -610,7 +610,7 @@ export default function EmoticonsPage() {
                     </button>
                   </div>
                 ))}
-                {editImageUrls.length < 3 && (
+                {editImageUrls.length < 4 && (
                   <button
                     onClick={() => addImageInputRef.current?.click()}
                     disabled={addingImage}

@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     // image_urls 배열 또는 단일 image_url 지원
     let finalImageUrls: string[] = []
     if (image_urls && Array.isArray(image_urls)) {
-      finalImageUrls = image_urls.slice(0, 3) // 최대 3개
+      finalImageUrls = image_urls.slice(0, 4) // 최대 4개
     } else if (image_url) {
       finalImageUrls = [image_url]
     }
@@ -146,7 +146,7 @@ export async function PATCH(request: NextRequest) {
     if (keywords !== undefined) updateData.keywords = keywords
     if (category !== undefined) updateData.category = category
     if (image_urls !== undefined) {
-      const urls = image_urls.slice(0, 3) // 최대 3개
+      const urls = image_urls.slice(0, 4) // 최대 4개
       updateData.image_urls = urls
       updateData.image_url = urls[0] || null // 하위 호환성
     }
