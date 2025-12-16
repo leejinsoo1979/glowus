@@ -1953,6 +1953,7 @@ export default function AgentProfilePage() {
     name: string
     image_url: string
     category: string
+    keywords: string[]
   }>>([])
   const [emoticonsLoading, setEmoticonsLoading] = useState(false)
 
@@ -2078,9 +2079,14 @@ export default function AgentProfilePage() {
     }
   }
 
-  // 이모티콘 모달 열릴 때 불러오기
+  // 이모티콘 모달 열릴 때 또는 컴포넌트 마운트 시 불러오기 (키워드 감지용)
   useEffect(() => {
-    if (showEmoticonModal) {
+    // 컴포넌트 마운트 시 이모티콘 로드 (키워드 감지용)
+    fetchEmoticons()
+  }, [])
+
+  useEffect(() => {
+    if (showEmoticonModal && emoticons.length === 0) {
       fetchEmoticons()
     }
   }, [showEmoticonModal])
@@ -2097,6 +2103,50 @@ export default function AgentProfilePage() {
     }
     setChatMessages((prev) => [...prev, emoticonMessage])
     setShowEmoticonModal(false)
+  }
+
+  // 키워드로 매칭되는 이모티콘 찾기 및 랜덤 선택
+  const findMatchingEmoticons = (message: string): typeof emoticons => {
+    if (!message || emoticons.length === 0) return []
+
+    const messageLower = message.toLowerCase()
+    const matchingEmoticons = emoticons.filter(emoticon => {
+      if (!emoticon.keywords || emoticon.keywords.length === 0) return false
+      return emoticon.keywords.some(keyword =>
+        messageLower.includes(keyword.toLowerCase())
+      )
+    })
+
+    return matchingEmoticons
+  }
+
+  // 랜덤으로 이모티콘 하나 선택
+  const selectRandomEmoticon = (matchingEmoticons: typeof emoticons): typeof emoticons[0] | null => {
+    if (matchingEmoticons.length === 0) return null
+    const randomIndex = Math.floor(Math.random() * matchingEmoticons.length)
+    return matchingEmoticons[randomIndex]
+  }
+
+  // 메시지에서 키워드 감지하고 이모티콘 자동 전송
+  const sendKeywordEmoticon = (message: string): boolean => {
+    const matchingEmoticons = findMatchingEmoticons(message)
+    const selectedEmoticon = selectRandomEmoticon(matchingEmoticons)
+
+    if (selectedEmoticon) {
+      // 약간의 딜레이 후 이모티콘 메시지 추가
+      setTimeout(() => {
+        const emoticonMessage = {
+          id: `emoticon-${Date.now()}`,
+          role: 'user' as const,
+          content: '',
+          timestamp: new Date(),
+          image: selectedEmoticon.image_url,
+        }
+        setChatMessages((prev) => [...prev, emoticonMessage])
+      }, 100)
+      return true
+    }
+    return false
   }
 
   // 에이전트 로드 시 감정 아바타 및 커스텀 감정 설정
@@ -2712,6 +2762,9 @@ export default function AgentProfilePage() {
 
     // 사용자 메시지 히스토리에 저장
     saveMessageToHistory('user', userMessage.content, userMessage.image)
+
+    // 키워드 감지하여 이모티콘 자동 전송
+    sendKeywordEmoticon(messageContent)
 
     // 사용자 입력에서 감정 감지 (즉시 반영)
     const userEmotion = detectEmotion(userMessage.content, allEmotions)

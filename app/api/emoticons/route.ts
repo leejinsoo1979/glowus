@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, image_url, category = 'default' } = body
+    const { name, image_url, category = 'default', keywords = [] } = body
 
     if (!name || !image_url) {
       return NextResponse.json({ error: 'name과 image_url이 필요합니다' }, { status: 400 })
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     const sortOrder = (maxOrder?.sort_order || 0) + 1
 
-    console.log('[Emoticons API] Inserting:', { user_id: user.id, name, image_url, category, sort_order: sortOrder })
+    console.log('[Emoticons API] Inserting:', { user_id: user.id, name, image_url, category, keywords, sort_order: sortOrder })
 
     const { data, error } = await (adminClient as any)
       .from('user_emoticons')
@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
         name,
         image_url,
         category,
+        keywords,
         sort_order: sortOrder,
       })
       .select()
@@ -104,6 +105,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data }, { status: 201 })
   } catch (error) {
     console.error('POST /api/emoticons error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// PATCH: 이모티콘 수정 (키워드 등)
+export async function PATCH(request: NextRequest) {
+  const supabase = await createClient()
+  const adminClient = createAdminClient()
+
+  let user: any = isDevMode() ? DEV_USER : null
+  if (!user) {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  }
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const body = await request.json()
+    const { id, name, keywords, category } = body
+
+    if (!id) {
+      return NextResponse.json({ error: '이모티콘 ID가 필요합니다' }, { status: 400 })
+    }
+
+    const updateData: any = {}
+    if (name !== undefined) updateData.name = name
+    if (keywords !== undefined) updateData.keywords = keywords
+    if (category !== undefined) updateData.category = category
+
+    const { data, error } = await (adminClient as any)
+      .from('user_emoticons')
+      .update(updateData)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[Emoticons API] Update error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ data })
+  } catch (error) {
+    console.error('PATCH /api/emoticons error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

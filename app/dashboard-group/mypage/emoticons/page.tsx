@@ -12,6 +12,9 @@ import {
   Upload,
   Check,
   GripVertical,
+  Tag,
+  X,
+  Edit3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +25,7 @@ interface Emoticon {
   image_url: string
   category: string
   sort_order: number
+  keywords: string[]
 }
 
 export default function EmoticonsPage() {
@@ -36,6 +40,12 @@ export default function EmoticonsPage() {
   const [uploading, setUploading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [isSelectionMode, setIsSelectionMode] = useState(false)
+
+  // 키워드 편집 모달 상태
+  const [editingEmoticon, setEditingEmoticon] = useState<Emoticon | null>(null)
+  const [editKeywords, setEditKeywords] = useState<string[]>([])
+  const [newKeyword, setNewKeyword] = useState('')
+  const [saving, setSaving] = useState(false)
 
   // 이모티콘 목록 불러오기
   const fetchEmoticons = async () => {
@@ -179,6 +189,60 @@ export default function EmoticonsPage() {
     } catch (err) {
       console.error('Delete error:', err)
       alert('삭제 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 키워드 편집 모달 열기
+  const openEditModal = (emoticon: Emoticon) => {
+    setEditingEmoticon(emoticon)
+    setEditKeywords(emoticon.keywords || [])
+    setNewKeyword('')
+  }
+
+  // 키워드 추가
+  const addKeyword = () => {
+    const keyword = newKeyword.trim()
+    if (!keyword) return
+    if (editKeywords.includes(keyword)) {
+      alert('이미 추가된 키워드입니다.')
+      return
+    }
+    setEditKeywords([...editKeywords, keyword])
+    setNewKeyword('')
+  }
+
+  // 키워드 삭제
+  const removeKeyword = (keyword: string) => {
+    setEditKeywords(editKeywords.filter((k) => k !== keyword))
+  }
+
+  // 키워드 저장
+  const saveKeywords = async () => {
+    if (!editingEmoticon) return
+
+    try {
+      setSaving(true)
+      const res = await fetch('/api/emoticons', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingEmoticon.id,
+          keywords: editKeywords,
+        }),
+      })
+
+      if (res.ok) {
+        await fetchEmoticons()
+        setEditingEmoticon(null)
+      } else {
+        const err = await res.json()
+        alert(`저장 실패: ${err.error || '알 수 없는 오류'}`)
+      }
+    } catch (err) {
+      console.error('Save keywords error:', err)
+      alert('저장 중 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -359,6 +423,33 @@ export default function EmoticonsPage() {
                     {selectedIds.includes(emoticon.id) && <Check className="w-3 h-3" />}
                   </div>
                 )}
+                {/* 키워드 편집 버튼 - 호버 시 표시 */}
+                {!isSelectionMode && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openEditModal(emoticon)
+                    }}
+                    className={cn(
+                      'absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all',
+                      isDark ? 'bg-zinc-900/80 text-zinc-300 hover:bg-zinc-700' : 'bg-white/90 text-zinc-600 hover:bg-zinc-200'
+                    )}
+                    title="키워드 편집"
+                  >
+                    <Tag className="w-3 h-3" />
+                  </button>
+                )}
+                {/* 키워드 개수 뱃지 */}
+                {emoticon.keywords?.length > 0 && !isSelectionMode && (
+                  <div
+                    className={cn(
+                      'absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium',
+                      isDark ? 'bg-accent/80 text-white' : 'bg-accent/80 text-white'
+                    )}
+                  >
+                    {emoticon.keywords.length}
+                  </div>
+                )}
                 {/* 이름 툴팁 - 호버 시 표시 */}
                 <div
                   className={cn(
@@ -380,7 +471,136 @@ export default function EmoticonsPage() {
         isDark ? 'bg-zinc-900/50 text-zinc-500' : 'bg-zinc-50 text-zinc-400'
       )}>
         <p>💡 이모티콘은 에이전트 채팅에서 사용할 수 있습니다. GIF 파일도 지원됩니다.</p>
+        <p className="mt-1">💬 키워드를 설정하면 채팅 중 해당 단어 입력 시 랜덤으로 이모티콘이 표시됩니다.</p>
       </div>
+
+      {/* 키워드 편집 모달 */}
+      {editingEmoticon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingEmoticon(null)}>
+          <div
+            className={cn(
+              'w-full max-w-md mx-4 rounded-2xl border p-6',
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 모달 헤더 */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className={cn(
+                'w-16 h-16 rounded-xl overflow-hidden',
+                isDark ? 'bg-zinc-800' : 'bg-zinc-100'
+              )}>
+                <img
+                  src={editingEmoticon.image_url}
+                  alt={editingEmoticon.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="flex-1">
+                <h3 className={cn('text-lg font-bold', isDark ? 'text-white' : 'text-zinc-900')}>
+                  {editingEmoticon.name}
+                </h3>
+                <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                  키워드 편집
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingEmoticon(null)}
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center',
+                  isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'
+                )}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 키워드 입력 */}
+            <div className="mb-4">
+              <label className={cn('text-sm font-medium mb-2 block', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                키워드 추가
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newKeyword}
+                  onChange={(e) => setNewKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
+                  placeholder="예: ㅋㅋ, 웃음, 재밌어"
+                  className={cn(
+                    'flex-1 px-3 py-2 rounded-xl text-sm outline-none border',
+                    isDark
+                      ? 'bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500'
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-400'
+                  )}
+                />
+                <button
+                  onClick={addKeyword}
+                  className="px-4 py-2 rounded-xl text-sm font-medium bg-accent text-white hover:bg-accent/90"
+                >
+                  추가
+                </button>
+              </div>
+            </div>
+
+            {/* 키워드 목록 */}
+            <div className="mb-6">
+              <label className={cn('text-sm font-medium mb-2 block', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                등록된 키워드 ({editKeywords.length}개)
+              </label>
+              <div className="flex flex-wrap gap-2 min-h-[48px]">
+                {editKeywords.length === 0 ? (
+                  <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                    키워드가 없습니다
+                  </p>
+                ) : (
+                  editKeywords.map((keyword) => (
+                    <span
+                      key={keyword}
+                      className={cn(
+                        'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm',
+                        isDark ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-700'
+                      )}
+                    >
+                      {keyword}
+                      <button
+                        onClick={() => removeKeyword(keyword)}
+                        className={cn(
+                          'w-4 h-4 rounded-full flex items-center justify-center',
+                          isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'
+                        )}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* 저장 버튼 */}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setEditingEmoticon(null)}
+                className={cn(
+                  'px-4 py-2 rounded-xl text-sm font-medium',
+                  isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                )}
+              >
+                취소
+              </button>
+              <button
+                onClick={saveKeywords}
+                disabled={saving}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-accent text-white hover:bg-accent/90 flex items-center gap-2"
+              >
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
