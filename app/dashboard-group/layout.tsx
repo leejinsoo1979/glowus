@@ -31,7 +31,7 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const { setUser, setCurrentStartup, setIsLoading, isLoading } = useAuthStore()
   const { sidebarOpen } = useUIStore()
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.match(/\/project\/[^/]+$/) || pathname?.includes('/works/new') || pathname?.includes('/tools/ai-summary')
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.match(/\/project\/[^/]+$/) || pathname?.includes('/works/new') || pathname?.includes('/works/ai-slides') || pathname?.includes('/works/ai-sheet') || pathname?.includes('/tools/ai-summary')
 
   useEffect(() => {
     const supabase = createClient()
