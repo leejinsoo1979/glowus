@@ -64,10 +64,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, image_url, category = 'default', keywords = [] } = body
+    const { name, image_url, image_urls, category = 'default', keywords = [] } = body
 
-    if (!name || !image_url) {
-      return NextResponse.json({ error: 'name과 image_url이 필요합니다' }, { status: 400 })
+    // image_urls 배열 또는 단일 image_url 지원
+    let finalImageUrls: string[] = []
+    if (image_urls && Array.isArray(image_urls)) {
+      finalImageUrls = image_urls.slice(0, 3) // 최대 3개
+    } else if (image_url) {
+      finalImageUrls = [image_url]
+    }
+
+    if (!name || finalImageUrls.length === 0) {
+      return NextResponse.json({ error: 'name과 image_url(s)이 필요합니다' }, { status: 400 })
     }
 
     // 현재 최대 sort_order 가져오기
@@ -81,14 +89,15 @@ export async function POST(request: NextRequest) {
 
     const sortOrder = (maxOrder?.sort_order || 0) + 1
 
-    console.log('[Emoticons API] Inserting:', { user_id: user.id, name, image_url, category, keywords, sort_order: sortOrder })
+    console.log('[Emoticons API] Inserting:', { user_id: user.id, name, image_urls: finalImageUrls, category, keywords, sort_order: sortOrder })
 
     const { data, error } = await (adminClient as any)
       .from('user_emoticons')
       .insert({
         user_id: user.id,
         name,
-        image_url,
+        image_url: finalImageUrls[0], // 하위 호환성
+        image_urls: finalImageUrls,
         category,
         keywords,
         sort_order: sortOrder,
@@ -109,7 +118,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH: 이모티콘 수정 (키워드 등)
+// PATCH: 이모티콘 수정 (키워드, 이미지 등)
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient()
   const adminClient = createAdminClient()
@@ -126,7 +135,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, name, keywords, category } = body
+    const { id, name, keywords, category, image_urls } = body
 
     if (!id) {
       return NextResponse.json({ error: '이모티콘 ID가 필요합니다' }, { status: 400 })
@@ -136,6 +145,11 @@ export async function PATCH(request: NextRequest) {
     if (name !== undefined) updateData.name = name
     if (keywords !== undefined) updateData.keywords = keywords
     if (category !== undefined) updateData.category = category
+    if (image_urls !== undefined) {
+      const urls = image_urls.slice(0, 3) // 최대 3개
+      updateData.image_urls = urls
+      updateData.image_url = urls[0] || null // 하위 호환성
+    }
 
     const { data, error } = await (adminClient as any)
       .from('user_emoticons')

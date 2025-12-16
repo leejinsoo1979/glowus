@@ -1952,6 +1952,7 @@ export default function AgentProfilePage() {
     id: string
     name: string
     image_url: string
+    image_urls: string[]
     category: string
     keywords: string[]
   }>>([])
@@ -2070,7 +2071,12 @@ export default function AgentProfilePage() {
       const res = await fetch('/api/emoticons')
       if (res.ok) {
         const { data } = await res.json()
-        setEmoticons(data || [])
+        // image_urls가 없는 경우 image_url로 대체
+        const processed = (data || []).map((e: any) => ({
+          ...e,
+          image_urls: e.image_urls?.length > 0 ? e.image_urls : (e.image_url ? [e.image_url] : []),
+        }))
+        setEmoticons(processed)
       }
     } catch (err) {
       console.error('Emoticons fetch error:', err)
@@ -2133,6 +2139,13 @@ export default function AgentProfilePage() {
     const selectedEmoticon = selectRandomEmoticon(matchingEmoticons)
 
     if (selectedEmoticon) {
+      // 카드 내 이미지 중 랜덤 선택
+      const imageUrls = selectedEmoticon.image_urls?.length > 0
+        ? selectedEmoticon.image_urls
+        : [selectedEmoticon.image_url]
+      const randomImageIndex = Math.floor(Math.random() * imageUrls.length)
+      const selectedImage = imageUrls[randomImageIndex]
+
       // 약간의 딜레이 후 이모티콘 메시지 추가
       setTimeout(() => {
         const emoticonMessage = {
@@ -2140,7 +2153,7 @@ export default function AgentProfilePage() {
           role: 'user' as const,
           content: '',
           timestamp: new Date(),
-          image: selectedEmoticon.image_url,
+          image: selectedImage,
         }
         setChatMessages((prev) => [...prev, emoticonMessage])
       }, 100)

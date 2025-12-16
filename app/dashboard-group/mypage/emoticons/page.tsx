@@ -11,10 +11,9 @@ import {
   Loader2,
   Upload,
   Check,
-  GripVertical,
   Tag,
   X,
-  Edit3,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -23,6 +22,7 @@ interface Emoticon {
   id: string
   name: string
   image_url: string
+  image_urls: string[]
   category: string
   sort_order: number
   keywords: string[]
@@ -33,6 +33,7 @@ export default function EmoticonsPage() {
   const isDark = resolvedTheme === 'dark'
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const addImageInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
   const [emoticons, setEmoticons] = useState<Emoticon[]>([])
@@ -41,11 +42,13 @@ export default function EmoticonsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [isSelectionMode, setIsSelectionMode] = useState(false)
 
-  // 키워드 편집 모달 상태
+  // 편집 모달 상태
   const [editingEmoticon, setEditingEmoticon] = useState<Emoticon | null>(null)
   const [editKeywords, setEditKeywords] = useState<string[]>([])
+  const [editImageUrls, setEditImageUrls] = useState<string[]>([])
   const [newKeyword, setNewKeyword] = useState('')
   const [saving, setSaving] = useState(false)
+  const [addingImage, setAddingImage] = useState(false)
 
   // 이모티콘 목록 불러오기
   const fetchEmoticons = async () => {
@@ -54,7 +57,12 @@ export default function EmoticonsPage() {
       const res = await fetch('/api/emoticons')
       if (res.ok) {
         const { data } = await res.json()
-        setEmoticons(data || [])
+        // image_urls가 없는 경우 image_url로 대체
+        const processed = (data || []).map((e: any) => ({
+          ...e,
+          image_urls: e.image_urls?.length > 0 ? e.image_urls : (e.image_url ? [e.image_url] : []),
+        }))
+        setEmoticons(processed)
       }
     } catch (err) {
       console.error('Fetch emoticons error:', err)
@@ -67,7 +75,7 @@ export default function EmoticonsPage() {
     fetchEmoticons()
   }, [])
 
-  // 이모티콘 업로드
+  // 새 이모티콘 카드 생성 (최초 업로드)
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -78,14 +86,12 @@ export default function EmoticonsPage() {
 
     try {
       for (const file of Array.from(files)) {
-        // 파일 크기 체크 (5MB)
         if (file.size > 5 * 1024 * 1024) {
           alert(`${file.name}: 파일 크기는 5MB 이하여야 합니다.`)
           failCount++
           continue
         }
 
-        // Supabase Storage에 업로드
         const fileName = `emoticon-${Date.now()}-${Math.random().toString(36).substring(7)}.${file.name.split('.').pop()}`
         const { error: uploadError } = await supabase.storage
           .from('profile-images')
@@ -96,33 +102,25 @@ export default function EmoticonsPage() {
 
         if (uploadError) {
           console.error('Storage upload error:', uploadError)
-          alert(`${file.name}: 스토리지 업로드 실패 - ${uploadError.message}`)
           failCount++
           continue
         }
 
-        // Public URL 가져오기
         const { data: urlData } = supabase.storage
           .from('profile-images')
           .getPublicUrl(`emoticons/${fileName}`)
 
-        console.log('Uploaded URL:', urlData.publicUrl)
-
-        // DB에 저장
         const res = await fetch('/api/emoticons', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: file.name.split('.')[0],
-            image_url: urlData.publicUrl,
+            image_urls: [urlData.publicUrl],
             category: 'default',
           }),
         })
 
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}))
-          console.error('DB save error:', errorData)
-          alert(`${file.name}: DB 저장 실패 - ${errorData.error || res.statusText}`)
           failCount++
           continue
         }
@@ -130,25 +128,71 @@ export default function EmoticonsPage() {
         successCount++
       }
 
-      // 목록 새로고침
       await fetchEmoticons()
 
-      if (successCount > 0 && failCount === 0) {
-        alert(`${successCount}개의 이모티콘이 업로드되었습니다!`)
-      } else if (successCount > 0 && failCount > 0) {
-        alert(`${successCount}개 성공, ${failCount}개 실패`)
-      } else if (failCount > 0) {
-        alert('업로드에 실패했습니다. 콘솔을 확인해주세요.')
+      if (successCount > 0) {
+        alert(`${successCount}개의 이모티콘이 생성되었습니다!`)
       }
     } catch (err) {
       console.error('Upload error:', err)
       alert('업로드 중 오류가 발생했습니다.')
     } finally {
       setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  // 기존 카드에 이미지 추가
+  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0 || !editingEmoticon) return
+    if (editImageUrls.length >= 3) {
+      alert('카드당 최대 3개의 GIF만 등록 가능합니다.')
+      return
+    }
+
+    setAddingImage(true)
+    try {
+      const file = files[0]
+      if (file.size > 5 * 1024 * 1024) {
+        alert('파일 크기는 5MB 이하여야 합니다.')
+        return
+      }
+
+      const fileName = `emoticon-${Date.now()}-${Math.random().toString(36).substring(7)}.${file.name.split('.').pop()}`
+      const { error: uploadError } = await supabase.storage
+        .from('profile-images')
+        .upload(`emoticons/${fileName}`, file, {
+          cacheControl: '3600',
+          upsert: false,
+        })
+
+      if (uploadError) {
+        alert('업로드 실패: ' + uploadError.message)
+        return
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('profile-images')
+        .getPublicUrl(`emoticons/${fileName}`)
+
+      setEditImageUrls([...editImageUrls, urlData.publicUrl])
+    } catch (err) {
+      console.error('Add image error:', err)
+      alert('이미지 추가 중 오류가 발생했습니다.')
+    } finally {
+      setAddingImage(false)
+      if (addImageInputRef.current) addImageInputRef.current.value = ''
+    }
+  }
+
+  // 이미지 삭제
+  const removeImage = (index: number) => {
+    if (editImageUrls.length <= 1) {
+      alert('최소 1개의 이미지가 필요합니다.')
+      return
+    }
+    setEditImageUrls(editImageUrls.filter((_, i) => i !== index))
   }
 
   // 선택 모드 토글
@@ -192,10 +236,11 @@ export default function EmoticonsPage() {
     }
   }
 
-  // 키워드 편집 모달 열기
+  // 편집 모달 열기
   const openEditModal = (emoticon: Emoticon) => {
     setEditingEmoticon(emoticon)
     setEditKeywords(emoticon.keywords || [])
+    setEditImageUrls(emoticon.image_urls || [emoticon.image_url])
     setNewKeyword('')
   }
 
@@ -216,9 +261,13 @@ export default function EmoticonsPage() {
     setEditKeywords(editKeywords.filter((k) => k !== keyword))
   }
 
-  // 키워드 저장
-  const saveKeywords = async () => {
+  // 저장
+  const saveChanges = async () => {
     if (!editingEmoticon) return
+    if (editImageUrls.length === 0) {
+      alert('최소 1개의 이미지가 필요합니다.')
+      return
+    }
 
     try {
       setSaving(true)
@@ -228,6 +277,7 @@ export default function EmoticonsPage() {
         body: JSON.stringify({
           id: editingEmoticon.id,
           keywords: editKeywords,
+          image_urls: editImageUrls,
         }),
       })
 
@@ -239,7 +289,7 @@ export default function EmoticonsPage() {
         alert(`저장 실패: ${err.error || '알 수 없는 오류'}`)
       }
     } catch (err) {
-      console.error('Save keywords error:', err)
+      console.error('Save error:', err)
       alert('저장 중 오류가 발생했습니다.')
     } finally {
       setSaving(false)
@@ -278,7 +328,7 @@ export default function EmoticonsPage() {
                   이모티콘 라이브러리
                 </h1>
                 <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                  {emoticons.length}개의 이모티콘
+                  {emoticons.length}개의 이모티콘 카드
                 </p>
               </div>
             </div>
@@ -335,7 +385,7 @@ export default function EmoticonsPage() {
                   ) : (
                     <Plus className="w-4 h-4" />
                   )}
-                  이모티콘 추가
+                  새 카드 추가
                 </button>
               </>
             )}
@@ -375,7 +425,7 @@ export default function EmoticonsPage() {
             <p className={cn('text-lg font-medium mb-2', isDark ? 'text-zinc-300' : 'text-zinc-600')}>
               이모티콘이 없어요
             </p>
-            <p className="text-sm mb-6">이모티콘을 추가해서 채팅에서 사용해보세요!</p>
+            <p className="text-sm mb-6">카드당 최대 3개의 GIF를 등록할 수 있어요!</p>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -390,25 +440,44 @@ export default function EmoticonsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
             {emoticons.map((emoticon) => (
               <div
                 key={emoticon.id}
-                onClick={() => isSelectionMode && toggleSelect(emoticon.id)}
+                onClick={() => isSelectionMode ? toggleSelect(emoticon.id) : openEditModal(emoticon)}
                 className={cn(
-                  'relative aspect-square rounded-xl overflow-hidden transition-all group',
+                  'relative rounded-xl overflow-hidden transition-all group cursor-pointer',
                   isDark ? 'bg-zinc-800' : 'bg-zinc-100',
-                  isSelectionMode && 'cursor-pointer hover:ring-2 ring-accent ring-offset-2',
+                  isSelectionMode && 'hover:ring-2 ring-accent ring-offset-2',
                   isSelectionMode && isDark && 'ring-offset-zinc-900',
                   isSelectionMode && !isDark && 'ring-offset-white',
                   selectedIds.includes(emoticon.id) && 'ring-2 ring-accent'
                 )}
               >
-                <img
-                  src={emoticon.image_url}
-                  alt={emoticon.name}
-                  className="w-full h-full object-cover"
-                />
+                {/* 이미지 그리드 (1~3개) */}
+                <div className={cn(
+                  'aspect-square grid gap-0.5 p-1',
+                  emoticon.image_urls.length === 1 && 'grid-cols-1',
+                  emoticon.image_urls.length === 2 && 'grid-cols-2',
+                  emoticon.image_urls.length === 3 && 'grid-cols-2'
+                )}>
+                  {emoticon.image_urls.slice(0, 3).map((url, idx) => (
+                    <div
+                      key={idx}
+                      className={cn(
+                        'rounded-lg overflow-hidden',
+                        emoticon.image_urls.length === 3 && idx === 2 && 'col-span-2'
+                      )}
+                    >
+                      <img
+                        src={url}
+                        alt={`${emoticon.name}-${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+
                 {isSelectionMode && (
                   <div
                     className={cn(
@@ -423,37 +492,35 @@ export default function EmoticonsPage() {
                     {selectedIds.includes(emoticon.id) && <Check className="w-3 h-3" />}
                   </div>
                 )}
-                {/* 키워드 편집 버튼 - 호버 시 표시 */}
-                {!isSelectionMode && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openEditModal(emoticon)
-                    }}
-                    className={cn(
-                      'absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all',
-                      isDark ? 'bg-zinc-900/80 text-zinc-300 hover:bg-zinc-700' : 'bg-white/90 text-zinc-600 hover:bg-zinc-200'
-                    )}
-                    title="키워드 편집"
-                  >
-                    <Tag className="w-3 h-3" />
-                  </button>
-                )}
+
+                {/* GIF 개수 뱃지 */}
+                <div
+                  className={cn(
+                    'absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-0.5',
+                    isDark ? 'bg-blue-500/80 text-white' : 'bg-blue-500/80 text-white'
+                  )}
+                >
+                  <ImageIcon className="w-2.5 h-2.5" />
+                  {emoticon.image_urls.length}
+                </div>
+
                 {/* 키워드 개수 뱃지 */}
-                {emoticon.keywords?.length > 0 && !isSelectionMode && (
+                {emoticon.keywords?.length > 0 && (
                   <div
                     className={cn(
-                      'absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium',
+                      'absolute top-1.5 left-10 px-1.5 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-0.5',
                       isDark ? 'bg-accent/80 text-white' : 'bg-accent/80 text-white'
                     )}
                   >
+                    <Tag className="w-2.5 h-2.5" />
                     {emoticon.keywords.length}
                   </div>
                 )}
-                {/* 이름 툴팁 - 호버 시 표시 */}
+
+                {/* 이름 - 호버 시 표시 */}
                 <div
                   className={cn(
-                    'absolute inset-x-0 bottom-0 py-1 px-2 text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity',
+                    'absolute inset-x-0 bottom-0 py-1.5 px-2 text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity',
                     isDark ? 'bg-zinc-900/90 text-zinc-300' : 'bg-white/90 text-zinc-700'
                   )}
                 >
@@ -470,40 +537,25 @@ export default function EmoticonsPage() {
         'mt-4 p-4 rounded-xl text-sm',
         isDark ? 'bg-zinc-900/50 text-zinc-500' : 'bg-zinc-50 text-zinc-400'
       )}>
-        <p>💡 이모티콘은 에이전트 채팅에서 사용할 수 있습니다. GIF 파일도 지원됩니다.</p>
-        <p className="mt-1">💬 키워드를 설정하면 채팅 중 해당 단어 입력 시 랜덤으로 이모티콘이 표시됩니다.</p>
+        <p>💡 카드당 최대 3개의 GIF를 등록하면 키워드 입력 시 랜덤으로 표시됩니다.</p>
+        <p className="mt-1">💬 카드를 클릭하여 이미지와 키워드를 편집하세요.</p>
       </div>
 
-      {/* 키워드 편집 모달 */}
+      {/* 편집 모달 */}
       {editingEmoticon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingEmoticon(null)}>
           <div
             className={cn(
-              'w-full max-w-md mx-4 rounded-2xl border p-6',
+              'w-full max-w-lg mx-4 rounded-2xl border p-6 max-h-[90vh] overflow-y-auto',
               isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
             )}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 모달 헤더 */}
-            <div className="flex items-center gap-4 mb-6">
-              <div className={cn(
-                'w-16 h-16 rounded-xl overflow-hidden',
-                isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-              )}>
-                <img
-                  src={editingEmoticon.image_url}
-                  alt={editingEmoticon.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="flex-1">
-                <h3 className={cn('text-lg font-bold', isDark ? 'text-white' : 'text-zinc-900')}>
-                  {editingEmoticon.name}
-                </h3>
-                <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                  키워드 편집
-                </p>
-              </div>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={cn('text-lg font-bold', isDark ? 'text-white' : 'text-zinc-900')}>
+                {editingEmoticon.name} 편집
+              </h3>
               <button
                 onClick={() => setEditingEmoticon(null)}
                 className={cn(
@@ -513,6 +565,54 @@ export default function EmoticonsPage() {
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* 이미지 섹션 */}
+            <div className="mb-6">
+              <label className={cn('text-sm font-medium mb-3 block', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                이미지 ({editImageUrls.length}/3)
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {editImageUrls.map((url, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group">
+                    <img src={url} alt={`${editingEmoticon.name}-${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {editImageUrls.length < 3 && (
+                  <button
+                    onClick={() => addImageInputRef.current?.click()}
+                    disabled={addingImage}
+                    className={cn(
+                      'aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors',
+                      isDark
+                        ? 'border-zinc-700 hover:border-zinc-600 text-zinc-500'
+                        : 'border-zinc-300 hover:border-zinc-400 text-zinc-400'
+                    )}
+                  >
+                    {addingImage ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Plus className="w-5 h-5" />
+                        <span className="text-xs">추가</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              <input
+                ref={addImageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp,.gif,.png,.jpg,.jpeg,.webp"
+                onChange={handleAddImage}
+                className="hidden"
+              />
             </div>
 
             {/* 키워드 입력 */}
@@ -590,7 +690,7 @@ export default function EmoticonsPage() {
                 취소
               </button>
               <button
-                onClick={saveKeywords}
+                onClick={saveChanges}
                 disabled={saving}
                 className="px-4 py-2 rounded-xl text-sm font-medium bg-accent text-white hover:bg-accent/90 flex items-center gap-2"
               >
