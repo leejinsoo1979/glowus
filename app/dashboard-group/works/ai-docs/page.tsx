@@ -274,7 +274,7 @@ ${documentContent}
     }
 
     return (
-        <div ref={containerRef} className="h-screen flex bg-zinc-950 overflow-hidden">
+        <div ref={containerRef} className="h-full flex bg-zinc-950 overflow-hidden">
             {/* Left Panel - Chat */}
             <div
                 className="flex flex-col border-r border-zinc-800 h-full overflow-hidden"
@@ -474,33 +474,10 @@ ${documentContent}
             </div>
 
             {/* Right Panel - Document Editor */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-900">
-                {/* Editor Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                    <div className="flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-zinc-500" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => exportDocument('html')}
-                            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
-                            title="새 창에서 열기"
-                        >
-                            <ExternalLink className="w-5 h-5 text-zinc-500" />
-                        </button>
-                        <button
-                            onClick={() => exportDocument('md')}
-                            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
-                            title="다운로드"
-                        >
-                            <Download className="w-5 h-5 text-zinc-500" />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Editor Toolbar */}
-                <div className="px-4 py-2 border-b border-zinc-800">
-                    <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1 w-fit mx-auto">
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
+                {/* Editor Toolbar - Fixed at top */}
+                <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700 flex-shrink-0">
+                    <div className="flex items-center gap-1">
                         {editorMode === 'markdown' ? (
                             /* Markdown Toolbar */
                             <>
@@ -516,14 +493,14 @@ ${documentContent}
                                 <button onClick={() => insertMarkdown('~~', true)} className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="취소선">
                                     <Strikethrough className="w-4 h-4" />
                                 </button>
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <button onClick={() => insertMarkdown('---\n')} className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="구분선">
                                     <Minus className="w-4 h-4" />
                                 </button>
                                 <button onClick={() => insertMarkdown('> ')} className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="인용">
                                     <Quote className="w-4 h-4" />
                                 </button>
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <button onClick={() => insertMarkdown('- ')} className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="목록">
                                     <List className="w-4 h-4" />
                                 </button>
@@ -533,7 +510,7 @@ ${documentContent}
                                 <button onClick={() => insertMarkdown('- [ ] ')} className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="체크리스트">
                                     <CheckSquare className="w-4 h-4" />
                                 </button>
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <button onClick={() => insertMarkdown('![]()')} className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="이미지">
                                     <Image className="w-4 h-4" />
                                 </button>
@@ -556,7 +533,7 @@ ${documentContent}
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white" title="다시 실행">
                                     <Redo className="w-4 h-4" />
                                 </button>
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <select className="bg-zinc-700 text-zinc-300 text-sm px-2 py-1 rounded">
                                     <option>Normal Text</option>
                                     <option>Heading 1</option>
@@ -564,52 +541,66 @@ ${documentContent}
                                     <option>Heading 3</option>
                                 </select>
                                 <select className="bg-zinc-700 text-zinc-300 text-sm px-2 py-1 rounded ml-1">
-                                    <option>Apple SD Got...</option>
+                                    <option>Apple SD Gothic</option>
                                 </select>
                                 <input type="number" defaultValue={16} className="bg-zinc-700 text-zinc-300 text-sm w-12 px-2 py-1 rounded ml-1" />
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><Bold className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><Italic className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><Underline className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><Strikethrough className="w-4 h-4" /></button>
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><AlignLeft className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><AlignCenter className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><AlignRight className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><AlignJustify className="w-4 h-4" /></button>
-                                <div className="w-px h-6 bg-zinc-700 mx-1" />
+                                <div className="w-px h-6 bg-zinc-600 mx-1" />
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><List className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><ListOrdered className="w-4 h-4" /></button>
                                 <button className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white"><CheckSquare className="w-4 h-4" /></button>
                             </>
                         )}
                     </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => exportDocument('html')}
+                            className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
+                            title="새 창에서 열기"
+                        >
+                            <ExternalLink className="w-4 h-4 text-zinc-400" />
+                        </button>
+                        <button
+                            onClick={() => exportDocument('md')}
+                            className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
+                            title="다운로드"
+                        >
+                            <Download className="w-4 h-4 text-zinc-400" />
+                        </button>
+                    </div>
                 </div>
 
-                {/* Editor Content */}
-                <div className="flex-1 overflow-y-auto p-6">
-                    <div className="max-w-4xl mx-auto">
-                        <div className="bg-white rounded-xl shadow-lg min-h-[600px]">
-                            {editorMode === 'markdown' ? (
-                                <textarea
-                                    data-editor
-                                    value={documentContent}
-                                    onChange={(e) => setDocumentContent(e.target.value)}
-                                    placeholder="Enter markdown content..."
-                                    className="w-full h-full min-h-[600px] p-8 text-zinc-800 placeholder-zinc-400 resize-none outline-none rounded-xl font-mono text-sm"
-                                />
-                            ) : (
-                                <div
-                                    ref={editorRef}
-                                    contentEditable
-                                    suppressContentEditableWarning
-                                    className="w-full min-h-[600px] p-8 text-zinc-800 outline-none"
-                                    onInput={(e) => setDocumentContent(e.currentTarget.innerHTML)}
-                                    dangerouslySetInnerHTML={{ __html: documentContent || '<h1>Start writing...</h1><p>Enter your content here</p>' }}
-                                />
-                            )}
-                        </div>
-                    </div>
+                {/* Editor Content - Full height white background */}
+                <div className="flex-1 overflow-hidden" style={{ backgroundColor: '#ffffff', colorScheme: 'light' }}>
+                    {editorMode === 'markdown' ? (
+                        <textarea
+                            data-editor
+                            value={documentContent}
+                            onChange={(e) => setDocumentContent(e.target.value)}
+                            placeholder="마크다운 내용을 입력하세요..."
+                            className="w-full h-full p-8 text-gray-900 placeholder-gray-400 resize-none outline-none font-mono text-sm leading-relaxed"
+                            style={{ backgroundColor: '#ffffff', color: '#111827', colorScheme: 'light' }}
+                        />
+                    ) : (
+                        <div
+                            ref={editorRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            className="w-full h-full p-8 text-gray-900 outline-none overflow-y-auto"
+                            style={{ backgroundColor: '#ffffff', color: '#111827', colorScheme: 'light' }}
+                            onInput={(e) => setDocumentContent(e.currentTarget.innerHTML)}
+                            dangerouslySetInnerHTML={{ __html: documentContent || '<h1>문서 제목</h1><p>여기에 내용을 입력하세요...</p>' }}
+                        />
+                    )}
                 </div>
             </div>
         </div>
