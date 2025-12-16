@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
-  Bot,
   Send,
   Loader2,
 } from 'lucide-react'
@@ -188,16 +187,8 @@ export function EmailSidebarChat({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-3 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex items-center gap-2 mb-2">
-          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", accent.light)}>
-            <Bot className={cn("w-3.5 h-3.5", accent.text)} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-zinc-900 dark:text-white text-sm">이메일 AI</h2>
-          </div>
-        </div>
-
+      <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+        <h2 className="font-semibold text-zinc-900 dark:text-white text-sm">이메일 AI</h2>
       </div>
 
       {/* Chat Messages */}
