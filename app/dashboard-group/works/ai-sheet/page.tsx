@@ -28,8 +28,11 @@ import {
 import { SiGoogledrive } from "react-icons/si"
 import { cn } from "@/lib/utils"
 import ExcelRibbon from "./excel-ribbon"
+import type { SpreadsheetEditorAPI } from "./spreadsheet-editor"
+import { createSheetAPI, SheetAPIWrapper } from "./lib/sheet-api"
+import type { SpreadsheetAction, CellFormat, SingleRange, Range } from "./lib/types"
 
-// Dynamic import for Handsontable (client-side only)
+// Dynamic import for Fortune-sheet (client-side only)
 const SpreadsheetEditor = dynamic(() => import("./spreadsheet-editor"), {
     ssr: false,
     loading: () => (
@@ -43,11 +46,6 @@ interface Message {
     role: 'user' | 'assistant'
     content: string
     action?: SpreadsheetAction
-}
-
-interface SpreadsheetAction {
-    type: 'set_cells' | 'set_formula' | 'create_chart' | 'format' | 'clear' | 'insert_row' | 'insert_col' | 'delete_row' | 'delete_col'
-    data?: any
 }
 
 const QUICK_PROMPTS = [
@@ -69,8 +67,10 @@ export default function AISheetPage() {
     const [isInputExpanded, setIsInputExpanded] = useState(true)
     const [showFileMenu, setShowFileMenu] = useState(false)
     const [showModeModal, setShowModeModal] = useState(false)
+    const [sheetApiReady, setSheetApiReady] = useState(false)
     const messagesEndRef = useRef<HTMLDivElement>(null)
-    const spreadsheetRef = useRef<any>(null)
+    const spreadsheetRef = useRef<SpreadsheetEditorAPI | null>(null)
+    const sheetApiRef = useRef<SheetAPIWrapper | null>(null)
     const fileMenuRef = useRef<HTMLDivElement>(null)
     const modeModalRef = useRef<HTMLDivElement>(null)
 
@@ -96,37 +96,213 @@ export default function AISheetPage() {
         scrollToBottom()
     }, [messages])
 
-    // Execute spreadsheet action
+    // Handle spreadsheet ready callback
+    const handleSpreadsheetReady = useCallback((api: SpreadsheetEditorAPI) => {
+        console.log('Spreadsheet API ready')
+        spreadsheetRef.current = api
+        sheetApiRef.current = createSheetAPI(api)
+        setSheetApiReady(true)
+    }, [])
+
+    // Execute spreadsheet action using Fortune-sheet API directly
     const executeAction = useCallback((action: SpreadsheetAction) => {
         if (!action) return
-        console.log('executeAction called with:', action.type)
 
+        const api = spreadsheetRef.current
+        if (!api) {
+            console.warn('Spreadsheet API not ready, falling back to state-based approach')
+            // Fallback to state-based approach for backward compatibility
+            executeActionFallback(action)
+            return
+        }
+
+        console.log('Executing action via Fortune-sheet API:', action.type)
+
+        switch (action.type) {
+            case 'set_cells':
+                if (action.data?.cells) {
+                    action.data.cells.forEach((cell: { row: number, col: number, value: any, format?: CellFormat }) => {
+                        api.setCellValue(cell.row, cell.col, cell.value)
+                        // Apply format if provided
+                        if (cell.format) {
+                            if (cell.format.bold) api.setCellFormat(cell.row, cell.col, 'bl', 1)
+                            if (cell.format.italic) api.setCellFormat(cell.row, cell.col, 'it', 1)
+                            if (cell.format.fontColor) api.setCellFormat(cell.row, cell.col, 'fc', cell.format.fontColor)
+                            if (cell.format.backgroundColor) api.setCellFormat(cell.row, cell.col, 'bg', cell.format.backgroundColor)
+                            if (cell.format.fontSize) api.setCellFormat(cell.row, cell.col, 'fs', cell.format.fontSize)
+                        }
+                    })
+                }
+                break
+
+            case 'set_formula':
+                if (action.data) {
+                    const formula = action.data.formula.startsWith('=') ? action.data.formula : `=${action.data.formula}`
+                    api.setCellValue(action.data.row, action.data.col, { f: formula })
+                }
+                break
+
+            case 'clear':
+                if (action.data?.range) {
+                    const { row, column } = action.data.range
+                    for (let r = row[0]; r <= row[1]; r++) {
+                        for (let c = column[0]; c <= column[1]; c++) {
+                            api.clearCell(r, c)
+                        }
+                    }
+                } else {
+                    // Clear all - clear entire sheet
+                    for (let r = 0; r < 50; r++) {
+                        for (let c = 0; c < 26; c++) {
+                            api.clearCell(r, c)
+                        }
+                    }
+                }
+                break
+
+            case 'format_cells':
+                if (action.data?.range && action.data?.format) {
+                    const { row, column } = action.data.range
+                    const format = action.data.format
+                    for (let r = row[0]; r <= row[1]; r++) {
+                        for (let c = column[0]; c <= column[1]; c++) {
+                            if (format.bold) api.setCellFormat(r, c, 'bl', 1)
+                            if (format.italic) api.setCellFormat(r, c, 'it', 1)
+                            if (format.underline) api.setCellFormat(r, c, 'un', 1)
+                            if (format.strikethrough) api.setCellFormat(r, c, 'cl', 1)
+                            if (format.fontColor) api.setCellFormat(r, c, 'fc', format.fontColor)
+                            if (format.backgroundColor) api.setCellFormat(r, c, 'bg', format.backgroundColor)
+                            if (format.fontSize) api.setCellFormat(r, c, 'fs', format.fontSize)
+                            if (format.fontFamily) api.setCellFormat(r, c, 'ff', format.fontFamily)
+                            if (format.horizontalAlign !== undefined) {
+                                const ht = format.horizontalAlign === 'left' ? 0 : format.horizontalAlign === 'center' ? 1 : 2
+                                api.setCellFormat(r, c, 'ht', ht)
+                            }
+                            if (format.verticalAlign !== undefined) {
+                                const vt = format.verticalAlign === 'top' ? 0 : format.verticalAlign === 'middle' ? 1 : 2
+                                api.setCellFormat(r, c, 'vt', vt)
+                            }
+                        }
+                    }
+                }
+                break
+
+            case 'insert_row':
+                api.insertRowOrColumn('row', action.data?.index ?? 0, action.data?.count ?? 1, action.data?.direction ?? 'rightbottom')
+                break
+
+            case 'insert_col':
+                api.insertRowOrColumn('column', action.data?.index ?? 0, action.data?.count ?? 1, action.data?.direction ?? 'rightbottom')
+                break
+
+            case 'delete_row':
+                api.deleteRowOrColumn('row', action.data?.start ?? 0, action.data?.end ?? action.data?.start ?? 0)
+                break
+
+            case 'delete_col':
+                api.deleteRowOrColumn('column', action.data?.start ?? 0, action.data?.end ?? action.data?.start ?? 0)
+                break
+
+            case 'merge_cells':
+                if (action.data?.range) {
+                    const range: Range = { row: action.data.range.row, column: action.data.range.column }
+                    api.mergeCells(range, action.data.type || 'merge-all')
+                }
+                break
+
+            case 'unmerge_cells':
+                if (action.data?.range) {
+                    const range: Range = { row: action.data.range.row, column: action.data.range.column }
+                    api.cancelMerge(range)
+                }
+                break
+
+            case 'auto_fill':
+                if (action.data?.sourceRange && action.data?.targetRange && action.data?.direction) {
+                    api.autoFillCell(action.data.sourceRange, action.data.targetRange, action.data.direction)
+                }
+                break
+
+            case 'set_row_height':
+                if (action.data?.heights) {
+                    api.setRowHeight(action.data.heights)
+                }
+                break
+
+            case 'set_col_width':
+                if (action.data?.widths) {
+                    api.setColumnWidth(action.data.widths)
+                }
+                break
+
+            case 'hide_row':
+                if (action.data?.rows) {
+                    api.hideRowOrColumn(action.data.rows.map(String), 'row')
+                }
+                break
+
+            case 'hide_col':
+                if (action.data?.columns) {
+                    api.hideRowOrColumn(action.data.columns.map(String), 'column')
+                }
+                break
+
+            case 'show_row':
+                if (action.data?.rows) {
+                    api.showRowOrColumn(action.data.rows.map(String), 'row')
+                }
+                break
+
+            case 'show_col':
+                if (action.data?.columns) {
+                    api.showRowOrColumn(action.data.columns.map(String), 'column')
+                }
+                break
+
+            case 'add_sheet':
+                api.addSheet(action.data?.sheetId)
+                break
+
+            case 'delete_sheet':
+                api.deleteSheet(action.data)
+                break
+
+            case 'rename_sheet':
+                if (action.data?.name) {
+                    api.setSheetName(action.data.name, action.data)
+                }
+                break
+
+            default:
+                console.warn(`Unhandled action type: ${action.type}`)
+        }
+    }, [])
+
+    // Fallback state-based action execution (for backward compatibility)
+    const executeActionFallback = useCallback((action: SpreadsheetAction) => {
         setSpreadsheetData(prevData => {
             const newData = prevData.map(row => [...row])
 
             switch (action.type) {
                 case 'set_cells':
                     if (action.data?.cells) {
-                        console.log('Setting cells:', action.data.cells.length, 'cells')
                         action.data.cells.forEach((cell: { row: number, col: number, value: any }) => {
                             if (cell.row < newData.length && cell.col < newData[0].length) {
                                 newData[cell.row][cell.col] = cell.value
                             }
                         })
-                        console.log('Sample data after set:', newData[0].slice(0, 5), newData[1]?.slice(0, 5))
                     }
                     break
 
                 case 'clear':
                     if (action.data?.range) {
-                        const { startRow, startCol, endRow, endCol } = action.data.range
-                        for (let r = startRow; r <= endRow && r < newData.length; r++) {
-                            for (let c = startCol; c <= endCol && c < newData[0].length; c++) {
+                        const { row, column } = action.data.range
+                        for (let r = row[0]; r <= row[1] && r < newData.length; r++) {
+                            for (let c = column[0]; c <= column[1] && c < newData[0].length; c++) {
                                 newData[r][c] = ''
                             }
                         }
                     } else {
-                        // Clear all
                         return Array(50).fill(null).map(() => Array(26).fill(''))
                     }
                     break
@@ -142,14 +318,14 @@ export default function AISheetPage() {
                     break
 
                 case 'delete_row':
-                    const deleteRowIdx = action.data?.index ?? newData.length - 1
+                    const deleteRowIdx = action.data?.start ?? newData.length - 1
                     if (deleteRowIdx < newData.length) {
                         newData.splice(deleteRowIdx, 1)
                     }
                     break
 
                 case 'delete_col':
-                    const deleteColIdx = action.data?.index ?? newData[0].length - 1
+                    const deleteColIdx = action.data?.start ?? newData[0].length - 1
                     newData.forEach(row => {
                         if (deleteColIdx < row.length) {
                             row.splice(deleteColIdx, 1)
@@ -204,7 +380,6 @@ export default function AISheetPage() {
                 // Execute the action if present
                 if (data.action) {
                     console.log('Executing action:', data.action.type)
-                    console.log('Action data:', JSON.stringify(data.action.data, null, 2))
                     executeAction(data.action)
                 }
             }
@@ -219,29 +394,359 @@ export default function AISheetPage() {
         }
     }
 
-    // Handle ribbon actions
+    // Handle ribbon actions using Fortune-sheet API
     const handleRibbonAction = useCallback((action: string, data?: any) => {
         console.log('Ribbon action:', action, data)
-        switch (action) {
-            case 'insert':
-                executeAction({ type: 'insert_row', data: { index: 0 } })
-                break
-            case 'delete':
-                executeAction({ type: 'delete_row', data: { index: 0 } })
-                break
-            case 'sort':
-                // TODO: Implement sorting
-                break
-            case 'filter':
-                // TODO: Implement filtering
-                break
+
+        const api = spreadsheetRef.current
+        if (!api) {
+            console.warn('Spreadsheet API not ready')
+            return
         }
-    }, [executeAction])
+
+        // Get current selection for context
+        const selection = api.getSelection()
+        const range: SingleRange | null = selection && selection.length > 0
+            ? { row: [selection[0].row[0], selection[0].row[1] ?? selection[0].row[0]], column: [selection[0].column[0], selection[0].column[1] ?? selection[0].column[0]] }
+            : null
+
+        switch (action) {
+            // Clipboard
+            case 'cut':
+            case 'copy':
+            case 'paste':
+                // These require browser clipboard API integration
+                console.log(`Clipboard action: ${action}`)
+                break
+
+            // Undo/Redo
+            case 'undo':
+                api.handleUndo()
+                break
+            case 'redo':
+                api.handleRedo()
+                break
+
+            // Font formatting
+            case 'bold':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'bl', 1)
+                        }
+                    }
+                }
+                break
+            case 'italic':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'it', 1)
+                        }
+                    }
+                }
+                break
+            case 'underline':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'un', 1)
+                        }
+                    }
+                }
+                break
+            case 'strikethrough':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'cl', 1)
+                        }
+                    }
+                }
+                break
+
+            // Font settings
+            case 'fontFamily':
+                if (range && data?.value) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'ff', data.value)
+                        }
+                    }
+                }
+                break
+            case 'fontSize':
+                if (range && data?.value) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'fs', data.value)
+                        }
+                    }
+                }
+                break
+            case 'fontColor':
+                if (range && data?.value) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'fc', data.value)
+                        }
+                    }
+                }
+                break
+            case 'fillColor':
+            case 'backgroundColor':
+                if (range && data?.value) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'bg', data.value)
+                        }
+                    }
+                }
+                break
+
+            // Alignment
+            case 'alignLeft':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'ht', 0)
+                        }
+                    }
+                }
+                break
+            case 'alignCenter':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'ht', 1)
+                        }
+                    }
+                }
+                break
+            case 'alignRight':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'ht', 2)
+                        }
+                    }
+                }
+                break
+            case 'alignTop':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'vt', 0)
+                        }
+                    }
+                }
+                break
+            case 'alignMiddle':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'vt', 1)
+                        }
+                    }
+                }
+                break
+            case 'alignBottom':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'vt', 2)
+                        }
+                    }
+                }
+                break
+
+            // Merge
+            case 'merge-center':
+            case 'merge-all':
+                if (range) {
+                    api.mergeCells({ row: range.row, column: range.column }, 'merge-all')
+                }
+                break
+            case 'merge-horizontal':
+                if (range) {
+                    api.mergeCells({ row: range.row, column: range.column }, 'merge-horizontal')
+                }
+                break
+            case 'merge-vertical':
+                if (range) {
+                    api.mergeCells({ row: range.row, column: range.column }, 'merge-vertical')
+                }
+                break
+            case 'unmerge':
+                if (range) {
+                    api.cancelMerge({ row: range.row, column: range.column })
+                }
+                break
+
+            // Row/Column operations
+            case 'insert-row-above':
+                if (range) {
+                    api.insertRowOrColumn('row', range.row[0], 1, 'lefttop')
+                }
+                break
+            case 'insert-row-below':
+                if (range) {
+                    api.insertRowOrColumn('row', range.row[1], 1, 'rightbottom')
+                }
+                break
+            case 'insert-col-left':
+                if (range) {
+                    api.insertRowOrColumn('column', range.column[0], 1, 'lefttop')
+                }
+                break
+            case 'insert-col-right':
+                if (range) {
+                    api.insertRowOrColumn('column', range.column[1], 1, 'rightbottom')
+                }
+                break
+            case 'delete-row':
+                if (range) {
+                    api.deleteRowOrColumn('row', range.row[0], range.row[1])
+                }
+                break
+            case 'delete-col':
+                if (range) {
+                    api.deleteRowOrColumn('column', range.column[0], range.column[1])
+                }
+                break
+
+            // Clear
+            case 'clear-all':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.clearCell(r, c)
+                        }
+                    }
+                }
+                break
+            case 'clear-format':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellFormat(r, c, 'bg', null)
+                            api.setCellFormat(r, c, 'fc', null)
+                            api.setCellFormat(r, c, 'bl', 0)
+                            api.setCellFormat(r, c, 'it', 0)
+                            api.setCellFormat(r, c, 'un', 0)
+                            api.setCellFormat(r, c, 'cl', 0)
+                        }
+                    }
+                }
+                break
+            case 'clear-content':
+                if (range) {
+                    for (let r = range.row[0]; r <= range.row[1]; r++) {
+                        for (let c = range.column[0]; c <= range.column[1]; c++) {
+                            api.setCellValue(r, c, '')
+                        }
+                    }
+                }
+                break
+
+            // Functions
+            case 'sum':
+                if (range) {
+                    const rangeStr = `${String.fromCharCode(65 + range.column[0])}${range.row[0] + 1}:${String.fromCharCode(65 + range.column[1])}${range.row[1] + 1}`
+                    api.setCellValue(range.row[1] + 1, range.column[0], { f: `=SUM(${rangeStr})` })
+                }
+                break
+            case 'average':
+                if (range) {
+                    const rangeStr = `${String.fromCharCode(65 + range.column[0])}${range.row[0] + 1}:${String.fromCharCode(65 + range.column[1])}${range.row[1] + 1}`
+                    api.setCellValue(range.row[1] + 1, range.column[0], { f: `=AVERAGE(${rangeStr})` })
+                }
+                break
+            case 'count':
+                if (range) {
+                    const rangeStr = `${String.fromCharCode(65 + range.column[0])}${range.row[0] + 1}:${String.fromCharCode(65 + range.column[1])}${range.row[1] + 1}`
+                    api.setCellValue(range.row[1] + 1, range.column[0], { f: `=COUNT(${rangeStr})` })
+                }
+                break
+            case 'max':
+                if (range) {
+                    const rangeStr = `${String.fromCharCode(65 + range.column[0])}${range.row[0] + 1}:${String.fromCharCode(65 + range.column[1])}${range.row[1] + 1}`
+                    api.setCellValue(range.row[1] + 1, range.column[0], { f: `=MAX(${rangeStr})` })
+                }
+                break
+            case 'min':
+                if (range) {
+                    const rangeStr = `${String.fromCharCode(65 + range.column[0])}${range.row[0] + 1}:${String.fromCharCode(65 + range.column[1])}${range.row[1] + 1}`
+                    api.setCellValue(range.row[1] + 1, range.column[0], { f: `=MIN(${rangeStr})` })
+                }
+                break
+
+            // Fill
+            case 'fill-down':
+                if (range && range.row[1] > range.row[0]) {
+                    api.autoFillCell(
+                        { row: [range.row[0], range.row[0]], column: range.column },
+                        { row: [range.row[0] + 1, range.row[1]], column: range.column },
+                        'down'
+                    )
+                }
+                break
+            case 'fill-right':
+                if (range && range.column[1] > range.column[0]) {
+                    api.autoFillCell(
+                        { row: range.row, column: [range.column[0], range.column[0]] },
+                        { row: range.row, column: [range.column[0] + 1, range.column[1]] },
+                        'right'
+                    )
+                }
+                break
+
+            // Sheet operations
+            case 'add-sheet':
+                api.addSheet()
+                break
+            case 'delete-sheet':
+                api.deleteSheet()
+                break
+
+            // Sort (to be implemented in Phase 5)
+            case 'sort':
+            case 'sort-asc':
+            case 'sort-desc':
+                console.log('Sort action - to be implemented in Phase 5')
+                break
+
+            // Filter (to be implemented in Phase 5)
+            case 'filter':
+                console.log('Filter action - to be implemented in Phase 5')
+                break
+
+            // Conditional format (to be implemented in Phase 5)
+            case 'conditional-format':
+                console.log('Conditional format - to be implemented in Phase 5')
+                break
+
+            default:
+                console.log(`Unhandled ribbon action: ${action}`)
+        }
+    }, [])
 
     const getDataSummary = () => {
+        // Try to get data from Fortune-sheet API first
+        const api = spreadsheetRef.current
+        let data = spreadsheetData
+
+        if (api) {
+            try {
+                data = api.getData()
+            } catch (e) {
+                // Fallback to state
+            }
+        }
+
         // Find the actual used range
         let maxRow = 0, maxCol = 0
-        spreadsheetData.forEach((row, r) => {
+        data.forEach((row, r) => {
             row.forEach((cell, c) => {
                 if (cell !== '' && cell !== null) {
                     maxRow = Math.max(maxRow, r)
@@ -250,12 +755,12 @@ export default function AISheetPage() {
             })
         })
 
-        if (maxRow === 0 && maxCol === 0 && !spreadsheetData[0][0]) {
+        if (maxRow === 0 && maxCol === 0 && !data[0][0]) {
             return { isEmpty: true, data: [] }
         }
 
         // Return first 20 rows and 10 cols max for context
-        const limitedData = spreadsheetData
+        const limitedData = data
             .slice(0, Math.min(maxRow + 1, 20))
             .map(row => row.slice(0, Math.min(maxCol + 1, 10)))
 
@@ -284,6 +789,9 @@ export default function AISheetPage() {
                             <FileSpreadsheet className="w-4 h-4 text-white" />
                         </div>
                         <span className="font-semibold text-zinc-900 dark:text-white">AI 시트</span>
+                        {sheetApiReady && (
+                            <span className="text-xs text-emerald-500 ml-2">● API Ready</span>
+                        )}
                     </div>
                 </header>
 
@@ -505,6 +1013,7 @@ export default function AISheetPage() {
                         ref={spreadsheetRef}
                         data={spreadsheetData}
                         onChange={setSpreadsheetData}
+                        onReady={handleSpreadsheetReady}
                     />
                 </div>
             </div>

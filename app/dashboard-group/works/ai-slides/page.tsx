@@ -791,43 +791,44 @@ export default function AISlidesPage() {
                     </button>
                 </div>
 
-                {/* Todo Progress */}
-                {todos.length > 0 && (
-                    <div className="p-4 border-b border-zinc-800 max-h-[300px] overflow-y-auto">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs text-zinc-500">
-                                총: {todos.length}개의 할 일
-                            </span>
-                            <span className="text-xs text-zinc-500">
-                                남은 할 일 {todos.filter(t => t.status !== 'completed').length}개
-                            </span>
-                        </div>
-                        <div className="space-y-2">
-                            {todos.map(todo => (
-                                <div
-                                    key={todo.id}
-                                    className={cn(
-                                        "flex items-center gap-2 text-sm",
-                                        todo.status === 'completed' ? 'text-zinc-600 line-through' :
-                                        todo.status === 'in_progress' ? 'text-white' : 'text-zinc-500'
-                                    )}
-                                >
-                                    {todo.status === 'completed' ? (
-                                        <Check className="w-4 h-4 text-green-500" />
-                                    ) : todo.status === 'in_progress' ? (
-                                        <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                                    ) : (
-                                        <Circle className="w-4 h-4" />
-                                    )}
-                                    {todo.text}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Messages */}
+                {/* Chat Content - Single Scroll Container */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {/* Todo Progress */}
+                    {todos.length > 0 && (
+                        <div className="bg-zinc-800/50 rounded-xl p-4 mb-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs text-zinc-500">
+                                    총: {todos.length}개의 할 일
+                                </span>
+                                <span className="text-xs text-zinc-500">
+                                    남은 할 일 {todos.filter(t => t.status !== 'completed').length}개
+                                </span>
+                            </div>
+                            <div className="space-y-2">
+                                {todos.map(todo => (
+                                    <div
+                                        key={todo.id}
+                                        className={cn(
+                                            "flex items-center gap-2 text-sm",
+                                            todo.status === 'completed' ? 'text-zinc-600 line-through' :
+                                            todo.status === 'in_progress' ? 'text-white' : 'text-zinc-500'
+                                        )}
+                                    >
+                                        {todo.status === 'completed' ? (
+                                            <Check className="w-4 h-4 text-green-500" />
+                                        ) : todo.status === 'in_progress' ? (
+                                            <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                                        ) : (
+                                            <Circle className="w-4 h-4" />
+                                        )}
+                                        {todo.text}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Messages */}
                     {messages.map((msg, i) => (
                         <div key={i} className={cn("flex gap-3", msg.role === 'user' && "flex-row-reverse")}>
                             <div className={cn(
