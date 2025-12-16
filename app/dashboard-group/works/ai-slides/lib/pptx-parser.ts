@@ -88,25 +88,38 @@ async function parseRelationships(zip: JSZip, slideIndex: number): Promise<Map<s
     const relsPath = `ppt/slides/_rels/slide${slideIndex}.xml.rels`
 
     const relsFile = zip.file(relsPath)
-    if (!relsFile) return relMap
+    if (!relsFile) {
+        console.log(`Relationship file not found: ${relsPath}`)
+        return relMap
+    }
 
     const relsXml = await relsFile.async('string')
 
-    // Match Relationship tags
-    const relRegex = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*>/g
-    let match
+    // Match Relationship tags - handle different attribute orders
+    const relationshipRegex = /<Relationship[^>]+>/g
+    let relMatch
 
-    while ((match = relRegex.exec(relsXml)) !== null) {
-        const rId = match[1]
-        const target = match[2]
+    while ((relMatch = relationshipRegex.exec(relsXml)) !== null) {
+        const relTag = relMatch[0]
 
-        // Check if it's a media file
-        if (target.includes('media/')) {
-            const filename = target.split('/').pop() || target
-            relMap.set(rId, filename)
+        // Extract Id and Target attributes separately
+        const idMatch = relTag.match(/Id="([^"]+)"/)
+        const targetMatch = relTag.match(/Target="([^"]+)"/)
+
+        if (idMatch && targetMatch) {
+            const rId = idMatch[1]
+            const target = targetMatch[1]
+
+            // Check if it's a media file
+            if (target.includes('media/') || target.includes('image')) {
+                const filename = target.split('/').pop() || target
+                relMap.set(rId, filename)
+                console.log(`Mapped ${rId} -> ${filename}`)
+            }
         }
     }
 
+    console.log(`Slide ${slideIndex}: Found ${relMap.size} image relationships`)
     return relMap
 }
 
@@ -115,14 +128,15 @@ function extractImageRefs(xml: string): string[] {
     const imageRefs: string[] = []
 
     // Match blip elements which reference images
-    // <a:blip r:embed="rId2" />
-    const blipRegex = /r:embed="([^"]+)"/g
+    // <a:blip r:embed="rId2" /> or <a:blip r:link="rId3" />
+    const blipRegex = /r:(?:embed|link)="([^"]+)"/g
     let match
 
     while ((match = blipRegex.exec(xml)) !== null) {
         imageRefs.push(match[1])
     }
 
+    console.log(`Found ${imageRefs.length} image refs in slide:`, imageRefs)
     return imageRefs
 }
 

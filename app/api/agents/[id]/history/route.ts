@@ -35,13 +35,12 @@ export async function GET(
       return NextResponse.json({ data: [] })
     }
 
-    // 메시지 조회 (최근 100개)
+    // 메시지 조회 (제한 없음 - 전체 대화 기록)
     const { data: messages, error } = await (adminClient as any)
       .from('agent_chat_messages')
       .select('*')
       .eq('conversation_id', conversation.id)
       .order('created_at', { ascending: true })
-      .limit(100)
 
     if (error) {
       console.error('Get messages error:', error)

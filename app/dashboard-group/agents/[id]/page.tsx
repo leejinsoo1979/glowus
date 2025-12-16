@@ -6607,47 +6607,70 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
   const [conversations, setConversations] = useState<any[]>([])
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
 
   // 날짜별 대화 기록 가져오기
-  useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const res = await fetch(`/api/agents/${agentId}/history`)
-        if (res.ok) {
-          const { data } = await res.json()
-          if (data && data.length > 0) {
-            // 날짜별로 그룹화
-            const grouped = data.reduce((acc: any, msg: any) => {
-              const date = new Date(msg.created_at).toLocaleDateString('ko-KR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })
-              if (!acc[date]) acc[date] = []
-              acc[date].push(msg)
-              return acc
-            }, {})
-
-            // 날짜 목록 생성 (최신순)
-            const dateList = Object.keys(grouped).sort((a, b) => {
-              return new Date(b).getTime() - new Date(a).getTime()
+  const fetchHistory = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`/api/agents/${agentId}/history`)
+      if (res.ok) {
+        const { data } = await res.json()
+        if (data && data.length > 0) {
+          // 날짜별로 그룹화
+          const grouped = data.reduce((acc: any, msg: any) => {
+            const date = new Date(msg.created_at).toLocaleDateString('ko-KR', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
             })
+            if (!acc[date]) acc[date] = []
+            acc[date].push(msg)
+            return acc
+          }, {})
 
-            setConversations(dateList.map(date => ({
-              date,
-              messages: grouped[date],
-              messageCount: grouped[date].length,
-            })))
-          }
+          // 날짜 목록 생성 (최신순)
+          const dateList = Object.keys(grouped).sort((a, b) => {
+            return new Date(b).getTime() - new Date(a).getTime()
+          })
+
+          setConversations(dateList.map(date => ({
+            date,
+            messages: grouped[date],
+            messageCount: grouped[date].length,
+          })))
+        } else {
+          setConversations([])
         }
-      } catch (err) {
-        console.error('Failed to fetch history:', err)
-      } finally {
-        setLoading(false)
       }
+    } catch (err) {
+      console.error('Failed to fetch history:', err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchHistory()
   }, [agentId])
+
+  // 전체 대화 기록 삭제
+  const handleDeleteAll = async () => {
+    if (!confirm('모든 대화 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return
+
+    try {
+      setDeleting(true)
+      const res = await fetch(`/api/agents/${agentId}/history`, { method: 'DELETE' })
+      if (res.ok) {
+        setConversations([])
+        setSelectedDate(null)
+      }
+    } catch (err) {
+      console.error('Failed to delete history:', err)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -6671,6 +6694,30 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
 
   return (
     <div className="space-y-4">
+      {/* 헤더 - 전체 삭제 버튼 */}
+      <div className="flex items-center justify-between">
+        <p className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+          총 {conversations.reduce((acc, c) => acc + c.messageCount, 0)}개의 메시지
+        </p>
+        <button
+          onClick={handleDeleteAll}
+          disabled={deleting}
+          className={cn(
+            'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors',
+            isDark
+              ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+              : 'bg-red-50 text-red-500 hover:bg-red-100'
+          )}
+        >
+          {deleting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Trash2 className="w-4 h-4" />
+          )}
+          전체 삭제
+        </button>
+      </div>
+
       {/* 날짜별 대화 목록 */}
       {conversations.map((conv) => (
         <div
