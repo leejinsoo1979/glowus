@@ -136,11 +136,15 @@ export default function EmoticonsPage() {
       })
 
       if (res.ok) {
+        const result = await res.json()
+        console.log('[Emoticons] 저장 결과:', result)
+        console.log('[Emoticons] 업로드된 URL 수:', uploadedUrls.length)
         await fetchEmoticons()
         alert(`${uploadedUrls.length}개의 GIF가 포함된 카드가 생성되었습니다!`)
       } else {
         const err = await res.json()
-        alert(`저장 실패: ${err.error || '알 수 없는 오류'}`)
+        console.error('[Emoticons] 저장 실패:', err)
+        alert(`저장 실패: ${err.error || '알 수 없는 오류'}\n\n* Supabase에서 마이그레이션을 실행해주세요.`)
       }
     } catch (err) {
       console.error('Upload error:', err)
