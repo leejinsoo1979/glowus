@@ -36,21 +36,22 @@ export class SmtpService {
         pass: password,
       },
       tls: {
-        // Do not fail on invalid certificates
         rejectUnauthorized: false,
+        minVersion: 'TLSv1' as any,
       },
     })
   }
 
-  async testConnection(): Promise<boolean> {
-    if (!this.transporter) return false
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
+    if (!this.transporter) return { success: false, error: 'Transporter not initialized' }
 
     try {
       await this.transporter.verify()
-      return true
+      return { success: true }
     } catch (error) {
-      console.error('SMTP connection test failed:', error)
-      return false
+      const errorMessage = error instanceof Error ? error.message : 'Unknown SMTP error'
+      console.error('SMTP connection test failed:', errorMessage, error)
+      return { success: false, error: errorMessage }
     }
   }
 

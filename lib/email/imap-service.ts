@@ -43,6 +43,10 @@ export class ImapService {
         pass: password,
       },
       logger: false,
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1' as any,
+      },
     })
   }
 
@@ -295,14 +299,15 @@ export class ImapService {
     }
   }
 
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
       await this.connect()
       await this.disconnect()
-      return true
+      return { success: true }
     } catch (error) {
-      console.error('IMAP connection test failed:', error)
-      return false
+      const errorMessage = error instanceof Error ? error.message : 'Unknown IMAP error'
+      console.error('IMAP connection test failed:', errorMessage, error)
+      return { success: false, error: errorMessage }
     }
   }
 }

@@ -20,15 +20,17 @@ export async function POST(
     const { customInstructions, clearExisting } = body
 
     // 프로젝트 정보 가져오기
-    const { data: project, error: projectError } = await supabase
+    const { data: projectData, error: projectError } = await supabase
       .from('projects')
       .select('id, name, description, status, deadline')
       .eq('id', projectId)
       .single()
 
-    if (projectError || !project) {
+    if (projectError || !projectData) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
+
+    const project = projectData as { id: string; name: string; description: string | null; status: string | null; deadline: string | null }
 
     // 기존 태스크 정보 가져오기 (참고용)
     const { data: existingTasks } = await supabase

@@ -102,16 +102,23 @@ export class EmailAIAgent {
       const parsed = JSON.parse(content)
 
       // Update email in database with AI analysis
+      const updateData: Record<string, unknown> = {
+        ai_summary: parsed.summary,
+        ai_priority: parsed.priority,
+        ai_category: parsed.category,
+        ai_sentiment: parsed.sentiment,
+        ai_action_required: parsed.action_required,
+        ai_analyzed_at: new Date().toISOString(),
+      }
+
+      // Auto-mark as spam if categorized as spam
+      if (parsed.category === 'spam') {
+        updateData.is_spam = true
+      }
+
       await (this.supabase as any)
         .from('email_messages')
-        .update({
-          ai_summary: parsed.summary,
-          ai_priority: parsed.priority,
-          ai_category: parsed.category,
-          ai_sentiment: parsed.sentiment,
-          ai_action_required: parsed.action_required,
-          ai_analyzed_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', email.id)
 
       return parsed

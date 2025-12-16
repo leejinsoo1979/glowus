@@ -1333,12 +1333,12 @@ export function TwoLevelSidebar() {
       {/* Level 2: 서브메뉴 사이드바 */}
       {!pathname?.includes('/works/new') && (
         <AnimatePresence>
-          {sidebarOpen && activeItems.length > 0 && (
+          {sidebarOpen && activeItems.length > 0 && currentCategory !== 'email' && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: currentCategory === 'email' ? emailSidebarWidth : 240, opacity: 1 }}
+              animate={{ width: 240, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={isResizingEmail ? { duration: 0 } : { duration: 0.2 }}
+              transition={{ duration: 0.2 }}
               className={cn(
                 'fixed left-16 top-16 bottom-0 z-30 border-r overflow-hidden bg-white dark:bg-zinc-950',
                 isDashboardRoot
@@ -1346,39 +1346,7 @@ export function TwoLevelSidebar() {
                   : isDark ? 'border-zinc-800' : 'border-zinc-200'
               )}
             >
-              <div className="h-full flex flex-col" style={{ width: currentCategory === 'email' ? emailSidebarWidth : 240 }}>
-                {/* Email - Special Chat Interface */}
-                {currentCategory === 'email' ? (
-                  <>
-                    <EmailSidebarChat
-                      accounts={emailAccounts}
-                      selectedAccount={selectedEmailAccount}
-                      onAccountChange={setSelectedEmailAccount}
-                      onAddAccount={() => router.push('/dashboard-group/email?action=add-account')}
-                      allEmails={allEmails}
-                      currentFolder={currentEmailFolder}
-                      onFolderChange={handleEmailFolderChange}
-                      onCompose={() => router.push('/dashboard-group/email?action=compose')}
-                      onSync={handleSyncEmails}
-                      isSyncing={isSyncingEmail}
-                    />
-                    {/* Resize Handle */}
-                    <div
-                      onMouseDown={handleEmailResizeMouseDown}
-                      className={cn(
-                        "absolute top-0 right-0 w-2 hover:w-3 h-full cursor-col-resize transition-all flex items-center justify-center group",
-                        isResizingEmail ? "w-3 bg-accent/30" : "hover:bg-accent/20"
-                      )}
-                    >
-                      <div className="absolute inset-y-0 -left-1 -right-1" />
-                      <div className={cn(
-                        "w-0.5 h-8 rounded-full transition-colors",
-                        isResizingEmail ? "bg-accent" : "bg-zinc-400 group-hover:bg-accent"
-                      )} />
-                    </div>
-                  </>
-                ) : (
-                  <>
+              <div className="h-full flex flex-col" style={{ width: 240 }}>
                 {/* Category Header */}
                 <div className={cn(
                   'h-16 flex items-center px-4 border-b flex-shrink-0',
@@ -1698,8 +1666,6 @@ export function TwoLevelSidebar() {
                     })
                   )}
                 </nav>
-                  </>
-                )}
               </div>
             </motion.aside>
           )}

@@ -8,23 +8,34 @@ import {
   Plus,
   Inbox,
   Star,
-  Send,
   Trash2,
   RefreshCw,
   Sparkles,
   Loader2,
-  X,
   Paperclip,
   Reply,
   Forward,
   ArrowLeft,
   Bot,
+  ChevronDown,
+  MailOpen,
+  AlertTriangle,
+  FolderInput,
+  ReplyAll,
+  Check,
+  Minus,
+  MailX,
+  Filter,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/stores/themeStore'
+import { useUIStore } from '@/stores/uiStore'
 import { Button } from '@/components/ui/Button'
 import { EmailAccountModal, EmailAccountFormData } from '@/components/email/EmailAccountModal'
 import { EmailFolderMenu } from '@/components/email/EmailFolderMenu'
+import { EmailSidebarChat } from '@/components/email/EmailSidebarChat'
+import { EmailCompose } from '@/components/email/EmailCompose'
 import type { EmailAccount, EmailMessage } from '@/types/email'
 
 type Folder = 'inbox' | 'starred' | 'sent' | 'trash' | 'spam' | 'drafts' | 'all' | 'scheduled' | 'attachments'
@@ -44,6 +55,7 @@ const folderLabels: Record<Folder, string> = {
 export default function EmailPage() {
   const searchParams = useSearchParams()
   const { accentColor } = useThemeStore()
+  const { emailSidebarWidth, setEmailSidebarWidth, isResizingEmail, setIsResizingEmail } = useUIStore()
   const [accounts, setAccounts] = useState<EmailAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState<EmailAccount | null>(null)
   const [emails, setEmails] = useState<EmailMessage[]>([])
@@ -69,14 +81,138 @@ export default function EmailPage() {
   const [isAddingAccount, setIsAddingAccount] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isGeneratingReply, setIsGeneratingReply] = useState(false)
+  const [isChatOpen, setIsChatOpen] = useState(true)
+  const [pendingAiReply, setPendingAiReply] = useState<{
+    to: string
+    subject: string
+    body: string
+    originalEmail: EmailMessage
+  } | null>(null)
+  // 답장 유형 선택을 위한 상태
+  const [replyOptionsEmail, setReplyOptionsEmail] = useState<EmailMessage | null>(null)
 
-  // Compose email state
-  const [composeTo, setComposeTo] = useState('')
-  const [composeSubject, setComposeSubject] = useState('')
-  const [composeBody, setComposeBody] = useState('')
+  // Multi-select state
+  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
+
+  // Filter state
+  type EmailFilter = 'all' | 'unread' | 'starred' | 'attachments'
+  const [activeFilter, setActiveFilter] = useState<EmailFilter>('all')
+
+  // Toggle email selection
+  const toggleEmailSelection = useCallback((emailId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setSelectedEmailIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(emailId)) {
+        newSet.delete(emailId)
+      } else {
+        newSet.add(emailId)
+      }
+      return newSet
+    })
+  }, [])
+
+  // Select all / deselect all (based on current filter)
+  const toggleSelectAll = useCallback(() => {
+    const currentFiltered = emails.filter((email) => {
+      switch (activeFilter) {
+        case 'unread': return !email.is_read
+        case 'starred': return email.is_starred
+        case 'attachments': return email.has_attachments
+        default: return true
+      }
+    })
+    if (selectedEmailIds.size === currentFiltered.length) {
+      setSelectedEmailIds(new Set())
+    } else {
+      setSelectedEmailIds(new Set(currentFiltered.map(e => e.id)))
+    }
+  }, [emails, activeFilter, selectedEmailIds.size])
+
+  // Bulk actions
+  const handleBulkStar = async () => {
+    for (const emailId of Array.from(selectedEmailIds)) {
+      await handleStar(emailId, true)
+    }
+    setSelectedEmailIds(new Set())
+  }
+
+  const handleBulkMarkRead = async () => {
+    for (const emailId of Array.from(selectedEmailIds)) {
+      await handleMarkRead(emailId, true)
+    }
+    setSelectedEmailIds(new Set())
+  }
+
+  const handleBulkDelete = async () => {
+    for (const emailId of Array.from(selectedEmailIds)) {
+      await handleDelete(emailId)
+    }
+    setSelectedEmailIds(new Set())
+  }
+
+  const handleBulkSpam = async () => {
+    // Mark as spam - would need API support
+    for (const emailId of Array.from(selectedEmailIds)) {
+      try {
+        await fetch('/api/email/messages', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email_id: emailId, action: 'spam' }),
+        })
+      } catch (error) {
+        console.error('Failed to mark as spam:', error)
+      }
+    }
+    setSelectedEmailIds(new Set())
+    fetchEmails()
+  }
+
+  // Chat sidebar resize handlers
+  const handleChatResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizingEmail(true)
+  }, [setIsResizingEmail])
+
+  useEffect(() => {
+    if (!isResizingEmail) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX
+      const minWidth = 280
+      const maxWidth = 500
+      setEmailSidebarWidth(Math.min(Math.max(newWidth, minWidth), maxWidth))
+    }
+
+    const handleMouseUp = () => {
+      setIsResizingEmail(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizingEmail, setEmailSidebarWidth, setIsResizingEmail])
 
   // Email counts
   const unreadCount = allEmails.filter((e) => !e.is_read && !e.is_trash && !e.is_sent).length
+
+  // Filtered emails based on active filter
+  const filteredEmails = emails.filter((email) => {
+    switch (activeFilter) {
+      case 'unread':
+        return !email.is_read
+      case 'starred':
+        return email.is_starred
+      case 'attachments':
+        return email.has_attachments
+      default:
+        return true
+    }
+  })
 
   const getAccentClasses = () => {
     switch (accentColor) {
@@ -287,23 +423,63 @@ export default function EmailPage() {
     }
   }
 
-  // Generate AI reply
-  const handleGenerateReply = async (email: EmailMessage) => {
+  // AI 답장 버튼 클릭 - 유형 선택 화면 표시
+  const handleGenerateReply = (email: EmailMessage) => {
+    setReplyOptionsEmail(email)
+    setIsChatOpen(true)
+  }
+
+  // 답장 유형 선택 후 실제 답장 생성
+  const handleSelectReplyType = async (replyType: string) => {
+    if (!replyOptionsEmail) return
+
     setIsGeneratingReply(true)
+    setReplyOptionsEmail(null) // 옵션 닫기
+
     try {
       const res = await fetch('/api/email/ai/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email_id: email.id }),
+        body: JSON.stringify({
+          email_id: replyOptionsEmail.id,
+          reply_type: replyType,
+        }),
       })
       if (res.ok) {
-        // Handle response
+        const data = await res.json()
+        setPendingAiReply({
+          to: replyOptionsEmail.from_address,
+          subject: data.subject || (replyOptionsEmail.subject?.startsWith('Re:') ? replyOptionsEmail.subject : `Re: ${replyOptionsEmail.subject || ''}`),
+          body: data.body_text || '',
+          originalEmail: replyOptionsEmail,
+        })
+      } else {
+        const errorData = await res.json().catch(() => ({}))
+        alert(errorData.error || 'AI 답장 생성에 실패했습니다.')
       }
     } catch (error) {
       console.error('Failed to generate reply:', error)
+      alert('AI 답장 생성에 실패했습니다.')
     } finally {
       setIsGeneratingReply(false)
     }
+  }
+
+  // 답장 유형 선택 취소
+  const handleCancelReplyOptions = () => {
+    setReplyOptionsEmail(null)
+  }
+
+  // AI 답장 확인 후 메일쓰기로 이동
+  const handleConfirmAiReply = () => {
+    if (!pendingAiReply) return
+    setIsComposeOpen(true)
+    setSelectedEmail(null)
+  }
+
+  // AI 답장 취소
+  const handleCancelAiReply = () => {
+    setPendingAiReply(null)
   }
 
   // Select email and mark as read
@@ -315,18 +491,29 @@ export default function EmailPage() {
   }
 
   // Send email
-  const handleSendEmail = async () => {
-    if (!selectedAccount || !composeTo.trim() || !composeSubject.trim()) {
-      alert('받는 사람과 제목을 입력해주세요.')
+  const handleSendEmail = async (data: {
+    to: string
+    cc?: string
+    subject: string
+    body: string
+    bodyHtml: string
+  }) => {
+    if (!selectedAccount) {
+      alert('계정을 선택해주세요.')
       return
     }
 
     setIsSending(true)
     try {
-      const toAddresses = composeTo.split(',').map(e => {
+      const toAddresses = data.to.split(',').map(e => {
         const trimmed = e.trim()
         return { email: trimmed, name: trimmed.split('@')[0] }
       })
+
+      const ccAddresses = data.cc ? data.cc.split(',').map(e => {
+        const trimmed = e.trim()
+        return { email: trimmed, name: trimmed.split('@')[0] }
+      }) : undefined
 
       const res = await fetch('/api/email/send', {
         method: 'POST',
@@ -334,18 +521,16 @@ export default function EmailPage() {
         body: JSON.stringify({
           account_id: selectedAccount.id,
           to: toAddresses,
-          subject: composeSubject,
-          body_text: composeBody,
-          body_html: `<p>${composeBody.replace(/\n/g, '<br/>')}</p>`,
+          cc: ccAddresses,
+          subject: data.subject,
+          body_text: data.body,
+          body_html: data.bodyHtml,
         }),
       })
 
       if (res.ok) {
         alert('이메일이 발송되었습니다.')
         setIsComposeOpen(false)
-        setComposeTo('')
-        setComposeSubject('')
-        setComposeBody('')
       } else {
         const error = await res.json()
         alert(error.error || '이메일 발송에 실패했습니다.')
@@ -374,7 +559,7 @@ export default function EmailPage() {
     if (isToday) {
       return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
     }
-    return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+    return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
 
   // Handle folder change
@@ -386,7 +571,7 @@ export default function EmailPage() {
   return (
     <div className="h-[calc(100vh-64px)] flex bg-white dark:bg-zinc-900">
       {/* Folder Menu */}
-      <div className="w-52 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800">
+      <div className="w-64 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800">
         <EmailFolderMenu
           accounts={accounts}
           selectedAccount={selectedAccount}
@@ -401,30 +586,33 @@ export default function EmailPage() {
         />
       </div>
 
-      {/* Main Content */}
+      {/* Right Section: Header + (Content + Chat) */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
+        {/* Header - spans full width */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
           <div className="flex items-center gap-3">
-            {selectedEmail && (
+            {(selectedEmail || isComposeOpen) && (
               <button
-                onClick={() => setSelectedEmail(null)}
+                onClick={() => {
+                  if (isComposeOpen) setIsComposeOpen(false)
+                  else setSelectedEmail(null)
+                }}
                 className="p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
             )}
             <h1 className="text-lg font-bold text-zinc-900 dark:text-white">
-              {selectedEmail ? selectedEmail.subject || '(제목 없음)' : folderLabels[currentFolder]}
+              {isComposeOpen ? '메일 쓰기' : selectedEmail ? selectedEmail.subject || '(제목 없음)' : folderLabels[currentFolder]}
             </h1>
-            {!selectedEmail && unreadCount > 0 && currentFolder === 'inbox' && (
+            {!selectedEmail && !isComposeOpen && unreadCount > 0 && currentFolder === 'inbox' && (
               <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", accent.light, accent.text)}>
                 {unreadCount} 안읽음
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            {selectedEmail ? (
+            {isComposeOpen ? null : selectedEmail ? (
               <>
                 <button
                   onClick={() => handleStar(selectedEmail.id, !selectedEmail.is_starred)}
@@ -453,13 +641,54 @@ export default function EmailPage() {
                 <RefreshCw className={cn("w-5 h-5", isSyncing && "animate-spin")} />
               </button>
             )}
+            <button
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className={cn(
+                "p-2 rounded-lg transition-colors",
+                isChatOpen
+                  ? cn(accent.light, accent.text)
+                  : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              )}
+              title="AI 채팅"
+            >
+              <Bot className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden">
+        {/* Body Area: Content + Chat Sidebar */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main Content */}
+          <div className="flex-1 overflow-hidden min-w-0">
         <AnimatePresence mode="wait">
-          {selectedEmail ? (
+          {isComposeOpen ? (
+            /* Compose View */
+            <motion.div
+              key="compose"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="h-full"
+            >
+              <EmailCompose
+                account={selectedAccount}
+                onBack={() => {
+                  setIsComposeOpen(false)
+                  setPendingAiReply(null)
+                }}
+                onSend={async (data) => {
+                  await handleSendEmail(data)
+                  setPendingAiReply(null)
+                }}
+                isSending={isSending}
+                replyTo={pendingAiReply ? {
+                  to: pendingAiReply.to,
+                  subject: pendingAiReply.subject,
+                  body: pendingAiReply.body,
+                } : undefined}
+              />
+            </motion.div>
+          ) : selectedEmail ? (
             /* Email Viewer */
             <motion.div
               key="viewer"
@@ -598,72 +827,300 @@ export default function EmailPage() {
                   <p className="text-lg">이메일이 없습니다</p>
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {emails.map((email) => (
+                <div className="h-full flex flex-col">
+                  {/* Email Toolbar */}
+                  <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50">
+                    {/* Select All Checkbox */}
                     <button
-                      key={email.id}
-                      onClick={() => handleSelectEmail(email)}
-                      className={cn(
-                        "w-full px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors",
-                        !email.is_read && "bg-zinc-50 dark:bg-zinc-800/30"
-                      )}
+                      onClick={toggleSelectAll}
+                      className="p-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
                     >
-                      <div className="flex items-start gap-3">
-                        {/* Avatar */}
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0",
-                          email.is_read ? "bg-zinc-400" : accent.bg
-                        )}>
-                          {(email.from_name || email.from_address)[0].toUpperCase()}
-                        </div>
+                      <div className={cn(
+                        "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                        selectedEmailIds.size === filteredEmails.length && filteredEmails.length > 0
+                          ? cn(accent.bg, "border-transparent")
+                          : selectedEmailIds.size > 0
+                            ? cn(accent.bg, "border-transparent")
+                            : "border-zinc-400 dark:border-zinc-500"
+                      )}>
+                        {selectedEmailIds.size === filteredEmails.length && filteredEmails.length > 0 ? (
+                          <Check className="w-3 h-3 text-white" />
+                        ) : selectedEmailIds.size > 0 ? (
+                          <Minus className="w-3 h-3 text-white" />
+                        ) : null}
+                      </div>
+                    </button>
+                    <button className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700">
+                      <ChevronDown className="w-4 h-4 text-zinc-500" />
+                    </button>
 
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+
+                    {/* Action Buttons */}
+                    <button
+                      onClick={handleBulkStar}
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Star className="w-3.5 h-3.5" />
+                      중요
+                    </button>
+                    <button
+                      onClick={handleBulkMarkRead}
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <MailOpen className="w-3.5 h-3.5" />
+                      읽음
+                    </button>
+
+                    <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+
+                    <button
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Reply className="w-3.5 h-3.5" />
+                      답장
+                    </button>
+                    <button
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <ReplyAll className="w-3.5 h-3.5" />
+                      전체답장
+                    </button>
+                    <button
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Forward className="w-3.5 h-3.5" />
+                      전달
+                    </button>
+
+                    <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-600 mx-1" />
+
+                    <button
+                      onClick={handleBulkSpam}
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      스팸
+                    </button>
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={selectedEmailIds.size === 0}
+                      className="px-2 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      삭제
+                    </button>
+
+                    {/* Spacer */}
+                    <div className="flex-1" />
+
+                    {/* Filter Buttons */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setActiveFilter('all')}
+                        className={cn(
+                          "px-2 py-1 text-xs font-medium rounded transition-colors",
+                          activeFilter === 'all'
+                            ? cn(accent.light, accent.text)
+                            : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        )}
+                      >
+                        전체
+                      </button>
+                      <button
+                        onClick={() => setActiveFilter('unread')}
+                        className={cn(
+                          "px-2 py-1 text-xs font-medium rounded transition-colors flex items-center gap-1",
+                          activeFilter === 'unread'
+                            ? cn(accent.light, accent.text)
+                            : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        )}
+                      >
+                        <MailX className="w-3.5 h-3.5" />
+                        안읽음
+                      </button>
+                      <button
+                        onClick={() => setActiveFilter('starred')}
+                        className={cn(
+                          "px-2 py-1 text-xs font-medium rounded transition-colors flex items-center gap-1",
+                          activeFilter === 'starred'
+                            ? cn(accent.light, accent.text)
+                            : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        )}
+                      >
+                        <Star className="w-3.5 h-3.5" />
+                        중요
+                      </button>
+                      <button
+                        onClick={() => setActiveFilter('attachments')}
+                        className={cn(
+                          "px-2 py-1 text-xs font-medium rounded transition-colors flex items-center gap-1",
+                          activeFilter === 'attachments'
+                            ? cn(accent.light, accent.text)
+                            : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        )}
+                      >
+                        <Paperclip className="w-3.5 h-3.5" />
+                        첨부
+                      </button>
+                      {activeFilter !== 'all' && (
+                        <button
+                          onClick={() => setActiveFilter('all')}
+                          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Email List */}
+                  <div className="flex-1 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {filteredEmails.map((email) => (
+                      <div
+                        key={email.id}
+                        onClick={() => handleSelectEmail(email)}
+                        className={cn(
+                          "w-full px-3 py-2.5 text-left hover:bg-zinc-100/50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer",
+                          selectedEmailIds.has(email.id) && "bg-zinc-100 dark:bg-zinc-800"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Checkbox */}
+                          <button
+                            onClick={(e) => toggleEmailSelection(email.id, e)}
+                            className="flex-shrink-0"
+                          >
+                            <div className={cn(
+                              "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                              selectedEmailIds.has(email.id)
+                                ? cn(accent.bg, "border-transparent")
+                                : "border-zinc-400 dark:border-zinc-500 hover:border-zinc-500 dark:hover:border-zinc-400"
+                            )}>
+                              {selectedEmailIds.has(email.id) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                          </button>
+
+                          {/* Star */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleStar(email.id, !email.is_starred)
+                            }}
+                            className="flex-shrink-0"
+                          >
+                            <Star className={cn(
+                              "w-4 h-4 transition-colors",
+                              email.is_starred
+                                ? "text-yellow-500 fill-current"
+                                : "text-zinc-300 dark:text-zinc-600 hover:text-yellow-400"
+                            )} />
+                          </button>
+
+                          {/* Avatar */}
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0",
+                            email.is_read ? "bg-zinc-400" : accent.bg
+                          )}>
+                            {(email.from_name || email.from_address)[0].toUpperCase()}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
                             <span className={cn(
-                              "truncate",
+                              "block truncate text-sm",
                               email.is_read
                                 ? "text-zinc-600 dark:text-zinc-400"
                                 : "text-zinc-900 dark:text-white font-semibold"
                             )}>
                               {email.from_name || email.from_address}
                             </span>
-                            <span className="text-xs text-zinc-400 flex-shrink-0">
+                            <p className={cn(
+                              "text-sm truncate",
+                              email.is_read
+                                ? "text-zinc-500 dark:text-zinc-500"
+                                : cn("font-medium", accent.text)
+                            )}>
+                              {email.subject || '(제목 없음)'}
+                            </p>
+                          </div>
+
+                          {/* Indicators & Date */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {email.has_attachments && (
+                              <Paperclip className="w-4 h-4 text-zinc-400" />
+                            )}
+                            <span className="text-xs text-zinc-400 min-w-[60px] text-right">
                               {formatDate(email.received_at || email.created_at)}
                             </span>
                           </div>
-                          <p className={cn(
-                            "text-sm truncate",
-                            email.is_read
-                              ? "text-zinc-500 dark:text-zinc-500"
-                              : "text-zinc-800 dark:text-zinc-200"
-                          )}>
-                            {email.subject || '(제목 없음)'}
-                          </p>
-                          {email.body_text && (
-                            <p className="text-xs text-zinc-400 truncate mt-1">
-                              {email.body_text.slice(0, 100)}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Indicators */}
-                        <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                          {email.is_starred && (
-                            <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                          )}
-                          {email.has_attachments && (
-                            <Paperclip className="w-4 h-4 text-zinc-400" />
-                          )}
                         </div>
                       </div>
-                    </button>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </motion.div>
           )}
         </AnimatePresence>
+          </div>
+
+          {/* Chat Sidebar */}
+          <AnimatePresence>
+            {isChatOpen && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: emailSidebarWidth, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: isResizingEmail ? 0 : 0.2 }}
+                className="flex-shrink-0 relative overflow-hidden"
+                style={{ width: emailSidebarWidth }}
+              >
+                {/* Resize Handle */}
+                <div
+                  onMouseDown={handleChatResizeMouseDown}
+                  className={cn(
+                    "absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 transition-colors",
+                    isResizingEmail
+                      ? "bg-blue-500"
+                      : "bg-zinc-200 dark:bg-zinc-700 hover:bg-blue-400 dark:hover:bg-blue-500"
+                  )}
+                />
+                <div className="h-full border-l border-zinc-200 dark:border-zinc-800">
+                  <EmailSidebarChat
+                    accounts={accounts}
+                    selectedAccount={selectedAccount}
+                    onAccountChange={setSelectedAccount}
+                    onAddAccount={() => setIsAddModalOpen(true)}
+                    allEmails={allEmails}
+                    visibleEmails={emails}
+                    currentFolder={currentFolder}
+                    onFolderChange={handleFolderChange}
+                    onCompose={() => setIsComposeOpen(true)}
+                    onSync={syncEmails}
+                    isSyncing={isSyncing}
+                    selectedEmail={selectedEmail}
+                    onEmailSelect={setSelectedEmail}
+                    pendingAiReply={pendingAiReply}
+                    isGeneratingReply={isGeneratingReply}
+                    onConfirmAiReply={handleConfirmAiReply}
+                    onCancelAiReply={handleCancelAiReply}
+                    replyOptionsEmail={replyOptionsEmail}
+                    onSelectReplyType={handleSelectReplyType}
+                    onCancelReplyOptions={handleCancelReplyOptions}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -674,109 +1131,6 @@ export default function EmailPage() {
         onSubmit={handleAddAccount}
         isLoading={isAddingAccount}
       />
-
-      {/* Compose Email Modal */}
-      <AnimatePresence>
-        {isComposeOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setIsComposeOpen(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-700">
-                <h2 className="text-lg font-bold text-zinc-900 dark:text-white">새 메일</h2>
-                <button
-                  onClick={() => setIsComposeOpen(false)}
-                  className="p-2 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Form */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                    보내는 사람
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedAccount?.email_address || ''}
-                    disabled
-                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-500 dark:text-zinc-400 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                    받는 사람 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={composeTo}
-                    onChange={(e) => setComposeTo(e.target.value)}
-                    placeholder="이메일 주소 (여러 명은 쉼표로 구분)"
-                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white placeholder:text-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                    제목 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={composeSubject}
-                    onChange={(e) => setComposeSubject(e.target.value)}
-                    placeholder="메일 제목"
-                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white placeholder:text-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                    내용
-                  </label>
-                  <textarea
-                    value={composeBody}
-                    onChange={(e) => setComposeBody(e.target.value)}
-                    placeholder="메일 내용을 입력하세요..."
-                    rows={10}
-                    className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white placeholder:text-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-2 p-4 border-t border-zinc-200 dark:border-zinc-700">
-                <Button
-                  variant="ghost"
-                  size="md"
-                  onClick={() => setIsComposeOpen(false)}
-                >
-                  취소
-                </Button>
-                <Button
-                  variant="accent"
-                  size="md"
-                  leftIcon={isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  onClick={handleSendEmail}
-                  disabled={isSending || !composeTo.trim() || !composeSubject.trim()}
-                >
-                  {isSending ? '발송 중...' : '보내기'}
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

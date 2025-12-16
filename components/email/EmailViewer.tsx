@@ -198,11 +198,11 @@ export function EmailViewer({
         </div>
       )}
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Body - Always Light Mode */}
+      <div className="flex-1 overflow-y-auto p-4 bg-white">
         {/* Attachments */}
         {email.has_attachments && email.attachments && email.attachments.length > 0 && (
-          <div className="mb-4 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+          <div className="mb-4 p-3 bg-zinc-100 rounded-xl">
             <div className="flex items-center gap-2 mb-2 text-sm text-zinc-500">
               <Paperclip className="w-4 h-4" />
               <span>첨부파일 ({email.attachments.length})</span>
@@ -211,7 +211,7 @@ export function EmailViewer({
               {email.attachments.map((att, i) => (
                 <div
                   key={i}
-                  className="px-3 py-2 bg-white dark:bg-zinc-700 rounded-lg text-sm text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-600"
+                  className="px-3 py-2 bg-white rounded-lg text-sm text-zinc-700 border border-zinc-200"
                 >
                   {att.filename}
                 </div>
@@ -220,14 +220,14 @@ export function EmailViewer({
           </div>
         )}
 
-        {/* Email Content */}
+        {/* Email Content - Always Light */}
         {email.body_html ? (
           <div
-            className="prose prose-sm dark:prose-invert max-w-none"
+            className="prose prose-sm max-w-none text-zinc-900"
             dangerouslySetInnerHTML={{ __html: email.body_html }}
           />
         ) : (
-          <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-700 dark:text-zinc-300">
+          <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-700">
             {email.body_text}
           </pre>
         )}

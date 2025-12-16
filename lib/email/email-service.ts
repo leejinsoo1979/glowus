@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { ImapService, parsedEmailToDbFormat } from './imap-service'
+import { Pop3Service, pop3EmailToDbFormat } from './pop3-service'
+import { EmailAIAgent } from './email-ai-agent'
 import { SmtpService } from './smtp-service'
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto'
 import type {
@@ -44,29 +47,34 @@ function decrypt(encryptedText: string): string {
 
 // Provider configurations
 const PROVIDER_CONFIGS: Record<EmailProvider, {
-  imap: { host: string; port: number; secure: boolean }
+  protocol: 'imap' | 'pop3'
+  incoming: { host: string; port: number; secure: boolean }
   smtp: { host: string; port: number; secure: boolean }
 }> = {
   gmail: {
-    imap: { host: 'imap.gmail.com', port: 993, secure: true },
+    protocol: 'imap',
+    incoming: { host: 'imap.gmail.com', port: 993, secure: true },
     smtp: { host: 'smtp.gmail.com', port: 587, secure: false },
   },
   whois: {
-    imap: { host: 'mail.whoismail.net', port: 993, secure: true },
-    smtp: { host: 'mail.whoismail.net', port: 587, secure: false },
+    protocol: 'pop3',
+    incoming: { host: 'pop.whoisworks.com', port: 995, secure: true },
+    smtp: { host: 'smtp.whoisworks.com', port: 587, secure: false },
   },
   custom: {
-    imap: { host: '', port: 993, secure: true },
+    protocol: 'imap',
+    incoming: { host: '', port: 993, secure: true },
     smtp: { host: '', port: 587, secure: false },
   },
 }
 
 export class EmailService {
-  private _supabase: ReturnType<typeof createClient> | null = null
+  private _supabase: ReturnType<typeof createAdminClient> | null = null
 
-  private get supabase(): ReturnType<typeof createClient> {
+  private get supabase(): ReturnType<typeof createAdminClient> {
     if (!this._supabase) {
-      this._supabase = createClient()
+      // Use admin client to bypass RLS for service-level operations
+      this._supabase = createAdminClient()
     }
     return this._supabase
   }
@@ -88,20 +96,20 @@ export class EmailService {
   ): Promise<{ account?: EmailAccount; error?: string }> {
     const config = PROVIDER_CONFIGS[data.provider]
 
-    const imapHost = data.imap_host || config.imap.host
-    const imapPort = data.imap_port || config.imap.port
+    const incomingHost = data.imap_host || config.incoming.host
+    const incomingPort = data.imap_port || config.incoming.port
     const smtpHost = data.smtp_host || config.smtp.host
     const smtpPort = data.smtp_port || config.smtp.port
 
-    // Test IMAP connection first
+    // Test account object
     const testAccount: EmailAccount = {
       id: '',
       user_id: userId,
       email_address: data.email_address,
       provider: data.provider,
-      imap_host: imapHost,
-      imap_port: imapPort,
-      imap_secure: config.imap.secure,
+      imap_host: incomingHost,
+      imap_port: incomingPort,
+      imap_secure: config.incoming.secure,
       smtp_host: smtpHost,
       smtp_port: smtpPort,
       smtp_secure: config.smtp.secure,
@@ -110,20 +118,30 @@ export class EmailService {
       updated_at: '',
     }
 
-    const imapService = new ImapService(testAccount, data.password)
-    const imapOk = await imapService.testConnection()
+    // Test incoming connection (IMAP or POP3)
+    let incomingResult: { success: boolean; error?: string }
 
-    if (!imapOk) {
-      return { error: 'IMAP 연결 실패. 이메일 주소와 비밀번호를 확인하세요.' }
+    if (config.protocol === 'pop3') {
+      const pop3Service = new Pop3Service(testAccount, data.password)
+      incomingResult = await pop3Service.testConnection()
+      if (!incomingResult.success) {
+        return { error: `POP3 연결 실패: ${incomingResult.error || '이메일 주소와 비밀번호를 확인하세요.'}` }
+      }
+    } else {
+      const imapService = new ImapService(testAccount, data.password)
+      incomingResult = await imapService.testConnection()
+      if (!incomingResult.success) {
+        return { error: `IMAP 연결 실패: ${incomingResult.error || '이메일 주소와 비밀번호를 확인하세요.'}` }
+      }
     }
 
     // Test SMTP connection
     const smtpService = new SmtpService(testAccount, data.password)
-    const smtpOk = await smtpService.testConnection()
+    const smtpResult = await smtpService.testConnection()
     smtpService.close()
 
-    if (!smtpOk) {
-      return { error: 'SMTP 연결 실패. 이메일 설정을 확인하세요.' }
+    if (!smtpResult.success) {
+      return { error: `SMTP 연결 실패: ${smtpResult.error || '이메일 설정을 확인하세요.'}` }
     }
 
     // Encrypt password and save
@@ -137,9 +155,9 @@ export class EmailService {
         display_name: data.display_name,
         provider: data.provider,
         team_id: data.team_id,
-        imap_host: imapHost,
-        imap_port: imapPort,
-        imap_secure: config.imap.secure,
+        imap_host: incomingHost,
+        imap_port: incomingPort,
+        imap_secure: config.incoming.secure,
         smtp_host: smtpHost,
         smtp_port: smtpPort,
         smtp_secure: config.smtp.secure,
@@ -212,23 +230,35 @@ export class EmailService {
     }
 
     const password = decrypt(account.encrypted_password)
-    const imapService = new ImapService(account as EmailAccount, password)
+    const config = PROVIDER_CONFIGS[account.provider as EmailProvider]
 
     try {
-      await imapService.connect()
+      let emails: any[] = []
 
-      const emails = await imapService.fetchEmails({
-        folder: options.folder || 'INBOX',
-        limit: options.limit || 50,
-        since: options.since,
-      })
-
-      await imapService.disconnect()
+      if (config?.protocol === 'pop3') {
+        // Use POP3
+        const pop3Service = new Pop3Service(account as EmailAccount, password)
+        await pop3Service.connect()
+        emails = await pop3Service.fetchEmails({ limit: options.limit || 50 })
+        await pop3Service.disconnect()
+      } else {
+        // Use IMAP
+        const imapService = new ImapService(account as EmailAccount, password)
+        await imapService.connect()
+        emails = await imapService.fetchEmails({
+          folder: options.folder || 'INBOX',
+          limit: options.limit || 50,
+          since: options.since,
+        })
+        await imapService.disconnect()
+      }
 
       // Upsert emails to database
       let synced = 0
       for (const email of emails) {
-        const dbEmail = parsedEmailToDbFormat(email, accountId)
+        const dbEmail = config?.protocol === 'pop3'
+          ? pop3EmailToDbFormat(email, accountId)
+          : parsedEmailToDbFormat(email, accountId)
 
         const { error } = await (this.supabase as any)
           .from('email_messages')
@@ -247,6 +277,16 @@ export class EmailService {
           sync_error: null,
         })
         .eq('id', accountId)
+
+      // Auto-analyze new emails (spam detection, categorization)
+      if (synced > 0) {
+        try {
+          const aiAgent = new EmailAIAgent()
+          await aiAgent.analyzeEmails(accountId, synced)
+        } catch (aiError) {
+          console.error('AI analysis failed:', aiError)
+        }
+      }
 
       return { synced }
     } catch (error) {
