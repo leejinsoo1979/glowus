@@ -27,7 +27,8 @@ import {
     Plus,
     RefreshCw,
     Copy,
-    Play
+    Play,
+    GripVertical
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -397,8 +398,13 @@ export default function AISlidesPage() {
     const [showLoadMenu, setShowLoadMenu] = useState(false)
     const [savedPresentations, setSavedPresentations] = useState<SavedPresentation[]>([])
 
+    // Resizable panel state
+    const [leftPanelWidth, setLeftPanelWidth] = useState(480)
+    const [isResizing, setIsResizing] = useState(false)
+
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const containerRef = useRef<HTMLDivElement>(null)
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -415,6 +421,43 @@ export default function AISlidesPage() {
             setSavedPresentations(JSON.parse(saved))
         }
     }, [])
+
+    // Handle panel resize
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault()
+        setIsResizing(true)
+    }, [])
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing || !containerRef.current) return
+
+            const containerRect = containerRef.current.getBoundingClientRect()
+            const newWidth = e.clientX - containerRect.left
+
+            // Limit width between 320px and 800px
+            const clampedWidth = Math.min(Math.max(newWidth, 320), 800)
+            setLeftPanelWidth(clampedWidth)
+        }
+
+        const handleMouseUp = () => {
+            setIsResizing(false)
+        }
+
+        if (isResizing) {
+            document.addEventListener('mousemove', handleMouseMove)
+            document.addEventListener('mouseup', handleMouseUp)
+            document.body.style.cursor = 'col-resize'
+            document.body.style.userSelect = 'none'
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+        }
+    }, [isResizing])
 
     // Save presentation
     const savePresentation = useCallback(() => {
@@ -718,9 +761,12 @@ export default function AISlidesPage() {
     }
 
     return (
-        <div className="h-screen flex bg-zinc-950">
+        <div ref={containerRef} className="h-screen flex bg-zinc-950 overflow-hidden">
             {/* Left Panel - Chat */}
-            <div className="w-[480px] flex flex-col border-r border-zinc-800">
+            <div
+                className="flex flex-col border-r border-zinc-800 h-full overflow-hidden"
+                style={{ width: leftPanelWidth, minWidth: 320, maxWidth: 800 }}
+            >
                 {/* Chat Tabs */}
                 <div className="flex items-center gap-2 p-4 border-b border-zinc-800">
                     <button
@@ -884,7 +930,8 @@ export default function AISlidesPage() {
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 10 }}
-                                className="absolute bottom-24 left-4 w-[calc(480px-32px)] bg-zinc-800 rounded-xl shadow-xl border border-zinc-700 max-h-64 overflow-y-auto z-50"
+                                style={{ width: leftPanelWidth - 32 }}
+                                className="absolute bottom-24 left-4 bg-zinc-800 rounded-xl shadow-xl border border-zinc-700 max-h-64 overflow-y-auto z-50"
                             >
                                 <div className="p-2">
                                     <p className="text-xs text-zinc-500 px-2 py-1">저장된 프레젠테이션</p>
@@ -912,8 +959,23 @@ export default function AISlidesPage() {
                 </div>
             </div>
 
+            {/* Resize Handle */}
+            <div
+                onMouseDown={handleMouseDown}
+                className={cn(
+                    "w-2 hover:w-3 bg-zinc-800/50 hover:bg-accent/20 cursor-col-resize transition-all flex-shrink-0 group relative flex items-center justify-center",
+                    isResizing && "w-3 bg-accent/30"
+                )}
+            >
+                <div className="absolute inset-y-0 -left-2 -right-2" />
+                <GripVertical className={cn(
+                    "w-4 h-4 text-zinc-600 group-hover:text-accent transition-colors",
+                    isResizing && "text-accent"
+                )} />
+            </div>
+
             {/* Right Panel - Preview */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                     <div className="flex items-center gap-3">
@@ -989,9 +1051,9 @@ export default function AISlidesPage() {
                 </div>
 
                 {/* Slide Preview */}
-                <div className="flex-1 p-6 overflow-hidden">
+                <div className="flex-1 p-6 overflow-y-auto">
                     {slides.length > 0 ? (
-                        <div className="h-full flex flex-col">
+                        <div className="h-full flex flex-col min-h-0">
                             <div className="flex-1 bg-zinc-900 rounded-xl overflow-hidden shadow-2xl relative">
                                 {editingSlide === currentSlide && (
                                     <div className="absolute inset-0 bg-black/50 z-10 flex items-center justify-center">
