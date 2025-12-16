@@ -457,14 +457,40 @@ export default function AISlidesPage() {
 
         setIsLoading(true)
         try {
-            const { generatePPTX, downloadPPTX } = await import('@/lib/pptx-generator')
-            const blob = await generatePPTX(slides, presentationTitle)
-            downloadPPTX(blob, `${presentationTitle}.pptx`)
+            const response = await fetch('/api/slides/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slides, title: presentationTitle })
+            })
 
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: `PPTX 파일 "${presentationTitle}.pptx"가 다운로드되었습니다.`
-            }])
+            const data = await response.json()
+
+            if (data.success && data.data) {
+                // Convert base64 to blob and download
+                const byteCharacters = atob(data.data)
+                const byteNumbers = new Array(byteCharacters.length)
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                }
+                const byteArray = new Uint8Array(byteNumbers)
+                const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
+
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = data.filename || `${presentationTitle}.pptx`
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                URL.revokeObjectURL(url)
+
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `PPTX 파일 "${presentationTitle}.pptx"가 다운로드되었습니다.`
+                }])
+            } else {
+                throw new Error('Failed to generate PPTX')
+            }
         } catch (error) {
             console.error('PPTX export error:', error)
             setMessages(prev => [...prev, {
