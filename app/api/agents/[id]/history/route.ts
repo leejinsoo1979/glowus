@@ -158,19 +158,39 @@ export async function DELETE(
   }
 
   try {
-    // 대화 세션 삭제 (CASCADE로 메시지도 같이 삭제됨)
-    const { error } = await (adminClient as any)
-      .from('agent_conversations')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('agent_id', agentId)
+    // URL 파라미터에서 messageIds 가져오기
+    const { searchParams } = new URL(request.url)
+    const messageIds = searchParams.get('messageIds')
 
-    if (error) {
-      console.error('Delete conversation error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (messageIds) {
+      // 개별 메시지 삭제
+      const ids = messageIds.split(',')
+      const { error } = await (adminClient as any)
+        .from('agent_chat_messages')
+        .delete()
+        .in('id', ids)
+
+      if (error) {
+        console.error('Delete messages error:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, deleted: ids.length })
+    } else {
+      // 전체 대화 세션 삭제 (CASCADE로 메시지도 같이 삭제됨)
+      const { error } = await (adminClient as any)
+        .from('agent_conversations')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('agent_id', agentId)
+
+      if (error) {
+        console.error('Delete conversation error:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true })
     }
-
-    return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/agents/[id]/history error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

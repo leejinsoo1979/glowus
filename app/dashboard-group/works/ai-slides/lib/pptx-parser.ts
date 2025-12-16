@@ -89,7 +89,6 @@ async function parseRelationships(zip: JSZip, slideIndex: number): Promise<Map<s
 
     const relsFile = zip.file(relsPath)
     if (!relsFile) {
-        console.log(`Relationship file not found: ${relsPath}`)
         return relMap
     }
 
@@ -114,12 +113,10 @@ async function parseRelationships(zip: JSZip, slideIndex: number): Promise<Map<s
             if (target.includes('media/') || target.includes('image')) {
                 const filename = target.split('/').pop() || target
                 relMap.set(rId, filename)
-                console.log(`Mapped ${rId} -> ${filename}`)
             }
         }
     }
 
-    console.log(`Slide ${slideIndex}: Found ${relMap.size} image relationships`)
     return relMap
 }
 
@@ -136,7 +133,6 @@ function extractImageRefs(xml: string): string[] {
         imageRefs.push(match[1])
     }
 
-    console.log(`Found ${imageRefs.length} image refs in slide:`, imageRefs)
     return imageRefs
 }
 
@@ -278,7 +274,6 @@ export async function parsePptxFile(file: File): Promise<ParsedPresentation> {
 
     // Extract all media files first
     const mediaMap = await extractMediaFiles(zip)
-    console.log(`Extracted ${mediaMap.size} media files`)
 
     // Find all slide files
     const slideFiles: { name: string; index: number }[] = []

@@ -6672,6 +6672,26 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
     }
   }
 
+  // 특정 날짜의 대화 기록 삭제
+  const [deletingDate, setDeletingDate] = useState<string | null>(null)
+  const handleDeleteDate = async (date: string, messages: any[]) => {
+    if (!confirm(`${date}의 대화 기록(${messages.length}개)을 삭제하시겠습니까?`)) return
+
+    try {
+      setDeletingDate(date)
+      const messageIds = messages.map(m => m.id).join(',')
+      const res = await fetch(`/api/agents/${agentId}/history?messageIds=${messageIds}`, { method: 'DELETE' })
+      if (res.ok) {
+        setConversations(prev => prev.filter(c => c.date !== date))
+        if (selectedDate === date) setSelectedDate(null)
+      }
+    } catch (err) {
+      console.error('Failed to delete date history:', err)
+    } finally {
+      setDeletingDate(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -6728,14 +6748,16 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
           )}
         >
           {/* 날짜 헤더 */}
-          <button
-            onClick={() => setSelectedDate(selectedDate === conv.date ? null : conv.date)}
+          <div
             className={cn(
-              'w-full px-4 py-3 flex items-center justify-between transition-colors',
+              'px-4 py-3 flex items-center justify-between transition-colors',
               isDark ? 'hover:bg-zinc-700/50' : 'hover:bg-zinc-50'
             )}
           >
-            <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectedDate(selectedDate === conv.date ? null : conv.date)}
+              className="flex items-center gap-3 flex-1"
+            >
               <Calendar className={cn('w-5 h-5', isDark ? 'text-zinc-400' : 'text-zinc-500')} />
               <span className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>
                 {conv.date}
@@ -6743,15 +6765,36 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
               <span className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
                 {conv.messageCount}개 메시지
               </span>
-            </div>
-            <ChevronRight
+              <ChevronRight
+                className={cn(
+                  'w-5 h-5 transition-transform',
+                  isDark ? 'text-zinc-500' : 'text-zinc-400',
+                  selectedDate === conv.date && 'rotate-90'
+                )}
+              />
+            </button>
+            {/* 개별 날짜 삭제 버튼 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteDate(conv.date, conv.messages)
+              }}
+              disabled={deletingDate === conv.date}
               className={cn(
-                'w-5 h-5 transition-transform',
-                isDark ? 'text-zinc-500' : 'text-zinc-400',
-                selectedDate === conv.date && 'rotate-90'
+                'p-2 rounded-lg transition-colors',
+                isDark
+                  ? 'hover:bg-red-500/20 text-zinc-500 hover:text-red-400'
+                  : 'hover:bg-red-50 text-zinc-400 hover:text-red-500'
               )}
-            />
-          </button>
+              title={`${conv.date} 대화 삭제`}
+            >
+              {deletingDate === conv.date ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </button>
+          </div>
 
           {/* 메시지 목록 (펼쳐졌을 때) */}
           {selectedDate === conv.date && (
