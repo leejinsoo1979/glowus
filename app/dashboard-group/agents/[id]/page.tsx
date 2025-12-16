@@ -1914,14 +1914,16 @@ export default function AgentProfilePage() {
     const avatarData = emotionAvatars[emotionId]
     if (!avatarData) return undefined
     if (Array.isArray(avatarData)) {
+      if (avatarData.length === 0) return undefined
       if (seed) {
-        // seed 기반 결정적 선택 (메시지 ID 등으로 고정)
-        let hash = 0
+        // seed 기반 결정적 선택 - 개선된 해시 함수 (djb2 알고리즘)
+        let hash = 5381
         for (let i = 0; i < seed.length; i++) {
-          hash = ((hash << 5) - hash) + seed.charCodeAt(i)
-          hash = hash & hash
+          hash = ((hash << 5) + hash) ^ seed.charCodeAt(i)
         }
-        const index = Math.abs(hash) % avatarData.length
+        // 32비트 정수로 변환 후 양수로
+        hash = Math.abs(hash >>> 0)
+        const index = hash % avatarData.length
         return avatarData[index]
       }
       return avatarData[Math.floor(Math.random() * avatarData.length)]
@@ -4333,7 +4335,7 @@ export default function AgentProfilePage() {
                     </div>
                   </div>
                 ) : (
-                  chatMessages.map((msg) => (
+                  chatMessages.map((msg, msgIndex) => (
                     <div
                       key={msg.id}
                       className={cn(
@@ -4375,7 +4377,7 @@ export default function AgentProfilePage() {
                                   if (emotionsWithGif.length > 0) {
                                     // 첫 번째 감정의 GIF만 표시 (메시지 ID로 고정)
                                     const selectedEmotion = emotionsWithGif[0]
-                                    const msgSeed = msg.id || `${msg.timestamp}-${selectedEmotion}`
+                                    const msgSeed = `${msg.id || msg.timestamp}-${selectedEmotion}-${msgIndex}`
                                     const gifUrl = getRandomEmotionGif(selectedEmotion, msgSeed)
                                     if (gifUrl) {
                                       return (

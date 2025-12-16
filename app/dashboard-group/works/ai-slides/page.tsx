@@ -31,14 +31,26 @@ import {
     GripVertical
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { parsePptxFile, convertToSlideContent } from "./lib/pptx-parser"
 
 // Slide Types
+interface SlideImage {
+    id: string
+    dataUrl: string
+    width?: number
+    height?: number
+    x?: number
+    y?: number
+}
+
 interface SlideContent {
     id: string
-    type: 'cover' | 'problem' | 'solution' | 'market' | 'business-model' | 'product' | 'competition' | 'gtm' | 'marketing' | 'team' | 'roadmap' | 'revenue' | 'financials' | 'investment' | 'contact'
+    type: 'cover' | 'content' | 'problem' | 'solution' | 'market' | 'business-model' | 'product' | 'competition' | 'gtm' | 'marketing' | 'team' | 'roadmap' | 'revenue' | 'financials' | 'investment' | 'contact'
     title: string
     subtitle?: string
     content: any
+    images?: SlideImage[]
+    backgroundColor?: string
 }
 
 interface Message {
@@ -354,8 +366,72 @@ const DefaultSlide = ({ content, title, subtitle, type }: { content: any, title:
     </div>
 )
 
+// Imported Slide with Images
+const ImportedSlide = ({
+    content,
+    title,
+    subtitle,
+    images,
+    backgroundColor
+}: {
+    content: any,
+    title: string,
+    subtitle?: string,
+    images?: SlideImage[],
+    backgroundColor?: string
+}) => (
+    <div
+        className="h-full text-white p-8 overflow-auto"
+        style={{ backgroundColor: backgroundColor || '#18181b' }}
+    >
+        <div className="max-w-5xl mx-auto">
+            <h2 className="text-3xl font-bold mb-2">{title}</h2>
+            {subtitle && <p className="text-zinc-400 mb-6">{subtitle}</p>}
+
+            {/* Images Grid */}
+            {images && images.length > 0 && (
+                <div className={cn(
+                    "mb-6",
+                    images.length === 1 ? "flex justify-center" : "grid gap-4",
+                    images.length === 2 && "grid-cols-2",
+                    images.length >= 3 && "grid-cols-2 md:grid-cols-3"
+                )}>
+                    {images.map((img) => (
+                        <div
+                            key={img.id}
+                            className="relative rounded-lg overflow-hidden bg-zinc-800"
+                        >
+                            <img
+                                src={img.dataUrl}
+                                alt=""
+                                className="w-full h-auto max-h-[400px] object-contain"
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Text Content */}
+            {content?.points && content.points.length > 0 && (
+                <div className="space-y-2">
+                    {content.points.map((point: string, i: number) => (
+                        <p key={i} className="text-zinc-300 text-lg">
+                            {point}
+                        </p>
+                    ))}
+                </div>
+            )}
+        </div>
+    </div>
+)
+
 // Main Slide Renderer
 const SlideRenderer = ({ slide }: { slide: SlideContent }) => {
+    // If slide has images, use ImportedSlide renderer
+    if (slide.images && slide.images.length > 0) {
+        return <ImportedSlide {...slide} />
+    }
+
     switch (slide.type) {
         case 'cover':
             return <CoverSlide {...slide} />
@@ -749,15 +825,59 @@ export default function AISlidesPage() {
     }
 
     // Handle file upload
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
-        // TODO: Parse uploaded PPTX file
+        // Check file type
+        if (!file.name.match(/\.pptx?$/i)) {
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: 'PPT 또는 PPTX 파일만 업로드할 수 있습니다.'
+            }])
+            return
+        }
+
+        setIsLoading(true)
         setMessages(prev => [...prev, {
             role: 'assistant',
-            content: '파일 업로드 기능은 준비 중입니다. 현재는 새로운 슬라이드를 생성하거나 저장된 프레젠테이션을 불러올 수 있습니다.'
+            content: `"${file.name}" 파일을 분석 중입니다...`
         }])
+
+        try {
+            const parsed = await parsePptxFile(file)
+            const converted = convertToSlideContent(parsed)
+
+            if (converted.slides.length === 0) {
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: '파일에서 슬라이드를 찾을 수 없습니다. 파일이 손상되었거나 빈 파일일 수 있습니다.'
+                }])
+                return
+            }
+
+            // Update slides with parsed content
+            setSlides(converted.slides as SlideContent[])
+            setPresentationTitle(converted.title)
+            setCurrentSlide(0)
+
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `"${converted.title}" 프레젠테이션을 불러왔습니다!\n\n총 ${converted.slides.length}개의 슬라이드가 있습니다.\n\n수정이 필요하시면 말씀해주세요:\n• "2번 슬라이드 제목을 변경해줘"\n• "새로운 슬라이드를 추가해줘"\n• "팀 소개 슬라이드를 수정해줘"`
+            }])
+        } catch (error) {
+            console.error('PPTX parsing error:', error)
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '파일을 읽는 중 오류가 발생했습니다. 파일이 손상되었거나 지원하지 않는 형식일 수 있습니다.'
+            }])
+        } finally {
+            setIsLoading(false)
+            // Reset file input
+            if (e.target) {
+                e.target.value = ''
+            }
+        }
     }
 
     return (
