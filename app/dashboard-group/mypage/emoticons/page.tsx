@@ -550,6 +550,23 @@ export default function EmoticonsPage() {
         <p className="mt-1">💬 카드를 클릭하여 이미지와 키워드를 편집하세요.</p>
       </div>
 
+      {/* 플로팅 + 버튼 */}
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        className={cn(
+          'fixed bottom-8 right-8 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all z-40',
+          'bg-accent text-white hover:bg-accent/90 hover:scale-110',
+          uploading && 'opacity-50 cursor-not-allowed'
+        )}
+      >
+        {uploading ? (
+          <Loader2 className="w-6 h-6 animate-spin" />
+        ) : (
+          <Plus className="w-6 h-6" />
+        )}
+      </button>
+
       {/* 편집 모달 */}
       {editingEmoticon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingEmoticon(null)}>

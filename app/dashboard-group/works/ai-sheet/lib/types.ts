@@ -256,6 +256,8 @@ export interface FilterCondition {
         | 'between'
         | 'before'
         | 'after'
+        | 'empty'
+        | 'notEmpty'
     value: string | number | Date
     value2?: string | number | Date  // For 'between' operator
 }

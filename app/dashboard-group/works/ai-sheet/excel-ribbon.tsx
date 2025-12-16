@@ -41,7 +41,10 @@ import {
     Check,
     X,
     TableProperties,
-    MoreHorizontal
+    MoreHorizontal,
+    BarChart3,
+    LineChart,
+    PieChart
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -83,8 +86,8 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
 
     // 그룹 컨테이너
     const RibbonGroup = ({ title, children }: { title: string; children: React.ReactNode }) => (
-        <div className="flex flex-col h-[90px] overflow-visible">
-            <div className="flex items-start gap-1 px-3 pt-2 flex-1 overflow-visible">
+        <div className="flex flex-col h-[90px]">
+            <div className="flex items-start gap-1 px-3 pt-2 flex-1">
                 {children}
             </div>
             <div className="text-[11px] text-gray-600 text-center py-1.5 border-t border-gray-200">
@@ -259,13 +262,13 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
     }
 
     const renderHomeTab = () => (
-        <div className="flex items-stretch h-full overflow-visible" ref={dropdownRef}>
+        <div className="flex items-stretch h-full" ref={dropdownRef}>
             {/* 실행 취소/다시 실행 */}
             <div className="flex items-center gap-1 px-2">
-                <button className="p-1.5 hover:bg-gray-200 rounded" title="실행 취소 (Ctrl+Z)">
+                <button className="p-1.5 hover:bg-gray-200 rounded" title="실행 취소 (Ctrl+Z)" onClick={() => onAction('undo')}>
                     <Undo2 className="w-5 h-5 text-gray-600" />
                 </button>
-                <button className="p-1.5 hover:bg-gray-200 rounded" title="다시 실행 (Ctrl+Y)">
+                <button className="p-1.5 hover:bg-gray-200 rounded" title="다시 실행 (Ctrl+Y)" onClick={() => onAction('redo')}>
                     <Redo2 className="w-5 h-5 text-gray-600" />
                 </button>
             </div>
@@ -299,7 +302,10 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
                     <div className="flex items-center gap-1">
                         <select
                             value={fontFamily}
-                            onChange={(e) => setFontFamily(e.target.value)}
+                            onChange={(e) => {
+                                setFontFamily(e.target.value)
+                                onAction('fontFamily', { value: e.target.value })
+                            }}
                             className="h-[24px] px-2 text-[12px] border border-gray-300 rounded bg-white text-gray-800 w-[110px]"
                         >
                             <option>Calibri</option>
@@ -310,7 +316,10 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
                         </select>
                         <select
                             value={fontSize}
-                            onChange={(e) => setFontSize(e.target.value)}
+                            onChange={(e) => {
+                                setFontSize(e.target.value)
+                                onAction('fontSize', { value: parseInt(e.target.value) })
+                            }}
                             className="h-[24px] px-2 text-[12px] border border-gray-300 rounded bg-white text-gray-800 w-[50px]"
                         >
                             {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36].map(size => (
@@ -328,7 +337,7 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
                         <SmallIconButton icon={Bold} title="굵게 (Ctrl+B)" onClick={() => onAction('bold')} />
                         <SmallIconButton icon={Italic} title="기울임꼴 (Ctrl+I)" onClick={() => onAction('italic')} />
                         <SmallIconButton icon={Underline} title="밑줄 (Ctrl+U)" onClick={() => onAction('underline')} />
-                        <SmallIconButton icon={Strikethrough} title="취소선" />
+                        <SmallIconButton icon={Strikethrough} title="취소선" onClick={() => onAction('strikethrough')} />
                         <div className="w-px h-5 bg-gray-300 mx-1" />
                         <SmallIconButton icon={Square} title="테두리" />
                         <div className="w-px h-5 bg-gray-300 mx-1" />
@@ -350,9 +359,9 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
             <RibbonGroup title="맞춤">
                 <div className="flex flex-col gap-1.5 pt-1">
                     <div className="flex items-center gap-0.5">
-                        <SmallIconButton icon={AlignVerticalJustifyStart} title="위쪽 맞춤" />
-                        <SmallIconButton icon={AlignVerticalJustifyCenter} title="가운데 맞춤" />
-                        <SmallIconButton icon={AlignVerticalJustifyEnd} title="아래쪽 맞춤" />
+                        <SmallIconButton icon={AlignVerticalJustifyStart} title="위쪽 맞춤" onClick={() => onAction('alignTop')} />
+                        <SmallIconButton icon={AlignVerticalJustifyCenter} title="가운데 맞춤" onClick={() => onAction('alignMiddle')} />
+                        <SmallIconButton icon={AlignVerticalJustifyEnd} title="아래쪽 맞춤" onClick={() => onAction('alignBottom')} />
                         <div className="w-px h-5 bg-gray-300 mx-1" />
                         <button className="p-1.5 hover:bg-gray-200 rounded flex items-center gap-1 text-[10px] text-gray-700" title="자동 줄 바꿈">
                             <WrapText className="w-4 h-4" />
@@ -360,9 +369,9 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
                         </button>
                     </div>
                     <div className="flex items-center gap-0.5">
-                        <SmallIconButton icon={AlignLeft} title="왼쪽 맞춤" />
-                        <SmallIconButton icon={AlignCenter} title="가운데 맞춤" />
-                        <SmallIconButton icon={AlignRight} title="오른쪽 맞춤" />
+                        <SmallIconButton icon={AlignLeft} title="왼쪽 맞춤" onClick={() => onAction('alignLeft')} />
+                        <SmallIconButton icon={AlignCenter} title="가운데 맞춤" onClick={() => onAction('alignCenter')} />
+                        <SmallIconButton icon={AlignRight} title="오른쪽 맞춤" onClick={() => onAction('alignRight')} />
                         <div className="w-px h-5 bg-gray-300 mx-1" />
                         <TextDropdownButton id="merge" icon={LayoutGrid} label="병합하고 가운데 맞춤">
                             <DropdownItem icon={LayoutGrid} label="병합하고 가운데 맞춤" onClick={() => onAction('merge-center')} />
@@ -531,7 +540,7 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
     )
 
     return (
-        <div className="bg-white border-b border-gray-300 select-none relative z-40">
+        <div className="bg-white border-b border-gray-200 select-none relative z-40">
             {/* 탭 바 */}
             <div className="flex items-center bg-[#f3f3f3] border-b border-gray-200">
                 {tabs.map((tab) => (
@@ -551,7 +560,7 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
             </div>
 
             {/* 리본 콘텐츠 */}
-            <div className="bg-[#f8f9fa] overflow-x-auto overflow-y-visible">
+            <div className="bg-[#f8f9fa] overflow-x-auto overflow-y-hidden h-[90px]">
                 {activeTab === "홈" && renderHomeTab()}
                 {activeTab === "삽입" && (
                     <div className="flex items-stretch h-[90px] px-4">
@@ -563,6 +572,18 @@ export default function ExcelRibbon({ onAction }: ExcelRibbonProps) {
                                 </LargeDropdownButton>
                                 <LargeDropdownButton id="table" icon={Grid3X3} label="표" iconColor="text-blue-500">
                                     <DropdownItem label="표 삽입" />
+                                </LargeDropdownButton>
+                            </div>
+                        </RibbonGroup>
+                        <GroupDivider />
+                        <RibbonGroup title="차트">
+                            <div className="flex gap-1">
+                                <LargeDropdownButton id="chart" icon={BarChart3} label="차트" iconColor="text-blue-600">
+                                    <DropdownItem icon={BarChart3} label="세로 막대형 차트" onClick={() => onAction('insert-chart', { type: 'column' })} />
+                                    <DropdownItem icon={LineChart} label="꺾은선형 차트" onClick={() => onAction('insert-chart', { type: 'line' })} />
+                                    <DropdownItem icon={PieChart} label="원형 차트" onClick={() => onAction('insert-chart', { type: 'pie' })} />
+                                    <div className="border-t border-gray-200 my-1" />
+                                    <DropdownItem icon={BarChart3} label="차트 삽입..." onClick={() => onAction('insert-chart')} />
                                 </LargeDropdownButton>
                             </div>
                         </RibbonGroup>

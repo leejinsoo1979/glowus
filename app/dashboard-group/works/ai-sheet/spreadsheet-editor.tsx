@@ -1,10 +1,11 @@
 "use client"
 
-import { forwardRef, useEffect, useRef, useImperativeHandle, useState, useCallback } from "react"
-import { Workbook } from "@fortune-sheet/react"
-import "@fortune-sheet/react/dist/index.css"
+import { forwardRef, useEffect, useRef, useImperativeHandle, useState, useCallback, type ComponentType } from "react"
 import type { WorkbookInstance } from "@fortune-sheet/react/dist/components/Workbook"
 import type { Sheet, CellWithPosition, Cell, SingleRange, Range, CellFormat, CommonOptions } from "./lib/types"
+
+// Dynamically import Fortune-sheet only on client side
+let WorkbookComponent: ComponentType<any> | null = null
 
 // ============================================================================
 // Types
@@ -124,6 +125,7 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
     ({ data, onChange, onReady }, ref) => {
         const containerRef = useRef<HTMLDivElement>(null)
         const workbookRef = useRef<WorkbookInstance | null>(null)
+        const [isMounted, setIsMounted] = useState(false)
         const [sheetData, setSheetData] = useState<Sheet[]>([{
             name: "Sheet1",
             color: "",
@@ -136,6 +138,41 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
         const [sheetKey, setSheetKey] = useState(0)
         const prevDataRef = useRef<string>('')
         const isReadyRef = useRef(false)
+
+        // Ensure client-side only mounting and dynamic import
+        useEffect(() => {
+            let mounted = true
+
+            const loadWorkbook = async () => {
+                try {
+                    if (!WorkbookComponent) {
+                        // Import CSS first
+                        const cssLink = document.createElement('link')
+                        cssLink.rel = 'stylesheet'
+                        cssLink.href = '/_next/static/css/fortune-sheet.css'
+
+                        // Check if CSS is already loaded, if not try to load from node_modules
+                        if (!document.querySelector('link[href*="fortune-sheet"]')) {
+                            // The CSS is bundled, we just need to import the module
+                        }
+
+                        const module = await import("@fortune-sheet/react")
+                        WorkbookComponent = module.Workbook
+                    }
+                    if (mounted) {
+                        setIsMounted(true)
+                    }
+                } catch (error) {
+                    console.error('Failed to load Fortune-sheet:', error)
+                }
+            }
+
+            loadWorkbook()
+
+            return () => {
+                mounted = false
+            }
+        }, [])
 
         // Update sheetData when data prop changes
         useEffect(() => {
@@ -189,9 +226,20 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
                         })
                         return result
                     }
-                    const sheet = ref.getSheet()
-                    if (!sheet?.celldata) return Array(50).fill(null).map(() => Array(26).fill(''))
-                    return convertToArray(sheet.celldata)
+                    try {
+                        const sheet = ref.getSheet()
+                        if (!sheet?.celldata) return Array(50).fill(null).map(() => Array(26).fill(''))
+                        return convertToArray(sheet.celldata)
+                    } catch (e) {
+                        // Sheet not ready yet, fallback to state
+                        const result: any[][] = Array(50).fill(null).map(() => Array(26).fill(''))
+                        sheetData[0]?.celldata?.forEach((cell: CellWithPosition) => {
+                            if (cell.r < 50 && cell.c < 26 && cell.v) {
+                                result[cell.r][cell.c] = cell.v.v ?? cell.v.m ?? ''
+                            }
+                        })
+                        return result
+                    }
                 },
                 setData: (newData: any[][]) => {
                     onChange(newData)
@@ -201,22 +249,38 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
                 getCellValue: (row, col, options) => {
                     const ref = getRef()
                     if (!ref) return undefined
-                    return ref.getCellValue(row, col, options)
+                    try {
+                        return ref.getCellValue(row, col, options)
+                    } catch (e) {
+                        return undefined
+                    }
                 },
                 setCellValue: (row, col, value, options) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.setCellValue(row, col, value, options)
+                    try {
+                        ref.setCellValue(row, col, value, options)
+                    } catch (e) {
+                        console.warn('setCellValue failed:', e)
+                    }
                 },
                 setCellFormat: (row, col, attr, value, options) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.setCellFormat(row, col, attr, value, options)
+                    try {
+                        ref.setCellFormat(row, col, attr, value, options)
+                    } catch (e) {
+                        console.warn('setCellFormat failed:', e)
+                    }
                 },
                 clearCell: (row, col, options) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.clearCell(row, col, options)
+                    try {
+                        ref.clearCell(row, col, options)
+                    } catch (e) {
+                        console.warn('clearCell failed:', e)
+                    }
                 },
                 autoFillCell: (copyRange, applyRange, direction) => {
                     const ref = getRef()
@@ -238,7 +302,11 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
                 getSelection: () => {
                     const ref = getRef()
                     if (!ref) return undefined
-                    return ref.getSelection()
+                    try {
+                        return ref.getSelection()
+                    } catch (e) {
+                        return undefined
+                    }
                 },
                 setSelection: (range, options) => {
                     const ref = getRef()
@@ -332,32 +400,56 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
                 getAllSheets: () => {
                     const ref = getRef()
                     if (!ref) return []
-                    return ref.getAllSheets()
+                    try {
+                        return ref.getAllSheets()
+                    } catch (e) {
+                        return []
+                    }
                 },
                 getSheet: (options) => {
                     const ref = getRef()
                     if (!ref) return null
-                    return ref.getSheet(options)
+                    try {
+                        return ref.getSheet(options)
+                    } catch (e) {
+                        return null
+                    }
                 },
                 addSheet: (sheetId) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.addSheet(sheetId)
+                    try {
+                        ref.addSheet(sheetId)
+                    } catch (e) {
+                        console.warn('addSheet failed:', e)
+                    }
                 },
                 deleteSheet: (options) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.deleteSheet(options)
+                    try {
+                        ref.deleteSheet(options)
+                    } catch (e) {
+                        console.warn('deleteSheet failed:', e)
+                    }
                 },
                 activateSheet: (options) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.activateSheet(options)
+                    try {
+                        ref.activateSheet(options)
+                    } catch (e) {
+                        console.warn('activateSheet failed:', e)
+                    }
                 },
                 setSheetName: (name, options) => {
                     const ref = getRef()
                     if (!ref) return
-                    ref.setSheetName(name, options)
+                    try {
+                        ref.setSheetName(name, options)
+                    } catch (e) {
+                        console.warn('setSheetName failed:', e)
+                    }
                 },
                 setSheetOrder: (orderList) => {
                     const ref = getRef()
@@ -418,9 +510,18 @@ const SpreadsheetEditor = forwardRef<SpreadsheetEditorAPI, SpreadsheetEditorProp
             onChange(result)
         }, [onChange])
 
+        // Show loading state until mounted and Workbook is loaded
+        if (!isMounted || !WorkbookComponent) {
+            return (
+                <div ref={containerRef} className="h-full w-full fortune-sheet-container flex items-center justify-center bg-white">
+                    <div className="text-gray-400">스프레드시트 로딩 중...</div>
+                </div>
+            )
+        }
+
         return (
             <div ref={containerRef} className="h-full w-full fortune-sheet-container">
-                <Workbook
+                <WorkbookComponent
                     ref={workbookRef}
                     key={sheetKey}
                     data={sheetData}

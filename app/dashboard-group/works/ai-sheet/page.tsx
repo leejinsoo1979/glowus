@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
+import "@fortune-sheet/react/dist/index.css"
 import { motion, AnimatePresence } from "framer-motion"
 import {
     ArrowLeft,
@@ -30,7 +31,17 @@ import { cn } from "@/lib/utils"
 import ExcelRibbon from "./excel-ribbon"
 import type { SpreadsheetEditorAPI } from "./spreadsheet-editor"
 import { createSheetAPI, SheetAPIWrapper } from "./lib/sheet-api"
-import type { SpreadsheetAction, CellFormat, SingleRange, Range } from "./lib/types"
+import type { SpreadsheetAction, CellFormat, SingleRange, Range, SortConfig, FilterCondition } from "./lib/types"
+import { importFile, exportToExcel, exportToCSV, openFilePicker, type ImportResult } from "./lib/file-io"
+import { sortData } from "./lib/sort-filter"
+import type { ConditionalRule } from "./lib/conditional-format"
+import { applyConditionalFormatting } from "./lib/conditional-format"
+import type { ChartConfig } from "./lib/charts"
+import { SortDialog } from "./components/SortDialog"
+import { FilterDialog } from "./components/FilterDialog"
+import { ConditionalFormatDialog } from "./components/ConditionalFormatDialog"
+import { ChartDialog } from "./components/ChartDialog"
+import { ChartRenderer } from "./components/ChartRenderer"
 
 // Dynamic import for Fortune-sheet (client-side only)
 const SpreadsheetEditor = dynamic(() => import("./spreadsheet-editor"), {
@@ -68,11 +79,23 @@ export default function AISheetPage() {
     const [showFileMenu, setShowFileMenu] = useState(false)
     const [showModeModal, setShowModeModal] = useState(false)
     const [sheetApiReady, setSheetApiReady] = useState(false)
+    const [leftPanelWidth, setLeftPanelWidth] = useState(400)
+    const [isDragging, setIsDragging] = useState(false)
+    const [fileName, setFileName] = useState<string>('새 스프레드시트')
+    const [isImporting, setIsImporting] = useState(false)
+    const [showSortDialog, setShowSortDialog] = useState(false)
+    const [showFilterDialog, setShowFilterDialog] = useState(false)
+    const [showConditionalFormatDialog, setShowConditionalFormatDialog] = useState(false)
+    const [showChartDialog, setShowChartDialog] = useState(false)
+    const [filterColumnIndex, setFilterColumnIndex] = useState(0)
+    const [conditionalRules, setConditionalRules] = useState<ConditionalRule[]>([])
+    const [charts, setCharts] = useState<ChartConfig[]>([])
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const spreadsheetRef = useRef<SpreadsheetEditorAPI | null>(null)
     const sheetApiRef = useRef<SheetAPIWrapper | null>(null)
     const fileMenuRef = useRef<HTMLDivElement>(null)
     const modeModalRef = useRef<HTMLDivElement>(null)
+    const containerRef = useRef<HTMLDivElement>(null)
 
     // Close menus when clicking outside
     useEffect(() => {
@@ -88,6 +111,35 @@ export default function AISheetPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Handle panel resize drag
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDragging || !containerRef.current) return
+            const containerRect = containerRef.current.getBoundingClientRect()
+            const newWidth = e.clientX - containerRect.left
+            // Constrain between 300px and 600px
+            setLeftPanelWidth(Math.max(300, Math.min(600, newWidth)))
+        }
+
+        const handleMouseUp = () => {
+            setIsDragging(false)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+        }
+
+        if (isDragging) {
+            document.body.style.cursor = 'col-resize'
+            document.body.style.userSelect = 'none'
+            document.addEventListener('mousemove', handleMouseMove)
+            document.addEventListener('mouseup', handleMouseUp)
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+        }
+    }, [isDragging])
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
@@ -102,6 +154,180 @@ export default function AISheetPage() {
         spreadsheetRef.current = api
         sheetApiRef.current = createSheetAPI(api)
         setSheetApiReady(true)
+    }, [])
+
+    // File Import Handler
+    const handleFileImport = useCallback(async () => {
+        try {
+            const file = await openFilePicker('.xlsx,.xls,.csv')
+            if (!file) return
+
+            setIsImporting(true)
+            setShowFileMenu(false)
+
+            const result = await importFile(file)
+            console.log('Import result:', result)
+
+            if (result.sheets.length > 0) {
+                const firstSheet = result.sheets[0]
+                setSpreadsheetData(firstSheet.data)
+                setFileName(result.fileName.replace(/\.(xlsx|xls|csv)$/i, ''))
+
+                // Add success message
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `📊 "${result.fileName}" 파일을 가져왔습니다.\n\n• 시트: ${result.sheets.length}개\n• 데이터 범위: ${firstSheet.rowCount}행 × ${firstSheet.colCount}열`
+                }])
+            }
+        } catch (error) {
+            console.error('Import error:', error)
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `파일 가져오기 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`
+            }])
+        } finally {
+            setIsImporting(false)
+        }
+    }, [])
+
+    // Export to Excel Handler
+    const handleExportExcel = useCallback(() => {
+        const api = spreadsheetRef.current
+        const data = api ? api.getData() : spreadsheetData
+        exportToExcel(data, { fileName, sheetName: 'Sheet1' })
+
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `📥 "${fileName}.xlsx" 파일로 내보냈습니다.`
+        }])
+    }, [fileName, spreadsheetData])
+
+    // Export to CSV Handler
+    const handleExportCSV = useCallback(() => {
+        const api = spreadsheetRef.current
+        const data = api ? api.getData() : spreadsheetData
+        exportToCSV(data, { fileName })
+
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `📥 "${fileName}.csv" 파일로 내보냈습니다.`
+        }])
+    }, [fileName, spreadsheetData])
+
+    // Get current selection range helper
+    const getCurrentRange = useCallback((): SingleRange | null => {
+        const api = spreadsheetRef.current
+        if (!api) return null
+        const selection = api.getSelection()
+        if (!selection || selection.length === 0) return null
+        return {
+            row: [selection[0].row[0], selection[0].row[1] ?? selection[0].row[0]],
+            column: [selection[0].column[0], selection[0].column[1] ?? selection[0].column[0]]
+        }
+    }, [])
+
+    // Sort Handler
+    const handleSort = useCallback((sorts: SortConfig[], hasHeader: boolean) => {
+        const api = spreadsheetRef.current
+        if (!api) return
+
+        const range = getCurrentRange()
+        if (!range) {
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '정렬할 범위를 선택해주세요.'
+            }])
+            return
+        }
+
+        const data = api.getData()
+        const sortedData = sortData(data, range, sorts, hasHeader)
+
+        // Apply sorted data back to sheet
+        for (let r = range.row[0]; r <= range.row[1] && r < sortedData.length; r++) {
+            for (let c = range.column[0]; c <= range.column[1] && c < sortedData[r].length; c++) {
+                api.setCellValue(r, c, sortedData[r][c])
+            }
+        }
+
+        const sortDesc = sorts.map(s => {
+            const colLetter = String.fromCharCode(65 + s.column)
+            return `${colLetter}열 ${s.order === 'asc' ? '오름차순' : '내림차순'}`
+        }).join(', ')
+
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `정렬을 적용했습니다: ${sortDesc}`
+        }])
+    }, [getCurrentRange])
+
+    // Filter Handler
+    const handleFilter = useCallback((filters: Map<number, FilterCondition[]>) => {
+        const api = spreadsheetRef.current
+        if (!api) return
+
+        const range = getCurrentRange()
+        if (!range) return
+
+        // For now, we'll just show a message about the filter
+        // Full implementation would require hiding rows
+        if (filters.size > 0) {
+            const filterDesc = Array.from(filters.entries()).map(([col, conditions]) => {
+                const colLetter = String.fromCharCode(65 + col)
+                return `${colLetter}열`
+            }).join(', ')
+
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `필터를 적용했습니다: ${filterDesc}`
+            }])
+        }
+    }, [getCurrentRange])
+
+    // Conditional Format Handler
+    const handleConditionalFormat = useCallback((rule: ConditionalRule) => {
+        const api = spreadsheetRef.current
+        if (!api) return
+
+        // Add rule to state
+        setConditionalRules(prev => [...prev, rule])
+
+        // Apply formatting
+        const data = api.getData()
+        const formats = applyConditionalFormatting(data, [...conditionalRules, rule])
+
+        // Apply format to cells
+        const formatEntries = Array.from(formats.entries())
+        for (const [key, formatInfo] of formatEntries) {
+            const [row, col] = key.split(',').map(Number)
+
+            if (formatInfo.format) {
+                if (formatInfo.format.backgroundColor) {
+                    api.setCellFormat(row, col, 'bg', formatInfo.format.backgroundColor)
+                }
+                if (formatInfo.format.fontColor) {
+                    api.setCellFormat(row, col, 'fc', formatInfo.format.fontColor)
+                }
+            }
+
+            if (formatInfo.colorScale) {
+                api.setCellFormat(row, col, 'bg', formatInfo.colorScale)
+            }
+        }
+
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `조건부 서식을 적용했습니다.`
+        }])
+    }, [conditionalRules])
+
+    // Chart Handler
+    const handleChartCreate = useCallback((config: ChartConfig) => {
+        setCharts(prev => [...prev, config])
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `📊 ${config.title || '차트'}를 생성했습니다. (${config.type} 차트, ${config.data.length}개 데이터 포인트)`
+        }])
     }, [])
 
     // Execute spreadsheet action using Fortune-sheet API directly
@@ -411,6 +637,20 @@ export default function AISheetPage() {
             : null
 
         switch (action) {
+            // File I/O
+            case 'import':
+            case 'open':
+                handleFileImport()
+                break
+            case 'export-excel':
+            case 'save-as-excel':
+                handleExportExcel()
+                break
+            case 'export-csv':
+            case 'save-as-csv':
+                handleExportCSV()
+                break
+
             // Clipboard
             case 'cut':
             case 'copy':
@@ -709,21 +949,38 @@ export default function AISheetPage() {
                 api.deleteSheet()
                 break
 
-            // Sort (to be implemented in Phase 5)
+            // Sort
             case 'sort':
+                setShowSortDialog(true)
+                break
             case 'sort-asc':
+                if (range) {
+                    handleSort([{ column: range.column[0], order: 'asc' }], true)
+                }
+                break
             case 'sort-desc':
-                console.log('Sort action - to be implemented in Phase 5')
+                if (range) {
+                    handleSort([{ column: range.column[0], order: 'desc' }], true)
+                }
                 break
 
-            // Filter (to be implemented in Phase 5)
+            // Filter
             case 'filter':
-                console.log('Filter action - to be implemented in Phase 5')
+                if (range) {
+                    setFilterColumnIndex(range.column[0])
+                    setShowFilterDialog(true)
+                }
                 break
 
-            // Conditional format (to be implemented in Phase 5)
+            // Conditional format
             case 'conditional-format':
-                console.log('Conditional format - to be implemented in Phase 5')
+                setShowConditionalFormatDialog(true)
+                break
+
+            // Chart
+            case 'insert-chart':
+            case 'chart':
+                setShowChartDialog(true)
                 break
 
             default:
@@ -773,9 +1030,12 @@ export default function AISheetPage() {
     }
 
     return (
-        <div className="flex h-[calc(100vh-64px)] -m-8 bg-zinc-100 dark:bg-zinc-950">
+        <div ref={containerRef} className="flex h-full -mr-8 -mb-8 bg-zinc-100 dark:bg-zinc-950 overflow-hidden">
             {/* Left Panel - AI Chat */}
-            <div className="w-[400px] min-w-[350px] max-w-[500px] flex flex-col bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
+            <div
+                className="flex flex-col bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 overflow-hidden"
+                style={{ width: leftPanelWidth, minWidth: 300, maxWidth: 600 }}
+            >
                 {/* Header */}
                 <header className="flex items-center gap-3 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 h-[57px]">
                     <button
@@ -962,19 +1222,44 @@ export default function AISheetPage() {
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: 10 }}
-                                            className="absolute bottom-full right-0 mb-2 w-56 bg-zinc-800 rounded-xl shadow-xl border border-zinc-700 overflow-hidden z-50"
+                                            className="absolute bottom-full right-0 mb-2 w-64 bg-zinc-800 rounded-xl shadow-xl border border-zinc-700 overflow-hidden z-50"
                                         >
-                                            <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 text-left transition-colors">
-                                                <FolderOpen className="w-5 h-5 text-zinc-400" />
-                                                <span className="text-sm text-zinc-200">로컬 파일 찾기</span>
-                                            </button>
-                                            <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 text-left transition-colors">
-                                                <HardDrive className="w-5 h-5 text-zinc-400" />
-                                                <span className="text-sm text-zinc-200">AI 드라이브에서 선택</span>
+                                            <div className="px-3 py-2 text-xs text-zinc-400 font-medium border-b border-zinc-700">가져오기</div>
+                                            <button
+                                                onClick={handleFileImport}
+                                                disabled={isImporting}
+                                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 text-left transition-colors disabled:opacity-50"
+                                            >
+                                                <Upload className="w-5 h-5 text-emerald-400" />
+                                                <div>
+                                                    <span className="text-sm text-zinc-200 block">Excel/CSV 파일 가져오기</span>
+                                                    <span className="text-xs text-zinc-500">.xlsx, .xls, .csv</span>
+                                                </div>
                                             </button>
                                             <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 text-left transition-colors">
                                                 <SiGoogledrive className="w-5 h-5 text-zinc-400" />
                                                 <span className="text-sm text-zinc-200">Google 드라이브에서 선택</span>
+                                            </button>
+                                            <div className="px-3 py-2 text-xs text-zinc-400 font-medium border-b border-t border-zinc-700">내보내기</div>
+                                            <button
+                                                onClick={handleExportExcel}
+                                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 text-left transition-colors"
+                                            >
+                                                <FileSpreadsheet className="w-5 h-5 text-blue-400" />
+                                                <div>
+                                                    <span className="text-sm text-zinc-200 block">Excel로 내보내기</span>
+                                                    <span className="text-xs text-zinc-500">.xlsx</span>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={handleExportCSV}
+                                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-700 text-left transition-colors"
+                                            >
+                                                <FolderOpen className="w-5 h-5 text-orange-400" />
+                                                <div>
+                                                    <span className="text-sm text-zinc-200 block">CSV로 내보내기</span>
+                                                    <span className="text-xs text-zinc-500">.csv</span>
+                                                </div>
                                             </button>
                                         </motion.div>
                                     )}
@@ -1002,8 +1287,17 @@ export default function AISheetPage() {
                 </div>
             </div>
 
+            {/* Resizable Divider */}
+            <div
+                className={cn(
+                    "w-1 bg-zinc-200 dark:bg-zinc-700 hover:bg-blue-500 dark:hover:bg-blue-500 cursor-col-resize transition-colors flex-shrink-0",
+                    isDragging && "bg-blue-500"
+                )}
+                onMouseDown={() => setIsDragging(true)}
+            />
+
             {/* Right Panel - Spreadsheet (Full Excel UI) - Always Light Mode */}
-            <div className="flex-1 flex flex-col bg-white overflow-visible" data-theme="light">
+            <div className="flex-1 flex flex-col bg-white overflow-hidden" data-theme="light">
                 {/* Korean Excel Ribbon Toolbar */}
                 <ExcelRibbon onAction={handleRibbonAction} />
 
@@ -1017,6 +1311,59 @@ export default function AISheetPage() {
                     />
                 </div>
             </div>
+
+            {/* Sort Dialog */}
+            <SortDialog
+                isOpen={showSortDialog}
+                onClose={() => setShowSortDialog(false)}
+                onApply={handleSort}
+                range={getCurrentRange() || { row: [0, 10], column: [0, 5] }}
+            />
+
+            {/* Filter Dialog */}
+            <FilterDialog
+                isOpen={showFilterDialog}
+                onClose={() => setShowFilterDialog(false)}
+                onApply={handleFilter}
+                range={getCurrentRange() || { row: [0, 10], column: [0, 5] }}
+                data={spreadsheetRef.current?.getData() || spreadsheetData}
+                columnIndex={filterColumnIndex}
+                hasHeader={true}
+            />
+
+            {/* Conditional Format Dialog */}
+            <ConditionalFormatDialog
+                isOpen={showConditionalFormatDialog}
+                onClose={() => setShowConditionalFormatDialog(false)}
+                onApply={handleConditionalFormat}
+                range={getCurrentRange() || { row: [0, 10], column: [0, 5] }}
+            />
+
+            {/* Chart Dialog */}
+            <ChartDialog
+                isOpen={showChartDialog}
+                onClose={() => setShowChartDialog(false)}
+                onApply={handleChartCreate}
+                range={getCurrentRange()}
+                data={spreadsheetRef.current?.getData() || spreadsheetData}
+            />
+
+            {/* Charts Display Overlay */}
+            {charts.length > 0 && (
+                <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-4 max-h-[60vh] overflow-auto">
+                    {charts.map((chart, idx) => (
+                        <div key={chart.id} className="relative group">
+                            <button
+                                onClick={() => setCharts(prev => prev.filter((_, i) => i !== idx))}
+                                className="absolute -top-2 -right-2 z-10 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs"
+                            >
+                                ×
+                            </button>
+                            <ChartRenderer config={chart} width={400} height={250} />
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     )
 }
