@@ -1006,24 +1006,24 @@ export default function AISlidesPage() {
     }
 
     return (
-        <div ref={containerRef} className="h-screen flex bg-zinc-950 overflow-hidden">
+        <div ref={containerRef} className="h-screen flex bg-white dark:bg-zinc-950 overflow-hidden">
             {/* Left Panel - Chat */}
             <div
-                className="flex flex-col border-r border-zinc-800 h-full overflow-hidden"
+                className="flex flex-col border-r border-zinc-200 dark:border-zinc-800 h-full overflow-hidden bg-white dark:bg-zinc-950"
                 style={{ width: leftPanelWidth, minWidth: 320, maxWidth: 800 }}
             >
                 {/* Chat Header */}
-                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900">
-                    <h2 className="font-semibold text-white text-sm">슬라이드 AI</h2>
+                <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                    <h2 className="font-semibold text-zinc-900 dark:text-white text-sm">슬라이드 AI</h2>
                 </div>
 
                 {/* Chat Tabs */}
-                <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800">
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-200 dark:border-zinc-800">
                     <button
                         onClick={() => setChatTab('ai')}
                         className={cn(
                             "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                            chatTab === 'ai' ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-white"
+                            chatTab === 'ai' ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                         )}
                     >
                         AI 채팅
@@ -1032,7 +1032,7 @@ export default function AISlidesPage() {
                         onClick={() => setChatTab('team')}
                         className={cn(
                             "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                            chatTab === 'team' ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-white"
+                            chatTab === 'team' ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                         )}
                     >
                         팀 채팅
@@ -1043,7 +1043,7 @@ export default function AISlidesPage() {
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {/* Todo Progress */}
                     {todos.length > 0 && (
-                        <div className="bg-zinc-800/50 rounded-xl p-4 mb-4">
+                        <div className="bg-zinc-100 dark:bg-zinc-800/50 rounded-xl p-4 mb-4">
                             <div className="flex items-center justify-between mb-3">
                                 <span className="text-xs text-zinc-500">
                                     총: {todos.length}개의 할 일
@@ -1081,19 +1081,19 @@ export default function AISlidesPage() {
                         <div key={i} className={cn("flex gap-3", msg.role === 'user' && "flex-row-reverse")}>
                             <div className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
-                                msg.role === 'user' ? "bg-accent" : "bg-zinc-800"
+                                msg.role === 'user' ? "bg-accent" : "bg-zinc-200 dark:bg-zinc-800"
                             )}>
                                 {msg.role === 'user' ? (
                                     <User className="w-4 h-4 text-white" />
                                 ) : (
-                                    <Bot className="w-4 h-4 text-white" />
+                                    <Bot className="w-4 h-4 text-zinc-600 dark:text-white" />
                                 )}
                             </div>
                             <div className={cn(
                                 "max-w-[85%] rounded-2xl px-4 py-3 text-sm",
                                 msg.role === 'user'
                                     ? "bg-accent text-white"
-                                    : "bg-zinc-800 text-zinc-200"
+                                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200"
                             )}>
                                 <div className="whitespace-pre-wrap">{msg.content}</div>
                                 {msg.slideIndex !== undefined && (
@@ -1109,10 +1109,10 @@ export default function AISlidesPage() {
                     ))}
                     {isLoading && (
                         <div className="flex gap-3">
-                            <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center">
-                                <Bot className="w-4 h-4 text-white" />
+                            <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
+                                <Bot className="w-4 h-4 text-zinc-600 dark:text-white" />
                             </div>
-                            <div className="bg-zinc-800 rounded-2xl px-4 py-3">
+                            <div className="bg-zinc-100 dark:bg-zinc-800 rounded-2xl px-4 py-3">
                                 <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
                             </div>
                         </div>
@@ -1121,8 +1121,8 @@ export default function AISlidesPage() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 border-t border-zinc-800">
-                    <div className="bg-zinc-800 rounded-xl">
+                <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
+                    <div className="bg-zinc-100 dark:bg-zinc-800 rounded-xl">
                         <div className="px-4 py-3">
                             <input
                                 type="text"
@@ -1130,14 +1130,14 @@ export default function AISlidesPage() {
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                                 placeholder="슬라이드 요청을 여기에 입력하세요"
-                                className="w-full bg-transparent text-white placeholder-zinc-500 text-sm no-focus-ring"
+                                className="w-full bg-transparent text-zinc-900 dark:text-white placeholder-zinc-500 text-sm no-focus-ring"
                             />
                         </div>
-                        <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-700">
+                        <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-200 dark:border-zinc-700">
                             <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => setShowLoadMenu(!showLoadMenu)}
-                                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors relative"
+                                    className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors relative"
                                     title="불러오기"
                                 >
                                     <FolderOpen className="w-5 h-5 text-zinc-500" />
@@ -1151,20 +1151,20 @@ export default function AISlidesPage() {
                                 />
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
+                                    className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
                                     title="파일 업로드"
                                 >
                                     <Upload className="w-5 h-5 text-zinc-500" />
                                 </button>
                             </div>
                             <div className="flex items-center gap-1">
-                                <button className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
+                                <button className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
                                     <Mic className="w-5 h-5 text-zinc-500" />
                                 </button>
                                 <button
                                     onClick={sendMessage}
                                     disabled={isLoading || !input.trim()}
-                                    className="p-2 bg-accent hover:bg-accent/90 disabled:bg-zinc-600 rounded-lg transition-colors"
+                                    className="p-2 bg-accent hover:bg-accent/90 disabled:bg-zinc-300 dark:disabled:bg-zinc-600 rounded-lg transition-colors"
                                 >
                                     <Send className="w-4 h-4 text-white" />
                                 </button>
@@ -1180,7 +1180,7 @@ export default function AISlidesPage() {
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 10 }}
                                 style={{ width: leftPanelWidth - 32 }}
-                                className="absolute bottom-24 left-4 bg-zinc-800 rounded-xl shadow-xl border border-zinc-700 max-h-64 overflow-y-auto z-50"
+                                className="absolute bottom-24 left-4 bg-white dark:bg-zinc-800 rounded-xl shadow-xl border border-zinc-200 dark:border-zinc-700 max-h-64 overflow-y-auto z-50"
                             >
                                 <div className="p-2">
                                     <p className="text-xs text-zinc-500 px-2 py-1">저장된 프레젠테이션</p>
@@ -1191,11 +1191,11 @@ export default function AISlidesPage() {
                                             <button
                                                 key={p.id}
                                                 onClick={() => loadPresentation(p)}
-                                                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-zinc-700 rounded-lg transition-colors text-left"
+                                                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-colors text-left"
                                             >
                                                 <FileText className="w-5 h-5 text-accent" />
                                                 <div>
-                                                    <p className="text-sm text-white">{p.title}</p>
+                                                    <p className="text-sm text-zinc-900 dark:text-white">{p.title}</p>
                                                     <p className="text-xs text-zinc-500">{p.slides.length}개 슬라이드</p>
                                                 </div>
                                             </button>
@@ -1212,31 +1212,31 @@ export default function AISlidesPage() {
             <div
                 onMouseDown={handleMouseDown}
                 className={cn(
-                    "w-2 hover:w-3 bg-zinc-800/50 hover:bg-accent/20 cursor-col-resize transition-all flex-shrink-0 group relative flex items-center justify-center",
+                    "w-2 hover:w-3 bg-zinc-200/50 dark:bg-zinc-800/50 hover:bg-accent/20 cursor-col-resize transition-all flex-shrink-0 group relative flex items-center justify-center",
                     isResizing && "w-3 bg-accent/30"
                 )}
             >
                 <div className="absolute inset-y-0 -left-2 -right-2" />
                 <GripVertical className={cn(
-                    "w-4 h-4 text-zinc-600 group-hover:text-accent transition-colors",
+                    "w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-accent transition-colors",
                     isResizing && "text-accent"
                 )} />
             </div>
 
             {/* Right Panel - Preview */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-50 dark:bg-zinc-950">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
                     <div className="flex items-center gap-3">
                         <FileText className="w-5 h-5 text-zinc-500" />
                         <input
                             type="text"
                             value={presentationTitle}
                             onChange={(e) => setPresentationTitle(e.target.value)}
-                            className="text-white font-medium bg-transparent border-none outline-none"
+                            className="text-zinc-900 dark:text-white font-medium bg-transparent border-none outline-none"
                         />
                         {slides.length > 0 && (
-                            <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-1 rounded">
+                            <span className="text-xs text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded">
                                 저장 자동-{slides.length}
                             </span>
                         )}
@@ -1251,7 +1251,7 @@ export default function AISlidesPage() {
                                         "flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors",
                                         editMode
                                             ? "bg-accent text-white"
-                                            : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                                            : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
                                     )}
                                     title={editMode ? "미리보기 모드" : "편집 모드"}
                                 >
@@ -1260,14 +1260,14 @@ export default function AISlidesPage() {
                                 </button>
                                 <button
                                     onClick={savePresentation}
-                                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors"
                                 >
                                     <Copy className="w-4 h-4" />
                                     저장
                                 </button>
                                 <button
                                     onClick={() => {/* TODO: Present mode */}}
-                                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors"
                                 >
                                     <Play className="w-4 h-4" />
                                     발표
@@ -1286,7 +1286,7 @@ export default function AISlidesPage() {
                 </div>
 
                 {/* Preview Tabs */}
-                <div className="flex items-center gap-4 px-6 py-2 border-b border-zinc-800">
+                <div className="flex items-center gap-4 px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
                     {[
                         { id: 'preview', label: '미리보기', icon: Eye },
                         { id: 'code', label: '코드', icon: Code },
@@ -1298,8 +1298,8 @@ export default function AISlidesPage() {
                             className={cn(
                                 "flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors",
                                 activeTab === tab.id
-                                    ? "bg-zinc-800 text-white"
-                                    : "text-zinc-500 hover:text-white"
+                                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white"
+                                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                             )}
                         >
                             <tab.icon className="w-4 h-4" />
@@ -1330,7 +1330,7 @@ export default function AISlidesPage() {
                     ) : slides.length > 0 ? (
                         <div className="p-6 h-full overflow-y-auto">
                         <div className="h-full flex flex-col min-h-0">
-                            <div className="flex-1 bg-zinc-900 rounded-xl overflow-hidden shadow-2xl relative">
+                            <div className="flex-1 bg-zinc-100 dark:bg-zinc-900 rounded-xl overflow-hidden shadow-2xl relative">
                                 {editingSlide === currentSlide && (
                                     <div className="absolute inset-0 bg-black/50 z-10 flex items-center justify-center">
                                         <Loader2 className="w-8 h-8 animate-spin text-accent" />
@@ -1354,9 +1354,9 @@ export default function AISlidesPage() {
                                 <button
                                     onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
                                     disabled={currentSlide === 0}
-                                    className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 rounded-lg transition-colors"
+                                    className="p-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50 rounded-lg transition-colors"
                                 >
-                                    <ChevronLeft className="w-5 h-5 text-white" />
+                                    <ChevronLeft className="w-5 h-5 text-zinc-700 dark:text-white" />
                                 </button>
                                 <div className="flex items-center gap-2 overflow-x-auto max-w-md">
                                     {slides.map((_, i) => (
@@ -1365,7 +1365,7 @@ export default function AISlidesPage() {
                                             onClick={() => setCurrentSlide(i)}
                                             className={cn(
                                                 "w-2 h-2 rounded-full transition-colors flex-shrink-0",
-                                                i === currentSlide ? "bg-accent" : "bg-zinc-700 hover:bg-zinc-600"
+                                                i === currentSlide ? "bg-accent" : "bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600"
                                             )}
                                         />
                                     ))}
@@ -1373,9 +1373,9 @@ export default function AISlidesPage() {
                                 <button
                                     onClick={() => setCurrentSlide(Math.min(slides.length - 1, currentSlide + 1))}
                                     disabled={currentSlide === slides.length - 1}
-                                    className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 rounded-lg transition-colors"
+                                    className="p-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50 rounded-lg transition-colors"
                                 >
-                                    <ChevronRight className="w-5 h-5 text-white" />
+                                    <ChevronRight className="w-5 h-5 text-zinc-700 dark:text-white" />
                                 </button>
                             </div>
 
@@ -1387,10 +1387,10 @@ export default function AISlidesPage() {
                                         onClick={() => setCurrentSlide(i)}
                                         className={cn(
                                             "flex-shrink-0 w-32 h-20 rounded-lg overflow-hidden border-2 transition-colors",
-                                            i === currentSlide ? "border-accent" : "border-zinc-700 hover:border-zinc-500"
+                                            i === currentSlide ? "border-accent" : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500"
                                         )}
                                     >
-                                        <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-xs text-zinc-400">
+                                        <div className="w-full h-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xs text-zinc-600 dark:text-zinc-400">
                                             {i + 1}. {slide.title.slice(0, 10)}...
                                         </div>
                                     </button>
@@ -1401,24 +1401,24 @@ export default function AISlidesPage() {
                     ) : (
                         <div className="h-full flex items-center justify-center p-6">
                             <div className="text-center">
-                                <div className="w-20 h-20 bg-zinc-800 rounded-2xl mx-auto mb-6 flex items-center justify-center">
-                                    <FileText className="w-10 h-10 text-zinc-600" />
+                                <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800 rounded-2xl mx-auto mb-6 flex items-center justify-center">
+                                    <FileText className="w-10 h-10 text-zinc-400 dark:text-zinc-600" />
                                 </div>
-                                <h3 className="text-xl font-medium text-white mb-2">슬라이드 미리보기</h3>
+                                <h3 className="text-xl font-medium text-zinc-900 dark:text-white mb-2">슬라이드 미리보기</h3>
                                 <p className="text-zinc-500 text-sm mb-6">
                                     왼쪽 채팅창에서 슬라이드 생성을 요청하세요
                                 </p>
                                 <div className="flex gap-3 justify-center">
                                     <button
                                         onClick={() => setShowLoadMenu(true)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                                        className="flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-white rounded-lg transition-colors"
                                     >
                                         <FolderOpen className="w-4 h-4" />
                                         불러오기
                                     </button>
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                                        className="flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-white rounded-lg transition-colors"
                                     >
                                         <Upload className="w-4 h-4" />
                                         파일 업로드
