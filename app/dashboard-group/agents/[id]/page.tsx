@@ -129,7 +129,7 @@ interface CustomEmotion {
 type EmotionType = string
 
 interface EmotionAvatars {
-  [key: string]: string // emotion_id -> image URL
+  [key: string]: string | string[] // emotion_id -> image URL or array of URLs (max 4)
 }
 
 // 텍스트에서 감정 분석 (커스텀 감정 포함) - 단일 감정 반환 (호환성 유지)
@@ -2197,9 +2197,21 @@ export default function AgentProfilePage() {
     ...customEmotions.filter(e => !e.isDefault),
   ]
 
-  // 감정 아바타 업로드
+  // 감정 아바타 업로드 (최대 4개까지 추가)
   const handleEmotionAvatarUpload = async (emotionId: string, file: File) => {
     if (!agent) return
+
+    // 현재 이미지 배열 가져오기
+    const currentData = emotionAvatars[emotionId]
+    const currentUrls: string[] = currentData
+      ? (Array.isArray(currentData) ? currentData : [currentData])
+      : []
+
+    // 4개 제한 체크
+    if (currentUrls.length >= 4) {
+      alert('감정당 최대 4개의 GIF만 등록 가능합니다. 기존 이미지를 삭제하고 추가하세요.')
+      return
+    }
 
     if (file.size > 10 * 1024 * 1024) {
       alert('이미지 크기는 10MB 이하여야 합니다.')
@@ -2237,8 +2249,9 @@ export default function AgentProfilePage() {
       const { data: urlData } = supabase.storage.from('profile-images').getPublicUrl(fileName)
       const url = urlData.publicUrl
 
-      // 새로운 emotion_avatars 객체 생성
-      const newEmotionAvatars = { ...emotionAvatars, [emotionId]: url }
+      // 기존 배열에 새 URL 추가 (최대 4개)
+      const newUrls = [...currentUrls, url].slice(0, 4)
+      const newEmotionAvatars = { ...emotionAvatars, [emotionId]: newUrls }
 
       // 에이전트 데이터 업데이트
       const res = await fetch(`/api/agents/${agent.id}`, {
@@ -5869,44 +5882,67 @@ export default function AgentProfilePage() {
                         </div>
                       </div>
 
-                      {/* 이미지 영역 */}
-                      <div
-                        className={cn(
-                          'relative aspect-square rounded-lg overflow-hidden cursor-pointer',
-                          isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-                        )}
-                        onClick={() => emotionFileInputRefs.current[emotion.id]?.click()}
-                      >
-                        {uploadingEmotion === emotion.id ? (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="w-8 h-8 animate-spin text-accent" />
-                          </div>
-                        ) : emotionAvatars[emotion.id] ? (
-                          <>
-                            <img
-                              src={emotionAvatars[emotion.id]}
-                              alt={emotion.label}
-                              className="w-full h-full object-cover"
-                            />
-                            {/* 삭제 버튼 - hover 시 표시 */}
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  emotionFileInputRefs.current[emotion.id]?.click()
-                                }}
-                                className="p-2 rounded-full bg-white/20 hover:bg-white/30"
-                                title="변경"
-                              >
-                                <Camera className="w-4 h-4 text-white" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleEmotionAvatarDelete(emotion.id)
-                                }}
-                                className="p-2 rounded-full bg-red-500/80 hover:bg-red-500"
-                                title="삭제"
+                      {/* 이미지 영역 - 최대 4개 GIF 지원 */}
+                      {(() => {
+                        const avatarData = emotionAvatars[emotion.id]
+                        const imageUrls: string[] = avatarData
+                          ? (Array.isArray(avatarData) ? avatarData : [avatarData])
+                          : []
+                        return (
+                          <div
+                            className={cn(
+                              'relative aspect-square rounded-lg overflow-hidden cursor-pointer',
+                              isDark ? 'bg-zinc-800' : 'bg-zinc-100'
+                            )}
+                            onClick={() => emotionFileInputRefs.current[emotion.id]?.click()}
+                          >
+                            {uploadingEmotion === emotion.id ? (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                              </div>
+                            ) : imageUrls.length > 0 ? (
+                              <>
+                                {imageUrls.length === 1 ? (
+                                  <img
+                                    src={imageUrls[0]}
+                                    alt={emotion.label}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full p-0.5">
+                                    {imageUrls.slice(0, 4).map((url, idx) => (
+                                      <div key={idx} className="rounded-sm overflow-hidden">
+                                        <img src={url} alt={`${emotion.label}-${idx + 1}`} className="w-full h-full object-cover" />
+                                      </div>
+                                    ))}
+                                    {imageUrls.length < 4 && Array.from({ length: 4 - imageUrls.length }).map((_, idx) => (
+                                      <div key={`empty-${idx}`} className={cn('rounded-sm', isDark ? 'bg-zinc-700/50' : 'bg-zinc-200/50')} />
+                                    ))}
+                                  </div>
+                                )}
+                                {/* 이미지 개수 표시 */}
+                                <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[10px] font-medium">
+                                  {imageUrls.length}/4
+                                </div>
+                                {/* 삭제/추가 버튼 - hover 시 표시 */}
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      emotionFileInputRefs.current[emotion.id]?.click()
+                                    }}
+                                    className="p-2 rounded-full bg-white/20 hover:bg-white/30"
+                                    title={imageUrls.length < 4 ? "추가" : "변경"}
+                                  >
+                                    <Camera className="w-4 h-4 text-white" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEmotionAvatarDelete(emotion.id)
+                                    }}
+                                    className="p-2 rounded-full bg-red-500/80 hover:bg-red-500"
+                                    title="삭제"
                               >
                                 <Trash2 className="w-4 h-4 text-white" />
                               </button>
@@ -5920,7 +5956,9 @@ export default function AgentProfilePage() {
                             </span>
                           </div>
                         )}
-                      </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* 설명 */}
                       <p className={cn('text-xs mt-2 text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
