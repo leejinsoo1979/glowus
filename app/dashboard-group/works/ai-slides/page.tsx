@@ -33,6 +33,20 @@ import {
 import { cn } from "@/lib/utils"
 import { parsePptxFile, convertToSlideContent } from "./lib/pptx-parser"
 
+// Helper functions for file type detection (inline to avoid SSR issues with pdfjs-dist)
+const isPdfFile = (file: File): boolean => {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+}
+
+const isPptxFile = (file: File): boolean => {
+  return file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+         file.name.toLowerCase().endsWith('.pptx') ||
+         file.name.toLowerCase().endsWith('.ppt')
+}
+import { SlideEditor, extractPresentationText } from "./components/slide-editor"
+import { ParsedPresentationV2, ParsedSlideV2, AnySlideElement, TextElement, CANVAS_WIDTH, CANVAS_HEIGHT, createPosition, createSize } from "./types/slide-elements"
+import { Edit2, Eye as EyeIcon } from "lucide-react"
+
 // Slide Types
 interface SlideImage {
     id: string
@@ -473,6 +487,8 @@ export default function AISlidesPage() {
     const [editingSlide, setEditingSlide] = useState<number | null>(null)
     const [showLoadMenu, setShowLoadMenu] = useState(false)
     const [savedPresentations, setSavedPresentations] = useState<SavedPresentation[]>([])
+    const [editMode, setEditMode] = useState(false)
+    const [presentationV2, setPresentationV2] = useState<ParsedPresentationV2 | null>(null)
 
     // Resizable panel state
     const [leftPanelWidth, setLeftPanelWidth] = useState(480)
@@ -756,8 +772,17 @@ export default function AISlidesPage() {
         setEditingSlide(null)
     }, [slides])
 
-    // Parse edit commands
+    // Parse edit commands - only match if it contains action keywords
     const parseEditCommand = useCallback((text: string): { slideIndex: number, instruction: string } | null => {
+        // Action keywords that indicate an edit request (not just a question)
+        const editKeywords = ['수정', '바꿔', '변경', '추가', '삭제', '제거', '편집', '만들어', '넣어', '빼', '교체', '업데이트']
+        const hasEditIntent = editKeywords.some(keyword => text.includes(keyword))
+
+        // If no edit intent, don't treat as edit command
+        if (!hasEditIntent) {
+            return null
+        }
+
         // Match patterns like "3번 슬라이드", "슬라이드 3", "3페이지"
         const slideMatch = text.match(/(\d+)\s*(번\s*슬라이드|페이지|번째|번)/)
         if (slideMatch) {
@@ -765,7 +790,7 @@ export default function AISlidesPage() {
             return { slideIndex, instruction: text }
         }
 
-        // Match "현재 슬라이드", "이 슬라이드"
+        // Match "현재 슬라이드", "이 슬라이드" only if edit intent is present
         if (text.includes('현재') || text.includes('이 슬라이드')) {
             return { slideIndex: currentSlide, instruction: text }
         }
@@ -803,13 +828,56 @@ export default function AISlidesPage() {
                 }])
                 await editSlide(editCommand.slideIndex, editCommand.instruction)
             } else {
-                // General chat about slides
+                // General chat about slides with context
                 setIsLoading(true)
-                await new Promise(r => setTimeout(r, 500))
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: '어떤 슬라이드를 수정하시겠습니까? 예:\n\n• "3번 슬라이드 제목 수정해줘"\n• "현재 슬라이드에 내용 추가해줘"\n• "새 슬라이드 추가해줘"'
-                }])
+
+                // Get presentation context for AI
+                const presentationContext = presentationV2
+                    ? extractPresentationText(presentationV2.slides)
+                    : slides.map((s, i) => `[슬라이드 ${i + 1}]\n제목: ${s.title}\n${s.subtitle || ''}\n${s.content?.points?.join('\n') || ''}`).join('\n\n')
+
+                // Get current slide content specifically
+                let currentSlideContent = ''
+                if (presentationV2 && presentationV2.slides[currentSlide]) {
+                    const { extractSlideText } = await import('./components/slide-editor/SlideThumbnail')
+                    currentSlideContent = extractSlideText(presentationV2.slides[currentSlide])
+                } else if (slides[currentSlide]) {
+                    const s = slides[currentSlide]
+                    currentSlideContent = `제목: ${s.title}\n${s.subtitle || ''}\n${s.content?.points?.join('\n') || ''}`
+                }
+
+                try {
+                    const response = await fetch('/api/slides/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: userMessage,
+                            presentationContext,
+                            currentSlideContent,
+                            currentSlideIndex: currentSlide,
+                            totalSlides: slides.length,
+                        }),
+                    })
+
+                    if (response.ok) {
+                        const data = await response.json()
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: data.response || '슬라이드에 대해 무엇이든 물어보세요!'
+                        }])
+                    } else {
+                        // Fallback response
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `현재 프레젠테이션에는 ${slides.length}개의 슬라이드가 있습니다.\n\n어떤 슬라이드를 수정하시겠습니까? 예:\n\n• "3번 슬라이드 제목 수정해줘"\n• "현재 슬라이드에 내용 추가해줘"\n• "새 슬라이드 추가해줘"`
+                        }])
+                    }
+                } catch {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: '어떤 슬라이드를 수정하시겠습니까? 예:\n\n• "3번 슬라이드 제목 수정해줘"\n• "현재 슬라이드에 내용 추가해줘"\n• "새 슬라이드 추가해줘"'
+                    }])
+                }
                 setIsLoading(false)
             }
         } else {
@@ -824,16 +892,50 @@ export default function AISlidesPage() {
         }
     }
 
-    // Handle file upload
+    // Convert ParsedPresentationV2 to SlideContent[] for preview mode
+    const convertV2ToSlideContent = (pres: ParsedPresentationV2): SlideContent[] => {
+        return pres.slides.map((slide, idx) => {
+            const textElements = slide.elements.filter(el => el.type === 'text') as TextElement[]
+            const title = textElements[0]?.text || `슬라이드 ${idx + 1}`
+            const subtitle = textElements[1]?.text
+
+            const imageElements = slide.elements.filter(el => el.type === 'image')
+            const images = imageElements.map((img, i) => ({
+                id: img.id,
+                dataUrl: (img as any).src,
+                width: img.size.widthPx,
+                height: img.size.heightPx,
+                x: img.position.xPx,
+                y: img.position.yPx,
+            }))
+
+            return {
+                id: slide.id,
+                type: idx === 0 ? 'cover' : 'content' as SlideContent['type'],
+                title,
+                subtitle,
+                content: {
+                    points: textElements.slice(2).map(t => t.text)
+                },
+                images: images.length > 0 ? images : undefined,
+                backgroundColor: slide.background?.color,
+            }
+        })
+    }
+
+    // Handle file upload (supports PPTX and PDF)
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
         // Check file type
-        if (!file.name.match(/\.pptx?$/i)) {
+        const isPdf = isPdfFile(file)
+        const isPptx = isPptxFile(file)
+
+        if (!isPdf && !isPptx) {
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: 'PPT 또는 PPTX 파일만 업로드할 수 있습니다.'
+                content: 'PPTX 또는 PDF 파일만 업로드할 수 있습니다.'
             }])
             return
         }
@@ -841,14 +943,15 @@ export default function AISlidesPage() {
         setIsLoading(true)
         setMessages(prev => [...prev, {
             role: 'assistant',
-            content: `"${file.name}" 파일을 분석 중입니다...`
+            content: `"${file.name}" 파일을 분석 중입니다... ${isPdf ? '(PDF 모드)' : '(PPTX 모드)'}`
         }])
 
         try {
-            const parsed = await parsePptxFile(file)
-            const converted = convertToSlideContent(parsed)
+            // Dynamically import parseSlideFile to avoid SSR issues with pdfjs-dist
+            const { parseSlideFile } = await import('./lib/pdf-parser')
+            const parsed = await parseSlideFile(file)
 
-            if (converted.slides.length === 0) {
+            if (parsed.slides.length === 0) {
                 setMessages(prev => [...prev, {
                     role: 'assistant',
                     content: '파일에서 슬라이드를 찾을 수 없습니다. 파일이 손상되었거나 빈 파일일 수 있습니다.'
@@ -856,17 +959,31 @@ export default function AISlidesPage() {
                 return
             }
 
-            // Update slides with parsed content
-            setSlides(converted.slides as SlideContent[])
-            setPresentationTitle(converted.title)
+            // Store the V2 presentation for edit mode
+            setPresentationV2(parsed)
+
+            // Convert to SlideContent for preview mode
+            const converted = convertV2ToSlideContent(parsed)
+            setSlides(converted)
+            setPresentationTitle(parsed.title)
             setCurrentSlide(0)
+
+            // Auto-enable edit mode for better editing experience
+            setEditMode(true)
+
+            // Show extracted text for each slide
+            const { extractSlideText } = await import('./components/slide-editor/SlideThumbnail')
+            const extractedTexts = parsed.slides.map((slide, i) => {
+                const text = extractSlideText(slide)
+                return `**슬라이드 ${i + 1}**: ${text ? text.substring(0, 100) + (text.length > 100 ? '...' : '') : '(텍스트 없음)'}`
+            }).join('\n')
 
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: `"${converted.title}" 프레젠테이션을 불러왔습니다!\n\n총 ${converted.slides.length}개의 슬라이드가 있습니다.\n\n수정이 필요하시면 말씀해주세요:\n• "2번 슬라이드 제목을 변경해줘"\n• "새로운 슬라이드를 추가해줘"\n• "팀 소개 슬라이드를 수정해줘"`
+                content: `"${parsed.title}" 프레젠테이션을 불러왔습니다!\n\n총 ${parsed.slides.length}개의 슬라이드가 있습니다.\n\n📄 **추출된 텍스트:**\n${extractedTexts}\n\n📝 슬라이드를 직접 클릭하여 수정하거나, AI에게 질문할 수 있습니다.`
             }])
         } catch (error) {
-            console.error('PPTX parsing error:', error)
+            console.error('File parsing error:', error)
             setMessages(prev => [...prev, {
                 role: 'assistant',
                 content: '파일을 읽는 중 오류가 발생했습니다. 파일이 손상되었거나 지원하지 않는 형식일 수 있습니다.'
@@ -880,6 +997,14 @@ export default function AISlidesPage() {
         }
     }
 
+    // Handle presentation change from SlideEditor
+    const handlePresentationChange = (newPresentation: ParsedPresentationV2) => {
+        setPresentationV2(newPresentation)
+        // Also update the preview mode slides
+        const converted = convertV2ToSlideContent(newPresentation)
+        setSlides(converted)
+    }
+
     return (
         <div ref={containerRef} className="h-screen flex bg-zinc-950 overflow-hidden">
             {/* Left Panel - Chat */}
@@ -887,26 +1012,29 @@ export default function AISlidesPage() {
                 className="flex flex-col border-r border-zinc-800 h-full overflow-hidden"
                 style={{ width: leftPanelWidth, minWidth: 320, maxWidth: 800 }}
             >
+                {/* Chat Header */}
+                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900">
+                    <h2 className="font-semibold text-white text-sm">슬라이드 AI</h2>
+                </div>
+
                 {/* Chat Tabs */}
-                <div className="flex items-center gap-2 p-4 border-b border-zinc-800">
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800">
                     <button
                         onClick={() => setChatTab('ai')}
                         className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                            chatTab === 'ai' ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-white"
+                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                            chatTab === 'ai' ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-white"
                         )}
                     >
-                        <Bot className="w-4 h-4" />
-                        AI 슬라이드
+                        AI 채팅
                     </button>
                     <button
                         onClick={() => setChatTab('team')}
                         className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                            chatTab === 'team' ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-white"
+                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                            chatTab === 'team' ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-white"
                         )}
                     >
-                        <User className="w-4 h-4" />
                         팀 채팅
                     </button>
                 </div>
@@ -1002,7 +1130,7 @@ export default function AISlidesPage() {
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                                 placeholder="슬라이드 요청을 여기에 입력하세요"
-                                className="w-full bg-transparent text-white placeholder-zinc-500 text-sm outline-none"
+                                className="w-full bg-transparent text-white placeholder-zinc-500 text-sm no-focus-ring"
                             />
                         </div>
                         <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-700">
@@ -1017,7 +1145,7 @@ export default function AISlidesPage() {
                                 <input
                                     ref={fileInputRef}
                                     type="file"
-                                    accept=".pptx,.ppt"
+                                    accept=".pptx,.ppt,.pdf"
                                     className="hidden"
                                     onChange={handleFileUpload}
                                 />
@@ -1116,6 +1244,20 @@ export default function AISlidesPage() {
                     <div className="flex items-center gap-2">
                         {slides.length > 0 && (
                             <>
+                                {/* Edit Mode Toggle */}
+                                <button
+                                    onClick={() => setEditMode(!editMode)}
+                                    className={cn(
+                                        "flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors",
+                                        editMode
+                                            ? "bg-accent text-white"
+                                            : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                                    )}
+                                    title={editMode ? "미리보기 모드" : "편집 모드"}
+                                >
+                                    {editMode ? <EyeIcon className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                                    {editMode ? "미리보기" : "편집"}
+                                </button>
                                 <button
                                     onClick={savePresentation}
                                     className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
@@ -1171,9 +1313,22 @@ export default function AISlidesPage() {
                     )}
                 </div>
 
-                {/* Slide Preview */}
-                <div className="flex-1 p-6 overflow-y-auto">
-                    {slides.length > 0 ? (
+                {/* Slide Preview or Edit Mode */}
+                <div className="flex-1 overflow-hidden">
+                    {/* Edit Mode - SlideEditor */}
+                    {editMode && presentationV2 ? (
+                        <SlideEditor
+                            presentation={presentationV2}
+                            onPresentationChange={handlePresentationChange}
+                            onExport={exportToPPTX}
+                            onAIChat={() => {
+                                // Focus on chat input
+                                const chatInput = document.querySelector('input[placeholder*="슬라이드"]') as HTMLInputElement
+                                chatInput?.focus()
+                            }}
+                        />
+                    ) : slides.length > 0 ? (
+                        <div className="p-6 h-full overflow-y-auto">
                         <div className="h-full flex flex-col min-h-0">
                             <div className="flex-1 bg-zinc-900 rounded-xl overflow-hidden shadow-2xl relative">
                                 {editingSlide === currentSlide && (
@@ -1242,8 +1397,9 @@ export default function AISlidesPage() {
                                 ))}
                             </div>
                         </div>
+                        </div>
                     ) : (
-                        <div className="h-full flex items-center justify-center">
+                        <div className="h-full flex items-center justify-center p-6">
                             <div className="text-center">
                                 <div className="w-20 h-20 bg-zinc-800 rounded-2xl mx-auto mb-6 flex items-center justify-center">
                                     <FileText className="w-10 h-10 text-zinc-600" />
