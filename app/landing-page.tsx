@@ -96,14 +96,19 @@ export function LandingPage() {
               </div>
 
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-800 to-neutral-500 dark:from-neutral-50 dark:to-neutral-400 leading-tight">
-                Founders OS
-                <br />
-                <span className="text-accent">Real-Time Growth</span>
+                The Next-Gen AI OS.
               </h1>
+              <div className="mt-4 space-y-2">
+                <div className="text-3xl md:text-4xl lg:text-5xl font-bold text-accent">
+                  Build your own agents.
+                </div>
+                <div className="text-3xl md:text-4xl lg:text-5xl font-bold text-accent/80">
+                  Collaborate in real-time.
+                </div>
+              </div>
 
-              <p className="mt-6 text-lg md:text-xl text-neutral-600 dark:text-neutral-300 max-w-lg">
-                일상의 업무 기록이 자동으로 투자자에게 보여지는 IR 자료가 됩니다.
-                <span className="font-semibold text-accent">GlowUS</span>와 함께 성장하세요.
+              <p className="mt-6 text-lg md:text-xl text-neutral-600 dark:text-neutral-300 max-w-3xl">
+                나만의 에이전트를 설계하고, 실시간 협업으로 비즈니스를 가속화하세요.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mt-10">
@@ -183,7 +188,7 @@ export function LandingPage() {
                     icon: <TrendingUp className="h-5 w-5" />,
                   },
                 ]}
-                defaultLayout="stack"
+                defaultLayout="list"
               />
             </div>
           </div>

@@ -651,7 +651,7 @@ const categories: Category[] = [
     icon: Bot,
     items: [
       { name: '에이전트 목록', href: '/dashboard-group/agents', icon: Bot },
-      { name: '새 에이전트', href: '/agent-builder/new', icon: Plus },
+      { name: '슈퍼 에이전트 생성', href: '/agent-builder/new', icon: Plus },
       { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
     ]
   },
@@ -981,6 +981,7 @@ export function TwoLevelSidebar() {
       if (tab === 'tools') return 'apps'
       return 'workspace'
     }
+    if (pathname.includes('/tools/')) return 'apps'
     if (pathname.startsWith('/dashboard-group/kpis') ||
       pathname === '/dashboard-group') return 'workspace'
     return activeCategory || 'workspace'
@@ -1200,7 +1201,7 @@ export function TwoLevelSidebar() {
                 : 'text-zinc-500 hover:bg-zinc-200 hover:text-red-500'
             )}
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-5 h-5 rotate-180" />
             <div className={cn(
               'absolute left-full ml-2 px-2 py-1 text-xs rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50',
               isDark
@@ -1214,7 +1215,7 @@ export function TwoLevelSidebar() {
       </motion.aside>
 
       {/* Level 2: 서브메뉴 사이드바 */}
-      {!(pathname?.includes('/works/new') || pathname?.includes('/tools/ai-summary')) && (
+      {!pathname?.includes('/works/new') && (
         <AnimatePresence>
           {sidebarOpen && activeItems.length > 0 && (
             <motion.aside
@@ -1313,7 +1314,7 @@ export function TwoLevelSidebar() {
                       className="w-full py-2.5 px-4 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors flex items-center justify-center gap-2 shadow-sm"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>만들기</span>
+                      <span>페이지 생성</span>
                     </button>
                   </div>
                 )}

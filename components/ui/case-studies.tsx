@@ -7,7 +7,10 @@ import { Rocket, TrendingUp, Users, BarChart3, Zap, Target } from "lucide-react"
 // import Image from "next/image";
 
 // Avoid SSR hydration issues by loading react-countup on the client.
-const CountUp = dynamic(() => import("react-countup"), { ssr: false });
+const CountUp = dynamic(
+  () => import("react-countup").then((mod) => mod.default),
+  { ssr: false }
+);
 
 /** Hook: respects user's motion preferences */
 function usePrefersReducedMotion() {

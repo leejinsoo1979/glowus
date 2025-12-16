@@ -53,6 +53,7 @@ import {
   ClipboardList,
   CheckCircle,
   XCircle,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -648,8 +649,8 @@ function KnowledgeBaseTab({ agentId, isDark }: { agentId: string; isDark: boolea
                     addType === type
                       ? 'bg-accent text-white border-accent'
                       : isDark
-                      ? 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                      : 'border-zinc-200 text-zinc-600 hover:border-zinc-300'
+                        ? 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                        : 'border-zinc-200 text-zinc-600 hover:border-zinc-300'
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -3550,11 +3551,11 @@ export default function AgentProfilePage() {
                     isActive
                       ? 'border-accent text-accent'
                       : cn(
-                          'border-transparent',
-                          isDark
-                            ? 'text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                            : 'text-zinc-500 hover:text-zinc-900 hover:border-zinc-300'
-                        )
+                        'border-transparent',
+                        isDark
+                          ? 'text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                          : 'text-zinc-500 hover:text-zinc-900 hover:border-zinc-300'
+                      )
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -4041,7 +4042,7 @@ export default function AgentProfilePage() {
                           : 'bg-zinc-500/20'
                       )}>
                         <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                         </svg>
                       </div>
                       <div>
@@ -4105,36 +4106,9 @@ export default function AgentProfilePage() {
 
           {/* Chat Tab */}
           {activeTab === 'chat' && (
-            <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px]">
+            <div className="flex flex-col h-[calc(100vh-130px)] min-h-[600px]">
               {/* Chat Header */}
-              <div className="flex-shrink-0 mb-4 flex items-start justify-between">
-                <div>
-                  <h2 className={cn('text-xl md:text-2xl font-bold mb-1', isDark ? 'text-white' : 'text-zinc-900')}>
-                    {agent?.name}와 대화
-                  </h2>
-                  <p className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
-                    에이전트와 직접 대화해보세요
-                  </p>
-                </div>
-                {chatMessages.length > 0 && (
-                  <button
-                    onClick={() => {
-                      // 채팅방 나가기 - 'about' 탭으로 이동 (대화기록은 DB에 보존됨)
-                      setChatMessages([])
-                      setHistoryLoaded(false) // 다음 입장 시 히스토리 다시 로드
-                      setActiveTab('about')
-                    }}
-                    className={cn(
-                      'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                      isDark
-                        ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                        : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
-                    )}
-                  >
-                    나가기
-                  </button>
-                )}
-              </div>
+
 
               {/* Chat Messages Area */}
               <div
@@ -4278,129 +4252,129 @@ export default function AgentProfilePage() {
                           {msg.content}
                         </div>
                       ) : (
-                      <div className={cn('flex flex-col', msg.role === 'user' ? 'items-end' : 'items-start', 'max-w-[80%]')}>
-                      <div
-                        className={cn(
-                          'rounded-2xl px-4 py-3',
-                          msg.role === 'user'
-                            ? 'bg-accent text-white'
-                            : isDark
-                            ? 'bg-zinc-800 text-zinc-100'
-                            : 'bg-white text-zinc-900 border border-zinc-200'
-                        )}
-                      >
-                        {msg.role === 'agent' && (
-                          <>
-                            {/* 다중 감정 GIF 표시 (텍스트 순서대로) */}
-                            {(() => {
-                              // emotions 배열이 있으면 다중 GIF 표시, 없으면 단일 emotion 사용
-                              const emotionsToShow = msg.emotions && msg.emotions.length > 0
-                                ? msg.emotions.filter(e => emotionAvatars[e])
-                                : (msg.emotion && emotionAvatars[msg.emotion] ? [msg.emotion] : [])
+                        <div className={cn('flex flex-col', msg.role === 'user' ? 'items-end' : 'items-start', 'max-w-[80%]')}>
+                          <div
+                            className={cn(
+                              'rounded-2xl px-4 py-3',
+                              msg.role === 'user'
+                                ? 'bg-accent text-white'
+                                : isDark
+                                  ? 'bg-zinc-800 text-zinc-100'
+                                  : 'bg-white text-zinc-900 border border-zinc-200'
+                            )}
+                          >
+                            {msg.role === 'agent' && (
+                              <>
+                                {/* 다중 감정 GIF 표시 (텍스트 순서대로) */}
+                                {(() => {
+                                  // emotions 배열이 있으면 다중 GIF 표시, 없으면 단일 emotion 사용
+                                  const emotionsToShow = msg.emotions && msg.emotions.length > 0
+                                    ? msg.emotions.filter(e => emotionAvatars[e])
+                                    : (msg.emotion && emotionAvatars[msg.emotion] ? [msg.emotion] : [])
 
-                              if (emotionsToShow.length > 0) {
-                                return (
-                                  <div className={cn('mb-3', emotionsToShow.length > 1 ? 'flex flex-wrap gap-2' : '')}>
-                                    {emotionsToShow.map((emotion, idx) => (
+                                  if (emotionsToShow.length > 0) {
+                                    return (
+                                      <div className={cn('mb-3', emotionsToShow.length > 1 ? 'flex flex-wrap gap-2' : '')}>
+                                        {emotionsToShow.map((emotion, idx) => (
+                                          <img
+                                            key={`${emotion}-${idx}`}
+                                            src={emotionAvatars[emotion]}
+                                            alt={allEmotions.find((e: CustomEmotion) => e.id === emotion)?.label || '감정'}
+                                            className={cn(
+                                              'rounded-xl',
+                                              emotionsToShow.length > 1
+                                                ? 'max-w-[48%] sm:max-w-[45%]' // 여러 GIF면 나란히
+                                                : 'max-w-full' // 하나면 꽉 차게
+                                            )}
+                                          />
+                                        ))}
+                                      </div>
+                                    )
+                                  }
+                                  return null
+                                })()}
+                                <div className="flex items-center gap-2 mb-2">
+                                  {/* 기본 아바타 (GIF가 없을 때만 표시) */}
+                                  {!(msg.emotions?.some(e => emotionAvatars[e]) || (msg.emotion && emotionAvatars[msg.emotion])) && (
+                                    agent?.avatar_url ? (
                                       <img
-                                        key={`${emotion}-${idx}`}
-                                        src={emotionAvatars[emotion]}
-                                        alt={allEmotions.find((e: CustomEmotion) => e.id === emotion)?.label || '감정'}
-                                        className={cn(
-                                          'rounded-xl',
-                                          emotionsToShow.length > 1
-                                            ? 'max-w-[48%] sm:max-w-[45%]' // 여러 GIF면 나란히
-                                            : 'max-w-full' // 하나면 꽉 차게
-                                        )}
+                                        src={agent.avatar_url}
+                                        alt={agent?.name || '에이전트'}
+                                        className="w-8 h-8 rounded-full object-cover"
                                       />
-                                    ))}
-                                  </div>
-                                )
-                              }
-                              return null
-                            })()}
-                            <div className="flex items-center gap-2 mb-2">
-                              {/* 기본 아바타 (GIF가 없을 때만 표시) */}
-                              {!(msg.emotions?.some(e => emotionAvatars[e]) || (msg.emotion && emotionAvatars[msg.emotion])) && (
-                                agent?.avatar_url ? (
-                                  <img
-                                    src={agent.avatar_url}
-                                    alt={agent?.name || '에이전트'}
-                                    className="w-8 h-8 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                                    <span className="text-xs font-medium text-accent">
-                                      {agent?.name?.substring(0, 1)}
-                                    </span>
-                                  </div>
-                                )
-                              )}
-                              <span className={cn('text-xs font-medium', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
-                                {agent?.name}
-                              </span>
-                            </div>
-                          </>
-                        )}
-                        {msg.image && (
-                          <img
-                            src={msg.image}
-                            alt="첨부 이미지"
-                            className="max-w-full max-h-48 rounded-lg mb-2 object-contain"
-                          />
-                        )}
-                        {msg.content && msg.content !== '[이미지]' && (
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                        )}
-
-                        {/* 업무 지시 메시지: Run 버튼 및 상태 표시 */}
-                        {msg.isTask && msg.role === 'user' && (
-                          <div className="mt-2 pt-2 border-t border-white/20">
-                            {msg.taskStatus === 'pending' && (
-                              <button
-                                onClick={() => executeTask(msg.id, msg.content)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors"
-                              >
-                                <Play className="w-3 h-3" />
-                                Run
-                              </button>
-                            )}
-                            {msg.taskStatus === 'running' && (
-                              <div className="flex items-center gap-1.5 text-xs">
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                실행 중...
-                              </div>
-                            )}
-                            {msg.taskStatus === 'completed' && (
-                              <div className="flex items-center gap-1.5 text-xs text-green-300">
-                                <Check className="w-3 h-3" />
-                                완료
-                                {msg.taskResult?.toolsUsed && msg.taskResult.toolsUsed.length > 0 && (
-                                  <span className="opacity-70">
-                                    ({msg.taskResult.toolsUsed.join(', ')})
+                                    ) : (
+                                      <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                                        <span className="text-xs font-medium text-accent">
+                                          {agent?.name?.substring(0, 1)}
+                                        </span>
+                                      </div>
+                                    )
+                                  )}
+                                  <span className={cn('text-xs font-medium', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+                                    {agent?.name}
                                   </span>
+                                </div>
+                              </>
+                            )}
+                            {msg.image && (
+                              <img
+                                src={msg.image}
+                                alt="첨부 이미지"
+                                className="max-w-full max-h-48 rounded-lg mb-2 object-contain"
+                              />
+                            )}
+                            {msg.content && msg.content !== '[이미지]' && (
+                              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            )}
+
+                            {/* 업무 지시 메시지: Run 버튼 및 상태 표시 */}
+                            {msg.isTask && msg.role === 'user' && (
+                              <div className="mt-2 pt-2 border-t border-white/20">
+                                {msg.taskStatus === 'pending' && (
+                                  <button
+                                    onClick={() => executeTask(msg.id, msg.content)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors"
+                                  >
+                                    <Play className="w-3 h-3" />
+                                    Run
+                                  </button>
+                                )}
+                                {msg.taskStatus === 'running' && (
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    실행 중...
+                                  </div>
+                                )}
+                                {msg.taskStatus === 'completed' && (
+                                  <div className="flex items-center gap-1.5 text-xs text-green-300">
+                                    <Check className="w-3 h-3" />
+                                    완료
+                                    {msg.taskResult?.toolsUsed && msg.taskResult.toolsUsed.length > 0 && (
+                                      <span className="opacity-70">
+                                        ({msg.taskResult.toolsUsed.join(', ')})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {msg.taskStatus === 'failed' && (
+                                  <div className="flex items-center gap-1.5 text-xs text-red-300">
+                                    <X className="w-3 h-3" />
+                                    실패: {msg.taskResult?.error || '알 수 없는 오류'}
+                                  </div>
                                 )}
                               </div>
                             )}
-                            {msg.taskStatus === 'failed' && (
-                              <div className="flex items-center gap-1.5 text-xs text-red-300">
-                                <X className="w-3 h-3" />
-                                실패: {msg.taskResult?.error || '알 수 없는 오류'}
-                              </div>
-                            )}
                           </div>
-                        )}
-                      </div>
-                      {/* 시간 - 메시지 박스 밖에 표시 */}
-                      <p
-                        className={cn(
-                          'text-xs mt-1 px-1',
-                          isDark ? 'text-zinc-600' : 'text-zinc-400'
-                        )}
-                      >
-                        {msg.timestamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      </div>
+                          {/* 시간 - 메시지 박스 밖에 표시 */}
+                          <p
+                            className={cn(
+                              'text-xs mt-1 px-1',
+                              isDark ? 'text-zinc-600' : 'text-zinc-400'
+                            )}
+                          >
+                            {msg.timestamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
                       )}
                     </div>
                   ))
@@ -4616,8 +4590,8 @@ export default function AgentProfilePage() {
                                 pendingTask.analysis.confidence > 0.8
                                   ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
                                   : pendingTask.analysis.confidence > 0.5
-                                  ? 'bg-gradient-to-r from-amber-400 to-amber-500'
-                                  : 'bg-gradient-to-r from-red-400 to-red-500'
+                                    ? 'bg-gradient-to-r from-amber-400 to-amber-500'
+                                    : 'bg-gradient-to-r from-red-400 to-red-500'
                               )}
                               style={{ width: `${pendingTask.analysis.confidence * 100}%` }}
                             />
@@ -4627,8 +4601,8 @@ export default function AgentProfilePage() {
                             pendingTask.analysis.confidence > 0.8
                               ? isDark ? 'text-emerald-400' : 'text-emerald-600'
                               : pendingTask.analysis.confidence > 0.5
-                              ? isDark ? 'text-amber-400' : 'text-amber-600'
-                              : isDark ? 'text-red-400' : 'text-red-600'
+                                ? isDark ? 'text-amber-400' : 'text-amber-600'
+                                : isDark ? 'text-red-400' : 'text-red-600'
                           )}>
                             {Math.round(pendingTask.analysis.confidence * 100)}%
                           </span>
@@ -4748,8 +4722,8 @@ export default function AgentProfilePage() {
                       isTaskMode
                         ? 'bg-amber-500 text-white hover:bg-amber-600'
                         : isDark
-                        ? 'hover:bg-amber-900/30 text-zinc-400 hover:text-amber-400'
-                        : 'hover:bg-amber-100 text-zinc-500 hover:text-amber-600',
+                          ? 'hover:bg-amber-900/30 text-zinc-400 hover:text-amber-400'
+                          : 'hover:bg-amber-100 text-zinc-500 hover:text-amber-600',
                       (chatLoading || isAnalyzingTask || !!pendingTask) && 'opacity-50 cursor-not-allowed'
                     )}
                     title={isTaskMode ? '업무 지시 모드 해제' : '업무 지시'}
@@ -4795,8 +4769,8 @@ export default function AgentProfilePage() {
                           ? 'bg-amber-500 text-white hover:bg-amber-600'
                           : 'bg-accent text-white hover:bg-accent/90'
                         : isDark
-                        ? 'bg-zinc-800 text-zinc-500'
-                        : 'bg-zinc-100 text-zinc-400'
+                          ? 'bg-zinc-800 text-zinc-500'
+                          : 'bg-zinc-100 text-zinc-400'
                     )}
                   >
                     {isAnalyzingTask ? (
@@ -4804,6 +4778,25 @@ export default function AgentProfilePage() {
                     ) : (
                       <Send className="w-4 h-4" />
                     )}
+                  </button>
+                  {/* Exit Button - Moved from header */}
+                  <button
+                    onClick={() => {
+                      // 채팅방 나가기
+                      setChatMessages([])
+                      setHistoryLoaded(false)
+                      setActiveTab('about')
+                    }}
+                    disabled={chatLoading}
+                    className={cn(
+                      'w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0',
+                      isDark
+                        ? 'hover:bg-zinc-800 text-zinc-400 hover:text-red-400'
+                        : 'hover:bg-zinc-100 text-zinc-500 hover:text-red-500'
+                    )}
+                    title="나가기"
+                  >
+                    <LogOut className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -4973,8 +4966,8 @@ export default function AgentProfilePage() {
                               task.status === 'done'
                                 ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
                                 : task.status === 'in_progress'
-                                ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+                                  ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                                  : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
                             )}
                           >
                             {task.status === 'done' ? '완료' : task.status === 'in_progress' ? '진행 중' : '대기'}
@@ -5757,8 +5750,8 @@ export default function AgentProfilePage() {
                             ? 'border-zinc-600 bg-zinc-900'
                             : 'border-zinc-300 bg-white'
                           : isDark
-                          ? 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-600'
-                          : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300',
+                            ? 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-600'
+                            : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300',
                         !emotion.isDefault && (isDark ? 'border-pink-600/50' : 'border-pink-400/50')
                       )}
                     >
@@ -6449,8 +6442,8 @@ export default function AgentProfilePage() {
                   modalMessage.trim()
                     ? 'bg-accent text-white hover:bg-accent/90'
                     : isDark
-                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                    : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                 )}
               >
                 {chatLoading ? (
@@ -6592,8 +6585,8 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
                       msg.role === 'user'
                         ? 'bg-accent text-white'
                         : isDark
-                        ? 'bg-zinc-800 text-zinc-200'
-                        : 'bg-white text-zinc-800 border border-zinc-200'
+                          ? 'bg-zinc-800 text-zinc-200'
+                          : 'bg-white text-zinc-800 border border-zinc-200'
                     )}
                   >
                     <p className="whitespace-pre-wrap">{msg.content}</p>

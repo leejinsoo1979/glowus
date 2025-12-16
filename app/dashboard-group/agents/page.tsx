@@ -257,7 +257,7 @@ export default function AgentsPage() {
                 className="text-white shadow-lg hover:shadow-xl transition-shadow"
                 style={{ background: mounted ? `linear-gradient(135deg, ${currentAccent.color}, ${currentAccent.hoverColor})` : "linear-gradient(135deg, #8b5cf6, #7c3aed)" }}
               >
-                <Plus className="w-4 h-4 mr-2" />새 에이전트 만들기
+                <Plus className="w-4 h-4 mr-2" />슈퍼 에이전트 생성
               </Button>
             </div>
           </div>
@@ -286,11 +286,10 @@ export default function AgentsPage() {
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                      isActive
-                        ? "text-white shadow-md"
-                        : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/50"
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isActive
+                      ? "text-white shadow-md"
+                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/50"
+                      }`}
                     style={isActive ? { backgroundColor: mounted ? currentAccent.color : "#8b5cf6" } : {}}
                   >
                     <Icon className="w-3.5 h-3.5" />
@@ -304,21 +303,19 @@ export default function AgentsPage() {
             <div className="flex items-center gap-1 p-1 bg-white dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700/50">
               <button
                 onClick={() => setViewMode("grid")}
-                className={`p-2 rounded-lg transition-colors ${
-                  viewMode === "grid"
-                    ? "bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white"
-                    : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                }`}
+                className={`p-2 rounded-lg transition-colors ${viewMode === "grid"
+                  ? "bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white"
+                  : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  }`}
               >
                 <Grid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode("list")}
-                className={`p-2 rounded-lg transition-colors ${
-                  viewMode === "list"
-                    ? "bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white"
-                    : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                }`}
+                className={`p-2 rounded-lg transition-colors ${viewMode === "list"
+                  ? "bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white"
+                  : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  }`}
               >
                 <List className="w-4 h-4" />
               </button>
@@ -329,37 +326,33 @@ export default function AgentsPage() {
           <div className="flex items-center gap-2 mt-4">
             <button
               onClick={() => setActiveTab("agents")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                activeTab === "agents"
-                  ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-lg"
-                  : "bg-white dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeTab === "agents"
+                ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-lg"
+                : "bg-white dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                }`}
             >
               <Bot className="w-4 h-4" />
               에이전트
-              <span className={`px-1.5 py-0.5 rounded-full text-xs ${
-                activeTab === "agents"
-                  ? "bg-white/20 dark:bg-zinc-900/20"
-                  : "bg-zinc-100 dark:bg-zinc-700"
-              }`}>
+              <span className={`px-1.5 py-0.5 rounded-full text-xs ${activeTab === "agents"
+                ? "bg-white/20 dark:bg-zinc-900/20"
+                : "bg-zinc-100 dark:bg-zinc-700"
+                }`}>
                 {totalAgents}
               </span>
             </button>
             <button
               onClick={() => setActiveTab("groups")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                activeTab === "groups"
-                  ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-lg"
-                  : "bg-white dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeTab === "groups"
+                ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-lg"
+                : "bg-white dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                }`}
             >
               <Users className="w-4 h-4" />
               그룹
-              <span className={`px-1.5 py-0.5 rounded-full text-xs ${
-                activeTab === "groups"
-                  ? "bg-white/20 dark:bg-zinc-900/20"
-                  : "bg-zinc-100 dark:bg-zinc-700"
-              }`}>
+              <span className={`px-1.5 py-0.5 rounded-full text-xs ${activeTab === "groups"
+                ? "bg-white/20 dark:bg-zinc-900/20"
+                : "bg-zinc-100 dark:bg-zinc-700"
+                }`}>
                 {groups.length}
               </span>
             </button>

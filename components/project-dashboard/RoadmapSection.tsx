@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import { useState, useEffect, useCallback } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Flag,
   Target,
@@ -16,6 +16,10 @@ import {
   AlertCircle,
   GitBranch,
   List,
+  Sparkles,
+  Loader2,
+  RefreshCw,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { RoadmapCanvasWithProvider } from "@/components/roadmap"
@@ -62,9 +66,64 @@ export function RoadmapSection({ projectId, project }: RoadmapSectionProps) {
   const [selectedQuarter, setSelectedQuarter] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("dag")
 
+  // AI Generation state
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [customInstructions, setCustomInstructions] = useState("")
+  const [clearExisting, setClearExisting] = useState(false)
+  const [generationResult, setGenerationResult] = useState<{
+    summary?: string
+    phases?: string[]
+    totalEstimatedHours?: number
+  } | null>(null)
+  const [roadmapKey, setRoadmapKey] = useState(0) // For forcing re-render
+
   useEffect(() => {
     fetchMilestones()
   }, [projectId])
+
+  const handleAIGenerate = async () => {
+    setIsGenerating(true)
+    setGenerationResult(null)
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/roadmap/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customInstructions: customInstructions || undefined,
+          clearExisting,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to generate roadmap")
+      }
+
+      const result = await response.json()
+      setGenerationResult({
+        summary: result.summary,
+        phases: result.phases,
+        totalEstimatedHours: result.totalEstimatedHours,
+      })
+
+      // Force roadmap canvas to refresh
+      setRoadmapKey(prev => prev + 1)
+
+      // Close modal after short delay to show success
+      setTimeout(() => {
+        setIsAIModalOpen(false)
+        setCustomInstructions("")
+        setClearExisting(false)
+      }, 2000)
+    } catch (error) {
+      console.error("AI generation error:", error)
+      alert(`로드맵 생성 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const fetchMilestones = async () => {
     try {
@@ -173,6 +232,17 @@ export function RoadmapSection({ projectId, project }: RoadmapSectionProps) {
               마일스톤
             </button>
           </div>
+          {viewMode === "dag" && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setIsAIModalOpen(true)}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              AI 로드맵 생성
+            </Button>
+          )}
           {viewMode === "timeline" && (
             <Button variant="default" size="sm">
               <Plus className="w-4 h-4 mr-2" />
@@ -184,8 +254,146 @@ export function RoadmapSection({ projectId, project }: RoadmapSectionProps) {
 
       {/* DAG View */}
       {viewMode === "dag" && (
-        <RoadmapCanvasWithProvider projectId={projectId} />
+        <RoadmapCanvasWithProvider key={roadmapKey} projectId={projectId} />
       )}
+
+      {/* AI Generation Modal */}
+      <AnimatePresence>
+        {isAIModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            onClick={() => !isGenerating && setIsAIModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">AI 로드맵 생성</h3>
+                    <p className="text-xs text-zinc-500">프로젝트 분석 기반 자동 설계</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => !isGenerating && setIsAIModalOpen(false)}
+                  disabled={isGenerating}
+                  className="text-zinc-400 hover:text-white disabled:opacity-50"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {/* Project Info */}
+                <div className="bg-zinc-800/50 rounded-lg p-4">
+                  <p className="text-sm text-zinc-400">분석할 프로젝트</p>
+                  <p className="text-white font-medium mt-1">{project.name}</p>
+                </div>
+
+                {/* Custom Instructions */}
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-2">
+                    추가 지침 (선택사항)
+                  </label>
+                  <textarea
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    placeholder="예: MVP 우선 개발, 보안 중점, 빠른 출시 등..."
+                    rows={3}
+                    disabled={isGenerating}
+                    className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                  />
+                </div>
+
+                {/* Clear Existing Option */}
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={clearExisting}
+                    onChange={(e) => setClearExisting(e.target.checked)}
+                    disabled={isGenerating}
+                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm text-zinc-300">
+                    기존 로드맵 삭제 후 새로 생성
+                  </span>
+                </label>
+
+                {/* Generation Result */}
+                {generationResult && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-green-500/10 border border-green-500/30 rounded-lg p-4"
+                  >
+                    <div className="flex items-center gap-2 text-green-400 mb-2">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="font-medium">로드맵 생성 완료!</span>
+                    </div>
+                    {generationResult.summary && (
+                      <p className="text-sm text-zinc-300 mb-2">{generationResult.summary}</p>
+                    )}
+                    <div className="flex items-center gap-4 text-xs text-zinc-400">
+                      {generationResult.phases && (
+                        <span>{generationResult.phases.length}개 단계</span>
+                      )}
+                      {generationResult.totalEstimatedHours && (
+                        <span>예상 {generationResult.totalEstimatedHours}시간</span>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Warning */}
+                {clearExisting && !generationResult && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                    <p className="text-sm text-amber-400">
+                      기존 로드맵의 모든 노드와 연결이 삭제됩니다.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAIModalOpen(false)}
+                  disabled={isGenerating}
+                >
+                  취소
+                </Button>
+                <Button
+                  onClick={handleAIGenerate}
+                  disabled={isGenerating}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      생성하기
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Timeline View */}
       {viewMode === "timeline" && (

@@ -10,7 +10,7 @@ export default function AiSummaryPage() {
     const [activeTab, setActiveTab] = React.useState('youtube')
 
     return (
-        <div className="flex h-screen bg-zinc-950 text-white overflow-hidden">
+        <div className="flex h-full bg-zinc-950 text-white overflow-hidden">
             {/* Sidebar */}
             <SummarySidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
