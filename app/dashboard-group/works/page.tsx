@@ -283,7 +283,7 @@ function WorksHome({ onOpenCreate, onStartChat }: { onOpenCreate: () => void, on
         { icon: LayoutGrid, label: "커스텀 슈퍼 에이전트", bg: "bg-zinc-700", color: "text-white" },
         { icon: FileText, label: "AI 슬라이드", bg: "bg-yellow-500", color: "text-white" },
         { icon: Sheet, label: "AI 시트", bg: "bg-emerald-500", color: "text-white", href: "/dashboard-group/works/ai-sheet" },
-        { icon: FileText, label: "AI 문서", bg: "bg-zinc-700", color: "text-white" },
+        { icon: FileText, label: "AI 문서", bg: "bg-blue-600", color: "text-white", href: "/dashboard-group/works/ai-docs" },
         { icon: Wrench, label: "AI 개발자", bg: "bg-zinc-700", color: "text-white" },
         { icon: Briefcase, label: "AI 디자이너", bg: "bg-zinc-700", color: "text-white" },
         { icon: Star, label: "클립 지니어스", bg: "bg-zinc-700", color: "text-white" },
@@ -304,7 +304,7 @@ function WorksHome({ onOpenCreate, onStartChat }: { onOpenCreate: () => void, on
         badge?: string
     }> = [
         { icon: RiSparkling2Fill, label: "범용", bg: "bg-blue-600", color: "text-white", active: true },
-        { icon: BsFiletypeDoc, label: "문서", bg: "bg-emerald-500", color: "text-white" },
+        { icon: BsFiletypeDoc, label: "문서", bg: "bg-emerald-500", color: "text-white", href: "/dashboard-group/works/ai-docs" },
         { icon: BsFiletypePpt, label: "슬라이드", bg: "bg-orange-500", color: "text-white", href: "/dashboard-group/works/ai-slides" },
         { icon: BsFileEarmarkSpreadsheet, label: "시트", bg: "bg-green-600", color: "text-white", href: "/dashboard-group/works/ai-sheet" },
         { icon: BsFileEarmarkImage, label: "포스터", bg: "bg-pink-500", color: "text-white" },
