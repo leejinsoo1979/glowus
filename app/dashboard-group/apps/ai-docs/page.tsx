@@ -448,7 +448,7 @@ ${documentContent}
     }
 
     return (
-        <div ref={containerRef} className="h-full flex bg-zinc-950 overflow-hidden">
+        <div ref={containerRef} className="h-full flex flex-row-reverse bg-zinc-950 overflow-hidden">
             {/* Hidden file input */}
             <input
                 ref={fileInputRef}
@@ -458,7 +458,7 @@ ${documentContent}
                 className="hidden"
             />
 
-            {/* Left Panel - Chat */}
+            {/* Right Panel - Chat */}
             <div
                 className="flex flex-col border-r border-zinc-800 h-full overflow-hidden"
                 style={{ width: leftPanelWidth, minWidth: 320, maxWidth: 800 }}
@@ -701,7 +701,7 @@ ${documentContent}
                 )} />
             </div>
 
-            {/* Right Panel - Document Editor */}
+            {/* Left Panel - Document Editor */}
             <div className="flex-1 flex flex-col h-full overflow-hidden">
                 {/* Editor Toolbar */}
                 <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700 flex-shrink-0">

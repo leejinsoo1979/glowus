@@ -1006,8 +1006,8 @@ export default function AISlidesPage() {
     }
 
     return (
-        <div ref={containerRef} className="h-screen flex bg-white dark:bg-zinc-950 overflow-hidden">
-            {/* Left Panel - Chat */}
+        <div ref={containerRef} className="h-screen flex flex-row-reverse bg-white dark:bg-zinc-950 overflow-hidden">
+            {/* Right Panel - Chat */}
             <div
                 className="flex flex-col border-r border-zinc-200 dark:border-zinc-800 h-full overflow-hidden bg-white dark:bg-zinc-950"
                 style={{ width: leftPanelWidth, minWidth: 320, maxWidth: 800 }}
@@ -1223,7 +1223,7 @@ export default function AISlidesPage() {
                 )} />
             </div>
 
-            {/* Right Panel - Preview */}
+            {/* Left Panel - Preview */}
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-50 dark:bg-zinc-950">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">

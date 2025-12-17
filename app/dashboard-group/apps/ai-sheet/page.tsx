@@ -357,8 +357,8 @@ export default function AISheetPage() {
             </header>
 
             {/* Main Content */}
-            <div className="flex flex-1 overflow-hidden">
-                {/* Chat Panel */}
+            <div className="flex flex-row-reverse flex-1 overflow-hidden">
+                {/* Chat Panel - Right */}
                 <div className="w-[400px] flex flex-col bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
                     {/* Chat Messages */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -524,7 +524,7 @@ export default function AISheetPage() {
                     </div>
                 </div>
 
-                {/* Spreadsheet Panel */}
+                {/* Spreadsheet Panel - Left */}
                 <div className="flex-1 flex flex-col bg-white dark:bg-zinc-950 overscroll-none touch-none">
                     {isLoadingSession ? (
                         <div className="flex-1 flex flex-col items-center justify-center">
