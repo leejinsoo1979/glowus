@@ -9,8 +9,8 @@ import type { DeployedAgent } from '@/types/database'
 
 // 업무지시 모드에서 사용 가능한 모델 목록
 const TASK_MODE_MODELS = [
-  { id: 'grok-3-fast', name: 'Grok 3 Fast', provider: 'xai' },
-  { id: 'grok-3', name: 'Grok 3', provider: 'xai' },
+  { id: 'grok-4-1-fast', name: 'Grok 4.1 Fast', provider: 'xai' },
+  { id: 'grok-4-1', name: 'Grok 4.1', provider: 'xai' },
   { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', provider: 'google' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
