@@ -7,7 +7,10 @@
  * - 원본 메모리 데이터와 독립적
  */
 
-import { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any, any, any>
 import { OpenAIEmbeddings } from '@langchain/openai'
 import {
   MemoryEmbedding,
@@ -26,13 +29,13 @@ export interface EmbeddingModelConfig {
 }
 
 export class MemoryEmbeddingService {
-  private supabase: SupabaseClient
+  private supabase: AnySupabaseClient
   private userId: string
   private embeddings: OpenAIEmbeddings
   private modelConfig: EmbeddingModelConfig
 
   constructor(
-    supabase: SupabaseClient,
+    supabase: AnySupabaseClient,
     userId: string,
     modelConfig?: Partial<EmbeddingModelConfig>
   ) {
@@ -550,7 +553,7 @@ export class MemoryEmbeddingService {
  * 클라이언트용 팩토리 함수
  */
 export function createMemoryEmbeddingService(
-  supabase: SupabaseClient,
+  supabase: AnySupabaseClient,
   userId: string,
   modelConfig?: Partial<EmbeddingModelConfig>
 ): MemoryEmbeddingService {

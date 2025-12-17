@@ -8,7 +8,10 @@
  * - 일간/주간/월간 요약 생성
  */
 
-import { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any, any, any>
 import { ChatOpenAI } from '@langchain/openai'
 import { PromptTemplate } from '@langchain/core/prompts'
 import { JsonOutputParser } from '@langchain/core/output_parsers'
@@ -34,13 +37,13 @@ export interface AnalysisModelConfig {
 }
 
 export class MemoryAnalysisService {
-  private supabase: SupabaseClient
+  private supabase: AnySupabaseClient
   private userId: string
   private llm: ChatOpenAI
   private modelConfig: AnalysisModelConfig
 
   constructor(
-    supabase: SupabaseClient,
+    supabase: AnySupabaseClient,
     userId: string,
     modelConfig?: Partial<AnalysisModelConfig>
   ) {
@@ -677,10 +680,8 @@ export class MemoryAnalysisService {
   // Helpers
   // ============================================
 
-  private countBy<T extends Record<string, unknown>>(
-    items: T[],
-    field: keyof T
-  ): Record<string, number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private countBy(items: any[], field: string): Record<string, number> {
     return items.reduce<Record<string, number>>((acc, item) => {
       const key = String(item[field])
       acc[key] = (acc[key] || 0) + 1
@@ -757,7 +758,7 @@ export class MemoryAnalysisService {
  * 클라이언트용 팩토리 함수
  */
 export function createMemoryAnalysisService(
-  supabase: SupabaseClient,
+  supabase: AnySupabaseClient,
   userId: string,
   modelConfig?: Partial<AnalysisModelConfig>
 ): MemoryAnalysisService {

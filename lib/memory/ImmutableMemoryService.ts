@@ -7,7 +7,10 @@
  * - 읽기와 추가만 가능 (Append-Only)
  */
 
-import { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any, any, any>
 import {
   ImmutableMemoryRecord,
   CreateMemoryInput,
@@ -22,10 +25,10 @@ import {
 } from '@/types/memory'
 
 export class ImmutableMemoryService {
-  private supabase: SupabaseClient
+  private supabase: AnySupabaseClient
   private userId: string
 
-  constructor(supabase: SupabaseClient, userId: string) {
+  constructor(supabase: AnySupabaseClient, userId: string) {
     this.supabase = supabase
     this.userId = userId
   }
@@ -465,10 +468,8 @@ export class ImmutableMemoryService {
   /**
    * 필드별 카운트 헬퍼
    */
-  private countBy<T extends Record<string, unknown>>(
-    items: T[],
-    field: keyof T
-  ): Record<string, number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private countBy(items: any[], field: string): Record<string, number> {
     return items.reduce<Record<string, number>>((acc, item) => {
       const key = String(item[field])
       acc[key] = (acc[key] || 0) + 1
@@ -613,7 +614,7 @@ export class ImmutableMemoryService {
  * 클라이언트용 팩토리 함수
  */
 export function createImmutableMemoryService(
-  supabase: SupabaseClient,
+  supabase: AnySupabaseClient,
   userId: string
 ): ImmutableMemoryService {
   return new ImmutableMemoryService(supabase, userId)
