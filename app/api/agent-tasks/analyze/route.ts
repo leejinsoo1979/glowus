@@ -5,6 +5,39 @@ import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { ChatOpenAI } from '@langchain/openai'
 import type { DeployedAgent } from '@/types/database'
 
+// 특수 액션 타입 정의
+type ActionType = 'project_create' | 'task_create' | 'general'
+
+// 인텐트 감지 함수
+function detectIntent(instruction: string): { actionType: ActionType; extractedData: any } {
+  const lowerInstruction = instruction.toLowerCase()
+
+  // 프로젝트 생성 인텐트 감지
+  const projectCreatePatterns = [
+    /프로젝트\s*(를|을)?\s*(만들|생성|추가|새로)/,
+    /새\s*(로운|)?\s*프로젝트/,
+    /프로젝트\s*하나\s*(만들|생성)/,
+    /create\s*project/i,
+    /new\s*project/i,
+  ]
+
+  for (const pattern of projectCreatePatterns) {
+    if (pattern.test(instruction)) {
+      // 프로젝트명 추출 시도
+      const nameMatch = instruction.match(/["']([^"']+)["']/) ||
+                        instruction.match(/프로젝트\s*(?:이름은?|명은?)?\s*(.+?)(?:로|으로|라고|$)/)
+      return {
+        actionType: 'project_create',
+        extractedData: {
+          suggestedName: nameMatch?.[1]?.trim() || null
+        }
+      }
+    }
+  }
+
+  return { actionType: 'general', extractedData: null }
+}
+
 // POST: 업무 지시 분석 - 에이전트가 사용자의 불명확한 지시를 분석하고 정리
 export async function POST(request: NextRequest) {
   try {
@@ -44,6 +77,35 @@ export async function POST(request: NextRequest) {
         { error: '에이전트를 찾을 수 없습니다' },
         { status: 404 }
       )
+    }
+
+    // 인텐트 감지
+    const { actionType, extractedData } = detectIntent(instruction)
+
+    // 프로젝트 생성 인텐트인 경우 특별 처리
+    if (actionType === 'project_create') {
+      return NextResponse.json({
+        action_type: 'project_create',
+        confirmation_message: generateProjectCreateMessage(agent, extractedData?.suggestedName),
+        extracted_data: extractedData,
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          avatar_url: agent.avatar_url
+        },
+        requires_input: true,
+        input_fields: [
+          { name: 'name', label: '프로젝트 이름', type: 'text', required: true, placeholder: '예: 신규 마케팅 캠페인' },
+          { name: 'description', label: '설명', type: 'textarea', required: false, placeholder: '프로젝트에 대한 간단한 설명' },
+          { name: 'priority', label: '우선순위', type: 'select', required: false, options: [
+            { value: 'low', label: '낮음' },
+            { value: 'medium', label: '보통' },
+            { value: 'high', label: '높음' },
+            { value: 'urgent', label: '긴급' }
+          ]},
+          { name: 'deadline', label: '마감일', type: 'date', required: false }
+        ]
+      })
     }
 
     // Use OpenAI to analyze the instruction
@@ -151,6 +213,20 @@ function generateConfirmationMessage(agent: DeployedAgent, analysis: any): strin
   }
 
   message += `\n이대로 진행할까요?`
+
+  return message
+}
+
+// 프로젝트 생성 확인 메시지 생성
+function generateProjectCreateMessage(agent: DeployedAgent, suggestedName?: string | null): string {
+  let message = `네, 프로젝트를 생성해드릴게요!\n\n`
+
+  if (suggestedName) {
+    message += `말씀하신 "${suggestedName}" 프로젝트를 만들까요?\n\n`
+  }
+
+  message += `아래 세부사항을 입력해주시면 바로 생성해드리겠습니다.\n`
+  message += `필수 항목은 프로젝트 이름만 있어요. 나머지는 선택사항입니다.`
 
   return message
 }

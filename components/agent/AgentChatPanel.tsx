@@ -14,6 +14,26 @@ interface TaskAnalysis {
   confidence: number
 }
 
+interface InputField {
+  name: string
+  label: string
+  type: 'text' | 'textarea' | 'select' | 'date'
+  required: boolean
+  placeholder?: string
+  options?: { value: string; label: string }[]
+}
+
+interface PendingAction {
+  action_type: 'project_create' | 'task_create' | 'general'
+  confirmation_message: string
+  original_instruction: string
+  agent_id: string
+  input_fields?: InputField[]
+  extracted_data?: any
+  // 기존 task analysis용
+  analysis?: TaskAnalysis
+}
+
 interface PendingTask {
   analysis: TaskAnalysis
   confirmation_message: string
@@ -46,7 +66,10 @@ export function AgentChatPanel({
   const [isTaskMode, setIsTaskMode] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [pendingTask, setPendingTask] = useState<PendingTask | null>(null)
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [actionFormData, setActionFormData] = useState<Record<string, string>>({})
   const [isExecutingTask, setIsExecutingTask] = useState(false)
+  const [isExecutingAction, setIsExecutingAction] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -111,12 +134,33 @@ export function AgentChatPanel({
       }
 
       const data = await response.json()
-      setPendingTask({
-        analysis: data.analysis,
-        confirmation_message: data.confirmation_message,
-        original_instruction: instruction,
-        agent_id: selectedAgent.id,
-      })
+
+      // 특수 액션 타입 처리 (프로젝트 생성 등)
+      if (data.action_type && data.action_type !== 'general') {
+        // 폼 초기값 설정
+        const initialFormData: Record<string, string> = {}
+        if (data.extracted_data?.suggestedName) {
+          initialFormData.name = data.extracted_data.suggestedName
+        }
+        setActionFormData(initialFormData)
+
+        setPendingAction({
+          action_type: data.action_type,
+          confirmation_message: data.confirmation_message,
+          original_instruction: instruction,
+          agent_id: selectedAgent.id,
+          input_fields: data.input_fields,
+          extracted_data: data.extracted_data,
+        })
+      } else {
+        // 기존 일반 업무 분석
+        setPendingTask({
+          analysis: data.analysis,
+          confirmation_message: data.confirmation_message,
+          original_instruction: instruction,
+          agent_id: selectedAgent.id,
+        })
+      }
     } catch (error) {
       console.error('업무 분석 오류:', error)
       // Show error in chat
@@ -175,6 +219,82 @@ export function AgentChatPanel({
   const handleCancelTask = () => {
     setPendingTask(null)
     setIsTaskMode(false)
+  }
+
+  // 특수 액션 실행 (프로젝트 생성 등)
+  const handleConfirmAction = async () => {
+    if (!pendingAction || !selectedAgent) return
+
+    setIsExecutingAction(true)
+
+    try {
+      if (pendingAction.action_type === 'project_create') {
+        // 필수 필드 검증
+        if (!actionFormData.name?.trim()) {
+          alert('프로젝트 이름을 입력해주세요.')
+          setIsExecutingAction(false)
+          return
+        }
+
+        // 프로젝트 생성 API 호출
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: actionFormData.name.trim(),
+            description: actionFormData.description?.trim() || null,
+            priority: actionFormData.priority || 'medium',
+            deadline: actionFormData.deadline || null,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || '프로젝트 생성 실패')
+        }
+
+        const project = await response.json()
+
+        // 성공 메시지 채팅에 표시
+        if (onSendMessage) {
+          await onSendMessage(
+            `프로젝트를 생성했습니다!\n\n` +
+            `**${project.name}**\n` +
+            `${project.description ? `설명: ${project.description}\n` : ''}` +
+            `우선순위: ${project.priority}\n` +
+            `${project.deadline ? `마감일: ${project.deadline}` : ''}`,
+            selectedAgent.id
+          )
+        }
+      }
+
+      // 상태 초기화
+      setPendingAction(null)
+      setActionFormData({})
+      setIsTaskMode(false)
+    } catch (error) {
+      console.error('액션 실행 오류:', error)
+      if (onSendMessage && selectedAgent) {
+        await onSendMessage(
+          `[시스템] 작업 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
+          selectedAgent.id
+        )
+      }
+    } finally {
+      setIsExecutingAction(false)
+    }
+  }
+
+  // 액션 취소
+  const handleCancelAction = () => {
+    setPendingAction(null)
+    setActionFormData({})
+    setIsTaskMode(false)
+  }
+
+  // 폼 필드 값 변경
+  const handleFormFieldChange = (fieldName: string, value: string) => {
+    setActionFormData(prev => ({ ...prev, [fieldName]: value }))
   }
 
   const getAgentById = useCallback((id: string) => {
@@ -352,7 +472,7 @@ export function AgentChatPanel({
       )}
 
       {/* Task mode indicator */}
-      {isTaskMode && !pendingTask && (
+      {isTaskMode && !pendingTask && !pendingAction && (
         <div className="mx-4 mb-2 flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
           <ClipboardList className="w-4 h-4 text-amber-600 dark:text-amber-400" />
           <span className="text-sm text-amber-700 dark:text-amber-300">
@@ -432,6 +552,98 @@ export function AgentChatPanel({
         </div>
       )}
 
+      {/* Pending action with form (프로젝트 생성 등) */}
+      {pendingAction && (
+        <div className="mx-4 mb-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+              <Bot className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap mb-4">
+                {pendingAction.confirmation_message}
+              </div>
+
+              {/* Dynamic form fields */}
+              {pendingAction.input_fields && pendingAction.input_fields.length > 0 && (
+                <div className="space-y-3 mb-4">
+                  {pendingAction.input_fields.map((field) => (
+                    <div key={field.name} className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {field.type === 'text' && (
+                        <input
+                          type="text"
+                          value={actionFormData[field.name] || ''}
+                          onChange={(e) => handleFormFieldChange(field.name, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      )}
+                      {field.type === 'textarea' && (
+                        <textarea
+                          value={actionFormData[field.name] || ''}
+                          onChange={(e) => handleFormFieldChange(field.name, e.target.value)}
+                          placeholder={field.placeholder}
+                          rows={2}
+                          className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        />
+                      )}
+                      {field.type === 'select' && field.options && (
+                        <select
+                          value={actionFormData[field.name] || ''}
+                          onChange={(e) => handleFormFieldChange(field.name, e.target.value)}
+                          className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">선택하세요</option>
+                          {field.options.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      )}
+                      {field.type === 'date' && (
+                        <input
+                          type="date"
+                          value={actionFormData[field.name] || ''}
+                          onChange={(e) => handleFormFieldChange(field.name, e.target.value)}
+                          className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirmAction}
+                  disabled={isExecutingAction}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {isExecutingAction ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4" />
+                  )}
+                  {isExecutingAction ? '생성 중...' : '컨펌'}
+                </button>
+                <button
+                  onClick={handleCancelAction}
+                  disabled={isExecutingAction}
+                  className="flex items-center gap-2 px-4 py-2 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  <XCircle className="w-4 h-4" />
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input area */}
       <div className="p-4 border-t border-zinc-200 dark:border-zinc-700">
         <div className="flex gap-2">
@@ -439,7 +651,7 @@ export function AgentChatPanel({
           <div className="relative">
             <button
               onClick={() => setShowDelegateSelector(!showDelegateSelector)}
-              disabled={isTaskMode || !!pendingTask}
+              disabled={isTaskMode || !!pendingTask || !!pendingAction}
               className={`p-2 rounded-lg transition-colors ${
                 delegateAgent
                   ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-500'
@@ -492,7 +704,7 @@ export function AgentChatPanel({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={!!pendingTask || isAnalyzing}
+              disabled={!!pendingTask || !!pendingAction || isAnalyzing}
               placeholder={
                 isTaskMode
                   ? '업무 내용을 자유롭게 입력하세요... (예: "경쟁사 분석해줘", "보고서 작성해줘")'
@@ -519,7 +731,7 @@ export function AgentChatPanel({
                   setDelegateAgent(null)
                 }
               }}
-              disabled={!selectedAgent || isAnalyzing || !!pendingTask || (isTaskMode && !input.trim())}
+              disabled={!selectedAgent || isAnalyzing || !!pendingTask || !!pendingAction || (isTaskMode && !input.trim())}
               className={`absolute right-12 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 isTaskMode
                   ? 'bg-amber-500 text-white hover:bg-amber-600'
@@ -533,7 +745,7 @@ export function AgentChatPanel({
             {/* Send button */}
             <button
               onClick={isTaskMode ? handleTaskInstruction : handleSend}
-              disabled={!input.trim() || !selectedAgent || isLoading || isAnalyzing || !!pendingTask}
+              disabled={!input.trim() || !selectedAgent || isLoading || isAnalyzing || !!pendingTask || !!pendingAction}
               className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
                 isTaskMode
                   ? 'bg-amber-500 hover:bg-amber-600'
