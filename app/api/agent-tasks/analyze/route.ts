@@ -9,10 +9,11 @@ import type { DeployedAgent } from '@/types/database'
 
 // 업무지시 모드에서 사용 가능한 모델 목록
 const TASK_MODE_MODELS = [
+  { id: 'grok-3-fast', name: 'Grok 3 Fast', provider: 'xai' },
+  { id: 'grok-3', name: 'Grok 3', provider: 'xai' },
   { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', provider: 'google' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
-  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai' },
   { id: 'claude-sonnet-4-20250514', name: 'Claude 4 Sonnet', provider: 'anthropic' },
   { id: 'claude-opus-4-5-20251101', name: 'Claude 4.5 Opus', provider: 'anthropic' },
 ]
@@ -124,7 +125,17 @@ export async function POST(request: NextRequest) {
     const selectedModel = TASK_MODE_MODELS.find(m => m.id === task_model) || TASK_MODE_MODELS[0]
 
     let model
-    if (selectedModel.provider === 'google') {
+    if (selectedModel.provider === 'xai') {
+      // Grok (XAI) - OpenAI compatible API
+      model = new ChatOpenAI({
+        modelName: selectedModel.id,
+        temperature: 0.3,
+        openAIApiKey: process.env.XAI_API_KEY,
+        configuration: {
+          baseURL: 'https://api.x.ai/v1',
+        },
+      })
+    } else if (selectedModel.provider === 'google') {
       model = new ChatGoogleGenerativeAI({
         model: selectedModel.id,
         temperature: 0.3,
@@ -138,7 +149,7 @@ export async function POST(request: NextRequest) {
         anthropicApiKey: process.env.ANTHROPIC_API_KEY,
       })
     } else {
-      // OpenAI (GPT 5.2 variants)
+      // OpenAI
       model = new ChatOpenAI({
         modelName: selectedModel.id,
         temperature: 0.3,
