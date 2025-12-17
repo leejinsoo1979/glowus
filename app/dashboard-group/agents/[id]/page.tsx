@@ -51,6 +51,7 @@ import {
   Smile,
   Upload,
   ChevronRight,
+  ChevronUp,
   ClipboardList,
   CheckCircle,
   XCircle,
@@ -1959,6 +1960,7 @@ export default function AgentProfilePage() {
     { id: 'claude-opus-4-5-20251101', name: 'Claude 4.5 Opus', provider: 'anthropic' },
   ]
   const [selectedTaskModel, setSelectedTaskModel] = useState('grok-4-1-fast')
+  const [isTaskModelDropdownOpen, setIsTaskModelDropdownOpen] = useState(false)
   const [pendingTask, setPendingTask] = useState<{
     analysis: {
       title: string
@@ -5227,27 +5229,61 @@ export default function AgentProfilePage() {
                   >
                     <ClipboardList className="w-4 h-4" />
                   </button>
-                  {/* Task model dropdown - 업무지시 모드일 때만 표시 */}
+                  {/* Task model dropdown - 업무지시 모드일 때만 표시 (위로 펼쳐짐) */}
                   {isTaskMode && (
-                    <select
-                      value={selectedTaskModel}
-                      onChange={(e) => setSelectedTaskModel(e.target.value)}
-                      disabled={chatLoading || isAnalyzingTask || !!pendingTask}
-                      className={cn(
-                        'h-8 px-2 rounded-lg text-xs border-none outline-none transition-all flex-shrink-0',
-                        isDark
-                          ? 'bg-accent/20 text-accent hover:bg-accent/30'
-                          : 'bg-accent/10 text-accent hover:bg-accent/20',
-                        (chatLoading || isAnalyzingTask || !!pendingTask) && 'opacity-50 cursor-not-allowed'
+                    <div className="relative flex-shrink-0">
+                      <button
+                        onClick={() => setIsTaskModelDropdownOpen(!isTaskModelDropdownOpen)}
+                        disabled={chatLoading || isAnalyzingTask || !!pendingTask}
+                        className={cn(
+                          'h-8 px-3 rounded-lg text-xs border-none outline-none transition-all flex items-center gap-1',
+                          isDark
+                            ? 'bg-accent/20 text-accent hover:bg-accent/30'
+                            : 'bg-accent/10 text-accent hover:bg-accent/20',
+                          (chatLoading || isAnalyzingTask || !!pendingTask) && 'opacity-50 cursor-not-allowed'
+                        )}
+                        title="업무 분석 모델 선택"
+                      >
+                        {TASK_MODE_MODELS.find(m => m.id === selectedTaskModel)?.name || 'Model'}
+                        <ChevronUp className={cn('w-3 h-3 transition-transform', isTaskModelDropdownOpen && 'rotate-180')} />
+                      </button>
+                      {isTaskModelDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setIsTaskModelDropdownOpen(false)}
+                          />
+                          <div className={cn(
+                            'absolute bottom-full left-0 mb-1 py-1 rounded-lg shadow-lg border z-50 min-w-[160px]',
+                            isDark
+                              ? 'bg-zinc-900 border-zinc-700'
+                              : 'bg-white border-zinc-200'
+                          )}>
+                            {TASK_MODE_MODELS.map((model) => (
+                              <button
+                                key={model.id}
+                                onClick={() => {
+                                  setSelectedTaskModel(model.id)
+                                  setIsTaskModelDropdownOpen(false)
+                                }}
+                                className={cn(
+                                  'w-full px-3 py-2 text-xs text-left transition-colors',
+                                  selectedTaskModel === model.id
+                                    ? isDark
+                                      ? 'bg-accent/20 text-accent'
+                                      : 'bg-accent/10 text-accent'
+                                    : isDark
+                                      ? 'text-zinc-300 hover:bg-zinc-800'
+                                      : 'text-zinc-700 hover:bg-zinc-100'
+                                )}
+                              >
+                                {model.name}
+                              </button>
+                            ))}
+                          </div>
+                        </>
                       )}
-                      title="업무 분석 모델 선택"
-                    >
-                      {TASK_MODE_MODELS.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </select>
+                    </div>
                   )}
                   <input
                     ref={chatInputRef}
