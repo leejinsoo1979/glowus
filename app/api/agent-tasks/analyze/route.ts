@@ -3,7 +3,19 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
+import { ChatOpenAI } from '@langchain/openai'
+import { ChatAnthropic } from '@langchain/anthropic'
 import type { DeployedAgent } from '@/types/database'
+
+// 업무지시 모드에서 사용 가능한 모델 목록
+const TASK_MODE_MODELS = [
+  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'google' },
+  { id: 'gpt-5.2', name: 'GPT 5.2 Instant', provider: 'openai' },
+  { id: 'gpt-5.2-thinking', name: 'GPT 5.2 Thinking', provider: 'openai' },
+  { id: 'gpt-5.2-pro', name: 'GPT 5.2 Pro', provider: 'openai' },
+  { id: 'claude-sonnet-4-20250514', name: 'Claude 4 Sonnet', provider: 'anthropic' },
+  { id: 'claude-opus-4-5-20251101', name: 'Claude 4.5 Opus', provider: 'anthropic' },
+]
 
 // 특수 액션 타입 정의
 type ActionType = 'project_create' | 'task_create' | 'general'
@@ -55,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { instruction, agent_id } = body
+    const { instruction, agent_id, task_model = 'gemini-3-flash' } = body
 
     if (!instruction || !agent_id) {
       return NextResponse.json(
@@ -108,12 +120,33 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Use Gemini to analyze the instruction (업무지시 모드)
-    const model = new ChatGoogleGenerativeAI({
-      model: 'gemini-2.0-flash',
-      temperature: 0.3,
-      apiKey: process.env.GOOGLE_API_KEY,
-    })
+    // 선택된 모델로 업무 분석 (업무지시 모드)
+    const selectedModel = TASK_MODE_MODELS.find(m => m.id === task_model) || TASK_MODE_MODELS[0]
+
+    let model
+    if (selectedModel.provider === 'google') {
+      model = new ChatGoogleGenerativeAI({
+        model: selectedModel.id,
+        temperature: 0.3,
+        apiKey: process.env.GOOGLE_API_KEY,
+      })
+    } else if (selectedModel.provider === 'anthropic') {
+      // Claude (Sonnet, Opus)
+      model = new ChatAnthropic({
+        model: selectedModel.id,
+        temperature: 0.3,
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+      })
+    } else {
+      // OpenAI (GPT 5.2 variants)
+      model = new ChatOpenAI({
+        modelName: selectedModel.id,
+        temperature: 0.3,
+        openAIApiKey: process.env.OPENAI_API_KEY,
+      })
+    }
+
+    console.log(`[TaskAnalyze] Using model: ${selectedModel.name} (${selectedModel.id})`)
 
     const analysisPrompt = `당신은 "${agent.name}"이라는 AI 에이전트입니다.
 ${agent.system_prompt ? `당신의 역할: ${agent.system_prompt}` : ''}

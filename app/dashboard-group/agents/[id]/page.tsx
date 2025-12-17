@@ -1947,6 +1947,17 @@ export default function AgentProfilePage() {
   // 업무 지시 모드 상태
   const [isTaskMode, setIsTaskMode] = useState(false)
   const [isAnalyzingTask, setIsAnalyzingTask] = useState(false)
+
+  // 업무지시 모드 모델 선택
+  const TASK_MODE_MODELS = [
+    { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'google' },
+    { id: 'gpt-5.2', name: 'GPT 5.2 Instant', provider: 'openai' },
+    { id: 'gpt-5.2-thinking', name: 'GPT 5.2 Thinking', provider: 'openai' },
+    { id: 'gpt-5.2-pro', name: 'GPT 5.2 Pro', provider: 'openai' },
+    { id: 'claude-sonnet-4-20250514', name: 'Claude 4 Sonnet', provider: 'anthropic' },
+    { id: 'claude-opus-4-5-20251101', name: 'Claude 4.5 Opus', provider: 'anthropic' },
+  ]
+  const [selectedTaskModel, setSelectedTaskModel] = useState('gemini-3-flash')
   const [pendingTask, setPendingTask] = useState<{
     analysis: {
       title: string
@@ -2721,6 +2732,7 @@ export default function AgentProfilePage() {
         body: JSON.stringify({
           instruction,
           agent_id: agent.id,
+          task_model: selectedTaskModel,
         }),
       })
 
@@ -4399,7 +4411,7 @@ export default function AgentProfilePage() {
                 )}
               >
                 {/* 채팅 로딩 애니메이션 */}
-                {chatLoading && chatMessages.length === 0 ? (
+                {chatLoading ? (
                   <div className="flex flex-col items-center justify-center h-full">
                     {/* 에이전트 아바타 with 로딩 효과 */}
                     <div className="relative mb-8">
@@ -5209,6 +5221,28 @@ export default function AgentProfilePage() {
                   >
                     <ClipboardList className="w-4 h-4" />
                   </button>
+                  {/* Task model dropdown - 업무지시 모드일 때만 표시 */}
+                  {isTaskMode && (
+                    <select
+                      value={selectedTaskModel}
+                      onChange={(e) => setSelectedTaskModel(e.target.value)}
+                      disabled={chatLoading || isAnalyzingTask || !!pendingTask}
+                      className={cn(
+                        'h-8 px-2 rounded-lg text-xs border-none outline-none transition-all flex-shrink-0',
+                        isDark
+                          ? 'bg-amber-900/30 text-amber-300 hover:bg-amber-900/50'
+                          : 'bg-amber-100 text-amber-700 hover:bg-amber-200',
+                        (chatLoading || isAnalyzingTask || !!pendingTask) && 'opacity-50 cursor-not-allowed'
+                      )}
+                      title="업무 분석 모델 선택"
+                    >
+                      {TASK_MODE_MODELS.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     ref={chatInputRef}
                     type="text"
@@ -5231,10 +5265,13 @@ export default function AgentProfilePage() {
                       : `${agent?.name}에게 메시지 보내기...`
                     }
                     className={cn(
-                      'flex-1 bg-transparent border-none outline-none text-sm py-1 focus:outline-none focus:ring-0 focus:border-none',
+                      'flex-1 bg-transparent border-none outline-none text-sm py-1',
+                      'focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0',
+                      '!outline-none !ring-0',
                       isDark ? 'text-white placeholder:text-zinc-500' : 'text-zinc-900 placeholder:text-zinc-400',
                       isTaskMode && 'placeholder:text-amber-500/70'
                     )}
+                    style={{ outline: 'none', boxShadow: 'none' }}
                     disabled={chatLoading || isAnalyzingTask || !!pendingTask}
                     autoFocus
                   />
