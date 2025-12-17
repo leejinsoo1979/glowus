@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not set')
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +32,7 @@ ${presentationContext || '(프레젠테이션 내용이 없습니다)'}
 3. 슬라이드 수정이 필요하면 구체적인 수정 방법을 안내합니다.
 4. 한국어로 친절하게 응답합니다.`
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },

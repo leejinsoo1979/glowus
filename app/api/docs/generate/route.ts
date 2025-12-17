@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
+const getOpenAI = () => {
+    if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY is not set')
+    }
+    return new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+    })
+}
 
 interface GenerateRequest {
     prompt: string
@@ -54,7 +59,7 @@ export async function POST(request: NextRequest) {
             content: prompt,
         })
 
-        const completion = await openai.chat.completions.create({
+        const completion = await getOpenAI().chat.completions.create({
             model: 'gpt-4o-mini',
             messages,
             temperature: 0.7,

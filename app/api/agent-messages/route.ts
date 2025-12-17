@@ -3,9 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 import type { AgentMessage, DeployedAgent } from '@/types/database'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not set')
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 // GET: Get messages for a conversation
 export async function GET(request: NextRequest) {
@@ -245,7 +250,7 @@ async function generateAgentResponse(
     if (safeModel.startsWith('gpt-4') && !safeModel.includes('gpt-4o')) {
       safeModel = 'gpt-4o-mini'
     }
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: safeModel,
       messages,
       temperature: agent.temperature || 0.7,

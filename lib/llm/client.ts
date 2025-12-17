@@ -18,50 +18,89 @@ export {
 import type { LLMProvider, LLMConfig } from './models'
 import { getDefaultModel, isProviderAvailable } from './models'
 
-// OpenAI 클라이언트
-export const openaiClient = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-})
+// 클라이언트 캐시 (lazy initialization)
+let _openaiClient: OpenAI | null = null
+let _grokClient: OpenAI | null = null
+let _geminiClient: OpenAI | null = null
+let _qwenClient: OpenAI | null = null
+let _ollamaClient: OpenAI | null = null
 
-// Grok 클라이언트 (xAI - OpenAI 호환 API)
-export const grokClient = new OpenAI({
-  apiKey: process.env.XAI_API_KEY || '',
-  baseURL: 'https://api.x.ai/v1',
-})
+// OpenAI 클라이언트 (lazy)
+export const getOpenAIClient = () => {
+  if (!_openaiClient) {
+    _openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY || '',
+    })
+  }
+  return _openaiClient
+}
 
-// Gemini 클라이언트 (Google - OpenAI 호환 API)
-export const geminiClient = new OpenAI({
-  apiKey: process.env.GOOGLE_API_KEY || '',
-  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-})
+// Grok 클라이언트 (xAI - OpenAI 호환 API) (lazy)
+export const getGrokClient = () => {
+  if (!_grokClient) {
+    _grokClient = new OpenAI({
+      apiKey: process.env.XAI_API_KEY || '',
+      baseURL: 'https://api.x.ai/v1',
+    })
+  }
+  return _grokClient
+}
 
-// Qwen 클라이언트 (DashScope - OpenAI 호환 API)
-export const qwenClient = new OpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY || '',
-  baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-})
+// Gemini 클라이언트 (Google - OpenAI 호환 API) (lazy)
+export const getGeminiClient = () => {
+  if (!_geminiClient) {
+    _geminiClient = new OpenAI({
+      apiKey: process.env.GOOGLE_API_KEY || '',
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    })
+  }
+  return _geminiClient
+}
 
-// Ollama 클라이언트 (로컬 LLM - OpenAI 호환 API)
-export const ollamaClient = new OpenAI({
-  apiKey: 'ollama',
-  baseURL: 'http://localhost:11434/v1',
-})
+// Qwen 클라이언트 (DashScope - OpenAI 호환 API) (lazy)
+export const getQwenClient = () => {
+  if (!_qwenClient) {
+    _qwenClient = new OpenAI({
+      apiKey: process.env.DASHSCOPE_API_KEY || '',
+      baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    })
+  }
+  return _qwenClient
+}
+
+// Ollama 클라이언트 (로컬 LLM - OpenAI 호환 API) (lazy)
+export const getOllamaClient = () => {
+  if (!_ollamaClient) {
+    _ollamaClient = new OpenAI({
+      apiKey: 'ollama',
+      baseURL: 'http://localhost:11434/v1',
+    })
+  }
+  return _ollamaClient
+}
+
+// Backward compatibility exports (deprecated)
+export const openaiClient = { get chat() { return getOpenAIClient().chat } }
+export const grokClient = { get chat() { return getGrokClient().chat } }
+export const geminiClient = { get chat() { return getGeminiClient().chat } }
+export const qwenClient = { get chat() { return getQwenClient().chat } }
+export const ollamaClient = { get chat() { return getOllamaClient().chat } }
 
 // 클라이언트 선택
 export function getClient(provider: LLMProvider): OpenAI {
   switch (provider) {
     case 'openai':
-      return openaiClient
+      return getOpenAIClient()
     case 'grok':
-      return grokClient
+      return getGrokClient()
     case 'gemini':
-      return geminiClient
+      return getGeminiClient()
     case 'qwen':
-      return qwenClient
+      return getQwenClient()
     case 'ollama':
-      return ollamaClient
+      return getOllamaClient()
     default:
-      return ollamaClient
+      return getOllamaClient()
   }
 }
 

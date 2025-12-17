@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
+const getOpenAI = () => {
+    if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY is not set')
+    }
+    return new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+    })
+}
 
 interface EditRequest {
     content: string
@@ -53,7 +58,7 @@ export async function POST(request: NextRequest) {
 
         userPrompt += `수정 지시: ${instruction}\n\n수정된 전체 문서를 반환해주세요.`
 
-        const completion = await openai.chat.completions.create({
+        const completion = await getOpenAI().chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
                 { role: 'system', content: systemPrompt },

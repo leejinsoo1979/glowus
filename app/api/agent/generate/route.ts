@@ -3,9 +3,14 @@ import OpenAI from 'openai'
 import { createAgentNode } from '@/lib/agent'
 import type { AgentType } from '@/lib/agent'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not set')
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 // 노드 타입 정의
 const NODE_TYPES = {
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },

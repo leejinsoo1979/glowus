@@ -17,11 +17,17 @@ interface AgentTaskWithProject {
   project_id?: string | null
 }
 
-// Supabase admin client
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Supabase admin client (lazy initialization)
+let _supabaseAdmin: ReturnType<typeof createClient> | null = null
+const getSupabaseAdmin = () => {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  }
+  return _supabaseAdmin
+}
 
 interface SaveDocumentOptions {
   agent: DeployedAgent
@@ -110,7 +116,7 @@ export async function saveResultToDocument(options: SaveDocumentOptions): Promis
 
     // If still no project ID, try to get from agent_task -> project_task link
     if (!finalProjectId) {
-      const { data: agentTask } = await supabaseAdmin
+      const { data: agentTask } = await (getSupabaseAdmin() as any)
         .from('agent_tasks')
         .select('project_id, task_id')
         .eq('id', task.id)
@@ -120,7 +126,7 @@ export async function saveResultToDocument(options: SaveDocumentOptions): Promis
         finalProjectId = agentTask.project_id
       } else if (agentTask?.task_id) {
         // Get project from linked task
-        const { data: linkedTask } = await supabaseAdmin
+        const { data: linkedTask } = await (getSupabaseAdmin() as any)
           .from('project_tasks')
           .select('project_id')
           .eq('id', agentTask.task_id)
@@ -134,7 +140,7 @@ export async function saveResultToDocument(options: SaveDocumentOptions): Promis
 
     // If no project, try to get default project from team
     if (!finalProjectId && agent.team_id) {
-      const { data: projects } = await supabaseAdmin
+      const { data: projects } = await (getSupabaseAdmin() as any)
         .from('projects')
         .select('id')
         .eq('team_id', agent.team_id)
@@ -164,7 +170,7 @@ export async function saveResultToDocument(options: SaveDocumentOptions): Promis
     let projectTaskId = existingProjectTaskId || null
 
     if (!existingProjectTaskId) {
-      const { data: projectTask, error: taskError } = await supabaseAdmin
+      const { data: projectTask, error: taskError } = await (getSupabaseAdmin() as any)
         .from('project_tasks')
         .insert({
           project_id: finalProjectId,
@@ -195,7 +201,7 @@ export async function saveResultToDocument(options: SaveDocumentOptions): Promis
     }
 
     // Create document
-    const { data: document, error } = await supabaseAdmin
+    const { data: document, error } = await (getSupabaseAdmin() as any)
       .from('project_documents')
       .insert({
         project_id: finalProjectId,
@@ -275,7 +281,7 @@ export async function saveResultToDocument(options: SaveDocumentOptions): Promis
  * Check if a document already exists for this task
  */
 export async function documentExistsForTask(taskId: string): Promise<boolean> {
-  const { data } = await supabaseAdmin
+  const { data } = await (getSupabaseAdmin() as any)
     .from('project_documents')
     .select('id')
     .eq('agent_task_id', taskId)

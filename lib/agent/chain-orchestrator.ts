@@ -10,11 +10,17 @@ import { createClient } from '@supabase/supabase-js'
 import { executeAgentWithTools, ExecutionResult } from './executor'
 import type { DeployedAgent, AgentTask, ChainConfig, ChainRun, ChainStepResult } from '@/types/database'
 
-// Supabase admin client
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Supabase admin client (lazy initialization)
+let _supabaseAdmin: ReturnType<typeof createClient> | null = null
+const getSupabaseAdmin = () => {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  }
+  return _supabaseAdmin
+}
 
 export interface ChainExecutionContext {
   chainRunId?: string
@@ -35,7 +41,7 @@ export async function handleAgentCompletion(
 ): Promise<{ triggered: boolean; nextTaskId?: string; error?: string }> {
   try {
     // 1. 완료된 에이전트 정보 조회
-    const { data: agent, error: agentError } = await supabaseAdmin
+    const { data: agent, error: agentError } = await (getSupabaseAdmin() as any)
       .from('deployed_agents')
       .select('*, next_agent:next_agent_id(*)')
       .eq('id', completedAgentId)
@@ -87,7 +93,7 @@ export async function handleAgentCompletion(
     }
 
     // 6. 다음 에이전트 정보 조회
-    const { data: nextAgent, error: nextAgentError } = await supabaseAdmin
+    const { data: nextAgent, error: nextAgentError } = await (getSupabaseAdmin() as any)
       .from('deployed_agents')
       .select('*')
       .eq('id', agent.next_agent_id)
@@ -102,14 +108,14 @@ export async function handleAgentCompletion(
     const inputForNextAgent = mapInputForNextAgent(result, chainConfig, agent.name)
 
     // 8. 원본 태스크 정보 조회 (프로젝트 ID 등)
-    const { data: originalTask } = await supabaseAdmin
+    const { data: originalTask } = await (getSupabaseAdmin() as any)
       .from('agent_tasks')
       .select('*')
       .eq('id', taskId)
       .single()
 
     // 9. 다음 에이전트를 위한 새 태스크 생성
-    const { data: newTask, error: taskError } = await supabaseAdmin
+    const { data: newTask, error: taskError } = await (getSupabaseAdmin() as any)
       .from('agent_tasks')
       .insert({
         assignee_agent_id: nextAgent.id,
@@ -178,7 +184,7 @@ export async function startChainExecution(
 ): Promise<{ success: boolean; chainRunId?: string; error?: string }> {
   try {
     // 1. 체인 정보 조회
-    const { data: chain, error: chainError } = await supabaseAdmin
+    const { data: chain, error: chainError } = await (getSupabaseAdmin() as any)
       .from('agent_chains')
       .select('*, start_agent:start_agent_id(*)')
       .eq('id', chainId)
@@ -193,7 +199,7 @@ export async function startChainExecution(
     }
 
     // 2. 체인 실행 기록 생성
-    const { data: chainRun, error: runError } = await supabaseAdmin
+    const { data: chainRun, error: runError } = await (getSupabaseAdmin() as any)
       .from('chain_runs')
       .insert({
         chain_id: chainId,
@@ -211,7 +217,7 @@ export async function startChainExecution(
 
     // 3. 첫 번째 에이전트 태스크 생성
     const startAgent = chain.start_agent as DeployedAgent
-    const { data: task, error: taskError } = await supabaseAdmin
+    const { data: task, error: taskError } = await (getSupabaseAdmin() as any)
       .from('agent_tasks')
       .insert({
         assignee_agent_id: startAgent.id,
@@ -228,7 +234,7 @@ export async function startChainExecution(
 
     if (taskError || !task) {
       // 롤백
-      await supabaseAdmin.from('chain_runs').delete().eq('id', chainRun.id)
+      await (getSupabaseAdmin() as any).from('chain_runs').delete().eq('id', chainRun.id)
       return { success: false, error: 'Failed to create start task' }
     }
 
@@ -258,13 +264,13 @@ async function triggerNextAgentExecution(
 ): Promise<void> {
   try {
     // 태스크 상태 업데이트
-    await supabaseAdmin
+    await (getSupabaseAdmin() as any)
       .from('agent_tasks')
       .update({ status: 'in_progress' })
       .eq('id', taskId)
 
     // 태스크 정보 조회
-    const { data: task } = await supabaseAdmin
+    const { data: task } = await (getSupabaseAdmin() as any)
       .from('agent_tasks')
       .select('*')
       .eq('id', taskId)
@@ -278,7 +284,7 @@ async function triggerNextAgentExecution(
     const result = await executeAgentWithTools(agent, task as AgentTask)
 
     // 결과 저장
-    await supabaseAdmin
+    await (getSupabaseAdmin() as any)
       .from('agent_tasks')
       .update({
         status: result.success ? 'completed' : 'failed',
@@ -376,7 +382,7 @@ async function updateChainRunProgress(
   currentAgentId: string,
   stepResult: ChainStepResult
 ): Promise<void> {
-  const { data: chainRun } = await supabaseAdmin
+  const { data: chainRun } = await (getSupabaseAdmin() as any)
     .from('chain_runs')
     .select('step_results')
     .eq('id', chainRunId)
@@ -384,7 +390,7 @@ async function updateChainRunProgress(
 
   const stepResults = [...(chainRun?.step_results || []), stepResult]
 
-  await supabaseAdmin
+  await (getSupabaseAdmin() as any)
     .from('chain_runs')
     .update({
       current_agent_id: currentAgentId,
@@ -397,7 +403,7 @@ async function updateChainRunProgress(
  * 체인 실행 완료
  */
 async function completeChainRun(chainRunId: string, finalOutput: string): Promise<void> {
-  await supabaseAdmin
+  await (getSupabaseAdmin() as any)
     .from('chain_runs')
     .update({
       status: 'COMPLETED',
@@ -413,7 +419,7 @@ async function completeChainRun(chainRunId: string, finalOutput: string): Promis
  * 체인 실행 실패
  */
 async function failChainRun(chainRunId: string, error: string): Promise<void> {
-  await supabaseAdmin
+  await (getSupabaseAdmin() as any)
     .from('chain_runs')
     .update({
       status: 'FAILED',
@@ -436,7 +442,7 @@ export async function getChainAgents(startAgentId: string): Promise<DeployedAgen
   while (currentId && !visited.has(currentId)) {
     visited.add(currentId)
 
-    const { data } = await supabaseAdmin
+    const { data } = await (getSupabaseAdmin() as any)
       .from('deployed_agents')
       .select('*')
       .eq('id', currentId)

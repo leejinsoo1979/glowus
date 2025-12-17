@@ -71,14 +71,21 @@ interface SaveWorkMemoryParams {
   metadata?: Record<string, any>
 }
 
-const supabase = createAdminClient()
+// Lazy initialization to avoid build-time errors
+let _supabase: ReturnType<typeof createAdminClient> | null = null
+const getSupabase = () => {
+  if (!_supabase) {
+    _supabase = createAdminClient()
+  }
+  return _supabase
+}
 
 /**
  * 워크 메모리 저장
  */
 export async function saveWorkMemory(params: SaveWorkMemoryParams): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await (getSupabase() as any)
       .from('agent_work_memory')
       .insert({
         agent_id: params.agentId,
@@ -323,7 +330,7 @@ export async function savePreference(params: {
  * 활성 컨텍스트 조회
  */
 export async function getActiveContext(agentId: string, userId: string): Promise<ActiveContext | null> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await (getSupabase() as any)
     .from('agent_active_context')
     .select('*')
     .eq('agent_id', agentId)
@@ -414,7 +421,7 @@ export async function updateActiveContext(
     newContext.communication_style = updates.communicationStyle
   }
 
-  await (supabase as any)
+  await (getSupabase() as any)
     .from('agent_active_context')
     .upsert(newContext, { onConflict: 'agent_id,user_id' })
 }
@@ -423,7 +430,7 @@ export async function updateActiveContext(
  * 에이전트 관계 업데이트
  */
 async function updateAgentRelationship(agentId: string, relatedAgentId: string, userId: string): Promise<void> {
-  const { data: existing } = await (supabase as any)
+  const { data: existing } = await (getSupabase() as any)
     .from('agent_relationships')
     .select('id, collaboration_count')
     .eq('agent_id', agentId)
@@ -432,7 +439,7 @@ async function updateAgentRelationship(agentId: string, relatedAgentId: string, 
     .single()
 
   if (existing) {
-    await (supabase as any)
+    await (getSupabase() as any)
       .from('agent_relationships')
       .update({
         collaboration_count: existing.collaboration_count + 1,
@@ -441,7 +448,7 @@ async function updateAgentRelationship(agentId: string, relatedAgentId: string, 
       })
       .eq('id', existing.id)
   } else {
-    await (supabase as any)
+    await (getSupabase() as any)
       .from('agent_relationships')
       .insert({
         agent_id: agentId,
@@ -468,7 +475,7 @@ export async function loadAgentWorkContext(agentId: string, userId: string): Pro
   const activeContext = await getActiveContext(agentId, userId)
 
   // 2. 최근 24시간 메모리
-  const { data: recentMemories } = await (supabase as any)
+  const { data: recentMemories } = await (getSupabase() as any)
     .from('agent_work_memory')
     .select('*')
     .eq('agent_id', agentId)
@@ -478,7 +485,7 @@ export async function loadAgentWorkContext(agentId: string, userId: string): Pro
     .limit(20)
 
   // 3. 중요한 메모리 (importance >= 8)
-  const { data: importantMemories } = await (supabase as any)
+  const { data: importantMemories } = await (getSupabase() as any)
     .from('agent_work_memory')
     .select('*')
     .eq('agent_id', agentId)
@@ -488,7 +495,7 @@ export async function loadAgentWorkContext(agentId: string, userId: string): Pro
     .limit(10)
 
   // 4. 미완료 태스크
-  const { data: pendingTasks } = await (supabase as any)
+  const { data: pendingTasks } = await (getSupabase() as any)
     .from('agent_tasks')
     .select('id, title, description, status, priority')
     .eq('agent_id', agentId)
@@ -566,7 +573,7 @@ export async function searchRelevantMemories(
   query: string,
   limit: number = 10
 ): Promise<WorkMemory[]> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await (getSupabase() as any)
     .rpc('search_agent_work_memory', {
       p_agent_id: agentId,
       p_user_id: userId,

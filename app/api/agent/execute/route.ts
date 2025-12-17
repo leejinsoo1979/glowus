@@ -6,21 +6,38 @@ import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 import { ActivepiecesClient } from "@/lib/activepieces/client"
 
-// Activepieces client
-const activepiecesClient = new ActivepiecesClient()
+// Activepieces client (lazy initialization)
+let _activepiecesClient: ActivepiecesClient | null = null
+const getActivepiecesClient = () => {
+    if (!_activepiecesClient) {
+        _activepiecesClient = new ActivepiecesClient()
+    }
+    return _activepiecesClient
+}
 
 export const maxDuration = 60
 
-// Supabase client for memory/RAG operations
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Supabase client for memory/RAG operations (lazy initialization)
+let _supabase: ReturnType<typeof createClient> | null = null
+const getSupabase = () => {
+    if (!_supabase) {
+        _supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+    }
+    return _supabase
+}
 
-// OpenAI client for DALL-E
-const openaiClient = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
+// OpenAI client for DALL-E (lazy initialization)
+const getOpenAIClient = () => {
+    if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY is not set')
+    }
+    return new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+    })
+}
 
 type ExecutionResult = {
     nodeId: string
@@ -90,7 +107,7 @@ async function executeJavaScript(code: string, inputs: any[]): Promise<any> {
 
 // Memory operations
 async function saveToMemory(agentId: string, key: string, value: any): Promise<void> {
-    await supabase.from("agent_memory").upsert({
+    await (getSupabase() as any).from("agent_memory").upsert({
         agent_id: agentId,
         memory_key: key,
         memory_value: value,
@@ -100,7 +117,7 @@ async function saveToMemory(agentId: string, key: string, value: any): Promise<v
 
 async function loadFromMemory(agentId: string, key?: string): Promise<any> {
     if (key) {
-        const { data } = await supabase
+        const { data } = await (getSupabase() as any)
             .from("agent_memory")
             .select("memory_value")
             .eq("agent_id", agentId)
@@ -108,7 +125,7 @@ async function loadFromMemory(agentId: string, key?: string): Promise<any> {
             .single()
         return data?.memory_value
     } else {
-        const { data } = await supabase
+        const { data } = await (getSupabase() as any)
             .from("agent_memory")
             .select("memory_key, memory_value")
             .eq("agent_id", agentId)
@@ -122,14 +139,14 @@ async function loadFromMemory(agentId: string, key?: string): Promise<any> {
 // RAG vector search
 async function ragSearch(query: string, collectionId: string, topK: number = 5): Promise<any[]> {
     // Generate embedding for query
-    const embeddingResponse = await openaiClient.embeddings.create({
+    const embeddingResponse = await getOpenAIClient().embeddings.create({
         model: "text-embedding-3-small",
         input: query,
     })
     const queryEmbedding = embeddingResponse.data[0].embedding
 
     // Search similar documents using pgvector
-    const { data, error } = await supabase.rpc("match_documents", {
+    const { data, error } = await (getSupabase() as any).rpc("match_documents", {
         query_embedding: queryEmbedding,
         match_threshold: 0.7,
         match_count: topK,
@@ -146,7 +163,7 @@ async function ragSearch(query: string, collectionId: string, topK: number = 5):
 
 // Generate embeddings
 async function generateEmbedding(text: string): Promise<number[]> {
-    const response = await openaiClient.embeddings.create({
+    const response = await getOpenAIClient().embeddings.create({
         model: "text-embedding-3-small",
         input: text,
     })
@@ -155,7 +172,7 @@ async function generateEmbedding(text: string): Promise<number[]> {
 
 // Generate image with DALL-E
 async function generateImage(prompt: string, size: string = "1024x1024"): Promise<string> {
-    const response = await openaiClient.images.generate({
+    const response = await getOpenAIClient().images.generate({
         model: "dall-e-3",
         prompt,
         n: 1,
@@ -652,14 +669,14 @@ export async function POST(req: Request) {
                                 try {
                                     if (triggerType === "webhook" && webhookUrl) {
                                         // Webhook trigger
-                                        output = await activepiecesClient.triggerWebhook(webhookUrl, payload)
+                                        output = await getActivepiecesClient().triggerWebhook(webhookUrl, payload)
                                     } else if (flowId) {
                                         // Manual trigger with Flow ID
-                                        const run = await activepiecesClient.runFlow(flowId, payload)
+                                        const run = await getActivepiecesClient().runFlow(flowId, payload)
 
                                         if (waitForCompletion) {
                                             // Wait for flow to complete
-                                            const completedRun = await activepiecesClient.waitForCompletion(run.id, 55000)
+                                            const completedRun = await getActivepiecesClient().waitForCompletion(run.id, 55000)
                                             output = {
                                                 runId: completedRun.id,
                                                 status: completedRun.status,
@@ -679,7 +696,7 @@ export async function POST(req: Request) {
                                     }
                                 } catch (apError: any) {
                                     // Check if Activepieces is running
-                                    const isHealthy = await activepiecesClient.healthCheck()
+                                    const isHealthy = await getActivepiecesClient().healthCheck()
                                     if (!isHealthy) {
                                         throw new Error("Activepieces is not running. Start with: cd docker/activepieces && docker-compose up -d")
                                     }
