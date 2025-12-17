@@ -1950,14 +1950,14 @@ export default function AgentProfilePage() {
 
   // 업무지시 모드 모델 선택
   const TASK_MODE_MODELS = [
-    { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'google' },
-    { id: 'gpt-5.2', name: 'GPT 5.2 Instant', provider: 'openai' },
-    { id: 'gpt-5.2-thinking', name: 'GPT 5.2 Thinking', provider: 'openai' },
-    { id: 'gpt-5.2-pro', name: 'GPT 5.2 Pro', provider: 'openai' },
+    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', provider: 'google' },
+    { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
+    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai' },
     { id: 'claude-sonnet-4-20250514', name: 'Claude 4 Sonnet', provider: 'anthropic' },
     { id: 'claude-opus-4-5-20251101', name: 'Claude 4.5 Opus', provider: 'anthropic' },
   ]
-  const [selectedTaskModel, setSelectedTaskModel] = useState('gemini-3-flash')
+  const [selectedTaskModel, setSelectedTaskModel] = useState('gpt-4o-mini')
   const [pendingTask, setPendingTask] = useState<{
     analysis: {
       title: string
