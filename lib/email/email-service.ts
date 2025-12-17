@@ -258,7 +258,7 @@ export class EmailService {
       for (const email of emails) {
         const dbEmail = config?.protocol === 'pop3'
           ? pop3EmailToDbFormat(email, accountId)
-          : parsedEmailToDbFormat(email, accountId)
+          : parsedEmailToDbFormat(email, accountId, options.folder || 'INBOX')
 
         const { error } = await (this.supabase as any)
           .from('email_messages')
@@ -299,6 +299,90 @@ export class EmailService {
         .eq('id', accountId)
 
       return { synced: 0, error: errorMessage }
+    }
+  }
+
+  // Sync all important folders including Spam, Sent, etc.
+  async syncAllFolders(
+    accountId: string,
+    options: { limit?: number; since?: Date } = {}
+  ): Promise<{ synced: number; folders: string[]; error?: string }> {
+    // Get account with password
+    const { data: account, error: accountError } = await (this.supabase as any)
+      .from('email_accounts')
+      .select('*')
+      .eq('id', accountId)
+      .single()
+
+    if (accountError || !account) {
+      return { synced: 0, folders: [], error: 'Account not found' }
+    }
+
+    const password = decrypt(account.encrypted_password)
+    const config = PROVIDER_CONFIGS[account.provider as EmailProvider]
+
+    // POP3 doesn't support folders
+    if (config?.protocol === 'pop3') {
+      const result = await this.syncEmails(accountId, options)
+      return { ...result, folders: ['INBOX'] }
+    }
+
+    try {
+      const imapService = new ImapService(account as EmailAccount, password)
+      await imapService.connect()
+
+      // Get all available folders
+      const allFolders = await imapService.listFolders()
+
+      // Define folder patterns to sync (including spam)
+      const folderPatterns = [
+        // Inbox
+        /^inbox$/i,
+        // Spam/Junk folders
+        /spam/i, /junk/i, /스팸/i, /bulk/i,
+        // Sent folders
+        /sent/i, /보낸/i,
+        // Important folders
+        /important/i, /starred/i, /중요/i,
+      ]
+
+      // Find matching folders
+      const foldersToSync = allFolders.filter(folder =>
+        folderPatterns.some(pattern => pattern.test(folder))
+      )
+
+      // Always include INBOX if not found
+      if (!foldersToSync.some(f => f.toLowerCase() === 'inbox')) {
+        foldersToSync.unshift('INBOX')
+      }
+
+      await imapService.disconnect()
+
+      // Sync each folder
+      let totalSynced = 0
+      const syncedFolders: string[] = []
+
+      for (const folder of foldersToSync) {
+        try {
+          const result = await this.syncEmails(accountId, {
+            folder,
+            limit: options.limit || 30, // Less per folder
+            since: options.since,
+          })
+          if (!result.error) {
+            totalSynced += result.synced
+            syncedFolders.push(folder)
+          }
+        } catch (folderError) {
+          console.error(`Failed to sync folder ${folder}:`, folderError)
+          // Continue with other folders
+        }
+      }
+
+      return { synced: totalSynced, folders: syncedFolders }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sync failed'
+      return { synced: 0, folders: [], error: errorMessage }
     }
   }
 

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { account_id, folder, limit, since } = body
+    const { account_id, folder, limit, since, syncAll } = body
 
     if (!account_id) {
       return NextResponse.json({ error: '계정 ID가 필요합니다.' }, { status: 400 })
@@ -45,6 +45,25 @@ export async function POST(request: Request) {
     }
 
     const emailService = new EmailService()
+
+    // Sync all folders (including spam, sent, etc.) or single folder
+    if (syncAll) {
+      const result = await emailService.syncAllFolders(account_id, {
+        limit: limit || 30,
+        since: since ? new Date(since) : undefined,
+      })
+
+      if (result.error) {
+        return NextResponse.json({ error: result.error }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        synced: result.synced,
+        folders: result.folders,
+      })
+    }
+
+    // Single folder sync
     const result = await emailService.syncEmails(account_id, {
       folder,
       limit: limit || 50,

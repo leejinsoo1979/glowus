@@ -312,16 +312,48 @@ export class ImapService {
   }
 }
 
+// Helper to detect folder type from folder name
+function detectFolderType(folder: string): { is_spam: boolean; is_sent: boolean; is_trash: boolean; is_draft: boolean } {
+  const lowerFolder = folder.toLowerCase()
+
+  // Spam folder patterns (Gmail, Naver, Outlook, etc.)
+  const isSpam = lowerFolder.includes('spam') ||
+                 lowerFolder.includes('junk') ||
+                 lowerFolder.includes('스팸') ||
+                 lowerFolder.includes('bulk')
+
+  // Sent folder patterns
+  const isSent = lowerFolder.includes('sent') ||
+                 lowerFolder.includes('보낸') ||
+                 lowerFolder.includes('발송')
+
+  // Trash folder patterns
+  const isTrash = lowerFolder.includes('trash') ||
+                  lowerFolder.includes('deleted') ||
+                  lowerFolder.includes('휴지통') ||
+                  lowerFolder.includes('삭제')
+
+  // Draft folder patterns
+  const isDraft = lowerFolder.includes('draft') ||
+                  lowerFolder.includes('임시') ||
+                  lowerFolder.includes('drafts')
+
+  return { is_spam: isSpam, is_sent: isSent, is_trash: isTrash, is_draft: isDraft }
+}
+
 // Helper to convert ParsedEmail to database format
 export function parsedEmailToDbFormat(
   parsed: ParsedEmail,
-  accountId: string
+  accountId: string,
+  folder: string = 'INBOX'
 ): Omit<EmailMessage, 'id' | 'created_at' | 'updated_at'> {
+  const folderType = detectFolderType(folder)
+
   return {
     account_id: accountId,
     message_id: parsed.messageId,
     uid: parsed.uid,
-    folder: 'INBOX',
+    folder: folder,
     subject: parsed.subject,
     from_address: parsed.from.email,
     from_name: parsed.from.name,
@@ -339,10 +371,10 @@ export function parsedEmailToDbFormat(
     references_list: parsed.references,
     is_read: false,
     is_starred: false,
-    is_draft: false,
-    is_sent: false,
-    is_spam: false,
-    is_trash: false,
+    is_draft: folderType.is_draft,
+    is_sent: folderType.is_sent,
+    is_spam: folderType.is_spam,
+    is_trash: folderType.is_trash,
     ai_summary: undefined,
     ai_priority: undefined,
     ai_category: undefined,
