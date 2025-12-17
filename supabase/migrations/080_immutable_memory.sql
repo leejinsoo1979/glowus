@@ -33,19 +33,24 @@ CREATE TABLE IF NOT EXISTS public.immutable_memory (
 
   -- 이벤트 타입 (절대 변경 불가)
   event_type TEXT NOT NULL CHECK (event_type IN (
-    'message',      -- 대화 메시지
-    'action',       -- 수행한 액션
-    'decision',     -- 결정 사항
-    'insight',      -- 인사이트/깨달음
-    'task',         -- 태스크 관련
-    'email',        -- 이메일 관련
-    'meeting',      -- 미팅 관련
-    'document',     -- 문서 관련
-    'system'        -- 시스템 이벤트
+    'conversation',       -- 대화
+    'task_created',       -- 태스크 생성
+    'task_completed',     -- 태스크 완료
+    'document_created',   -- 문서 생성
+    'document_updated',   -- 문서 수정
+    'email_sent',         -- 이메일 발송
+    'email_received',     -- 이메일 수신
+    'meeting',            -- 회의
+    'decision',           -- 의사결정
+    'milestone',          -- 마일스톤
+    'insight',            -- AI 인사이트
+    'error',              -- 에러
+    'system',             -- 시스템 이벤트
+    'custom'              -- 커스텀 이벤트
   )),
 
   -- 역할 (절대 변경 불가)
-  role TEXT NOT NULL CHECK (role IN ('user', 'agent', 'system')),
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'agent')),
 
   -- 소스 정보 (참고용, 절대 변경 불가)
   source_agent TEXT,
@@ -94,15 +99,16 @@ CREATE TABLE IF NOT EXISTS public.memory_analysis (
   model_name TEXT NOT NULL,
   model_version TEXT,
 
-  -- 분석 결과
+  -- 분석 결과 (TypeScript 타입과 일치)
   summary TEXT,
-  entities TEXT[] DEFAULT '{}',
-  tags TEXT[] DEFAULT '{}',
-  importance FLOAT DEFAULT 0.5 CHECK (importance >= 0 AND importance <= 1),
-  sentiment FLOAT CHECK (sentiment >= -1 AND sentiment <= 1),
-
-  -- 추가 메타데이터
-  metadata JSONB DEFAULT '{}',
+  key_points JSONB DEFAULT '[]',
+  entities JSONB DEFAULT '[]',
+  sentiment JSONB,
+  importance_score FLOAT DEFAULT 0.5 CHECK (importance_score >= 0 AND importance_score <= 1),
+  relevance_tags JSONB DEFAULT '[]',
+  action_items JSONB DEFAULT '[]',
+  related_memory_ids JSONB DEFAULT '[]',
+  analysis_metadata JSONB DEFAULT '{}',
 
   -- 생성 시점
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -123,21 +129,12 @@ CREATE TABLE IF NOT EXISTS public.memory_daily_summary (
 
   -- 분석 모델 정보
   model_name TEXT NOT NULL,
+  model_version TEXT,
 
-  -- 요약 내용
+  -- 요약 내용 (TypeScript 타입과 일치)
   summary TEXT NOT NULL,
-  highlights JSONB DEFAULT '[]',
-  decisions JSONB DEFAULT '[]',
-  todos JSONB DEFAULT '[]',
-  insights JSONB DEFAULT '[]',
-
-  -- 통계
-  event_count INT DEFAULT 0,
-  mood TEXT,
-  productivity_score FLOAT,
-
-  -- 임베딩
-  embedding vector(1536),
+  key_events JSONB DEFAULT '[]',
+  statistics JSONB DEFAULT '{}',
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
 
@@ -150,25 +147,21 @@ CREATE TABLE IF NOT EXISTS public.memory_weekly_summary (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
 
   year INT NOT NULL,
-  week INT NOT NULL,
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
+  week_of_year INT NOT NULL,
 
   -- 분석 모델 정보
   model_name TEXT NOT NULL,
+  model_version TEXT,
 
-  -- 요약 내용
+  -- 요약 내용 (TypeScript 타입과 일치)
   summary TEXT NOT NULL,
-  achievements JSONB DEFAULT '[]',
-  challenges JSONB DEFAULT '[]',
-  patterns JSONB DEFAULT '[]',
-
-  -- 임베딩
-  embedding vector(1536),
+  highlights JSONB DEFAULT '[]',
+  statistics JSONB DEFAULT '{}',
+  trends JSONB DEFAULT '[]',
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
 
-  UNIQUE(user_id, year, week, model_name)
+  UNIQUE(user_id, year, week_of_year, model_name)
 );
 
 -- 월별 요약
@@ -181,15 +174,14 @@ CREATE TABLE IF NOT EXISTS public.memory_monthly_summary (
 
   -- 분석 모델 정보
   model_name TEXT NOT NULL,
+  model_version TEXT,
 
-  -- 요약 내용
+  -- 요약 내용 (TypeScript 타입과 일치)
   summary TEXT NOT NULL,
-  major_events JSONB DEFAULT '[]',
-  growth_areas JSONB DEFAULT '[]',
-  recurring_themes JSONB DEFAULT '[]',
-
-  -- 임베딩
-  embedding vector(1536),
+  achievements JSONB DEFAULT '[]',
+  challenges JSONB DEFAULT '[]',
+  statistics JSONB DEFAULT '{}',
+  insights JSONB DEFAULT '[]',
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
 
@@ -230,13 +222,13 @@ CREATE INDEX IF NOT EXISTS idx_memory_analysis_memory
 CREATE INDEX IF NOT EXISTS idx_memory_analysis_model
   ON public.memory_analysis(model_name);
 CREATE INDEX IF NOT EXISTS idx_memory_analysis_importance
-  ON public.memory_analysis(importance DESC);
+  ON public.memory_analysis(importance_score DESC);
 
 -- 요약 인덱스
 CREATE INDEX IF NOT EXISTS idx_memory_daily_summary_user_date
   ON public.memory_daily_summary(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_weekly_summary_user
-  ON public.memory_weekly_summary(user_id, year DESC, week DESC);
+  ON public.memory_weekly_summary(user_id, year DESC, week_of_year DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_monthly_summary_user
   ON public.memory_monthly_summary(user_id, year DESC, month DESC);
 
@@ -277,7 +269,79 @@ CREATE TRIGGER immutable_memory_no_delete
   EXECUTE FUNCTION public.prevent_immutable_memory_delete();
 
 -- ============================================
--- 7. RPC 함수: 날짜별 메모리 조회
+-- 7. RPC 함수: 임베딩 기반 시맨틱 검색
+-- ============================================
+
+CREATE OR REPLACE FUNCTION public.search_memories_by_embedding(
+  p_user_id UUID,
+  p_query_embedding vector(1536),
+  p_model_name TEXT,
+  p_match_threshold FLOAT DEFAULT 0.7,
+  p_match_count INT DEFAULT 20
+)
+RETURNS TABLE (
+  memory_id UUID,
+  similarity FLOAT
+)
+LANGUAGE SQL
+STABLE
+AS $$
+  SELECT
+    e.memory_id,
+    (1 - (e.embedding <=> p_query_embedding))::FLOAT AS similarity
+  FROM public.memory_embeddings e
+  JOIN public.immutable_memory m ON m.id = e.memory_id
+  WHERE m.user_id = p_user_id
+    AND e.model_name = p_model_name
+    AND (1 - (e.embedding <=> p_query_embedding)) >= p_match_threshold
+  ORDER BY e.embedding <=> p_query_embedding
+  LIMIT p_match_count;
+$$;
+
+-- ============================================
+-- 8. RPC 함수: 임베딩 없는 메모리 조회
+-- ============================================
+
+CREATE OR REPLACE FUNCTION public.get_memories_without_embeddings(
+  p_user_id UUID,
+  p_model_name TEXT
+)
+RETURNS SETOF public.immutable_memory
+LANGUAGE SQL
+STABLE
+AS $$
+  SELECT m.*
+  FROM public.immutable_memory m
+  LEFT JOIN public.memory_embeddings e
+    ON e.memory_id = m.id AND e.model_name = p_model_name
+  WHERE m.user_id = p_user_id
+    AND e.id IS NULL
+  ORDER BY m.timestamp ASC;
+$$;
+
+-- ============================================
+-- 9. RPC 함수: 분석 없는 메모리 조회
+-- ============================================
+
+CREATE OR REPLACE FUNCTION public.get_memories_without_analysis(
+  p_user_id UUID,
+  p_model_name TEXT
+)
+RETURNS SETOF public.immutable_memory
+LANGUAGE SQL
+STABLE
+AS $$
+  SELECT m.*
+  FROM public.immutable_memory m
+  LEFT JOIN public.memory_analysis a
+    ON a.memory_id = m.id AND a.model_name = p_model_name
+  WHERE m.user_id = p_user_id
+    AND a.id IS NULL
+  ORDER BY m.timestamp ASC;
+$$;
+
+-- ============================================
+-- 10. RPC 함수: 날짜별 메모리 조회
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.get_memories_by_date(
@@ -305,7 +369,7 @@ AS $$
 $$;
 
 -- ============================================
--- 8. RPC 함수: 날짜 범위 메모리 조회
+-- 11. RPC 함수: 날짜 범위 메모리 조회
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.get_memories_by_range(
@@ -336,7 +400,7 @@ AS $$
 $$;
 
 -- ============================================
--- 9. RPC 함수: 최근 N일 메모리 조회
+-- 12. RPC 함수: 최근 N일 메모리 조회
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.get_recent_memories(
@@ -365,7 +429,7 @@ AS $$
 $$;
 
 -- ============================================
--- 10. RPC 함수: 시간+의미 하이브리드 검색
+-- 13. RPC 함수: 시간+의미 하이브리드 검색
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.search_memories_hybrid(
@@ -424,7 +488,7 @@ END;
 $$;
 
 -- ============================================
--- 11. RPC 함수: 분석과 함께 메모리 조회
+-- 14. RPC 함수: 분석과 함께 메모리 조회
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.get_memories_with_analysis(
@@ -440,9 +504,9 @@ RETURNS TABLE (
   raw_content TEXT,
   event_type TEXT,
   summary TEXT,
-  entities TEXT[],
-  tags TEXT[],
-  importance FLOAT
+  key_points JSONB,
+  entities JSONB,
+  importance_score FLOAT
 )
 LANGUAGE SQL
 STABLE
@@ -453,9 +517,9 @@ AS $$
     m.raw_content,
     m.event_type,
     a.summary,
+    a.key_points,
     a.entities,
-    a.tags,
-    a.importance
+    a.importance_score
   FROM public.immutable_memory m
   LEFT JOIN public.memory_analysis a ON a.memory_id = m.id AND a.model_name = p_model_name
   WHERE m.user_id = p_user_id
@@ -465,17 +529,19 @@ AS $$
 $$;
 
 -- ============================================
--- 12. RLS 정책
+-- 15. RLS 정책
 -- ============================================
 
 -- immutable_memory
 ALTER TABLE public.immutable_memory ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own memories" ON public.immutable_memory;
 CREATE POLICY "Users can view own memories"
   ON public.immutable_memory FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert own memories" ON public.immutable_memory;
 CREATE POLICY "Users can insert own memories"
   ON public.immutable_memory FOR INSERT
   TO authenticated
@@ -486,6 +552,7 @@ CREATE POLICY "Users can insert own memories"
 -- memory_embeddings
 ALTER TABLE public.memory_embeddings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own memory embeddings" ON public.memory_embeddings;
 CREATE POLICY "Users can manage own memory embeddings"
   ON public.memory_embeddings FOR ALL
   TO authenticated
@@ -499,6 +566,7 @@ CREATE POLICY "Users can manage own memory embeddings"
 -- memory_analysis
 ALTER TABLE public.memory_analysis ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own memory analysis" ON public.memory_analysis;
 CREATE POLICY "Users can manage own memory analysis"
   ON public.memory_analysis FOR ALL
   TO authenticated
@@ -512,6 +580,7 @@ CREATE POLICY "Users can manage own memory analysis"
 -- memory_daily_summary
 ALTER TABLE public.memory_daily_summary ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own daily summaries" ON public.memory_daily_summary;
 CREATE POLICY "Users can manage own daily summaries"
   ON public.memory_daily_summary FOR ALL
   TO authenticated
@@ -520,6 +589,7 @@ CREATE POLICY "Users can manage own daily summaries"
 -- memory_weekly_summary
 ALTER TABLE public.memory_weekly_summary ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own weekly summaries" ON public.memory_weekly_summary;
 CREATE POLICY "Users can manage own weekly summaries"
   ON public.memory_weekly_summary FOR ALL
   TO authenticated
@@ -528,13 +598,14 @@ CREATE POLICY "Users can manage own weekly summaries"
 -- memory_monthly_summary
 ALTER TABLE public.memory_monthly_summary ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own monthly summaries" ON public.memory_monthly_summary;
 CREATE POLICY "Users can manage own monthly summaries"
   ON public.memory_monthly_summary FOR ALL
   TO authenticated
   USING (user_id = auth.uid());
 
 -- ============================================
--- 13. 벡터 인덱스 (성능 최적화)
+-- 16. 벡터 인덱스 (성능 최적화)
 -- ============================================
 
 -- 임베딩 벡터 인덱스 (대용량 데이터용)
@@ -542,8 +613,3 @@ CREATE INDEX IF NOT EXISTS idx_memory_embeddings_vector
   ON public.memory_embeddings
   USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 100);
-
-CREATE INDEX IF NOT EXISTS idx_memory_daily_summary_vector
-  ON public.memory_daily_summary
-  USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 50);
