@@ -4413,8 +4413,8 @@ export default function AgentProfilePage() {
                   isDark ? 'bg-zinc-900/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
                 )}
               >
-                {/* 채팅 로딩 애니메이션 */}
-                {chatLoading ? (
+                {/* 초기 로딩 애니메이션 - 메시지가 없고 로딩 중일 때만 */}
+                {chatLoading && chatMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full">
                     {/* 에이전트 아바타 with 로딩 효과 */}
                     <div className="relative mb-8">
@@ -4460,7 +4460,7 @@ export default function AgentProfilePage() {
                       <span className="w-3 h-3 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                   </div>
-                ) : chatMessages.length === 0 ? (
+                ) : !chatLoading && chatMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center py-8">
                     {/* 프로필 GIF/이미지 - 크게 중앙에 */}
                     <div className="mb-6">
