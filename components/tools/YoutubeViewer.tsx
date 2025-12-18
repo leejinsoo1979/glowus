@@ -210,7 +210,8 @@ export function YoutubeViewer({
                 )}
             </div>
 
-            {/* 오른쪽: 동영상 정보 패널 (Mapify 스타일) */}
+            {/* 오른쪽: 동영상 정보 패널 (Mapify 스타일) - videoId 있을 때만 표시 */}
+            {videoId && (
             <div className="w-[340px] flex-shrink-0 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col h-full">
                 {/* 패널 헤더 - 왼쪽 제목과 같은 높이 */}
                 <div className="flex items-center justify-between px-4 h-[49px] border-b border-zinc-200 dark:border-zinc-800">
@@ -426,6 +427,7 @@ export function YoutubeViewer({
                     </button>
                 </div>
             </div>
+            )}
         </div>
     )
 }
