@@ -24,7 +24,7 @@ import { ProfileAboutTab } from '@/components/agent/profile/ProfileAboutTab'
 import { KnowledgeBaseTab } from '@/components/agent/profile/KnowledgeBaseTab'
 import { IntegrationsTab } from '@/components/agent/profile/IntegrationsTab'
 import { ApiConnectionsTab } from '@/components/agent/profile/ApiConnectionsTab'
-import { AgentChatPanel } from '@/components/agent/AgentChatPanel'
+import { ProfileChatTab } from '@/components/agent/profile/ProfileChatTab'
 
 type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'memory' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
 
@@ -146,7 +146,9 @@ export default function AgentProfilePage() {
             <ProfileAboutTab agent={agent} isDark={isDark} onEdit={() => router.push(`/agent-builder/${agent.id}`)} />
           )}
           {activeTab === 'chat' && (
-            <AgentChatPanel agents={[agent]} messages={[]} />
+            <div className="max-w-4xl h-[600px]">
+              <ProfileChatTab agent={agent} isDark={isDark} />
+            </div>
           )}
           {activeTab === 'knowledge' && (
             <div className="max-w-5xl">

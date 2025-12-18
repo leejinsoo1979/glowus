@@ -1339,6 +1339,21 @@ function formatTime(dateStr: string): string {
 }
 
 // 새 채팅 모달
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI 조직 소집 콘솔 (AI Organization Summon Console)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 에이전트 역할 정의
+type AgentRole = 'strategist' | 'analyst' | 'executor' | 'critic' | 'mediator'
+type AgentTendency = 'aggressive' | 'conservative' | 'creative' | 'data-driven'
+
+interface AgentConfig {
+  id: string
+  role: AgentRole
+  tendency: AgentTendency
+  canDecide: boolean // 의사결정 권한
+}
+
 function NewChatModal({
   isDark,
   onClose,
@@ -1349,45 +1364,123 @@ function NewChatModal({
   onCreateRoom: (data: any) => Promise<{ id: string } | void>
 }) {
   const [loading, setLoading] = useState(false)
+  const [currentStep, setCurrentStep] = useState(0)
   const [teamMembers, setTeamMembers] = useState<any[]>([])
   const [agents, setAgents] = useState<any[]>([])
-  const [selectedParticipants, setSelectedParticipants] = useState<{ type: 'user' | 'agent'; id: string }[]>([])
-  const [category, setCategory] = useState('') // 카테고리
-  const [roomName, setRoomName] = useState('')
-  const [showCustomName, setShowCustomName] = useState(false) // 직접 입력 모드
+
+  // [A] 회의 목적 (WHY)
+  const [purpose, setPurpose] = useState('')
+
+  // [B] AI 에이전트 구성 (WHO)
+  const [agentConfigs, setAgentConfigs] = useState<AgentConfig[]>([])
+
+  // [C] 회의 방식 (HOW)
+  const [discussionMode, setDiscussionMode] = useState('balanced')
+  const [allowDebate, setAllowDebate] = useState(true)
+  const [failureResolution, setFailureResolution] = useState<'majority' | 'leader' | 'defer'>('leader')
+
+  // [D] 컨텍스트 (CONTEXT)
   const [topic, setTopic] = useState('')
-  const [duration, setDuration] = useState(5)
-  const [facilitatorId, setFacilitatorId] = useState<string | null>(null) // 진행자 ID
-  const [attachments, setAttachments] = useState<File[]>([]) // 첨부파일
+  const [attachments, setAttachments] = useState<File[]>([])
   const [attachmentPreviews, setAttachmentPreviews] = useState<{ name: string; size: string; type: string }[]>([])
+  const [linkedProject, setLinkedProject] = useState<string | null>(null)
+  const [memoryScope, setMemoryScope] = useState<'team' | 'project' | 'none'>('team')
+
+  // [E] 결과물 정의 (OUTPUT)
+  const [outputs, setOutputs] = useState({
+    decisionSummary: true,
+    actionTasks: true,
+    agentOpinions: false,
+    riskSummary: false,
+    nextAgenda: false,
+    boardReflection: false,
+  })
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const categoryOptions = [
-    { value: 'marketing', label: '마케팅 전략', icon: '📈' },
-    { value: 'product', label: '제품 기획', icon: '💡' },
-    { value: 'development', label: '개발 회의', icon: '💻' },
-    { value: 'design', label: '디자인 리뷰', icon: '🎨' },
-    { value: 'hr', label: '인사/채용', icon: '👥' },
-    { value: 'finance', label: '재무/예산', icon: '💰' },
-    { value: 'sales', label: '영업/세일즈', icon: '🤝' },
-    { value: 'general', label: '일반 회의', icon: '📋' },
-    { value: 'custom', label: '직접 입력', icon: '✏️' },
+  // 회의 목적 옵션
+  const purposeOptions = [
+    {
+      value: 'strategic_decision',
+      label: '전략적 의사결정',
+      description: 'AI가 장기적 관점에서 옵션을 분석하고 최적의 방향을 제안합니다',
+      icon: '◆'
+    },
+    {
+      value: 'problem_analysis',
+      label: '문제 원인 분석',
+      description: 'AI가 문제의 근본 원인을 파악하고 체계적으로 분석합니다',
+      icon: '◇'
+    },
+    {
+      value: 'action_planning',
+      label: '실행 계획 수립',
+      description: 'AI가 구체적인 실행 단계와 담당자를 제안합니다',
+      icon: '▷'
+    },
+    {
+      value: 'idea_expansion',
+      label: '아이디어 확장',
+      description: 'AI가 창의적 관점에서 다양한 가능성을 탐색합니다',
+      icon: '○'
+    },
+    {
+      value: 'risk_validation',
+      label: '리스크 검증',
+      description: 'AI가 잠재적 위험요소를 식별하고 대응방안을 검토합니다',
+      icon: '△'
+    },
   ]
 
-  const durationOptions = [
-    { value: 3, label: '3분' },
-    { value: 5, label: '5분' },
-    { value: 10, label: '10분' },
-    { value: 15, label: '15분' },
-    { value: 30, label: '30분' },
+  // 에이전트 역할 옵션
+  const roleOptions: { value: AgentRole; label: string; description: string }[] = [
+    { value: 'strategist', label: '전략가', description: '최종 방향 제안' },
+    { value: 'analyst', label: '분석가', description: '데이터 기반 검증' },
+    { value: 'executor', label: '실행가', description: '실행 가능성 평가' },
+    { value: 'critic', label: '반대자', description: '반대 의견 전담' },
+    { value: 'mediator', label: '중재자', description: '의견 조율' },
+  ]
+
+  // 성향 옵션
+  const tendencyOptions: { value: AgentTendency; label: string }[] = [
+    { value: 'aggressive', label: '공격적' },
+    { value: 'conservative', label: '보수적' },
+    { value: 'creative', label: '창의적' },
+    { value: 'data-driven', label: '데이터 중심' },
+  ]
+
+  // 토론 방식 옵션
+  const discussionModeOptions = [
+    {
+      value: 'quick',
+      label: '빠른 결론',
+      description: '핵심 요약 중심으로 신속하게 결론 도출',
+      depth: 1
+    },
+    {
+      value: 'balanced',
+      label: '균형 토론',
+      description: '찬반 구조로 다양한 관점 검토',
+      depth: 2
+    },
+    {
+      value: 'deep',
+      label: '심층 분석',
+      description: '리스크와 대안을 반복 검증',
+      depth: 3
+    },
+    {
+      value: 'brainstorm',
+      label: '브레인스토밍',
+      description: '아이디어 확장 우선, 평가는 후순위',
+      depth: 2
+    },
   ]
 
   // 파일 첨부 처리
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
-
-    // 최대 5개 파일, 각 10MB 제한
     const validFiles = files.slice(0, 5).filter(file => file.size <= 10 * 1024 * 1024)
     setAttachments(prev => [...prev, ...validFiles].slice(0, 5))
     setAttachmentPreviews(prev => [
@@ -1402,39 +1495,20 @@ function NewChatModal({
     ].slice(0, 5))
   }
 
-  // 파일 제거
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index))
     setAttachmentPreviews(prev => prev.filter((_, i) => i !== index))
-  }
-
-  // 카테고리 선택 시 방 이름 자동 설정
-  const handleCategoryChange = (value: string) => {
-    setCategory(value)
-    if (value === 'custom') {
-      setShowCustomName(true)
-      setRoomName('')
-    } else {
-      setShowCustomName(false)
-      const selected = categoryOptions.find(c => c.value === value)
-      if (selected) {
-        setRoomName(selected.label)
-      }
-    }
   }
 
   // 팀원 및 에이전트 목록 조회
   useEffect(() => {
     async function fetchData() {
       try {
-        // 팀원 조회 (API가 있다면)
         const membersRes = await fetch('/api/teams/members')
         if (membersRes.ok) {
           const members = await membersRes.json()
           setTeamMembers(members)
         }
-
-        // 에이전트 조회
         const agentsRes = await fetch('/api/agents')
         if (agentsRes.ok) {
           const agentsList = await agentsRes.json()
@@ -1447,45 +1521,49 @@ function NewChatModal({
     fetchData()
   }, [])
 
-  const toggleParticipant = (type: 'user' | 'agent', id: string) => {
-    setSelectedParticipants(prev => {
-      const exists = prev.some(p => p.type === type && p.id === id)
-      if (exists) {
-        return prev.filter(p => !(p.type === type && p.id === id))
-      }
-      return [...prev, { type, id }]
-    })
+  // 에이전트 추가
+  const addAgent = (agentId: string) => {
+    if (agentConfigs.some(c => c.id === agentId)) return
+    setAgentConfigs(prev => [...prev, {
+      id: agentId,
+      role: 'analyst',
+      tendency: 'data-driven',
+      canDecide: false,
+    }])
   }
 
-  // 선택된 에이전트 수
-  const selectedAgentCount = selectedParticipants.filter(p => p.type === 'agent').length
+  // 에이전트 제거
+  const removeAgent = (agentId: string) => {
+    setAgentConfigs(prev => prev.filter(c => c.id !== agentId))
+  }
 
-  const handleCreate = async () => {
-    if (!roomName.trim()) {
-      alert('채팅방 이름을 입력해주세요')
-      return
-    }
-    if (selectedParticipants.length === 0) {
-      alert('참여자를 선택해주세요')
+  // 에이전트 설정 변경
+  const updateAgentConfig = (agentId: string, updates: Partial<AgentConfig>) => {
+    setAgentConfigs(prev => prev.map(c =>
+      c.id === agentId ? { ...c, ...updates } : c
+    ))
+  }
+
+  // Output 토글
+  const toggleOutput = (key: keyof typeof outputs) => {
+    setOutputs(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  // 소집 실행
+  const handleSummon = async () => {
+    if (!purpose || agentConfigs.length === 0) {
+      alert('회의 목적과 AI 에이전트를 선택해주세요')
       return
     }
     setLoading(true)
     try {
-      // 첨부파일을 base64로 변환
       let attachmentData: { name: string; content: string; type: string }[] = []
       if (attachments.length > 0) {
         attachmentData = await Promise.all(
           attachments.map(async (file) => {
             const content = await new Promise<string>((resolve) => {
               const reader = new FileReader()
-              reader.onload = () => {
-                // 텍스트 파일은 텍스트로, 나머지는 base64로
-                if (file.type.startsWith('text/') || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
-                  resolve(reader.result as string)
-                } else {
-                  resolve(reader.result as string)
-                }
-              }
+              reader.onload = () => resolve(reader.result as string)
               if (file.type.startsWith('text/') || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
                 reader.readAsText(file)
               } else {
@@ -1497,300 +1575,585 @@ function NewChatModal({
         )
       }
 
+      const purposeLabel = purposeOptions.find(p => p.value === purpose)?.label || purpose
+
       await onCreateRoom({
-        name: roomName,
+        name: purposeLabel,
         type: 'meeting',
-        category: category || null,
-        participant_ids: selectedParticipants,
+        category: purpose,
+        participant_ids: agentConfigs.map(c => ({ type: 'agent' as const, id: c.id })),
         topic: topic.trim() || null,
-        duration: duration,
-        facilitator_id: facilitatorId,
+        duration: discussionModeOptions.find(m => m.value === discussionMode)?.depth === 3 ? 15 :
+                  discussionModeOptions.find(m => m.value === discussionMode)?.depth === 1 ? 3 : 5,
+        facilitator_id: null,
         attachments: attachmentData.length > 0 ? attachmentData : null,
+        // 확장 설정
+        meeting_config: {
+          purpose,
+          agentConfigs,
+          discussionMode,
+          allowDebate,
+          failureResolution,
+          linkedProject,
+          memoryScope,
+          outputs,
+        }
       })
     } catch (err) {
-      console.error('Failed to create room:', err)
+      console.error('Failed to summon AI organization:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  // 선택된 에이전트 목록 (진행자 선택용)
-  const selectedAgents = selectedParticipants
-    .filter(p => p.type === 'agent')
-    .map(p => agents.find(a => a.id === p.id))
-    .filter(Boolean)
+  // 선택된 에이전트 정보
+  const selectedAgentsInfo = agentConfigs.map(config => ({
+    ...config,
+    agent: agents.find(a => a.id === config.id)
+  })).filter(c => c.agent)
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-md rounded-2xl p-6 ${isDark ? 'bg-zinc-900' : 'bg-white'} shadow-xl max-h-[90vh] overflow-y-auto`}
+        className={`w-full max-w-2xl rounded-2xl overflow-hidden ${
+          isDark ? 'bg-zinc-900' : 'bg-white'
+        } shadow-2xl max-h-[90vh] flex flex-col`}
       >
-        <h2 className="text-xl font-bold mb-4">새 대화 시작</h2>
+        {/* 헤더 - 콘솔 스타일 */}
+        <div className={`px-6 py-4 border-b ${isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
+                <span className="text-white text-lg">AI</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold tracking-tight">AI 조직 소집</h2>
+                <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  Organization Summon Console
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-        {/* 회의 카테고리 (필수) */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">
-            회의 유형 <span className="text-red-500">*</span>
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {categoryOptions.map((opt) => (
+          {/* 스텝 인디케이터 */}
+          <div className="flex gap-2 mt-4">
+            {['WHY', 'WHO', 'HOW', 'CONTEXT', 'OUTPUT'].map((step, i) => (
               <button
-                key={opt.value}
-                onClick={() => handleCategoryChange(opt.value)}
-                className={`py-2 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1 ${
-                  category === opt.value
-                    ? 'bg-purple-500 text-white'
-                    : isDark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                key={step}
+                onClick={() => setCurrentStep(i)}
+                className={`flex-1 py-1.5 text-xs font-mono rounded transition-all ${
+                  currentStep === i
+                    ? 'bg-emerald-500 text-white'
+                    : currentStep > i
+                      ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'
+                      : isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-100 text-zinc-400'
                 }`}
               >
-                <span>{opt.icon}</span>
-                <span className="truncate">{opt.label}</span>
+                {step}
               </button>
             ))}
           </div>
         </div>
 
-        {/* 직접 입력 시 채팅방 이름 */}
-        {showCustomName && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">
-              채팅방 이름 <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              placeholder="회의 이름을 입력하세요"
-              className={`w-full px-4 py-2.5 rounded-xl no-focus-ring ${
-                isDark ? 'bg-zinc-800 text-white' : 'bg-zinc-100 text-zinc-900'
-              }`}
-            />
-          </div>
-        )}
+        {/* 콘텐츠 영역 */}
+        <div className="flex-1 overflow-y-auto p-6">
 
-        {/* 토론 주제 (선택) */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">
-            토론 주제 <span className="text-zinc-400 text-xs">(선택)</span>
-          </label>
-          <input
-            type="text"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="예: 2024년 신규 고객 유치 방안"
-            className={`w-full px-4 py-2.5 rounded-xl no-focus-ring ${
-              isDark ? 'bg-zinc-800 text-white' : 'bg-zinc-100 text-zinc-900'
-            }`}
-          />
-          <p className="text-xs text-zinc-500 mt-1">
-            주제를 입력하면 에이전트들이 해당 주제로 토론합니다
-          </p>
-        </div>
+          {/* [A] 회의 목적 (WHY) */}
+          {currentStep === 0 && (
+            <div className="space-y-4">
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-emerald-500 mb-1">MISSION OBJECTIVE</h3>
+                <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  이 선택이 AI의 사고방식과 행동을 결정합니다
+                </p>
+              </div>
 
-        {/* 회의 자료 첨부 (선택) */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">
-            회의 자료 <span className="text-zinc-400 text-xs">(선택)</span>
-          </label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileChange}
-            multiple
-            accept=".pdf,.doc,.docx,.txt,.md,.xls,.xlsx,.ppt,.pptx,.csv,.json"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className={`w-full px-4 py-3 rounded-xl border-2 border-dashed transition-all flex items-center justify-center gap-2 ${
-              isDark
-                ? 'border-zinc-700 hover:border-purple-500 text-zinc-400 hover:text-purple-400'
-                : 'border-zinc-300 hover:border-purple-500 text-zinc-500 hover:text-purple-500'
-            }`}
-          >
-            <Paperclip className="w-4 h-4" />
-            <span className="text-sm">파일 첨부 (PDF, 문서, 엑셀 등)</span>
-          </button>
-          <p className="text-xs text-zinc-500 mt-1">
-            첨부된 자료를 기준으로 에이전트들이 회의합니다 (최대 5개, 각 10MB)
-          </p>
-
-          {/* 첨부파일 목록 */}
-          {attachmentPreviews.length > 0 && (
-            <div className="mt-2 space-y-1">
-              {attachmentPreviews.map((file, idx) => (
-                <div
-                  key={idx}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg ${
-                    isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <FileText className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                    <span className="text-sm truncate">{file.name}</span>
-                    <span className="text-xs text-zinc-500 flex-shrink-0">{file.size}</span>
-                  </div>
+              <div className="space-y-2">
+                {purposeOptions.map((opt) => (
                   <button
-                    onClick={() => removeAttachment(idx)}
-                    className="text-zinc-400 hover:text-red-500 transition-colors"
+                    key={opt.value}
+                    onClick={() => setPurpose(opt.value)}
+                    className={`w-full p-4 rounded-xl text-left transition-all border ${
+                      purpose === opt.value
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : isDark
+                          ? 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700'
+                          : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'
+                    }`}
                   >
-                    <X className="w-4 h-4" />
+                    <div className="flex items-start gap-3">
+                      <span className={`text-lg ${purpose === opt.value ? 'text-emerald-500' : 'text-zinc-500'}`}>
+                        {opt.icon}
+                      </span>
+                      <div className="flex-1">
+                        <div className="font-medium">{opt.label}</div>
+                        <div className={`text-xs mt-1 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          {opt.description}
+                        </div>
+                      </div>
+                      {purpose === opt.value && (
+                        <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                          <span className="text-white text-xs">✓</span>
+                        </div>
+                      )}
+                    </div>
                   </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* [B] AI 에이전트 구성 (WHO) */}
+          {currentStep === 1 && (
+            <div className="space-y-4">
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-emerald-500 mb-1">TEAM COMPOSITION</h3>
+                <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  AI 에이전트를 선택하고 역할을 지정하세요
+                </p>
+              </div>
+
+              {/* 선택된 에이전트 카드들 */}
+              {selectedAgentsInfo.length > 0 && (
+                <div className="space-y-3 mb-4">
+                  {selectedAgentsInfo.map(({ id, role, tendency, canDecide, agent }) => (
+                    <div
+                      key={id}
+                      className={`p-4 rounded-xl border ${
+                        isDark ? 'border-zinc-700 bg-zinc-800/50' : 'border-zinc-200 bg-zinc-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getColorForId(id)} flex items-center justify-center text-white`}>
+                            <Bot className="w-4 h-4" />
+                          </div>
+                          <span className="font-medium">{agent?.name}</span>
+                        </div>
+                        <button
+                          onClick={() => removeAgent(id)}
+                          className="text-zinc-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* 역할 선택 */}
+                      <div className="mb-3">
+                        <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} mb-1 block`}>역할</label>
+                        <div className="flex flex-wrap gap-1">
+                          {roleOptions.map(r => (
+                            <button
+                              key={r.value}
+                              onClick={() => updateAgentConfig(id, { role: r.value })}
+                              className={`px-2 py-1 rounded text-xs transition-all ${
+                                role === r.value
+                                  ? 'bg-emerald-500 text-white'
+                                  : isDark ? 'bg-zinc-700 text-zinc-300' : 'bg-zinc-200 text-zinc-600'
+                              }`}
+                            >
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 성향 선택 */}
+                      <div className="mb-3">
+                        <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} mb-1 block`}>성향</label>
+                        <div className="flex flex-wrap gap-1">
+                          {tendencyOptions.map(t => (
+                            <button
+                              key={t.value}
+                              onClick={() => updateAgentConfig(id, { tendency: t.value })}
+                              className={`px-2 py-1 rounded text-xs transition-all ${
+                                tendency === t.value
+                                  ? 'bg-cyan-500 text-white'
+                                  : isDark ? 'bg-zinc-700 text-zinc-300' : 'bg-zinc-200 text-zinc-600'
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 의사결정 권한 */}
+                      <button
+                        onClick={() => updateAgentConfig(id, { canDecide: !canDecide })}
+                        className={`flex items-center gap-2 text-xs ${
+                          canDecide ? 'text-amber-500' : isDark ? 'text-zinc-500' : 'text-zinc-400'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          canDecide ? 'bg-amber-500 border-amber-500' : isDark ? 'border-zinc-600' : 'border-zinc-300'
+                        }`}>
+                          {canDecide && <span className="text-white text-xs">✓</span>}
+                        </div>
+                        의사결정 권한 부여
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* 에이전트 목록 */}
+              <div className={`p-3 rounded-xl ${isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'}`}>
+                <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} mb-2 block`}>
+                  소집 가능한 에이전트
+                </label>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {agents.length === 0 ? (
+                    <p className="text-sm text-zinc-400 py-2">에이전트가 없습니다</p>
+                  ) : (
+                    agents.filter(a => !agentConfigs.some(c => c.id === a.id)).map((agent) => (
+                      <button
+                        key={agent.id}
+                        onClick={() => addAgent(agent.id)}
+                        className={`w-full flex items-center gap-2 p-2 rounded-lg transition-all ${
+                          isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'
+                        }`}
+                      >
+                        <div className={`w-6 h-6 rounded bg-gradient-to-br ${getColorForId(agent.id)} flex items-center justify-center text-white`}>
+                          <Bot className="w-3 h-3" />
+                        </div>
+                        <span className="text-sm flex-1 text-left">{agent.name}</span>
+                        <Plus className="w-4 h-4 text-emerald-500" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* [C] 회의 방식 (HOW) */}
+          {currentStep === 2 && (
+            <div className="space-y-4">
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-emerald-500 mb-1">DISCUSSION PROTOCOL</h3>
+                <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  AI의 사고 깊이와 토론 방식을 설정합니다
+                </p>
+              </div>
+
+              {/* 토론 모드 */}
+              <div className="grid grid-cols-2 gap-2">
+                {discussionModeOptions.map((mode) => (
+                  <button
+                    key={mode.value}
+                    onClick={() => setDiscussionMode(mode.value)}
+                    className={`p-3 rounded-xl text-left transition-all border ${
+                      discussionMode === mode.value
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : isDark
+                          ? 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700'
+                          : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex gap-0.5">
+                        {[1,2,3].map(i => (
+                          <div
+                            key={i}
+                            className={`w-1.5 h-3 rounded-sm ${
+                              i <= mode.depth
+                                ? discussionMode === mode.value ? 'bg-emerald-500' : isDark ? 'bg-zinc-500' : 'bg-zinc-400'
+                                : isDark ? 'bg-zinc-700' : 'bg-zinc-200'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="font-medium text-sm">{mode.label}</span>
+                    </div>
+                    <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      {mode.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+
+              {/* 추가 설정 */}
+              <div className={`p-4 rounded-xl ${isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'} space-y-3`}>
+                <button
+                  onClick={() => setAllowDebate(!allowDebate)}
+                  className="flex items-center justify-between w-full"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-left">AI 간 상호 반박</div>
+                    <div className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      에이전트들이 서로의 의견에 반박할 수 있습니다
+                    </div>
+                  </div>
+                  <div className={`w-10 h-6 rounded-full transition-colors ${
+                    allowDebate ? 'bg-emerald-500' : isDark ? 'bg-zinc-600' : 'bg-zinc-300'
+                  } flex items-center ${allowDebate ? 'justify-end' : 'justify-start'} p-1`}>
+                    <div className="w-4 h-4 rounded-full bg-white" />
+                  </div>
+                </button>
+
+                <div className="border-t border-zinc-700 pt-3">
+                  <div className="text-sm font-medium mb-2">합의 실패 시 처리</div>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'majority', label: '다수결' },
+                      { value: 'leader', label: '리더 결정' },
+                      { value: 'defer', label: '보류' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFailureResolution(opt.value as any)}
+                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                          failureResolution === opt.value
+                            ? 'bg-emerald-500 text-white'
+                            : isDark ? 'bg-zinc-700 text-zinc-300' : 'bg-zinc-200 text-zinc-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* [D] 컨텍스트 (CONTEXT) */}
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-emerald-500 mb-1">MISSION BRIEFING</h3>
+                <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  AI가 참고할 정보와 범위를 설정합니다
+                </p>
+              </div>
+
+              {/* 토론 주제 */}
+              <div>
+                <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} mb-1 block`}>
+                  핵심 안건
+                </label>
+                <textarea
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="AI 조직이 논의할 핵심 안건을 입력하세요"
+                  rows={3}
+                  className={`w-full px-4 py-3 rounded-xl no-focus-ring resize-none ${
+                    isDark ? 'bg-zinc-800 text-white placeholder:text-zinc-600' : 'bg-zinc-100 text-zinc-900 placeholder:text-zinc-400'
+                  }`}
+                />
+              </div>
+
+              {/* 참고 자료 */}
+              <div>
+                <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} mb-1 block`}>
+                  참고 자료
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileChange}
+                  multiple
+                  accept=".pdf,.doc,.docx,.txt,.md,.xls,.xlsx,.ppt,.pptx,.csv,.json"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`w-full px-4 py-3 rounded-xl border-2 border-dashed transition-all flex items-center justify-center gap-2 ${
+                    isDark
+                      ? 'border-zinc-700 hover:border-emerald-500 text-zinc-400 hover:text-emerald-400'
+                      : 'border-zinc-300 hover:border-emerald-500 text-zinc-500 hover:text-emerald-500'
+                  }`}
+                >
+                  <Paperclip className="w-4 h-4" />
+                  <span className="text-sm">파일 첨부</span>
+                </button>
+                {attachmentPreviews.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {attachmentPreviews.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center justify-between px-3 py-2 rounded-lg ${
+                          isDark ? 'bg-zinc-800' : 'bg-zinc-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <FileText className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                          <span className="text-sm truncate">{file.name}</span>
+                          <span className="text-xs text-zinc-500 flex-shrink-0">{file.size}</span>
+                        </div>
+                        <button
+                          onClick={() => removeAttachment(idx)}
+                          className="text-zinc-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 메모리 범위 */}
+              <div>
+                <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'} mb-1 block`}>
+                  참조 메모리 범위
+                </label>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'team', label: '조직 메모리', desc: '팀 전체 기록' },
+                    { value: 'project', label: '프로젝트 메모리', desc: '현재 프로젝트만' },
+                    { value: 'none', label: '없음', desc: '새로 시작' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setMemoryScope(opt.value as any)}
+                      className={`flex-1 p-2 rounded-lg text-left transition-all border ${
+                        memoryScope === opt.value
+                          ? 'border-emerald-500 bg-emerald-500/10'
+                          : isDark
+                            ? 'border-zinc-700 bg-zinc-800/50'
+                            : 'border-zinc-200 bg-zinc-50'
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{opt.label}</div>
+                      <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* [E] 결과물 정의 (OUTPUT) */}
+          {currentStep === 4 && (
+            <div className="space-y-4">
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold text-emerald-500 mb-1">DELIVERABLES</h3>
+                <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  회의 종료 후 자동 생성할 산출물을 선택합니다
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {[
+                  { key: 'decisionSummary', label: '의사결정 요약', desc: '최종 결정사항과 근거 정리' },
+                  { key: 'actionTasks', label: '실행 태스크 생성', desc: '구체적인 할일 목록 자동 생성' },
+                  { key: 'agentOpinions', label: '에이전트별 의견 정리', desc: '각 AI의 관점과 제안 정리' },
+                  { key: 'riskSummary', label: '반대/리스크 요약', desc: '식별된 위험요소와 대응방안' },
+                  { key: 'nextAgenda', label: '다음 회의 안건 제안', desc: '후속 논의가 필요한 주제' },
+                  { key: 'boardReflection', label: '워크플로우 반영', desc: '결과를 프로젝트 보드에 자동 반영' },
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    onClick={() => toggleOutput(item.key as keyof typeof outputs)}
+                    className={`w-full p-3 rounded-xl text-left transition-all border flex items-center gap-3 ${
+                      outputs[item.key as keyof typeof outputs]
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : isDark
+                          ? 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700'
+                          : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                      outputs[item.key as keyof typeof outputs]
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : isDark ? 'border-zinc-600' : 'border-zinc-300'
+                    }`}>
+                      {outputs[item.key as keyof typeof outputs] && (
+                        <span className="text-white text-xs">✓</span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">{item.label}</div>
+                      <div className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        {item.desc}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* 회의 시간 */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">회의 시간</label>
-          <div className="grid grid-cols-5 gap-2">
-            {durationOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setDuration(opt.value)}
-                className={`py-2 px-3 rounded-xl text-sm font-medium transition-all ${
-                  duration === opt.value
-                    ? 'bg-purple-500 text-white'
-                    : isDark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                }`}
+        {/* 푸터 - 소집 버튼 */}
+        <div className={`px-6 py-4 border-t ${isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'}`}>
+          <div className="flex gap-3">
+            {currentStep > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => setCurrentStep(prev => prev - 1)}
+                className="px-4"
               >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
+                이전
+              </Button>
+            )}
 
-        {/* 참여자 선택 */}
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold mb-2 text-zinc-500">팀원</h3>
-          <div className="space-y-2 max-h-32 overflow-y-auto">
-            {teamMembers.length === 0 ? (
-              <p className="text-sm text-zinc-400">팀원이 없습니다</p>
+            {currentStep < 4 ? (
+              <Button
+                onClick={() => setCurrentStep(prev => prev + 1)}
+                disabled={currentStep === 0 && !purpose}
+                className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white"
+              >
+                다음
+              </Button>
             ) : (
-              teamMembers.map((member) => (
-                <button
-                  key={member.id}
-                  onClick={() => toggleParticipant('user', member.id)}
-                  className={`w-full flex items-center gap-3 p-2 rounded-xl transition-all ${
-                    selectedParticipants.some(p => p.type === 'user' && p.id === member.id)
-                      ? 'bg-accent/10 border border-accent'
-                      : isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getColorForId(member.id)} flex items-center justify-center text-white text-xs font-bold`}>
-                    {member.name?.slice(0, 2).toUpperCase()}
-                  </div>
-                  <span className="text-sm">{member.name}</span>
-                </button>
-              ))
+              <Button
+                onClick={handleSummon}
+                disabled={!purpose || agentConfigs.length === 0 || loading}
+                className="flex-1 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-bold"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <span className="mr-2">▶</span>
+                    AI 조직 소집
+                  </>
+                )}
+              </Button>
             )}
           </div>
-        </div>
 
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold mb-2 text-zinc-500">
-            AI 에이전트 {selectedAgentCount > 0 && <span className="text-purple-500">({selectedAgentCount}명 선택)</span>}
-          </h3>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {agents.length === 0 ? (
-              <p className="text-sm text-zinc-400">에이전트가 없습니다</p>
-            ) : (
-              agents.map((agent) => (
-                <button
-                  key={agent.id}
-                  onClick={() => toggleParticipant('agent', agent.id)}
-                  className={`w-full flex items-center gap-3 p-2 rounded-xl transition-all ${
-                    selectedParticipants.some(p => p.type === 'agent' && p.id === agent.id)
-                      ? 'bg-purple-500/10 border border-purple-500'
-                      : isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getColorForId(agent.id)} flex items-center justify-center text-white`}>
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div className="text-left flex-1">
-                    <span className="text-sm block">{agent.name}</span>
-                    <span className="text-xs text-zinc-500">{agent.description}</span>
-                  </div>
-                  {selectedParticipants.some(p => p.type === 'agent' && p.id === agent.id) && (
-                    <span className="text-purple-500 text-xs font-medium">선택됨</span>
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-          {selectedAgentCount >= 2 && (
-            <p className="text-xs text-purple-500 mt-2">
-              에이전트 2명 이상 선택 시 서로 토론합니다
-            </p>
-          )}
-        </div>
-
-        {/* 진행자 선택 (에이전트 2명 이상일 때) */}
-        {selectedAgents.length >= 2 && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">
-              회의 진행자 <span className="text-zinc-400 text-xs">(선택)</span>
-            </label>
-            <p className="text-xs text-zinc-500 mb-2">
-              진행자는 회의를 이끌고, 주제에서 벗어나면 지적합니다
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setFacilitatorId(null)}
-                className={`p-2 rounded-xl text-sm transition-all ${
-                  facilitatorId === null
-                    ? 'bg-zinc-500/20 border border-zinc-500'
-                    : isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-                }`}
-              >
-                없음
-              </button>
-              {selectedAgents.map((agent: any) => (
-                <button
-                  key={agent.id}
-                  onClick={() => setFacilitatorId(agent.id)}
-                  className={`flex items-center gap-2 p-2 rounded-xl text-sm transition-all ${
-                    facilitatorId === agent.id
-                      ? 'bg-amber-500/20 border border-amber-500'
-                      : isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-                  }`}
-                >
-                  <Bot className="w-4 h-4" />
-                  <span className="truncate">{agent.name}</span>
-                  {facilitatorId === agent.id && (
-                    <span className="text-amber-500 text-xs">👑</span>
-                  )}
-                </button>
-              ))}
+          {/* 요약 표시 */}
+          {(purpose || agentConfigs.length > 0) && (
+            <div className={`mt-3 pt-3 border-t ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {purpose && (
+                  <span className={`px-2 py-1 rounded ${isDark ? 'bg-zinc-800 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                    {purposeOptions.find(p => p.value === purpose)?.label}
+                  </span>
+                )}
+                {agentConfigs.length > 0 && (
+                  <span className={`px-2 py-1 rounded ${isDark ? 'bg-zinc-800 text-cyan-400' : 'bg-cyan-100 text-cyan-600'}`}>
+                    {agentConfigs.length}명 소집
+                  </span>
+                )}
+                {discussionMode && (
+                  <span className={`px-2 py-1 rounded ${isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-200 text-zinc-600'}`}>
+                    {discussionModeOptions.find(m => m.value === discussionMode)?.label}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* 버튼 */}
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={onClose} className="flex-1">
-            취소
-          </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={!roomName.trim() || selectedParticipants.length === 0 || loading}
-            className="flex-1 bg-purple-500 hover:bg-purple-600 text-white"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '시작하기'}
-          </Button>
+          )}
         </div>
       </motion.div>
     </motion.div>
