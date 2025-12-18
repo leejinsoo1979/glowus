@@ -3484,7 +3484,7 @@ export default function AgentProfilePage() {
       <aside
         className={cn(
           'w-full lg:w-[280px] xl:w-[300px] flex-shrink-0 rounded-2xl border p-5',
-          isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'
+          isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
         )}
       >
         {/* Back Button - Desktop */}
@@ -3897,7 +3897,7 @@ export default function AgentProfilePage() {
       <main
         className={cn(
           'flex-1 rounded-xl md:rounded-2xl border overflow-hidden',
-          isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'
+          isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
         )}
       >
         {/* Tab Navigation */}

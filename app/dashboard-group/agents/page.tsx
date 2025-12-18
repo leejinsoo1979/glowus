@@ -442,185 +442,75 @@ export default function AgentsPage() {
                   return (
                     <motion.div
                       key={agent.id}
-                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ delay: index * 0.04, type: "spring", stiffness: 100 }}
-                      whileHover={{ y: -8, scale: 1.02 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.03 }}
                       onClick={() => router.push(`/dashboard-group/agents/${agent.id}`)}
-                      className="group relative cursor-pointer"
+                      className="group cursor-pointer"
                     >
-                      {/* Animated Glow Background for Active Agents */}
-                      {isActive && (
-                        <div
-                          className="absolute -inset-0.5 rounded-3xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"
-                          style={{
-                            background: `linear-gradient(135deg, ${currentAccent.color}40, ${currentAccent.hoverColor}30, transparent)`,
-                          }}
-                        />
-                      )}
-
-                      {/* Card Container */}
-                      <div className={`relative overflow-hidden rounded-2xl border transition-all duration-500 ${
+                      <div className={`relative rounded-xl border p-4 transition-all duration-200 ${
                         isActive
-                          ? 'bg-gradient-to-br from-white via-white to-zinc-50 dark:from-zinc-900 dark:via-zinc-900/95 dark:to-zinc-800/50 border-zinc-200/80 dark:border-zinc-700/50 shadow-lg shadow-zinc-200/30 dark:shadow-zinc-950/50 group-hover:border-zinc-300 dark:group-hover:border-zinc-600 group-hover:shadow-2xl group-hover:shadow-zinc-300/40 dark:group-hover:shadow-zinc-900/60'
-                          : 'bg-zinc-50/80 dark:bg-zinc-900/40 border-zinc-200/50 dark:border-zinc-800/50 opacity-75 group-hover:opacity-100'
+                          ? 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md'
+                          : 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200/50 dark:border-zinc-800/50 opacity-60 hover:opacity-100'
                       }`}>
-
-                        {/* Top Gradient Accent */}
-                        <div
-                          className="absolute top-0 left-0 right-0 h-1 opacity-80 group-hover:opacity-100 transition-opacity"
-                          style={{
-                            background: isActive
-                              ? `linear-gradient(90deg, ${currentAccent.color}, ${currentAccent.hoverColor}, ${currentAccent.color})`
-                              : 'linear-gradient(90deg, #71717a, #a1a1aa, #71717a)'
-                          }}
-                        />
-
-                        {/* Decorative Pattern */}
-                        <div className="absolute top-0 right-0 w-32 h-32 opacity-5 group-hover:opacity-10 transition-opacity">
-                          <svg viewBox="0 0 100 100" className="w-full h-full">
-                            <pattern id={`grid-${agent.id}`} width="10" height="10" patternUnits="userSpaceOnUse">
-                              <circle cx="1" cy="1" r="1" fill="currentColor" />
-                            </pattern>
-                            <rect width="100" height="100" fill={`url(#grid-${agent.id})`} />
-                          </svg>
-                        </div>
-
-                        <div className="relative p-5">
-                          {/* Header with Avatar & Status */}
-                          <div className="flex items-start justify-between mb-4">
-                            {/* Avatar Container */}
-                            <div className="relative">
-                              {/* Animated Ring for Active */}
-                              {isActive && (
-                                <motion.div
-                                  className="absolute -inset-1.5 rounded-2xl"
-                                  style={{
-                                    background: `linear-gradient(135deg, ${currentAccent.color}50, transparent, ${currentAccent.hoverColor}50)`,
-                                  }}
-                                  animate={{ rotate: 360 }}
-                                  transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                                />
-                              )}
-                              <div className="relative">
-                                <img
-                                  src={getAvatarUrl(agent)}
-                                  alt={agent.name}
-                                  className={`w-16 h-16 rounded-xl object-cover shadow-lg transition-transform duration-300 group-hover:scale-105 ${
-                                    isActive ? 'ring-2 ring-white dark:ring-zinc-800' : 'grayscale-[30%]'
-                                  }`}
-                                  style={isActive ? { boxShadow: `0 8px 24px ${currentAccent.color}30` } : {}}
-                                />
-                                {/* Category Badge */}
-                                <div
-                                  className="absolute -bottom-2 -right-2 w-8 h-8 rounded-lg flex items-center justify-center shadow-lg border-2 border-white dark:border-zinc-900 transition-transform duration-300 group-hover:scale-110"
-                                  style={{
-                                    background: isActive
-                                      ? `linear-gradient(135deg, ${currentAccent.color}, ${currentAccent.hoverColor})`
-                                      : 'linear-gradient(135deg, #71717a, #52525b)'
-                                  }}
-                                >
-                                  <CategoryIcon className="w-4 h-4 text-white" />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Status Badge */}
-                            <div className="flex items-center gap-2">
-                              <motion.div
-                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium shadow-sm ${
-                                  isActive ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : ''
-                                }`}
-                                style={!isActive ? { backgroundColor: status.bgColor, color: status.color } : {}}
-                                animate={isActive ? { scale: [1, 1.05, 1] } : {}}
-                                transition={{ duration: 2, repeat: Infinity }}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${isActive ? 'animate-pulse' : ''}`}
-                                  style={{ backgroundColor: status.color }}
-                                />
-                                {status.label}
-                              </motion.div>
-                            </div>
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="relative flex-shrink-0">
+                            <img
+                              src={getAvatarUrl(agent)}
+                              alt={agent.name}
+                              className={`w-12 h-12 rounded-lg object-cover ${!isActive && 'grayscale-[40%]'}`}
+                            />
+                            <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white dark:border-zinc-900 ${
+                              isActive ? 'bg-green-500' : 'bg-zinc-400'
+                            }`} />
                           </div>
-
-                          {/* Info Section */}
-                          <div className="space-y-2">
-                            <h3 className="font-bold text-lg text-zinc-900 dark:text-white truncate group-hover:text-transparent group-hover:bg-clip-text transition-all duration-300"
-                              style={mounted ? {
-                                backgroundImage: `linear-gradient(135deg, ${currentAccent.color}, ${currentAccent.hoverColor})`,
-                              } as any : {}}>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-sm text-zinc-900 dark:text-white truncate">
                               {agent.name}
                             </h3>
-                            <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2 min-h-[40px] leading-relaxed">
-                              {agent.description || "AI 에이전트입니다"}
+                            <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                              {agent.model || 'qwen2.5:3b'}
                             </p>
                           </div>
-
-                          {/* Capabilities Tags */}
-                          <div className="flex flex-wrap gap-1.5 mt-4">
-                            {(agent.capabilities || [])
-                              .filter((cap: string) => !cap.startsWith('team:'))
-                              .slice(0, 3)
-                              .map((cap: string, idx: number) => (
-                                <span
-                                  key={idx}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 border border-zinc-200/50 dark:border-zinc-700/50 transition-all group-hover:border-zinc-300 dark:group-hover:border-zinc-600"
-                                >
-                                  {cap}
-                                </span>
-                              ))}
-                            {(agent.capabilities || []).filter((cap: string) => !cap.startsWith('team:')).length > 3 && (
-                              <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800/80 text-zinc-500">
-                                +{(agent.capabilities || []).filter((cap: string) => !cap.startsWith('team:')).length - 3}
-                              </span>
-                            )}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => handleToggleStatus(agent, e)}
+                              className={`p-1.5 rounded-md transition-colors ${
+                                isActive
+                                  ? 'hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-500'
+                                  : 'hover:bg-green-100 dark:hover:bg-green-900/30 text-green-500'
+                              }`}
+                            >
+                              {isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); router.push(`/agent-builder/${agent.id}`) }}
+                              className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                            </button>
                           </div>
+                        </div>
 
-                          {/* Footer */}
-                          <div className="flex items-center justify-between mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/50">
-                            {/* Model Info */}
-                            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
-                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">
-                                {agent.model || 'qwen2.5:3b'}
+                        {/* Description */}
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 mb-3">
+                          {agent.description || "AI 에이전트입니다"}
+                        </p>
+
+                        {/* Tags */}
+                        <div className="flex flex-wrap gap-1">
+                          {(agent.capabilities || [])
+                            .filter((cap: string) => !cap.startsWith('team:'))
+                            .slice(0, 3)
+                            .map((cap: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                              >
+                                {cap}
                               </span>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
-                              <motion.button
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={(e) => handleToggleStatus(agent, e)}
-                                className={`p-2 rounded-xl transition-colors ${
-                                  isActive
-                                    ? 'hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600'
-                                    : 'hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600'
-                                }`}
-                                title={isActive ? "비활성화" : "활성화"}
-                              >
-                                {isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                              </motion.button>
-                              <motion.button
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={(e) => { e.stopPropagation(); router.push(`/agent-builder/${agent.id}`) }}
-                                className="p-2 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 transition-colors"
-                                title="편집"
-                              >
-                                <Settings className="w-4 h-4" />
-                              </motion.button>
-                              <motion.button
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={(e) => handleDelete(agent.id, e)}
-                                className="p-2 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
-                                title="삭제"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </motion.button>
-                            </div>
-                          </div>
+                            ))}
                         </div>
                       </div>
                     </motion.div>
