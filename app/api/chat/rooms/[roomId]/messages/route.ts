@@ -789,13 +789,14 @@ async function processAgentResponsesRelay(
         .eq('agent_id', agent.id)
 
       try {
-        // 대화 기록에서 컨텍스트 구성 (자기 자신의 연속 발언 방지)
-        const recentHistory = conversationHistory.slice(-8) // 최근 8개
+        // 대화 기록에서 컨텍스트 구성
+        const recentHistory = conversationHistory.slice(-10) // 최근 10개로 확장
 
-        // 마지막 메시지가 자신의 발언이면 스킵 (자기 자신에게 응답 방지)
-        const lastMessage = recentHistory[recentHistory.length - 1]
-        if (lastMessage && lastMessage.agentId === agent.id) {
-          console.log(`[Relay] Skipping ${agent.name} - last message was theirs`)
+        // 🔥 연속 발언 체크: 2번까지 허용, 3번 연속이면 스킵
+        const lastTwoMessages = recentHistory.slice(-2)
+        const consecutiveOwnMessages = lastTwoMessages.filter(m => m.agentId === agent.id).length
+        if (consecutiveOwnMessages >= 2) {
+          console.log(`[Relay] Skipping ${agent.name} - already spoke 2 times consecutively`)
           await supabase
             .from('chat_participants')
             .update({ is_typing: false })
@@ -804,13 +805,14 @@ async function processAgentResponsesRelay(
           continue // 다음 에이전트로 넘어감
         }
 
-        // 자신의 메시지는 제외하고 컨텍스트 구성 (최근 6개)
-        const filteredHistory = recentHistory
-          .filter(h => h.agentId !== agent.id)
-          .slice(-6)
+        // 🔥 자신의 메시지도 포함 (일관성 유지를 위해)
+        const filteredHistory = recentHistory.slice(-8)
 
+        // 🔥 자기 발언은 (나) 표시로 구분
         const historyText = filteredHistory
-          .map(h => `[${h.name}]: ${h.content}`)
+          .map(h => h.agentId === agent.id
+            ? `[나(${h.name})]: ${h.content}`
+            : `[${h.name}]: ${h.content}`)
           .join('\n\n')
 
         // 다른 에이전트들 이름
@@ -829,20 +831,17 @@ async function processAgentResponsesRelay(
           ? filteredHistory[filteredHistory.length - 1].name
           : '사용자'
 
-        // 대화 스타일 다양화 (에이전트+라운드 조합으로 랜덤) - 주제 관련만
-        const conversationStyles = [
-          '반박해보세요. "글쎄, 그건 좀..."',
-          '구체적 사례를 들어보세요. "예를 들면..."',
-          '날카로운 질문을 던지세요. "근데 이건 어떻게 설명해?"',
-          '새로운 관점을 제시하세요. "다르게 생각하면..."',
-          '비유나 은유로 설명해보세요',
-          '상대 의견을 발전시켜보세요. "그걸 확장하면..."',
-          '핵심을 짚어보세요. "결국 중요한 건..."',
-          '상대 의견의 허점을 짚어보세요',
+        // 🔥 대화 흐름 힌트 (강제하지 않고 자연스럽게)
+        const flowHints = [
+          '자연스럽게 대화하세요',
+          '궁금한 점이 있으면 물어보세요',
+          '당신의 경험이나 생각을 공유하세요',
+          '이어서 말해도 되고, 다른 관점을 제시해도 됩니다',
+          '동의하든 반대하든 솔직하게 말하세요',
+          '구체적인 예시나 아이디어가 있으면 말하세요',
         ]
-        // 에이전트 ID + 라운드 + 메시지 수로 의사랜덤 인덱스 생성
-        const styleIndex = (agent.id.charCodeAt(0) + round + totalMessages) % conversationStyles.length
-        const styleHint = conversationStyles[styleIndex]
+        const flowIndex = (agent.id.charCodeAt(0) + round) % flowHints.length
+        const flowHint = flowHints[flowIndex]
 
         // 회의 단계 구분
         // Phase 0: 첫 인사 (각 에이전트 1번씩)
@@ -967,16 +966,13 @@ ${topicInstruction ? '그리고 주제에 대한 첫 의견을 던지세요.' : 
 ---
 당신: ${agent.name} | 대화 상대: ${otherAgentNames || '사용자'}${topicInstruction}${facilitatorNote}
 
-"${lastSpeaker}"의 말에 반응하세요.
+위 대화를 보고 자연스럽게 참여하세요. ${flowHint}
 
-💡 이번 턴: ${styleHint}
-
-규칙:
-- ⚠️ 주제에서 벗어난 얘기 금지 (날씨, 주말, 개인사 등)
-- 앞서 한 말 반복 금지
-- 빈말 금지 (동의합니다, 좋네요 등)
-- 반박, 질문, 농담 등 다양하게 (단, 주제 관련)
-- 1-2문장, 한국어만`
+💬 팁:
+- 실제 회의처럼 대화하세요 (끊임없이 주고받기)
+- 앞 사람 말에 이어서 "아, 그러고 보니...", "근데 그건..." 처럼 자연스럽게
+- 질문하거나, 의견 덧붙이거나, 새 아이디어 제안하거나
+- 1-3문장, 한국어`
           }
         }
 
