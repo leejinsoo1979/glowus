@@ -19,18 +19,22 @@ import {
     Music,
     Video,
     BookOpen,
-    Loader2
+    Loader2,
+    Table,
+    Mail,
+    FolderKanban
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface WorkItem {
     id: string
     title: string
-    type: 'chat' | 'youtube' | 'document' | 'code' | 'image' | 'analysis'
+    type: 'chat' | 'youtube' | 'document' | 'code' | 'image' | 'analysis' | 'sheet' | 'email' | 'project'
     date: string
     subtitle?: string
     agentId?: string
     avatarUrl?: string
+    url?: string
 }
 
 // 작업 타입별 아이콘
@@ -46,6 +50,12 @@ const getTypeIcon = (type: WorkItem['type']) => {
             return <ImageIcon className="w-4 h-4 text-purple-500" />
         case 'analysis':
             return <Sparkles className="w-4 h-4 text-yellow-500" />
+        case 'sheet':
+            return <Table className="w-4 h-4 text-emerald-500" />
+        case 'email':
+            return <Mail className="w-4 h-4 text-sky-500" />
+        case 'project':
+            return <FolderKanban className="w-4 h-4 text-violet-500" />
         case 'chat':
         default:
             return <MessageSquare className="w-4 h-4 text-zinc-500" />
@@ -95,10 +105,27 @@ export function WorkHistorySidebar({
         }
     }, [isOpen])
 
-    // 작업 클릭 시 해당 에이전트 페이지로 이동
+    // 작업 클릭 시 해당 페이지로 이동
     const handleWorkClick = (work: WorkItem) => {
-        if (work.agentId) {
+        // URL이 있으면 해당 URL로 이동
+        if (work.url) {
+            if (work.url.startsWith('http')) {
+                window.open(work.url, '_blank')
+            } else {
+                router.push(work.url)
+            }
+        } else if (work.agentId) {
+            // 에이전트 대화인 경우
             router.push(`/dashboard-group/agents/${work.agentId}`)
+        } else if (work.type === 'youtube') {
+            // YouTube 요약인 경우
+            router.push('/dashboard-group/apps/ai-summary')
+        } else if (work.type === 'sheet') {
+            // 스프레드시트인 경우
+            router.push('/dashboard-group/works')
+        } else if (work.type === 'email') {
+            // 이메일인 경우
+            router.push('/dashboard-group/email')
         }
         onSelectWork?.(work)
     }
