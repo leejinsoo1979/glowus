@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 interface ProfileSidebarProps {
   data?: typeof profileData
   className?: string
+  onEdit?: () => void
 }
 
 export function ProfileSidebar({ data = profileData, className }: ProfileSidebarProps) {

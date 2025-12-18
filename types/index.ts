@@ -230,6 +230,77 @@ export interface Notification {
   created_at: string
 }
 
+// User Profile types (마이페이지)
+export interface UserProfileService {
+  icon: string
+  title: string
+  description: string
+}
+
+export interface UserProfileAchievement {
+  label: string
+  value: string
+}
+
+export interface UserProfileEducation {
+  title: string
+  period: string
+  description: string
+}
+
+export interface UserProfileExperience {
+  title: string
+  company: string
+  period: string
+  description: string
+}
+
+export interface UserProfileSkill {
+  name: string
+  level: number
+}
+
+export interface UserProfilePortfolio {
+  id?: string
+  title: string
+  category: string
+  image?: string
+  description: string
+  status: string
+}
+
+export interface UserProfile {
+  id: string
+  user_id: string
+  // 기본 정보
+  title?: string
+  birthday?: string
+  location?: string
+  // 소셜 링크
+  github_url?: string
+  twitter_url?: string
+  linkedin_url?: string
+  website_url?: string
+  // About 섹션
+  bio?: string[]
+  services?: UserProfileService[]
+  achievements?: UserProfileAchievement[]
+  // Resume 섹션
+  education?: UserProfileEducation[]
+  experience?: UserProfileExperience[]
+  skills?: UserProfileSkill[]
+  // Portfolio 섹션
+  portfolio?: UserProfilePortfolio[]
+  // Contact 섹션
+  calendly_url?: string
+  contact_email?: string
+  contact_phone?: string
+  contact_address?: string
+  // 타임스탬프
+  created_at: string
+  updated_at: string
+}
+
 // API Response types
 export interface ApiResponse<T> {
   data?: T

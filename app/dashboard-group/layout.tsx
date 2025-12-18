@@ -25,8 +25,8 @@ const DEV_USER = {
   email: 'dev@glowus.local',
   name: 'Dev Tester',
   role: 'FOUNDER' as const,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: '2024-01-01T00:00:00.000Z',
+  updated_at: '2024-01-01T00:00:00.000Z',
 }
 
 export default function DashboardLayout({

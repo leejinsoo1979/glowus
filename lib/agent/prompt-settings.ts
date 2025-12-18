@@ -14,6 +14,7 @@ interface PromptSettingsRecord {
   context_anchor: string
   response_format: string
   messenger_rules: string
+  meeting_tone: string
   created_at: string
   updated_at: string
 }
@@ -54,6 +55,7 @@ export async function getPromptSettings(teamId?: string | null): Promise<PromptS
       context_anchor: settings.context_anchor || DEFAULT_PROMPT_SECTIONS.context_anchor,
       response_format: settings.response_format || DEFAULT_PROMPT_SECTIONS.response_format,
       messenger_rules: settings.messenger_rules || DEFAULT_PROMPT_SECTIONS.messenger_rules,
+      meeting_tone: settings.meeting_tone || DEFAULT_PROMPT_SECTIONS.meeting_tone,
     }
   } catch (error) {
     console.error('[getPromptSettings] Error fetching settings:', error)

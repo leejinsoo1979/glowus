@@ -10,6 +10,7 @@ import {
   CONTEXT_ANCHOR,
   RESPONSE_FORMAT_RULES,
   MESSENGER_CHAT_RULES,
+  MEETING_TONE_MANNER,
 } from '@/lib/agent/shared-prompts'
 
 // 프롬프트 설정 타입
@@ -25,6 +26,7 @@ interface PromptSettings {
   context_anchor: string
   response_format: string
   messenger_rules: string
+  meeting_tone: string
   created_at?: string
   updated_at?: string
 }
@@ -40,6 +42,7 @@ const DEFAULT_PROMPTS = {
   context_anchor: CONTEXT_ANCHOR,
   response_format: RESPONSE_FORMAT_RULES,
   messenger_rules: MESSENGER_CHAT_RULES,
+  meeting_tone: MEETING_TONE_MANNER,
 }
 
 // GET - 프롬프트 설정 조회
@@ -89,6 +92,7 @@ export async function GET() {
       context_anchor: settings.context_anchor || DEFAULT_PROMPTS.context_anchor,
       response_format: settings.response_format || DEFAULT_PROMPTS.response_format,
       messenger_rules: settings.messenger_rules || DEFAULT_PROMPTS.messenger_rules,
+      meeting_tone: settings.meeting_tone || DEFAULT_PROMPTS.meeting_tone,
     })
   } catch (error) {
     console.error('Error fetching prompt settings:', error)
@@ -135,6 +139,7 @@ export async function PUT(request: Request) {
         context_anchor: body.context_anchor,
         response_format: body.response_format,
         messenger_rules: body.messenger_rules,
+        meeting_tone: body.meeting_tone,
       } as any, {
         onConflict: 'team_id',
       })

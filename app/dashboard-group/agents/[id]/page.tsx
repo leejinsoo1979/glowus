@@ -57,6 +57,7 @@ import {
   CheckCircle,
   XCircle,
   LogOut,
+  Mic,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -383,8 +384,9 @@ function detectEmotionsInOrder(text: string, customEmotions: CustomEmotion[] = [
   return result
 }
 
-function formatDate(dateString: string | null): string {
+function formatDate(dateString: string | null, mounted: boolean = true): string {
   if (!dateString) return '-'
+  if (!mounted) return '-' // Prevent hydration mismatch
   const date = new Date(dateString)
   return date.toLocaleDateString('ko-KR', {
     year: 'numeric',
@@ -393,8 +395,9 @@ function formatDate(dateString: string | null): string {
   })
 }
 
-function formatTimeAgo(dateString: string | null): string {
+function formatTimeAgo(dateString: string | null, mounted: boolean = true): string {
   if (!dateString) return ''
+  if (!mounted) return '-' // Prevent hydration mismatch
   const date = new Date(dateString)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
@@ -513,7 +516,7 @@ function EditableTagInput({
 }
 
 // 지식베이스 탭 컴포넌트
-function KnowledgeBaseTab({ agentId, isDark }: { agentId: string; isDark: boolean }) {
+function KnowledgeBaseTab({ agentId, isDark, mounted }: { agentId: string; isDark: boolean; mounted: boolean }) {
   const [documents, setDocuments] = useState<any[]>([])
   const [stats, setStats] = useState<{ documentCount: number; chunkCount: number; lastUpdated: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -673,7 +676,7 @@ function KnowledgeBaseTab({ agentId, isDark }: { agentId: string; isDark: boolea
           </div>
           <div className={cn('p-4 rounded-xl border', isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200')}>
             <div className={cn('text-sm font-medium', isDark ? 'text-white' : 'text-zinc-900')}>
-              {stats.lastUpdated ? formatTimeAgo(stats.lastUpdated) : '-'}
+              {stats.lastUpdated ? formatTimeAgo(stats.lastUpdated, mounted) : '-'}
             </div>
             <div className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>최근 업데이트</div>
           </div>
@@ -729,7 +732,7 @@ function KnowledgeBaseTab({ agentId, isDark }: { agentId: string; isDark: boolea
                 <div>
                   <div className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>{doc.title}</div>
                   <div className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                    {doc.chunksCount}개 청크 · {formatTimeAgo(doc.createdAt)}
+                    {doc.chunksCount}개 청크 · {formatTimeAgo(doc.createdAt, mounted)}
                   </div>
                 </div>
               </div>
@@ -2042,8 +2045,15 @@ export default function AgentProfilePage() {
   const params = useParams()
   const router = useRouter()
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
+  const [mounted, setMounted] = useState(false)
   const agentId = params.id as string
+
+  // Prevent hydration mismatch by waiting for client mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : false
 
   const [agent, setAgent] = useState<AgentWithMemory | null>(null)
   const [loading, setLoading] = useState(true)
@@ -3555,6 +3565,15 @@ export default function AgentProfilePage() {
     }
   }
 
+  // Prevent hydration mismatch - show simple loading until mounted
+  if (!mounted) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-6">
@@ -3886,11 +3905,11 @@ export default function AgentProfilePage() {
             </div>
             <div className={cn('flex justify-between items-center px-4 py-3', isDark ? 'border-b border-zinc-700/50' : 'border-b border-zinc-200/50')}>
               <span className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>생성일</span>
-              <span className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-700')}>{formatDate(agent.created_at)}</span>
+              <span className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-700')}>{formatDate(agent.created_at, mounted)}</span>
             </div>
             <div className="flex justify-between items-center px-4 py-3">
               <span className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>마지막 활동</span>
-              <span className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-700')}>{formatTimeAgo(agent.last_active_at) || '없음'}</span>
+              <span className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-700')}>{formatTimeAgo(agent.last_active_at, mounted) || '없음'}</span>
             </div>
           </div>
         </div>
@@ -5646,7 +5665,7 @@ export default function AgentProfilePage() {
                             {room.name || '채팅방'}
                           </p>
                           <p className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                            {formatTimeAgo(room.last_message_at)}
+                            {formatTimeAgo(room.last_message_at, mounted)}
                           </p>
                         </div>
                       </div>
@@ -5752,7 +5771,7 @@ export default function AgentProfilePage() {
                               {stat.name}
                             </p>
                             <p className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                              마지막 활동: {formatTimeAgo(stat.lastActivity)}
+                              마지막 활동: {formatTimeAgo(stat.lastActivity, mounted)}
                             </p>
                           </div>
                         </div>
@@ -5802,7 +5821,7 @@ export default function AgentProfilePage() {
                                   {log.title}
                                 </span>
                                 <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                                  {formatTimeAgo(log.created_at)}
+                                  {formatTimeAgo(log.created_at, mounted)}
                                 </span>
                               </div>
                               {log.summary && (
@@ -5873,7 +5892,7 @@ export default function AgentProfilePage() {
                                 {logType.label}
                               </span>
                               <span className={cn('text-xs ml-auto', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                                {formatTimeAgo(log.created_at)}
+                                {formatTimeAgo(log.created_at, mounted)}
                               </span>
                             </div>
                             <p className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
@@ -5981,7 +6000,7 @@ export default function AgentProfilePage() {
                             {commit.commit_type}
                           </span>
                           <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                            {formatDate(commit.period_start)} ~ {formatDate(commit.period_end)}
+                            {formatDate(commit.period_start, mounted)} ~ {formatDate(commit.period_end, mounted)}
                           </span>
                         </div>
                         <h5 className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>{commit.title}</h5>
@@ -6023,7 +6042,7 @@ export default function AgentProfilePage() {
 
           {/* Knowledge Base Tab */}
           {activeTab === 'knowledge' && (
-            <KnowledgeBaseTab agentId={agentId} isDark={isDark} />
+            <KnowledgeBaseTab agentId={agentId} isDark={isDark} mounted={mounted} />
           )}
 
           {/* Integrations Tab */}
@@ -6751,9 +6770,9 @@ export default function AgentProfilePage() {
                 <div className="space-y-3">
                   {[
                     { label: 'ID', value: agent.id },
-                    { label: '생성일', value: formatDate(agent.created_at) },
-                    { label: '마지막 수정', value: formatDate(agent.updated_at) },
-                    { label: '마지막 활동', value: formatDate(agent.last_active_at) },
+                    { label: '생성일', value: formatDate(agent.created_at, mounted) },
+                    { label: '마지막 수정', value: formatDate(agent.updated_at, mounted) },
+                    { label: '마지막 활동', value: formatDate(agent.last_active_at, mounted) },
                   ].map((item, idx) => (
                     <div key={idx} className="flex justify-between items-center">
                       <span className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>{item.label}</span>
