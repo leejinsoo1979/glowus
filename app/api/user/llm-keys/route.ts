@@ -50,10 +50,37 @@ export async function GET(request: NextRequest) {
     const maskedKeys = (keys || []).map((key: any) => ({
       ...key,
       api_key: maskApiKey(decryptApiKey(key.api_key)),
+      source: 'user' as const,
     }))
 
+    // 환경변수에서 시스템 기본 키 확인
+    const envKeys: { provider: string; hasKey: boolean }[] = [
+      { provider: 'openai', hasKey: !!process.env.OPENAI_API_KEY },
+      { provider: 'anthropic', hasKey: !!process.env.ANTHROPIC_API_KEY },
+      { provider: 'google', hasKey: !!process.env.GOOGLE_API_KEY },
+      { provider: 'xai', hasKey: !!process.env.XAI_API_KEY },
+      { provider: 'mistral', hasKey: !!process.env.MISTRAL_API_KEY },
+      { provider: 'groq', hasKey: !!process.env.GROQ_API_KEY },
+    ]
+
+    // 시스템 키가 있고, 사용자 키가 없는 provider는 시스템 키로 표시
+    const userProviders = new Set(maskedKeys.map((k: any) => k.provider))
+    const systemKeys = envKeys
+      .filter(e => e.hasKey && !userProviders.has(e.provider))
+      .map(e => ({
+        id: `system-${e.provider}`,
+        provider: e.provider,
+        display_name: '시스템 기본',
+        is_default: true,
+        is_active: true,
+        source: 'system' as const,
+        api_key: '********',
+        created_at: null,
+        last_used_at: null,
+      }))
+
     return NextResponse.json({
-      keys: maskedKeys,
+      keys: [...maskedKeys, ...systemKeys],
       providers: LLM_PROVIDERS,
     })
   } catch (error) {

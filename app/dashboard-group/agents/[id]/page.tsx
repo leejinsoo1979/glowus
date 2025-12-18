@@ -3483,12 +3483,12 @@ export default function AgentProfilePage() {
       {/* Left Sidebar - Agent Profile */}
       <aside
         className={cn(
-          'w-full lg:w-[280px] xl:w-[300px] flex-shrink-0 rounded-2xl border p-5',
+          'w-full lg:w-[260px] flex-shrink-0 rounded-lg border p-4',
           isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
         )}
       >
         {/* Back Button - Desktop */}
-        <div className="hidden lg:block mb-6">
+        <div className="hidden lg:block mb-4">
           <Button variant="ghost" size="sm" onClick={() => router.back()}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             뒤로가기
@@ -3497,10 +3497,10 @@ export default function AgentProfilePage() {
 
         {/* Profile Image with Upload */}
         <div className="flex flex-col items-center">
-          <div className="relative mb-4">
+          <div className="relative mb-3">
             <div
               className={cn(
-                'relative w-28 h-28 md:w-32 md:h-32 cursor-pointer group',
+                'relative w-20 h-20 cursor-pointer group',
                 editMode && 'cursor-move'
               )}
               onClick={handleImageClick}
@@ -3710,7 +3710,7 @@ export default function AgentProfilePage() {
         </div>
 
         {/* Divider */}
-        <div className={cn('h-px my-6 md:my-8', isDark ? 'bg-zinc-800' : 'bg-zinc-200')} />
+        <div className={cn('h-px my-4', isDark ? 'bg-zinc-800' : 'bg-zinc-200')} />
 
         {/* Team Info */}
         {agent.team && (

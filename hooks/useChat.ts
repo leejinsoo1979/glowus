@@ -1,29 +1,29 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ChatRoom, ChatMessage, ChatParticipant } from '@/types/chat'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
 // 채팅방 목록 훅
 export function useChatRooms() {
-  console.log('[useChat] useChatRooms 훅 실행')
   const [rooms, setRooms] = useState<ChatRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const fetchingRef = useRef(false)
 
   const fetchRooms = useCallback(async () => {
-    console.log('[useChat] fetchRooms 시작')
+    // 이미 fetch 중이면 스킵
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+
     try {
       setLoading(true)
-      console.log('[useChat] API 호출 시작: /api/chat/rooms')
       const res = await fetch('/api/chat/rooms')
-      console.log('[useChat] API 응답:', res.status)
       const data = await res.json()
 
       if (!res.ok) {
-        // 인증 안됨 - 빈 배열로 처리
         if (res.status === 401) {
           setRooms([])
           setError(null)
@@ -32,7 +32,6 @@ export function useChatRooms() {
         throw new Error(data.error || 'Failed to fetch rooms')
       }
 
-      // data가 배열인지 확인
       setRooms(Array.isArray(data) ? data : [])
       setError(null)
     } catch (err) {
@@ -41,15 +40,18 @@ export function useChatRooms() {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [])
 
+  // 초기 로드 - 한 번만 실행
   useEffect(() => {
     fetchRooms()
-  }, [fetchRooms])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 실시간 업데이트 구독
+  // 실시간 업데이트 구독 - 한 번만 설정
   useEffect(() => {
+    const supabase = supabaseRef.current
     let channel: RealtimeChannel | null = null
 
     try {
@@ -74,7 +76,7 @@ export function useChatRooms() {
             table: 'chat_messages',
           },
           () => {
-            fetchRooms() // 새 메시지 시 목록 갱신
+            fetchRooms()
           }
         )
         .subscribe((status) => {
@@ -91,7 +93,7 @@ export function useChatRooms() {
         supabase.removeChannel(channel)
       }
     }
-  }, [supabase, fetchRooms])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const createRoom = async (data: {
     name?: string
@@ -122,9 +124,9 @@ export function useChatRoom(roomId: string | null) {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [typingUsers, setTypingUsers] = useState<ChatParticipant[]>([])
-  const [agentTyping, setAgentTyping] = useState(false) // 에이전트 응답 생성 중
+  const [agentTyping, setAgentTyping] = useState(false)
 
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hasAgentRef = useRef<boolean>(false)
@@ -478,11 +480,12 @@ export function useMeeting(roomId: string | null) {
 // 온라인 상태 관리 훅
 export function usePresence(roomId: string | null) {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([])
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
 
   useEffect(() => {
     if (!roomId) return
 
+    const supabase = supabaseRef.current
     const channel = supabase.channel(`presence:${roomId}`)
 
     channel
@@ -514,7 +517,7 @@ export function usePresence(roomId: string | null) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [roomId, supabase])
+  }, [roomId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { onlineUsers }
 }

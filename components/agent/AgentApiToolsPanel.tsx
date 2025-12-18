@@ -90,8 +90,9 @@ interface UserLLMKey {
   display_name: string | null
   is_default: boolean
   is_active: boolean
-  created_at: string
+  created_at: string | null
   last_used_at: string | null
+  source?: 'user' | 'system'
 }
 
 interface AgentInfo {
@@ -345,75 +346,16 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
       {/* LLM Section */}
       {activeSection === 'llm' && (
         <div className="space-y-4">
-          {/* Agent's Current LLM */}
-          {agentInfo && (
-            <div className={`p-4 rounded-xl border ${
-              isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'
-            }`}>
-              <h4 className={`text-sm font-medium mb-3 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                이 에이전트의 LLM 설정
-              </h4>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">
-                    {LLM_PROVIDERS.find(p => p.id === agentProvider)?.icon || '🤖'}
-                  </span>
-                  <div>
-                    <p className={`font-medium ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                      {LLM_PROVIDERS.find(p => p.id === agentProvider)?.name || agentInfo.llm_provider || '미설정'}
-                    </p>
-                    <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      {agentInfo.llm_model || '기본 모델'}
-                    </p>
-                  </div>
-                </div>
-                {agentProvider && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
-                    hasKeyForProvider(agentProvider)
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-red-500/20 text-red-400'
-                  }`}>
-                    {hasKeyForProvider(agentProvider) ? (
-                      <>
-                        <CheckCircle className="w-4 h-4" />
-                        API 키 연결됨
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="w-4 h-4" />
-                        API 키 필요
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* LLM Providers List */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className={`text-sm font-medium ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                내 LLM API 키
-              </h4>
-              <button
-                onClick={() => router.push('/dashboard-group/settings/api-keys')}
-                className="text-sm text-violet-500 hover:text-violet-400 flex items-center gap-1"
-              >
-                <Key className="w-4 h-4" />
-                API 키 관리
-              </button>
-            </div>
-
+          {/* Connected LLM Keys */}
+          {userLLMKeys.filter(k => k.is_active).length > 0 ? (
             <div className="grid gap-3">
-              {LLM_PROVIDERS.map((provider) => {
-                const hasKey = hasKeyForProvider(provider.id)
-                const isAgentProvider = agentProvider === provider.id
-                const userKey = userLLMKeys.find(k => normalizeProviderId(k.provider) === provider.id)
+              {userLLMKeys.filter(k => k.is_active).map((key) => {
+                const provider = LLM_PROVIDERS.find(p => p.id === normalizeProviderId(key.provider))
+                const isAgentProvider = agentProvider === normalizeProviderId(key.provider)
 
                 return (
                   <div
-                    key={provider.id}
+                    key={key.id}
                     className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
                       isAgentProvider
                         ? isDark
@@ -425,13 +367,13 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg bg-gradient-to-br ${provider.color}`}>
-                        <span className="text-xl">{provider.icon}</span>
+                      <div className={`p-2 rounded-lg bg-gradient-to-br ${provider?.color || 'from-gray-500 to-gray-600'}`}>
+                        <span className="text-xl">{provider?.icon || '🔑'}</span>
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <p className={`font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
-                            {provider.name}
+                            {provider?.name || key.provider}
                           </p>
                           {isAgentProvider && (
                             <span className="px-2 py-0.5 text-xs bg-violet-500/20 text-violet-400 rounded-full">
@@ -440,52 +382,55 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
                           )}
                         </div>
                         <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                          {provider.description}
+                          {key.display_name || provider?.description}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {hasKey ? (
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400">
-                            <CheckCircle className="w-3 h-3" />
-                            연결됨
-                          </span>
-                          {userKey?.display_name && (
-                            <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                              {userKey.display_name}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => router.push('/dashboard-group/settings/api-keys')}
-                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                            isDark
-                              ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'
-                              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
-                          }`}
-                        >
-                          <Plus className="w-3 h-3" />
-                          API 키 추가
-                        </button>
-                      )}
-                    </div>
+                    <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                      key.source === 'system'
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'bg-green-500/20 text-green-400'
+                    }`}>
+                      <CheckCircle className="w-3 h-3" />
+                      {key.source === 'system' ? '시스템' : '연결됨'}
+                    </span>
                   </div>
                 )
               })}
             </div>
-          </div>
+          ) : (
+            <div
+              className={`text-center py-12 rounded-xl border-2 border-dashed ${
+                isDark ? 'border-zinc-800' : 'border-zinc-200'
+              }`}
+            >
+              <Cpu className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              <p className={`font-medium mb-1 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                연결된 LLM API가 없습니다
+              </p>
+              <p className={`text-sm mb-4 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                에이전트가 AI 모델을 사용하려면 API 키가 필요합니다
+              </p>
+              <button
+                onClick={() => router.push('/dashboard-group/settings/api-keys')}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                API 키 추가하기
+              </button>
+            </div>
+          )}
 
           {/* Warning if agent's provider has no key */}
-          {agentProvider && !hasKeyForProvider(agentProvider) && (
+          {agentProvider && !hasKeyForProvider(agentProvider) && userLLMKeys.length > 0 && (
             <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
               <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-amber-400">API 키가 필요합니다</p>
+                <p className="font-medium text-amber-400">
+                  {LLM_PROVIDERS.find(p => p.id === agentProvider)?.name || agentProvider} API 키가 필요합니다
+                </p>
                 <p className="text-sm text-amber-400/70 mt-1">
-                  이 에이전트가 사용하는 {LLM_PROVIDERS.find(p => p.id === agentProvider)?.name || agentProvider} API 키가 없습니다.
-                  설정에서 API 키를 추가해주세요.
+                  이 에이전트가 사용하는 LLM의 API 키가 없습니다.
                 </p>
                 <button
                   onClick={() => router.push('/dashboard-group/settings/api-keys')}
@@ -494,6 +439,19 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
                   API 키 설정하기
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Manage Keys Link */}
+          {userLLMKeys.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => router.push('/dashboard-group/settings/api-keys')}
+                className="text-sm text-violet-500 hover:text-violet-400 flex items-center gap-1"
+              >
+                <Key className="w-4 h-4" />
+                API 키 관리
+              </button>
             </div>
           )}
         </div>
