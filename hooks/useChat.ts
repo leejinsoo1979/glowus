@@ -49,50 +49,15 @@ export function useChatRooms() {
     fetchRooms()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 실시간 업데이트 구독 - 한 번만 설정
+  // 실시간 업데이트 구독 - 비활성화 (무한 루프 방지)
+  // Realtime subscription이 fetchRooms()를 반복 호출하여 무한 로딩 발생
+  // 대신 polling 방식으로 5초마다 업데이트
   useEffect(() => {
-    const supabase = supabaseRef.current
-    let channel: RealtimeChannel | null = null
+    const interval = setInterval(() => {
+      fetchRooms()
+    }, 5000)
 
-    try {
-      channel = supabase
-        .channel('chat_rooms_updates')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'chat_rooms',
-          },
-          () => {
-            fetchRooms()
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'chat_messages',
-          },
-          () => {
-            fetchRooms()
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'CHANNEL_ERROR') {
-            console.warn('Chat realtime subscription error')
-          }
-        })
-    } catch (err) {
-      console.warn('Chat realtime setup failed:', err)
-    }
-
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel)
-      }
-    }
+    return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const createRoom = async (data: {

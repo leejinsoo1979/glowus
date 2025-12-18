@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User, Startup, Team } from '@/types'
 
+// DEV 모드 체크 (클라이언트에서만)
+const DEV_BYPASS_AUTH = typeof window !== 'undefined' && process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === 'true'
+
 interface AuthState {
   user: User | null
   currentStartup: Startup | null
@@ -21,7 +24,8 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       currentStartup: null,
       currentTeam: null,
-      isLoading: true,
+      // DEV 모드에서는 인증 로딩 건너뛰기
+      isLoading: !DEV_BYPASS_AUTH,
       setUser: (user) => set({ user }),
       updateUser: (updates) => set((state) => ({
         user: state.user ? { ...state.user, ...updates } : null

@@ -3500,7 +3500,7 @@ export default function AgentProfilePage() {
           <div className="relative mb-5">
             <div
               className={cn(
-                'relative w-28 h-28 cursor-pointer group',
+                'relative w-36 h-36 cursor-pointer group',
                 editMode && 'cursor-move'
               )}
               onClick={handleImageClick}
@@ -3634,7 +3634,7 @@ export default function AgentProfilePage() {
                 value={editForm.name || ''}
                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                 className={cn(
-                  'w-full text-2xl md:text-3xl font-bold text-center px-4 py-2 rounded-lg border',
+                  'w-full text-lg md:text-xl font-bold text-center px-4 py-2 rounded-lg border',
                   isDark
                     ? 'bg-zinc-900 border-zinc-700 text-white'
                     : 'bg-white border-zinc-200 text-zinc-900'
@@ -3678,7 +3678,7 @@ export default function AgentProfilePage() {
               <div className="flex items-center gap-2">
                 <h1
                   className={cn(
-                    'text-2xl md:text-3xl font-bold text-center',
+                    'text-lg md:text-xl font-bold text-center',
                     isDark ? 'text-white' : 'text-zinc-900'
                   )}
                 >

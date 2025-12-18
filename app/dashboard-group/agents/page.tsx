@@ -440,29 +440,60 @@ export default function AgentsPage() {
                 if (viewMode === "grid") {
                   const isActive = agent.status === "ACTIVE"
                   return (
-                    <div
+                    <motion.div
                       key={agent.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.03 }}
                       onClick={() => router.push(`/dashboard-group/agents/${agent.id}`)}
-                      className={`group cursor-pointer rounded-lg border p-4 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 ${!isActive && 'opacity-50'}`}
+                      className={`group cursor-pointer rounded-2xl border p-5 transition-all duration-200 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm border-zinc-200/60 dark:border-zinc-800/60 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-lg hover:shadow-zinc-200/50 dark:hover:shadow-zinc-900/50 ${!isActive && 'opacity-60'}`}
                     >
-                      <div className="flex items-start gap-3">
-                        <img
-                          src={getAvatarUrl(agent)}
-                          alt={agent.name}
-                          className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-sm text-zinc-900 dark:text-white truncate">{agent.name}</span>
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-green-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
-                          </div>
-                          <p className="text-xs text-zinc-500 line-clamp-2 mb-2">{agent.description || "에이전트"}</p>
-                          <div className="flex items-center gap-2 text-[11px] text-zinc-400">
-                            <span>{agent.model || 'qwen2.5:3b'}</span>
-                          </div>
+                      {/* Header with Avatar & Status */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="relative">
+                          <img
+                            src={getAvatarUrl(agent)}
+                            alt={agent.name}
+                            className="w-14 h-14 rounded-xl object-cover ring-2 ring-zinc-100 dark:ring-zinc-800"
+                          />
+                          <div
+                            className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-zinc-900 ${isActive ? 'bg-emerald-500' : 'bg-zinc-400'}`}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => handleToggleStatus(agent, e)}
+                            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                          >
+                            {agent.status === "ACTIVE" ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); router.push(`/agent-builder/${agent.id}`) }}
+                            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                    </div>
+
+                      {/* Name & Description */}
+                      <div className="mb-4">
+                        <h3 className="font-semibold text-zinc-900 dark:text-white mb-1 truncate">{agent.name}</h3>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">{agent.description || "에이전트"}</p>
+                      </div>
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between pt-4 border-t border-zinc-100 dark:border-zinc-800/50">
+                        <div className="flex items-center gap-2">
+                          <Cpu className="w-3.5 h-3.5 text-zinc-400" />
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">{agent.model || 'qwen2.5:3b'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{formatTimeAgo(agent.last_active_at)}</span>
+                        </div>
+                      </div>
+                    </motion.div>
                   )
                 }
 
