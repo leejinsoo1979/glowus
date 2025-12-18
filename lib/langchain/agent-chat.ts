@@ -148,6 +148,7 @@ export async function generateAgentChatResponse(
     temperature?: number | null
     system_prompt?: string | null
     identity?: any
+    apiKey?: string | null  // 🔥 사용자 LLM API 키
     config?: {
       llm_provider?: LLMProvider
       llm_model?: string
@@ -189,9 +190,10 @@ export async function generateAgentChatResponse(
     provider,
     model,
     temperature: agent.temperature ?? agent.config?.temperature ?? 0.7,
+    apiKey: agent.apiKey || undefined, // 🔥 사용자 API 키 사용
   }
 
-  console.log(`[AgentChat] ${agent.name} using ${provider}/${model}${hasImages ? ' (vision mode)' : ''}`)
+  console.log(`[AgentChat] ${agent.name} using ${provider}/${model}${hasImages ? ' (vision mode)' : ''}${agent.apiKey ? ' (user key)' : ' (env key)'}`)
 
   const llm = createLLM(llmConfig)
 

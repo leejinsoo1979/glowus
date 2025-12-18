@@ -9,6 +9,7 @@ import {
   saveInstruction,
   updateActiveContext,
 } from '@/lib/agent/work-memory'
+import { getLLMConfigForAgent } from '@/lib/llm/user-keys'
 
 // 인텐트 감지 함수
 type ActionType = 'project_create' | 'task_create' | 'general'
@@ -217,6 +218,19 @@ export async function POST(
       // 컨텍스트 로드 실패해도 대화는 계속
     }
 
+    // 🔥 사용자의 LLM API 키 가져오기
+    let userApiKey: string | undefined
+    try {
+      const provider = agent.llm_provider || 'grok'
+      const llmConfig = await getLLMConfigForAgent(user.id, provider)
+      userApiKey = llmConfig.apiKey
+      if (llmConfig.useUserKey) {
+        console.log(`[AgentChat] Using user's ${provider} API key`)
+      }
+    } catch (keyError) {
+      console.warn('[AgentChat] Failed to fetch user LLM key:', keyError)
+    }
+
     // 에이전트 응답 생성 (타임아웃 처리)
     let response: string
     try {
@@ -225,7 +239,7 @@ export async function POST(
       })
 
       const responsePromise = generateAgentChatResponse(
-        { ...agent, identity },
+        { ...agent, identity, apiKey: userApiKey },
         message,
         chatHistory,
         {
