@@ -49,26 +49,13 @@ export function Header() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-40 h-16 backdrop-blur-xl transition-all duration-300 ${isDark
+      className={`fixed top-0 right-0 z-40 h-16 backdrop-blur-xl transition-all duration-300 ${isDark
           ? 'bg-zinc-900/80 border-b border-zinc-800'
           : 'bg-white/80 border-b border-zinc-200'
         }`}
+      style={{ left: sidebarOpen ? 304 : 64 }}
     >
-      <div className="h-full flex items-center">
-        {/* Logo Area - 좌측 사이드바 영역 */}
-        <div
-          className={`h-full flex items-center justify-center border-r transition-all duration-300 ${
-            isDark ? 'border-zinc-800' : 'border-zinc-200'
-          }`}
-          style={{ width: sidebarOpen ? 304 : 64 }}
-        >
-          <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-zinc-900'}`}>
-            {sidebarOpen ? 'GlowUS' : 'G'}
-          </span>
-        </div>
-
-        {/* Right Actions */}
-        <div className="flex-1 h-full px-6 flex items-center justify-end gap-3">
+      <div className="h-full px-6 flex items-center justify-end gap-3">
         {/* Search - 에이전트 빌더 옆 */}
         <div className="w-72">
           <motion.div
@@ -251,7 +238,6 @@ export function Header() {
             </AnimatePresence>
           </div>
         </div>
-      </div>
     </header>
   )
 }

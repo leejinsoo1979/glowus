@@ -1182,16 +1182,18 @@ export function TwoLevelSidebar() {
   const isDashboardRoot = pathname === '/dashboard-group'
 
   return (
-    <div className="flex fixed left-0 top-16 bottom-0 z-30">
+    <div className="flex fixed left-0 top-0 h-screen z-50">
       {/* Level 1: 아이콘 사이드바 */}
       <motion.aside
         className={cn(
-          'w-16 h-full flex flex-col items-center py-3 border-r transition-colors duration-300 z-20',
+          'w-16 h-full flex flex-col items-center py-4 border-r transition-colors duration-300 z-20',
           isDashboardRoot
             ? 'bg-black/20 backdrop-blur-xl border-white/10'
             : isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
         )}
       >
+        {/* Logo */}
+        <Logo collapsed className="mb-6" />
 
         {/* Category Icons */}
         <nav className="flex-1 flex flex-col items-center gap-2">
