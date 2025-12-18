@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import type { UpdateApiConnectionRequest } from '@/types/api-connection'
 
 // 암호화 함수
@@ -18,23 +20,25 @@ export async function GET(
 ) {
   try {
     const { id: agentId, apiId } = await params
-    const supabase = createClient()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
-    // 에이전트 소유권 확인 후 연결 조회
-    const { data: connection, error } = await (supabase as any)
+    // 연결 조회 (adminClient 사용)
+    const { data: connection, error } = await (adminClient as any)
       .from('agent_api_connections')
-      .select(`
-        *,
-        deployed_agents!inner(user_id)
-      `)
+      .select('*')
       .eq('id', apiId)
       .eq('agent_id', agentId)
-      .eq('deployed_agents.user_id', user.id)
       .single()
 
     if (error || !connection) {
@@ -65,28 +69,41 @@ export async function PATCH(
 ) {
   try {
     const { id: agentId, apiId } = await params
-    const supabase = createClient()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
     const body: UpdateApiConnectionRequest = await request.json()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
-    // 소유권 확인
-    const { data: existing } = await (supabase as any)
+    // 기존 연결 조회
+    const { data: existing } = await (adminClient as any)
       .from('agent_api_connections')
-      .select(`
-        *,
-        deployed_agents!inner(user_id)
-      `)
+      .select('*')
       .eq('id', apiId)
       .eq('agent_id', agentId)
-      .eq('deployed_agents.user_id', user.id)
       .single()
 
     if (!existing) {
       return NextResponse.json({ error: 'API connection not found' }, { status: 404 })
+    }
+
+    // 에이전트 소유권 확인
+    const { data: agent } = await (adminClient as any)
+      .from('deployed_agents')
+      .select('user_id')
+      .eq('id', agentId)
+      .single()
+
+    if (!agent || agent.user_id !== user.id) {
+      return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
     }
 
     // 업데이트 데이터 준비
@@ -119,8 +136,8 @@ export async function PATCH(
       updateData.auth_config = newConfig
     }
 
-    // 업데이트 실행
-    const { data: connection, error } = await (supabase as any)
+    // 업데이트 실행 (adminClient 사용)
+    const { data: connection, error } = await (adminClient as any)
       .from('agent_api_connections')
       .update(updateData)
       .eq('id', apiId)
@@ -153,31 +170,44 @@ export async function DELETE(
 ) {
   try {
     const { id: agentId, apiId } = await params
-    const supabase = createClient()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
-    // 소유권 확인
-    const { data: existing } = await (supabase as any)
+    // 연결 존재 확인
+    const { data: existing } = await (adminClient as any)
       .from('agent_api_connections')
-      .select(`
-        id,
-        deployed_agents!inner(user_id)
-      `)
+      .select('id, agent_id')
       .eq('id', apiId)
       .eq('agent_id', agentId)
-      .eq('deployed_agents.user_id', user.id)
       .single()
 
     if (!existing) {
       return NextResponse.json({ error: 'API connection not found' }, { status: 404 })
     }
 
-    // 삭제 실행
-    const { error } = await (supabase as any)
+    // 에이전트 소유권 확인
+    const { data: agent } = await (adminClient as any)
+      .from('deployed_agents')
+      .select('user_id')
+      .eq('id', agentId)
+      .single()
+
+    if (!agent || agent.user_id !== user.id) {
+      return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
+    }
+
+    // 삭제 실행 (adminClient 사용)
+    const { error } = await (adminClient as any)
       .from('agent_api_connections')
       .delete()
       .eq('id', apiId)

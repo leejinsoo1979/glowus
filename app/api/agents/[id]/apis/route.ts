@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import type {
   AgentApiConnection,
   CreateApiConnectionRequest,
@@ -19,36 +21,48 @@ export async function GET(
 ) {
   try {
     const { id: agentId } = await params
-    const supabase = createClient()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    // 인증 확인
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
-    // 에이전트 소유권 확인
-    const { data: agent } = await (supabase as any)
+    // 에이전트 존재 확인 (소유권 체크 제거 - 모든 에이전트의 API 연결 조회 가능)
+    const { data: agent } = await (adminClient as any)
       .from('deployed_agents')
-      .select('id')
+      .select('id, name')
       .eq('id', agentId)
-      .eq('user_id', user.id)
       .single()
 
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
     }
 
-    // API 연결 목록 조회
-    const { data: connections, error } = await (supabase as any)
+    // API 연결 목록 조회 (adminClient 사용)
+    const { data: connections, error } = await (adminClient as any)
       .from('agent_api_connections')
       .select('*')
       .eq('agent_id', agentId)
       .order('created_at', { ascending: false })
 
     if (error) {
+      console.error('API connections fetch error:', error)
       throw error
     }
+
+    // API 카탈로그도 조회 (사용 가능한 도구 목록)
+    const { data: catalog } = await (adminClient as any)
+      .from('api_tool_catalog')
+      .select('*')
+      .eq('is_active', true)
+      .order('category', { ascending: true })
 
     // 민감한 정보 마스킹
     const maskedConnections = (connections || []).map((conn: AgentApiConnection) => ({
@@ -56,7 +70,13 @@ export async function GET(
       auth_config: maskAuthConfig(conn.auth_config),
     }))
 
-    return NextResponse.json({ connections: maskedConnections })
+    console.log(`[API] Agent ${agentId} has ${maskedConnections.length} API connections`)
+
+    return NextResponse.json({
+      connections: maskedConnections,
+      catalog: catalog || [],
+      agent: { id: agent.id, name: agent.name }
+    })
   } catch (error) {
     console.error('Get API connections error:', error)
     return NextResponse.json(
@@ -73,25 +93,34 @@ export async function POST(
 ) {
   try {
     const { id: agentId } = await params
-    const supabase = createClient()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
     const body: CreateApiConnectionRequest = await request.json()
 
-    // 인증 확인
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
     // 에이전트 소유권 확인
-    const { data: agent } = await (supabase as any)
+    const { data: agent } = await (adminClient as any)
       .from('deployed_agents')
-      .select('id')
+      .select('id, user_id')
       .eq('id', agentId)
-      .eq('user_id', user.id)
       .single()
 
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+    }
+
+    // 소유자만 API 연결 추가 가능
+    if (agent.user_id !== user.id) {
+      return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
     }
 
     // 프리셋 사용 시 템플릿 로드
@@ -108,7 +137,7 @@ export async function POST(
     }
 
     if (body.preset_id && body.provider_type === 'preset') {
-      const { data: preset } = await (supabase as any)
+      const { data: preset } = await (adminClient as any)
         .from('public_api_presets')
         .select('*')
         .eq('id', body.preset_id)
@@ -125,8 +154,8 @@ export async function POST(
       }
     }
 
-    // API 연결 생성
-    const { data: connection, error } = await (supabase as any)
+    // API 연결 생성 (adminClient 사용)
+    const { data: connection, error } = await (adminClient as any)
       .from('agent_api_connections')
       .insert(connectionData)
       .select()

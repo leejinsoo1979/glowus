@@ -19,7 +19,87 @@ import {
   Globe,
   Key,
   X,
+  Cpu,
+  CheckCircle,
+  XCircle,
+  Link2,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+
+// LLM Provider 정보
+const LLM_PROVIDERS = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    description: 'GPT-4, GPT-4o 등 OpenAI 모델',
+    icon: '🤖',
+    color: 'from-green-500 to-emerald-500',
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    description: 'Claude 3.5, Claude 3 등 Anthropic 모델',
+    icon: '🧠',
+    color: 'from-orange-500 to-amber-500',
+    models: ['claude-3-5-sonnet', 'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
+  },
+  {
+    id: 'google',
+    name: 'Google',
+    description: 'Gemini Pro, Gemini Flash 등 Google 모델',
+    icon: '✨',
+    color: 'from-blue-500 to-cyan-500',
+    models: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'],
+  },
+  {
+    id: 'xai',
+    name: 'xAI',
+    description: 'Grok 모델',
+    icon: '⚡',
+    color: 'from-purple-500 to-violet-500',
+    models: ['grok-beta', 'grok-2'],
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    description: 'Mistral Large, Mistral Small 등',
+    icon: '🌀',
+    color: 'from-indigo-500 to-blue-500',
+    models: ['mistral-large', 'mistral-medium', 'mistral-small'],
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    description: '초고속 LPU 추론',
+    icon: '🚀',
+    color: 'from-pink-500 to-rose-500',
+    models: ['llama-3.1-70b', 'llama-3.1-8b', 'mixtral-8x7b'],
+  },
+]
+
+// Provider ID 매핑 (DB 저장값 -> 표시용)
+const PROVIDER_ID_MAP: Record<string, string> = {
+  grok: 'xai',
+  gemini: 'google',
+}
+
+interface UserLLMKey {
+  id: string
+  provider: string
+  display_name: string | null
+  is_default: boolean
+  is_active: boolean
+  created_at: string
+  last_used_at: string | null
+}
+
+interface AgentInfo {
+  id: string
+  name: string
+  llm_provider: string
+  llm_model: string
+}
 
 interface ApiTool {
   id: string
@@ -77,12 +157,16 @@ const CATEGORY_NAMES: Record<string, string> = {
 }
 
 export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPanelProps) {
+  const router = useRouter()
   const [tools, setTools] = useState<ApiTool[]>([])
   const [connections, setConnections] = useState<AgentApiConnection[]>([])
+  const [userLLMKeys, setUserLLMKeys] = useState<UserLLMKey[]>([])
+  const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedTool, setSelectedTool] = useState<ApiTool | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState<'llm' | 'tools'>('llm')
 
   // Form state
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -96,6 +180,20 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
   const fetchData = async () => {
     try {
       setIsLoading(true)
+
+      // Fetch user's LLM keys
+      const llmKeysRes = await fetch('/api/settings/llm-keys')
+      if (llmKeysRes.ok) {
+        const llmKeysData = await llmKeysRes.json()
+        setUserLLMKeys(llmKeysData.keys || [])
+      }
+
+      // Fetch agent info (including llm_provider)
+      const agentRes = await fetch(`/api/agents/${agentId}`)
+      if (agentRes.ok) {
+        const agentData = await agentRes.json()
+        setAgentInfo(agentData.agent || agentData)
+      }
 
       // Fetch available tools
       const toolsRes = await fetch('/api/tools/catalog')
@@ -115,6 +213,26 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Provider ID 정규화
+  const normalizeProviderId = (id: string): string => {
+    return PROVIDER_ID_MAP[id] || id
+  }
+
+  // 사용자가 해당 provider의 API 키를 가지고 있는지 확인
+  const hasKeyForProvider = (providerId: string): boolean => {
+    const normalizedId = normalizeProviderId(providerId)
+    return userLLMKeys.some(key => {
+      const keyProviderId = normalizeProviderId(key.provider)
+      return keyProviderId === normalizedId && key.is_active
+    })
+  }
+
+  // 에이전트가 사용하는 provider 확인
+  const getAgentProvider = (): string | null => {
+    if (!agentInfo?.llm_provider) return null
+    return normalizeProviderId(agentInfo.llm_provider)
   }
 
   const handleAddTool = async () => {
@@ -182,6 +300,7 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
     : tools
 
   const connectedToolIds = connections.map((c) => c.provider_type)
+  const agentProvider = getAgentProvider()
 
   if (isLoading) {
     return (
@@ -193,95 +312,287 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
-            API 도구
-          </h3>
-          <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-            에이전트가 사용할 수 있는 외부 API를 연결합니다
-          </p>
-        </div>
+      {/* Section Tabs */}
+      <div className="flex gap-2 border-b border-zinc-800 pb-2">
         <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium"
+          onClick={() => setActiveSection('llm')}
+          className={`px-4 py-2 rounded-t-lg font-medium text-sm transition-colors ${
+            activeSection === 'llm'
+              ? 'bg-violet-600 text-white'
+              : isDark
+              ? 'text-zinc-400 hover:text-zinc-200'
+              : 'text-zinc-600 hover:text-zinc-800'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          도구 추가
+          <Cpu className="w-4 h-4 inline-block mr-2" />
+          LLM 모델
+        </button>
+        <button
+          onClick={() => setActiveSection('tools')}
+          className={`px-4 py-2 rounded-t-lg font-medium text-sm transition-colors ${
+            activeSection === 'tools'
+              ? 'bg-violet-600 text-white'
+              : isDark
+              ? 'text-zinc-400 hover:text-zinc-200'
+              : 'text-zinc-600 hover:text-zinc-800'
+          }`}
+        >
+          <Link2 className="w-4 h-4 inline-block mr-2" />
+          외부 API
         </button>
       </div>
 
-      {/* Connected Tools */}
-      {connections.length > 0 ? (
-        <div className="space-y-3">
-          {connections.map((conn) => {
-            const tool = tools.find((t) => t.provider === conn.provider_type)
-            const CategoryIcon = CATEGORY_ICONS[tool?.category || 'ai'] || Zap
-
-            return (
-              <div
-                key={conn.id}
-                className={`flex items-center justify-between p-4 rounded-xl border ${
-                  isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-white border-zinc-200'
-                }`}
-              >
+      {/* LLM Section */}
+      {activeSection === 'llm' && (
+        <div className="space-y-4">
+          {/* Agent's Current LLM */}
+          {agentInfo && (
+            <div className={`p-4 rounded-xl border ${
+              isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'
+            }`}>
+              <h4 className={`text-sm font-medium mb-3 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                이 에이전트의 LLM 설정
+              </h4>
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-lg bg-gradient-to-br ${
-                      CATEGORY_COLORS[tool?.category || 'ai'] || 'from-gray-500 to-gray-600'
-                    }`}
-                  >
-                    <CategoryIcon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className={`font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
-                      {conn.name}
-                    </p>
-                    <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      {conn.description || tool?.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      conn.is_active
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-zinc-500/20 text-zinc-400'
-                    }`}
-                  >
-                    {conn.is_active ? '활성' : '비활성'}
+                  <span className="text-2xl">
+                    {LLM_PROVIDERS.find(p => p.id === agentProvider)?.icon || '🤖'}
                   </span>
-                  <button
-                    onClick={() => handleDeleteConnection(conn.id)}
-                    className={`p-2 rounded-lg hover:bg-red-500/20 transition-colors ${
-                      isDark ? 'text-zinc-400 hover:text-red-400' : 'text-zinc-500 hover:text-red-500'
+                  <div>
+                    <p className={`font-medium ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                      {LLM_PROVIDERS.find(p => p.id === agentProvider)?.name || agentInfo.llm_provider || '미설정'}
+                    </p>
+                    <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      {agentInfo.llm_model || '기본 모델'}
+                    </p>
+                  </div>
+                </div>
+                {agentProvider && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
+                    hasKeyForProvider(agentProvider)
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    {hasKeyForProvider(agentProvider) ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        API 키 연결됨
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-4 h-4" />
+                        API 키 필요
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* LLM Providers List */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className={`text-sm font-medium ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                내 LLM API 키
+              </h4>
+              <button
+                onClick={() => router.push('/dashboard-group/settings/api-keys')}
+                className="text-sm text-violet-500 hover:text-violet-400 flex items-center gap-1"
+              >
+                <Key className="w-4 h-4" />
+                API 키 관리
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              {LLM_PROVIDERS.map((provider) => {
+                const hasKey = hasKeyForProvider(provider.id)
+                const isAgentProvider = agentProvider === provider.id
+                const userKey = userLLMKeys.find(k => normalizeProviderId(k.provider) === provider.id)
+
+                return (
+                  <div
+                    key={provider.id}
+                    className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                      isAgentProvider
+                        ? isDark
+                          ? 'bg-violet-500/10 border-violet-500/50'
+                          : 'bg-violet-50 border-violet-300'
+                        : isDark
+                        ? 'bg-zinc-800/50 border-zinc-700'
+                        : 'bg-white border-zinc-200'
                     }`}
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg bg-gradient-to-br ${provider.color}`}>
+                        <span className="text-xl">{provider.icon}</span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                            {provider.name}
+                          </p>
+                          {isAgentProvider && (
+                            <span className="px-2 py-0.5 text-xs bg-violet-500/20 text-violet-400 rounded-full">
+                              현재 사용 중
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          {provider.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {hasKey ? (
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400">
+                            <CheckCircle className="w-3 h-3" />
+                            연결됨
+                          </span>
+                          {userKey?.display_name && (
+                            <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                              {userKey.display_name}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => router.push('/dashboard-group/settings/api-keys')}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            isDark
+                              ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'
+                              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                          }`}
+                        >
+                          <Plus className="w-3 h-3" />
+                          API 키 추가
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Warning if agent's provider has no key */}
+          {agentProvider && !hasKeyForProvider(agentProvider) && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
+              <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-amber-400">API 키가 필요합니다</p>
+                <p className="text-sm text-amber-400/70 mt-1">
+                  이 에이전트가 사용하는 {LLM_PROVIDERS.find(p => p.id === agentProvider)?.name || agentProvider} API 키가 없습니다.
+                  설정에서 API 키를 추가해주세요.
+                </p>
+                <button
+                  onClick={() => router.push('/dashboard-group/settings/api-keys')}
+                  className="mt-3 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                >
+                  API 키 설정하기
+                </button>
               </div>
-            )
-          })}
+            </div>
+          )}
         </div>
-      ) : (
-        <div
-          className={`text-center py-12 rounded-xl border-2 border-dashed ${
-            isDark ? 'border-zinc-800' : 'border-zinc-200'
-          }`}
-        >
-          <Globe className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
-          <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-            연결된 API 도구가 없습니다
-          </p>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="mt-3 text-sm text-violet-500 hover:text-violet-400"
-          >
-            도구 추가하기
-          </button>
+      )}
+
+      {/* External API Tools Section */}
+      {activeSection === 'tools' && (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                외부 API 도구
+              </h3>
+              <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                에이전트가 사용할 수 있는 외부 API를 연결합니다
+              </p>
+            </div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              도구 추가
+            </button>
+          </div>
+
+          {/* Connected Tools */}
+          {connections.length > 0 ? (
+            <div className="space-y-3">
+              {connections.map((conn) => {
+                const tool = tools.find((t) => t.provider === conn.provider_type)
+                const CategoryIcon = CATEGORY_ICONS[tool?.category || 'ai'] || Zap
+
+                return (
+                  <div
+                    key={conn.id}
+                    className={`flex items-center justify-between p-4 rounded-xl border ${
+                      isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-white border-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`p-2 rounded-lg bg-gradient-to-br ${
+                          CATEGORY_COLORS[tool?.category || 'ai'] || 'from-gray-500 to-gray-600'
+                        }`}
+                      >
+                        <CategoryIcon className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className={`font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                          {conn.name}
+                        </p>
+                        <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          {conn.description || tool?.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          conn.is_active
+                            ? 'bg-green-500/20 text-green-400'
+                            : 'bg-zinc-500/20 text-zinc-400'
+                        }`}
+                      >
+                        {conn.is_active ? '활성' : '비활성'}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteConnection(conn.id)}
+                        className={`p-2 rounded-lg hover:bg-red-500/20 transition-colors ${
+                          isDark ? 'text-zinc-400 hover:text-red-400' : 'text-zinc-500 hover:text-red-500'
+                        }`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div
+              className={`text-center py-12 rounded-xl border-2 border-dashed ${
+                isDark ? 'border-zinc-800' : 'border-zinc-200'
+              }`}
+            >
+              <Globe className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                연결된 외부 API 도구가 없습니다
+              </p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="mt-3 text-sm text-violet-500 hover:text-violet-400"
+              >
+                도구 추가하기
+              </button>
+            </div>
+          )}
         </div>
       )}
 

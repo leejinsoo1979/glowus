@@ -137,7 +137,7 @@ const DEFAULT_TOOLS = [
 // GET - 도구 카탈로그 조회
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // DB에서 도구 카탈로그 조회 시도
     const { data: dbTools, error } = await (supabase as any)
