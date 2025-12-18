@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { LLM_PROVIDERS } from '@/lib/llm/providers'
 
 // API 키 암호화 (실제 환경에서는 더 강력한 암호화 사용)
@@ -19,14 +21,20 @@ function maskApiKey(key: string): string {
 // GET - 사용자의 LLM 키 목록 조회
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
-    const { data: keys, error } = await (supabase as any)
+    const { data: keys, error } = await (adminClient as any)
       .from('user_llm_keys')
       .select('*')
       .eq('user_id', user.id)
@@ -57,11 +65,17 @@ export async function GET(request: NextRequest) {
 // POST - 새 LLM 키 추가
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
     const body = await request.json()
@@ -78,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     // is_default가 true면 다른 같은 제공자의 기본 키 해제
     if (is_default) {
-      await (supabase as any)
+      await (adminClient as any)
         .from('user_llm_keys')
         .update({ is_default: false })
         .eq('user_id', user.id)
@@ -86,7 +100,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 새 키 추가
-    const { data: newKey, error } = await (supabase as any)
+    const { data: newKey, error } = await (adminClient as any)
       .from('user_llm_keys')
       .insert({
         user_id: user.id,
@@ -121,11 +135,17 @@ export async function POST(request: NextRequest) {
 // PATCH - LLM 키 수정
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
     const body = await request.json()
@@ -136,7 +156,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 기존 키 확인
-    const { data: existingKey } = await (supabase as any)
+    const { data: existingKey } = await (adminClient as any)
       .from('user_llm_keys')
       .select('*')
       .eq('id', id)
@@ -149,7 +169,7 @@ export async function PATCH(request: NextRequest) {
 
     // is_default가 true면 다른 같은 제공자의 기본 키 해제
     if (is_default) {
-      await (supabase as any)
+      await (adminClient as any)
         .from('user_llm_keys')
         .update({ is_default: false })
         .eq('user_id', user.id)
@@ -163,7 +183,7 @@ export async function PATCH(request: NextRequest) {
     if (is_active !== undefined) updateData.is_active = is_active
     if (api_key) updateData.api_key = encryptApiKey(api_key)
 
-    const { data: updatedKey, error } = await (supabase as any)
+    const { data: updatedKey, error } = await (adminClient as any)
       .from('user_llm_keys')
       .update(updateData)
       .eq('id', id)
@@ -191,11 +211,17 @@ export async function PATCH(request: NextRequest) {
 // DELETE - LLM 키 삭제
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 인증 확인 (dev 모드 지원)
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
     }
 
     const { searchParams } = new URL(request.url)
@@ -205,7 +231,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Key ID is required' }, { status: 400 })
     }
 
-    const { error } = await (supabase as any)
+    const { error } = await (adminClient as any)
       .from('user_llm_keys')
       .delete()
       .eq('id', id)

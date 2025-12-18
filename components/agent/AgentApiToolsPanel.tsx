@@ -182,7 +182,7 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
       setIsLoading(true)
 
       // Fetch user's LLM keys
-      const llmKeysRes = await fetch('/api/settings/llm-keys')
+      const llmKeysRes = await fetch('/api/user/llm-keys')
       if (llmKeysRes.ok) {
         const llmKeysData = await llmKeysRes.json()
         setUserLLMKeys(llmKeysData.keys || [])
