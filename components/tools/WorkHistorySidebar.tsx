@@ -149,25 +149,25 @@ export function WorkHistorySidebar({
             <button
                 onClick={handleToggle}
                 className={cn(
-                    "fixed right-0 top-1/2 -translate-y-1/2 z-50",
-                    "w-6 h-16 bg-zinc-800 hover:bg-zinc-700 rounded-l-lg",
-                    "flex items-center justify-center transition-all",
-                    "border-l border-t border-b border-zinc-700",
-                    isOpen && "right-[320px]"
+                    "fixed top-1/2 -translate-y-1/2 z-[100]",
+                    "w-8 h-20 bg-zinc-800 hover:bg-zinc-700 rounded-l-xl",
+                    "flex items-center justify-center transition-all duration-300",
+                    "border-l border-t border-b border-zinc-600 shadow-lg",
+                    isOpen ? "right-[320px]" : "right-0"
                 )}
             >
                 {isOpen ? (
-                    <ChevronRight className="w-4 h-4 text-zinc-400" />
+                    <ChevronRight className="w-5 h-5 text-white" />
                 ) : (
-                    <ChevronLeft className="w-4 h-4 text-zinc-400" />
+                    <ChevronLeft className="w-5 h-5 text-white" />
                 )}
             </button>
 
             {/* 사이드바 패널 */}
             <div
                 className={cn(
-                    "fixed right-0 top-0 h-full w-[320px] bg-zinc-900 border-l border-zinc-800 z-40",
-                    "transform transition-transform duration-300 ease-in-out",
+                    "fixed right-0 top-0 h-full w-[320px] bg-zinc-900 border-l border-zinc-700 z-[90]",
+                    "transform transition-transform duration-300 ease-in-out shadow-2xl",
                     isOpen ? "translate-x-0" : "translate-x-full"
                 )}
             >
