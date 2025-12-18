@@ -581,8 +581,7 @@ export default function AgentsPage() {
                           <div className="flex items-center justify-between mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/50">
                             {/* Model Info */}
                             <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
-                              <span className="text-base">{PROVIDER_INFO[(agent.llm_provider || 'ollama') as LLMProvider]?.icon || '🤖'}</span>
-                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate max-w-[90px]">
+                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">
                                 {agent.model || 'qwen2.5:3b'}
                               </span>
                             </div>
@@ -667,7 +666,6 @@ export default function AgentsPage() {
                           <span>{formatTimeAgo(agent.last_active_at)}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span>{PROVIDER_INFO[(agent.llm_provider || 'ollama') as LLMProvider]?.icon || '🤖'}</span>
                           <span>{agent.model || 'qwen2.5:3b'}</span>
                         </div>
                       </div>

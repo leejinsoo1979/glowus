@@ -3694,7 +3694,7 @@ export default function AgentProfilePage() {
                 isDark ? 'bg-zinc-800' : 'bg-zinc-100'
               )}
             >
-              <span className="text-lg">{providerInfo?.icon || '🤖'}</span>
+              <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">{(providerInfo?.name || agent.llm_provider || 'Ollama').split(' ')[0]}</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className={cn('text-xs uppercase mb-1', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
@@ -6161,7 +6161,7 @@ export default function AgentProfilePage() {
                       >
                         {Object.entries(PROVIDER_INFO).map(([key, info]) => (
                           <option key={key} value={key}>
-                            {info.icon} {info.name}
+                            {info.name}
                           </option>
                         ))}
                       </select>

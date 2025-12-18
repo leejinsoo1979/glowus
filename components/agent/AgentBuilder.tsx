@@ -1257,14 +1257,13 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
                                   setDeployLlmProvider(provider)
                                   setDeployLlmModel(getDefaultModel(provider))
                                 }}
-                                className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+                                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${
                                   deployLlmProvider === provider
                                     ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
                                     : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
                                 }`}
                               >
-                                <span className="text-lg">{info.icon}</span>
-                                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{provider}</span>
+                                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{info.name.split(' ')[0]}</span>
                                 {info.recommended && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full">추천</span>
                                 )}
