@@ -577,11 +577,128 @@ async function processAgentResponsesRelay(
   // - 진행자 모드: 회의 종료 시간까지 계속 (최대 20라운드)
   // - 일반 모드: 최대 5라운드, 3분
   // - 사용자가 새 메시지를 보내면 중단
-  const maxRounds = hasFacilitator ? 20 : 5  // 진행자 있으면 더 많은 라운드
-  const maxTimeMs = hasFacilitator ? 600000 : 180000 // 진행자: 10분, 일반: 3분
+  // 🔥 회의 모드 여부 확인 (회의 시간이 설정되어 있으면 회의 모드)
+  const { data: meetingInfo } = await supabase
+    .from('chat_rooms')
+    .select('is_meeting_active, meeting_end_time, meeting_duration_minutes')
+    .eq('id', roomId)
+    .single()
+
+  const isMeetingMode = meetingInfo?.is_meeting_active || meetingInfo?.meeting_end_time
+
+  // 라운드 수 계산:
+  // - 진행자 있으면: 20라운드
+  // - 회의 모드 (시간 설정됨): 15라운드
+  // - 일반: 8라운드 (기존 5 -> 8로 증가)
+  const maxRounds = hasFacilitator ? 20 : (isMeetingMode ? 15 : 8)
+
+  // 시간 제한:
+  // - 진행자: 10분
+  // - 회의 모드: 회의 종료 시간까지 (최대 30분)
+  // - 일반: 5분 (기존 3분 -> 5분으로 증가)
+  const maxTimeMs = hasFacilitator ? 600000 : (isMeetingMode ? 1800000 : 300000)
   const startTime = Date.now()
   let totalMessages = 0
   const maxTotalMessages = uniqueAgents.length * maxRounds
+
+  // 🕐 시간 상태 계산 헬퍼 함수
+  type TimePhase = 'start' | 'mid' | 'closing' | 'urgent' | 'expired' | 'no_limit'
+  interface TimeStatus {
+    phase: TimePhase
+    remainingSeconds: number | null
+    remainingPercent: number | null
+    hint: string
+    shouldPushConclusion: boolean
+    canRequestExtension: boolean
+  }
+
+  const getTimeStatus = async (): Promise<TimeStatus> => {
+    const { data: currentRoom } = await supabase
+      .from('chat_rooms')
+      .select('meeting_started_at, meeting_end_time, meeting_duration_minutes')
+      .eq('id', roomId)
+      .single()
+
+    // 회의 시간 설정이 없는 경우
+    if (!currentRoom?.meeting_end_time) {
+      return {
+        phase: 'no_limit',
+        remainingSeconds: null,
+        remainingPercent: null,
+        hint: '',
+        shouldPushConclusion: false,
+        canRequestExtension: false
+      }
+    }
+
+    const endTime = new Date(currentRoom.meeting_end_time).getTime()
+    const startedAt = currentRoom.meeting_started_at ? new Date(currentRoom.meeting_started_at).getTime() : startTime
+    const totalDuration = endTime - startedAt
+    const now = Date.now()
+    const remaining = endTime - now
+    const remainingSeconds = Math.floor(remaining / 1000)
+    const remainingPercent = Math.max(0, Math.min(100, (remaining / totalDuration) * 100))
+
+    // 시간 만료
+    if (remaining <= 0) {
+      return {
+        phase: 'expired',
+        remainingSeconds: 0,
+        remainingPercent: 0,
+        hint: '⏰ 시간 종료! 마지막 정리 한마디만.',
+        shouldPushConclusion: true,
+        canRequestExtension: true
+      }
+    }
+
+    // 1분 이내 - 긴급
+    if (remainingPercent <= 15 || remainingSeconds <= 60) {
+      return {
+        phase: 'urgent',
+        remainingSeconds,
+        remainingPercent,
+        hint: `⚠️ ${remainingSeconds}초 남음! 결론 내려야 해. 핵심만 빠르게.`,
+        shouldPushConclusion: true,
+        canRequestExtension: true
+      }
+    }
+
+    // 25% 이하 - 마무리 단계
+    if (remainingPercent <= 25) {
+      const mins = Math.floor(remainingSeconds / 60)
+      return {
+        phase: 'closing',
+        remainingSeconds,
+        remainingPercent,
+        hint: `🕐 ${mins}분 남음. 마무리 단계야. 결론 정리하자.`,
+        shouldPushConclusion: true,
+        canRequestExtension: false
+      }
+    }
+
+    // 50% 이하 - 중반
+    if (remainingPercent <= 50) {
+      const mins = Math.floor(remainingSeconds / 60)
+      return {
+        phase: 'mid',
+        remainingSeconds,
+        remainingPercent,
+        hint: `⏳ 시간 절반 지남 (${mins}분 남음). 핵심 논의에 집중.`,
+        shouldPushConclusion: false,
+        canRequestExtension: false
+      }
+    }
+
+    // 50% 이상 - 시작 단계
+    return {
+      phase: 'start',
+      remainingSeconds,
+      remainingPercent,
+      hint: '',
+      shouldPushConclusion: false,
+      canRequestExtension: false
+    }
+  }
 
   // 원본 사용자 메시지 시간 기록 (이 시간 이후 새 메시지가 있으면 중단)
   const originalMessageTime = new Date().toISOString()
@@ -870,6 +987,28 @@ async function processAgentResponsesRelay(
           ? '💬 다른 의견에 동의하지 않으면 솔직하게 반박해도 됩니다.'
           : ''
 
+        // 🕐 시간 상태 가져오기
+        const timeStatus = await getTimeStatus()
+        console.log(`[Relay] Time status: ${timeStatus.phase}, remaining: ${timeStatus.remainingSeconds}s (${timeStatus.remainingPercent?.toFixed(0)}%)`)
+
+        // 시간 기반 추가 지시사항
+        let timeInstruction = ''
+        if (timeStatus.hint) {
+          timeInstruction = `\n${timeStatus.hint}`
+        }
+
+        // 시간 부족 시 결론 유도 지시사항
+        let conclusionPush = ''
+        if (timeStatus.shouldPushConclusion) {
+          conclusionPush = '\n🏁 시간이 촉박해! 지금까지 나온 의견 정리하거나, 결론/결정을 제안해.'
+        }
+
+        // 시간 연장 요청 가능 여부
+        let extensionHint = ''
+        if (timeStatus.canRequestExtension && timeStatus.phase === 'urgent') {
+          extensionHint = '\n💬 시간이 더 필요하면 방장에게 "시간 좀 더 주세요", "5분만 연장해주세요" 같이 요청할 수 있어.'
+        }
+
         // 에이전트별 역할 설정
         const agentRole = meetingConfig?.agentConfigs?.find(c => c.id === agent.id)
         const roleInstructions: Record<string, string> = {
@@ -962,16 +1101,24 @@ ${topicInstruction ? '주제 언급하고 질문 던져' : ''}
         } else {
           // Phase 3+: 본격 토론
           if (isFacilitator) {
+            // 진행자는 시간 관리도 해야 함
+            let facilitatorTimeNote = ''
+            if (timeStatus.phase === 'closing') {
+              facilitatorTimeNote = '\n⏰ 마무리 시간이야. 의견 정리하고 결론 이끌어내.'
+            } else if (timeStatus.phase === 'urgent') {
+              facilitatorTimeNote = '\n⏰ 시간 거의 끝! "자 마무리하죠", "결론 내리면..." 식으로 정리해.'
+            }
+
             contextMessage = `${historyText}
 
 ---
-👑 당신: ${agent.name} (진행자) | 참여자: ${otherAgentNames || '사용자'}${topicInstruction}
+👑 당신: ${agent.name} (진행자) | 참여자: ${otherAgentNames || '사용자'}${topicInstruction}${timeInstruction}${facilitatorTimeNote}
 
 진행자로서 자연스럽게 참여해.
 - 주제 벗어나면: "어 잠깐, 다시 본론으로"
 - 의견 물을 때: "~는 어떻게 생각해요?"
 - 정리할 때: "음 정리하면..."
-- 너무 길어지면 끊어
+- 너무 길어지면 끊어${conclusionPush}
 
 🗣️ 말투: "어 근데", "아 그거", "음...", "오 괜찮은데" 등 자연스럽게
 - 1-2문장`
@@ -982,10 +1129,10 @@ ${topicInstruction ? '주제 언급하고 질문 던져' : ''}
             contextMessage = `${historyText}
 
 ---
-당신: ${agent.name} | 대화 상대: ${otherAgentNames || '사용자'}${topicInstruction}${facilitatorNote}
+당신: ${agent.name} | 대화 상대: ${otherAgentNames || '사용자'}${topicInstruction}${facilitatorNote}${timeInstruction}
 ${configInstruction ? `\n${configInstruction}` : ''}
 
-위 대화에 자연스럽게 참여하세요.
+위 대화에 자연스럽게 참여하세요.${conclusionPush}${extensionHint}
 
 🗣️ 말투: 실제 직장인/스타트업 회의처럼 (반말~존댓말 혼용 OK)
 예시: "어 근데 그거", "아 맞아맞아", "음... 글쎄", "오 괜찮은데?", "아니 근데 그건 좀...", "ㅋㅋ 그건 아닌듯"
@@ -1090,7 +1237,21 @@ ${configInstruction ? `\n${configInstruction}` : ''}
   }
 
   const elapsedSeconds = Math.round((Date.now() - startTime) / 1000)
-  console.log(`[Relay] Conversation completed: ${totalMessages} messages in ${elapsedSeconds}s`)
+
+  // 🔥 대화 종료 이유 상세 로그
+  let endReason = 'normal'
+  if (Date.now() - startTime > maxTimeMs) {
+    endReason = `time_limit (${maxTimeMs / 1000}s exceeded)`
+  } else if (totalMessages >= maxTotalMessages) {
+    endReason = `max_messages (${maxTotalMessages} reached)`
+  }
+
+  console.log(`[Relay] Conversation completed:
+    - Messages: ${totalMessages}/${maxTotalMessages}
+    - Time: ${elapsedSeconds}s/${maxTimeMs / 1000}s
+    - Rounds: started from ${startingRound}, max ${maxRounds}
+    - Mode: ${hasFacilitator ? 'facilitator' : (isMeetingMode ? 'meeting' : 'normal')}
+    - End reason: ${endReason}`)
 }
 
 // 🔥 단일 에이전트 응답 생성 (통합 함수 사용)
