@@ -176,7 +176,7 @@ export function AgentApiToolsPanel({ agentId, isDark = true }: AgentApiToolsPane
     }
   }
 
-  const categories = [...new Set(tools.map((t) => t.category))]
+  const categories = Array.from(new Set(tools.map((t) => t.category)))
   const filteredTools = selectedCategory
     ? tools.filter((t) => t.category === selectedCategory)
     : tools

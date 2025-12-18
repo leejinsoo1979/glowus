@@ -12,6 +12,7 @@ import {
 import { getMemoryService } from '@/lib/agents/memory'
 import { getDevUserIfEnabled } from '@/lib/dev-user'
 import { parseFileFromUrl, formatFilesForContext, ParsedFileContent } from '@/lib/utils/file-parser'
+import { getLLMConfigForAgent } from '@/lib/llm/user-keys'
 
 // GET: 메시지 목록 조회 (페이지네이션)
 export async function GET(
@@ -212,7 +213,7 @@ export async function POST(
 
     // AI 에이전트가 있는 방이면 자동 응답 트리거 (adminClient로 RLS 우회)
     console.log('[Messages API] 메시지 저장 완료, 에이전트 응답 트리거 시작')
-    await triggerAgentResponse(adminClient, roomId, message)
+    await triggerAgentResponse(adminClient, roomId, message, user.id)
     console.log('[Messages API] 에이전트 응답 트리거 완료')
 
     return NextResponse.json(message, { status: 201 })
@@ -273,7 +274,8 @@ async function fetchAndParseRoomFiles(
 async function triggerAgentResponse(
   supabase: any,
   roomId: string,
-  userMessage: any
+  userMessage: any,
+  userId?: string
 ) {
   try {
     // 방에 참여한 에이전트 조회
@@ -333,12 +335,12 @@ async function triggerAgentResponse(
     // 에이전트가 1개면 기존 방식 (빠른 응답), 여러 개면 오케스트레이터
     if (agents.length === 1) {
       // 기존 단일 에이전트 방식
-      generateAgentResponseHandler(supabase, roomId, agents[0], messageWithFiles).catch((err) =>
+      generateAgentResponseHandler(supabase, roomId, agents[0], messageWithFiles, userId).catch((err) =>
         console.error(`Agent ${agents[0].id} response error:`, err)
       )
     } else {
       // 멀티 에이전트 오케스트레이터
-      triggerMultiAgentResponse(supabase, roomId, agents, messageWithFiles, room).catch((err) =>
+      triggerMultiAgentResponse(supabase, roomId, agents, messageWithFiles, room, userId).catch((err) =>
         console.error('Multi-agent response error:', err)
       )
     }
@@ -353,7 +355,8 @@ async function triggerMultiAgentResponse(
   roomId: string,
   agents: any[],
   userMessage: any,
-  room: any
+  room: any,
+  userId?: string
 ) {
   console.log(`[Multi-Agent] Starting response for ${agents.length} agents:`, agents.map((a: any) => a.name))
   try {
@@ -405,7 +408,8 @@ async function triggerMultiAgentResponse(
         meetingTopic: room?.meeting_topic,
         facilitatorId: room?.meeting_facilitator_id, // 진행자 ID
       },
-      imageUrls // 🔥 이미지 전달
+      imageUrls, // 🔥 이미지 전달
+      userId // 🔥 사용자 ID (API 키 조회용)
     )
     console.log('[Multi-Agent] Relay responses completed')
   } catch (error) {
@@ -463,7 +467,8 @@ async function processAgentResponsesRelay(
   agents: any[],
   userContent: string,
   roomContext: { roomId: string; roomName?: string; roomType?: string; isMeeting?: boolean; meetingTopic?: string; facilitatorId?: string },
-  images: string[] = [] // 🔥 이미지 파라미터 추가
+  images: string[] = [], // 🔥 이미지 파라미터 추가
+  userId?: string // 🔥 사용자 ID (API 키 조회용)
 ) {
   const { roomId, facilitatorId } = roomContext
 
@@ -479,7 +484,7 @@ async function processAgentResponsesRelay(
       const agent = uniqueAgents[0]
       await supabase.from('chat_participants').update({ is_typing: true }).eq('room_id', roomId).eq('agent_id', agent.id)
       try {
-        const response = await generateSingleAgentResponse(supabase, agent, userContent, roomContext, images) // 🔥 이미지 전달
+        const response = await generateSingleAgentResponse(supabase, agent, userContent, roomContext, images, userId) // 🔥 이미지 전달
         if (response) {
           await supabase.from('chat_messages').insert({
             room_id: roomId,
@@ -660,7 +665,7 @@ async function processAgentResponsesRelay(
 - 이전 발언을 간단히 정리하거나 코멘트해도 좋아요
 - 1-2문장, 한국어만`
 
-      let facilitatorResponse = await generateSingleAgentResponse(supabase, facilitatorAgent, facilitatorPrompt, roomContext, images)
+      let facilitatorResponse = await generateSingleAgentResponse(supabase, facilitatorAgent, facilitatorPrompt, roomContext, images, userId)
 
       if (facilitatorResponse) {
         // 응답 정제
@@ -721,7 +726,7 @@ async function processAgentResponsesRelay(
 - 다른 사람 의견에 동의/반박할 수도 있어요
 - 1-3문장, 한국어만`
 
-      let agentResponse = await generateSingleAgentResponse(supabase, agentToAsk, agentPrompt, roomContext, images)
+      let agentResponse = await generateSingleAgentResponse(supabase, agentToAsk, agentPrompt, roomContext, images, userId)
 
       if (agentResponse) {
         agentResponse = cleanAgentResponse(agentResponse, uniqueAgents)
@@ -976,7 +981,7 @@ ${topicInstruction ? '그리고 주제에 대한 첫 의견을 던지세요.' : 
         }
 
         // 에이전트 응답 생성
-        let response = await generateSingleAgentResponse(supabase, agent, contextMessage, roomContext, images)
+        let response = await generateSingleAgentResponse(supabase, agent, contextMessage, roomContext, images, userId)
 
         // 자기 이름 및 다른 에이전트 이름 접두어 제거
         if (response) {
@@ -1079,7 +1084,8 @@ async function generateSingleAgentResponse(
   agent: any,
   contextMessage: string,
   roomContext: { roomId: string; roomName?: string; roomType?: string },
-  images: string[] = [] // 🔥 이미지 파라미터 추가
+  images: string[] = [], // 🔥 이미지 파라미터 추가
+  userId?: string // 🔥 사용자 ID (API 키 조회용)
 ): Promise<string> {
   // 🔥 에이전트의 과거 기억 로드 (영속적 인격)
   let recentConversations = ''
@@ -1141,10 +1147,25 @@ async function generateSingleAgentResponse(
   console.log(`  - Name: ${agent.name}`)
   console.log(`  - Memory: ${recentConversations ? 'YES' : 'NO'}`)
 
+  // 🔥 사용자의 LLM API 키 가져오기
+  let userApiKey: string | undefined
+  if (userId) {
+    try {
+      const provider = agent.llm_provider || 'grok'
+      const llmConfig = await getLLMConfigForAgent(userId, provider)
+      userApiKey = llmConfig.apiKey
+      if (llmConfig.useUserKey) {
+        console.log(`[generateSingleAgentResponse] Using user's ${provider} API key`)
+      }
+    } catch (keyError) {
+      console.warn('[generateSingleAgentResponse] Failed to fetch user LLM key:', keyError)
+    }
+  }
+
   // 🔥 통합 함수 호출 (generateAgentChatResponse)
   try {
     const response = await generateAgentChatResponse(
-      agent,
+      { ...agent, apiKey: userApiKey }, // 🔥 사용자 API 키 주입
       contextMessage,
       [], // 채팅 히스토리는 contextMessage에 포함됨
       {
@@ -1169,7 +1190,8 @@ async function generateAgentResponseHandler(
   supabase: any,
   roomId: string,
   agent: any,
-  userMessage: any
+  userMessage: any,
+  userId?: string
 ) {
   console.log(`[generateAgentResponse] 시작 - Agent: ${agent.name} (${agent.id})`)
   const memoryService = getMemoryService(supabase)
@@ -1341,6 +1363,21 @@ ${memoryContext}
 위 기억을 바탕으로 일관성 있게 응답하세요. 이전에 한 말이나 결정을 기억하고 참조하세요.`
     }
 
+    // 🔥 사용자의 LLM API 키 가져오기
+    let userApiKey: string | undefined
+    if (userId) {
+      try {
+        const provider = agent.llm_provider || 'grok'
+        const llmConfig = await getLLMConfigForAgent(userId, provider)
+        userApiKey = llmConfig.apiKey
+        if (llmConfig.useUserKey) {
+          console.log(`[generateAgentResponse] Using user's ${provider} API key`)
+        }
+      } catch (keyError) {
+        console.warn('[generateAgentResponse] Failed to fetch user LLM key:', keyError)
+      }
+    }
+
     // LangChain을 사용한 응답 생성
     let response: string
 
@@ -1362,6 +1399,7 @@ ${memoryContext}
       const agentWithConfig = {
         ...agent,
         system_prompt: enhancedSystemPrompt,
+        apiKey: userApiKey, // 🔥 사용자 API 키 주입
       }
 
       console.log(`[generateAgentResponse] 미팅 모드 - ${agent.name} using ${agent.llm_provider || 'ollama'}/${agent.model || 'qwen2.5:3b'}`)
@@ -1378,6 +1416,7 @@ ${memoryContext}
       const agentWithConfig = {
         ...agent,
         system_prompt: enhancedSystemPrompt,
+        apiKey: userApiKey, // 🔥 사용자 API 키 주입
       }
 
       console.log(`[generateAgentResponse] LangChain 응답 생성 시작, ${agent.name} using ${agent.llm_provider || 'ollama'}/${agent.model || 'qwen2.5:3b'}`)
