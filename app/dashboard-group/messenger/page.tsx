@@ -14,6 +14,7 @@ import { Button } from '@/components/ui'
 import { useChatRooms, useChatRoom, usePresence, useMeeting } from '@/hooks/useChat'
 import { ChatRoom, ChatMessage, ChatParticipant } from '@/types/chat'
 import { DEV_USER, isDevMode } from '@/lib/dev-user'
+import { useAuth } from '@/hooks/useAuth'
 import { PROVIDER_INFO, LLMProvider } from '@/lib/llm/models'
 
 // 참여자별 고유 색상 팔레트
@@ -74,6 +75,10 @@ export default function MessengerPage() {
   } = useChatRoom(activeRoomId)
   const { onlineUsers } = usePresence(activeRoomId)
   const { meetingStatus, loading: meetingLoading, startMeeting, endMeeting } = useMeeting(activeRoomId)
+  const { user: authUser } = useAuth()
+
+  // 현재 사용자 ID (DEV 모드 or 실제 로그인)
+  const currentUserId = isDevMode() ? DEV_USER.id : authUser?.id || null
 
   // 필터링된 채팅방
   const filteredRooms = rooms.filter(room => {
@@ -248,8 +253,7 @@ export default function MessengerPage() {
 
   // 현재 사용자가 방장인지 확인
   const isRoomOwner = () => {
-    if (!activeRoom) return false
-    const currentUserId = isDevMode() ? DEV_USER.id : null
+    if (!activeRoom || !currentUserId) return false
     return activeRoom.created_by === currentUserId
   }
 
@@ -661,8 +665,7 @@ export default function MessengerPage() {
             </div>
           ) : (
             messages.map((msg) => {
-              // DEV 모드에서는 DEV_USER.id와 비교, 아니면 room creator와 비교 (임시)
-              const currentUserId = isDevMode() ? DEV_USER.id : activeRoom?.created_by
+              // 내가 보낸 메시지인지 확인
               const isMe = msg.sender_type === 'user' && msg.sender_user_id === currentUserId
               const isAgent = msg.sender_type === 'agent'
               const senderName = msg.sender_user?.name || msg.sender_agent?.name || '알 수 없음'
@@ -956,7 +959,6 @@ export default function MessengerPage() {
                       const name = participant.user?.name || participant.agent?.name || '알 수 없음'
                       const avatar = name.slice(0, 2).toUpperCase()
                       const isOwner = participant.user_id === activeRoom.created_by
-                      const currentUserId = isDevMode() ? DEV_USER.id : null
                       const isMe = participant.user_id === currentUserId
 
                       return (

@@ -4506,17 +4506,11 @@ export default function AgentProfilePage() {
                         onClick={async () => {
                           if (!agent || chatLoading) return
 
-                          // 1. 시스템 메시지 먼저 추가 (로딩 전에)
-                          const systemMessage = {
-                            id: `system-${Date.now()}`,
-                            role: 'system' as const,
-                            content: '대화가 시작되었습니다.',
-                            timestamp: new Date(),
-                          }
-                          setChatMessages((prev) => [...prev, systemMessage])
-
-                          // 2. 메시지 추가 후 로딩 시작
+                          // 1. 로딩 먼저 시작 (로딩 화면 표시)
                           setChatLoading(true)
+
+                          // 잠시 대기 (로딩 화면이 보이도록)
+                          await new Promise(resolve => setTimeout(resolve, 100))
 
                           // 2. 에이전트에게 인사 요청 (대화 맥락에 맞게)
                           let greetingContent = `안녕하세요! ${agent?.name || '에이전트'}입니다. 무엇을 도와드릴까요?`
