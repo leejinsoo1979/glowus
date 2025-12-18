@@ -1606,23 +1606,91 @@ function ApiConnectionsTab({ agentId, isDark }: { agentId: string; isDark: boole
           ))}
         </div>
       ) : (
-        <div
-          className={cn(
-            'text-center py-16 rounded-xl border-2 border-dashed',
-            isDark ? 'border-zinc-800' : 'border-gray-200'
-          )}
-        >
-          <Zap className={cn('w-12 h-12 mx-auto mb-4', isDark ? 'text-gray-600' : 'text-gray-400')} />
-          <h3 className={cn('text-lg font-medium mb-2', isDark ? 'text-white' : 'text-gray-900')}>
-            연결된 API가 없습니다
-          </h3>
-          <p className={cn('text-sm mb-4', isDark ? 'text-gray-400' : 'text-gray-600')}>
-            공공 API나 커스텀 API를 연결하여 에이전트의 능력을 확장하세요
-          </p>
-          <Button onClick={() => setShowAddModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            첫 API 연결하기
-          </Button>
+        <div className="space-y-6">
+          {/* 연결 가능한 API 프리셋 */}
+          {Object.entries(presetsByCategory).map(([category, categoryPresets]) => (
+            <div key={category}>
+              <h3 className={cn('text-sm font-semibold mb-3 flex items-center gap-2', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {apiCategoryLabels[category] || category}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {categoryPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      selectPreset(preset)
+                      setShowAddModal(true)
+                    }}
+                    className={cn(
+                      'p-4 rounded-xl border text-left transition-all group hover:scale-[1.02]',
+                      isDark
+                        ? 'bg-zinc-900 border-zinc-800 hover:border-emerald-500/50 hover:bg-zinc-800/50'
+                        : 'bg-white border-zinc-200 hover:border-emerald-500/50 hover:bg-zinc-50'
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cn(
+                        'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+                        isDark ? 'bg-zinc-800 group-hover:bg-emerald-500/10' : 'bg-zinc-100 group-hover:bg-emerald-500/10'
+                      )}>
+                        <Zap className={cn('w-5 h-5', isDark ? 'text-zinc-500 group-hover:text-emerald-500' : 'text-zinc-400 group-hover:text-emerald-500')} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className={cn('font-medium text-sm mb-1', isDark ? 'text-white' : 'text-zinc-900')}>
+                          {preset.name}
+                        </h4>
+                        <p className={cn('text-xs line-clamp-2', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
+                          {preset.description}
+                        </p>
+                        <div className={cn('text-xs mt-2', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
+                          {preset.endpoints?.length || 0}개 엔드포인트
+                        </div>
+                      </div>
+                      <ChevronRight className={cn('w-4 h-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity', isDark ? 'text-emerald-500' : 'text-emerald-600')} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* 커스텀 API 추가 */}
+          <div>
+            <h3 className={cn('text-sm font-semibold mb-3 flex items-center gap-2', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              커스텀 API
+            </h3>
+            <button
+              onClick={() => {
+                setSelectedPreset(null)
+                setShowAddModal(true)
+              }}
+              className={cn(
+                'w-full p-4 rounded-xl border-2 border-dashed text-left transition-all hover:scale-[1.01]',
+                isDark
+                  ? 'border-zinc-800 hover:border-blue-500/50 hover:bg-zinc-900/50'
+                  : 'border-zinc-200 hover:border-blue-500/50 hover:bg-zinc-50'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  'w-10 h-10 rounded-lg flex items-center justify-center',
+                  isDark ? 'bg-zinc-800' : 'bg-zinc-100'
+                )}>
+                  <Plus className={cn('w-5 h-5', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
+                </div>
+                <div>
+                  <h4 className={cn('font-medium text-sm', isDark ? 'text-white' : 'text-zinc-900')}>
+                    직접 API 추가
+                  </h4>
+                  <p className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
+                    REST API를 직접 설정하여 연결합니다
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
         </div>
       )}
 
