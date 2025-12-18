@@ -62,10 +62,12 @@ const lightTheme = {
 
 const MAX_TERMINAL_RECONNECT_ATTEMPTS = 3
 
-// Production 환경 체크 (Vercel에서는 localhost 연결 불가)
-const isProduction = typeof window !== 'undefined' &&
-  !window.location.hostname.includes('localhost') &&
-  !window.location.hostname.includes('127.0.0.1')
+// Production 환경 체크 함수 (런타임에 평가)
+function checkIsProduction(): boolean {
+  if (typeof window === 'undefined') return true // SSR에서는 production으로 간주
+  const hostname = window.location.hostname
+  return !hostname.includes('localhost') && !hostname.includes('127.0.0.1')
+}
 
 export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -78,7 +80,15 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
   const isMountedRef = useRef(false)
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const isProductionRef = useRef<boolean | null>(null) // Production 여부 캐시
   const { resolvedTheme } = useTheme()
+
+  // Production 체크 (캐시됨)
+  const isProductionEnv = (): boolean => {
+    if (isProductionRef.current !== null) return isProductionRef.current
+    isProductionRef.current = checkIsProduction()
+    return isProductionRef.current
+  }
 
   // 테마 변경 시 xterm 테마 업데이트
   useEffect(() => {
@@ -184,7 +194,7 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     // Production 환경에서는 WebSocket 연결 시도하지 않음
-    if (isProduction) {
+    if (isProductionEnv()) {
       terminal.write('\x1b[36m┌─────────────────────────────────────────────────────┐\x1b[0m\r\n')
       terminal.write('\x1b[36m│\x1b[0m  \x1b[33m⚡ Cloud Terminal Mode\x1b[0m                            \x1b[36m│\x1b[0m\r\n')
       terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
@@ -198,9 +208,11 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
     }
 
     if (reconnectAttemptsRef.current >= MAX_TERMINAL_RECONNECT_ATTEMPTS) {
-      console.log(`[Terminal] 최대 재연결 횟수(${MAX_TERMINAL_RECONNECT_ATTEMPTS})에 도달`)
-      terminal.write('\r\n\x1b[31m[Max reconnection attempts reached]\x1b[0m\r\n')
-      terminal.write('\x1b[33mRun: node server/terminal-server.js\x1b[0m\r\n')
+      // Production에서는 메시지 표시하지 않음
+      if (!isProductionEnv()) {
+        terminal.write('\r\n\x1b[31m[Max reconnection attempts reached]\x1b[0m\r\n')
+        terminal.write('\x1b[33mRun: node server/terminal-server.js\x1b[0m\r\n')
+      }
       return
     }
 
@@ -249,22 +261,21 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
 
     ws.onclose = () => {
       if (!isMountedRef.current) return
-      console.log('Terminal disconnected')
       wsRef.current = null
+
+      // Production 환경에서는 재연결 시도하지 않음
+      if (isProductionEnv()) return
 
       // 재연결 시도 (제한 있음)
       if (reconnectTimerRef.current) return
       if (reconnectAttemptsRef.current >= MAX_TERMINAL_RECONNECT_ATTEMPTS) {
-        console.log(`[Terminal] 최대 재연결 횟수(${MAX_TERMINAL_RECONNECT_ATTEMPTS})에 도달`)
         return
       }
 
       reconnectAttemptsRef.current++
-      console.log(`[Terminal] 재연결 시도 ${reconnectAttemptsRef.current}/${MAX_TERMINAL_RECONNECT_ATTEMPTS}...`)
-
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null
-        if (isMountedRef.current && xtermRef.current) {
+        if (isMountedRef.current && xtermRef.current && !isProductionEnv()) {
           connectWebSocket(xtermRef.current)
         }
       }, 3000)
@@ -272,6 +283,8 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
 
     ws.onerror = () => {
       if (!isMountedRef.current) return
+      // Production 환경에서는 에러 메시지 표시하지 않음
+      if (isProductionEnv()) return
       terminal.write('\r\n\x1b[31m[Connection error]\x1b[0m\r\n')
       terminal.write('\x1b[33mRun: node server/terminal-server.js\x1b[0m\r\n')
     }
