@@ -125,10 +125,10 @@ export default function DashboardLayout({
   // Prevent hydration mismatch - show simple loading until mounted
   if (!mounted || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-900">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-zinc-900">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-zinc-400">로딩 중...</p>
+          <p className="text-zinc-500 dark:text-zinc-400">로딩 중...</p>
         </div>
       </div>
     )
