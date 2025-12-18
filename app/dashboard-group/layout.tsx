@@ -150,13 +150,14 @@ export default function DashboardLayout({
       <WorkHistorySidebar />
       <main
         className={cn(
-          "pt-16",
           "transition-all duration-300",
-          isFullWidthPage ? "h-screen overflow-hidden" : "min-h-screen"
+          isFullWidthPage ? "h-screen pt-16 flex flex-col" : "min-h-screen pt-16"
         )}
         style={{ paddingLeft: `${sidebarWidth}px` }}
       >
-        <div className={isFullWidthPage ? (isEmailPage ? "h-[calc(100vh-64px)] overflow-hidden" : "h-[calc(100vh-64px)] overflow-hidden") : "p-8"}>
+        <div className={cn(
+          isFullWidthPage ? "flex-1 overflow-hidden" : "p-8"
+        )}>
           {children}
         </div>
       </main>
