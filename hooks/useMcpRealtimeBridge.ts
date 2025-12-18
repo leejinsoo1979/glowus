@@ -402,34 +402,24 @@ export function useMcpRealtimeBridge({
   const reconnect = useCallback(() => {
     log('수동 재연결 시도...')
     if (bridgeRef.current) {
-      bridgeRef.current.disconnect()
+      bridgeRef.current.reconnect()
     }
+  }, [log])
 
-    const sid = getOrCreateSessionId()
+  /**
+   * 연결 상태 주기적 확인
+   */
+  useEffect(() => {
+    const checkConnection = setInterval(() => {
+      if (bridgeRef.current && !bridgeRef.current.connected && mountedRef.current) {
+        log('연결 상태 확인: 끊어짐 감지, 재연결 시도...')
+        setIsConnected(false)
+        bridgeRef.current.reconnect()
+      }
+    }, 10000) // 10초마다 확인
 
-    const bridge = new McpRealtimeBridge({
-      supabase,
-      sessionId: sid,
-      clientType: 'frontend',
-      onMessage: handleMessage,
-      onConnect: () => {
-        if (mountedRef.current) {
-          log(`재연결됨 (세션: ${sid})`)
-          setIsConnected(true)
-          sendCanvasState()
-        }
-      },
-      onDisconnect: () => {
-        if (mountedRef.current) {
-          log('연결 해제됨')
-          setIsConnected(false)
-        }
-      },
-    })
-
-    bridgeRef.current = bridge
-    bridge.connect()
-  }, [supabase, handleMessage, log, sendCanvasState])
+    return () => clearInterval(checkConnection)
+  }, [log])
 
   return {
     isConnected,
