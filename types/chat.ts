@@ -4,6 +4,13 @@ export type ChatRoomType = 'direct' | 'group' | 'meeting'
 export type ParticipantType = 'user' | 'agent'
 export type MessageType = 'text' | 'image' | 'file' | 'system'
 
+// 회의 첨부 자료
+export interface MeetingAttachment {
+  name: string
+  content: string
+  type: string
+}
+
 // 채팅방
 export interface ChatRoom {
   id: string
@@ -13,6 +20,8 @@ export interface ChatRoom {
   created_by: string
   is_meeting_active: boolean
   meeting_topic: string | null
+  category: string | null
+  meeting_attachments: MeetingAttachment[] | null
   last_message_at: string
   created_at: string
   updated_at: string
@@ -80,6 +89,8 @@ export interface CreateRoomRequest {
   name?: string
   type: ChatRoomType
   team_id?: string
+  category?: string
+  attachments?: MeetingAttachment[]
   participant_ids: {
     type: ParticipantType
     id: string

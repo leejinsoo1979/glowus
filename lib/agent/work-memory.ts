@@ -22,6 +22,7 @@ export type WorkMemoryType =
   | 'preference'     // 사용자 선호도
   | 'mistake'        // 실수 및 교정
   | 'decision'       // 의사결정 근거
+  | 'meeting'        // 회의 대화 기록
 
 export interface WorkMemory {
   id: string
@@ -327,6 +328,42 @@ export async function savePreference(params: {
 }
 
 /**
+ * 회의 대화 저장
+ * 회의실에서 에이전트가 참여한 대화를 저장
+ */
+export async function saveMeetingMessage(params: {
+  agentId: string
+  userId: string
+  roomId: string
+  roomName: string
+  userMessage: string
+  agentResponse: string
+  participantNames: string[]
+}): Promise<void> {
+  const content = `[회의: ${params.roomName}]
+참여자: ${params.participantNames.join(', ')}
+
+사용자: ${params.userMessage}
+
+내 응답: ${params.agentResponse}`
+
+  await saveWorkMemory({
+    agentId: params.agentId,
+    userId: params.userId,
+    memoryType: 'meeting',
+    title: `회의 대화 - ${params.roomName}`,
+    content,
+    importance: 6,
+    tags: ['회의', params.roomName],
+    metadata: {
+      roomId: params.roomId,
+      roomName: params.roomName,
+      participantNames: params.participantNames,
+    },
+  })
+}
+
+/**
  * 활성 컨텍스트 조회
  */
 export async function getActiveContext(agentId: string, userId: string): Promise<ActiveContext | null> {
@@ -470,6 +507,7 @@ export async function loadAgentWorkContext(agentId: string, userId: string): Pro
   recentMemories: WorkMemory[]
   importantMemories: WorkMemory[]
   pendingTasks: any[]
+  meetingHistory: any[]
 }> {
   // 1. 활성 컨텍스트
   const activeContext = await getActiveContext(agentId, userId)
@@ -503,11 +541,73 @@ export async function loadAgentWorkContext(agentId: string, userId: string): Pro
     .order('priority', { ascending: false })
     .limit(5)
 
+  // 5. 회의실 대화 기록 (에이전트가 참여한 방의 최근 대화)
+  let meetingHistory: any[] = []
+  try {
+    // 5-1. 에이전트가 참여한 채팅방 조회
+    const { data: participantRooms } = await (getSupabase() as any)
+      .from('chat_participants')
+      .select('room_id, chat_rooms(id, name, type)')
+      .eq('agent_id', agentId)
+      .limit(10)
+
+    if (participantRooms && participantRooms.length > 0) {
+      const roomIds = participantRooms.map((p: any) => p.room_id)
+      const roomNameMap: Record<string, string> = {}
+      participantRooms.forEach((p: any) => {
+        if (p.chat_rooms) {
+          roomNameMap[p.room_id] = p.chat_rooms.name || '채팅방'
+        }
+      })
+
+      // 5-2. 해당 방들의 최근 메시지 조회 (사용자 메시지와 자신의 응답)
+      const { data: messages } = await (getSupabase() as any)
+        .from('chat_messages')
+        .select('room_id, sender_type, sender_user_id, sender_agent_id, content, created_at')
+        .in('room_id', roomIds)
+        .gte('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()) // 48시간
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (messages && messages.length > 0) {
+        // 방별로 그룹화
+        const messagesByRoom: Record<string, any[]> = {}
+        for (const msg of messages) {
+          if (!messagesByRoom[msg.room_id]) {
+            messagesByRoom[msg.room_id] = []
+          }
+          messagesByRoom[msg.room_id].push(msg)
+        }
+
+        // 각 방의 대화를 요약
+        for (const [roomId, roomMessages] of Object.entries(messagesByRoom)) {
+          const roomName = roomNameMap[roomId] || '채팅방'
+          // 최근 10개 메시지만 사용
+          const recentMsgs = (roomMessages as any[]).slice(0, 10).reverse()
+
+          meetingHistory.push({
+            roomId,
+            roomName,
+            messages: recentMsgs.map((m: any) => ({
+              role: m.sender_type,
+              content: m.content,
+              isMe: m.sender_agent_id === agentId,
+              timestamp: m.created_at,
+            })),
+          })
+        }
+      }
+    }
+  } catch (meetingError) {
+    console.error('[WorkMemory] Meeting history load error:', meetingError)
+  }
+
   return {
     activeContext,
     recentMemories: recentMemories || [],
     importantMemories: importantMemories || [],
     pendingTasks: pendingTasks || [],
+    meetingHistory,
   }
 }
 
@@ -519,8 +619,27 @@ export function formatContextForPrompt(context: {
   recentMemories: WorkMemory[]
   importantMemories: WorkMemory[]
   pendingTasks: any[]
+  meetingHistory?: any[]
 }): string {
   const parts: string[] = []
+
+  // 회의실 대화 기록 (가장 먼저 - 중요한 컨텍스트)
+  if (context.meetingHistory && context.meetingHistory.length > 0) {
+    const meetingParts: string[] = []
+    for (const room of context.meetingHistory) {
+      const msgs = room.messages.slice(-5) // 최근 5개만
+      if (msgs.length > 0) {
+        const msgTexts = msgs.map((m: any) => {
+          const speaker = m.isMe ? '나' : (m.role === 'user' ? '사용자' : '다른 에이전트')
+          return `  - ${speaker}: ${m.content.slice(0, 100)}${m.content.length > 100 ? '...' : ''}`
+        }).join('\n')
+        meetingParts.push(`### ${room.roomName}\n${msgTexts}`)
+      }
+    }
+    if (meetingParts.length > 0) {
+      parts.push(`## 🗣️ 최근 회의실 대화\n${meetingParts.join('\n\n')}`)
+    }
+  }
 
   // 활성 컨텍스트
   if (context.activeContext) {
@@ -598,6 +717,7 @@ export default {
   saveCollaboration,
   saveDecision,
   savePreference,
+  saveMeetingMessage,
   getActiveContext,
   updateActiveContext,
   loadAgentWorkContext,
