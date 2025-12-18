@@ -105,11 +105,6 @@ export function useChatRoom(roomId: string | null) {
       p.agent_id
     ) ?? false
     hasAgentRef.current = hasAgent
-    console.log('[useChat] Room updated - hasAgent:', hasAgent, 'participants:', room?.participants?.map(p => ({
-      type: p.participant_type,
-      agent_id: p.agent_id,
-      agent: p.agent?.name
-    })))
   }, [room])
 
   // 채팅방 정보 조회
@@ -219,7 +214,6 @@ export function useChatRoom(roomId: string | null) {
         lastMessageIdRef.current = lastMsg.id
         // 에이전트 메시지이고 타이핑 중이면 해제
         if (lastMsg.sender_type === 'agent' && agentTyping) {
-          console.log('[useChat] New agent message received:', lastMsg.id, 'setting agentTyping to false')
           setAgentTyping(false)
         }
       }
@@ -237,17 +231,12 @@ export function useChatRoom(roomId: string | null) {
     // 채팅방에 에이전트가 있는지 확인 (ref에서 가져옴 - 항상 최신 값)
     const hasAgent = hasAgentRef.current
 
-    console.log('[useChat] sendMessage - hasAgent:', hasAgent, '(from ref)')
-
     try {
       setSending(true)
 
       // 에이전트가 있으면 타이핑 상태 설정
       if (hasAgent) {
-        console.log('[useChat] Setting agentTyping to TRUE - waiting for agent response')
         setAgentTyping(true)
-      } else {
-        console.log('[useChat] No agent in room, skipping agentTyping')
       }
 
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
@@ -271,7 +260,6 @@ export function useChatRoom(roomId: string | null) {
       // 에이전트 응답 타임아웃 (15초 후 타이핑 상태 해제)
       if (hasAgent) {
         setTimeout(() => {
-          console.log('[useChat] Agent typing timeout reached, setting agentTyping to false')
           setAgentTyping(false)
         }, 15000)
       }
