@@ -106,40 +106,39 @@ export function YoutubeViewer({
         navigator.clipboard.writeText(text)
     }
 
+    // videoId가 없으면 전체 화면 플레이스홀더만 표시
+    if (!videoId) {
+        return (
+            <div className="h-full flex bg-zinc-900 overflow-hidden">
+                <div className="flex-1 flex flex-col items-center justify-center">
+                    <Youtube className="w-20 h-20 text-zinc-700 mb-4" />
+                    <p className="text-zinc-500 text-sm">유튜브 링크를 입력하세요</p>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="h-full flex bg-white dark:bg-zinc-950 overflow-hidden">
             {/* 왼쪽: 영상 (고정) + 댓글 (별도 스크롤) */}
             <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
                 {/* 영상 제목 헤더 - 고정 */}
                 <div className="flex-shrink-0 h-[49px] flex items-center px-4 border-b border-zinc-200 dark:border-zinc-800">
-                    {videoInfo ? (
-                        <h2 className="text-sm font-semibold text-zinc-900 dark:text-white line-clamp-1">
-                            {videoInfo.title}
-                        </h2>
-                    ) : (
-                        <h2 className="text-sm font-semibold text-zinc-500">
-                            유튜브 영상 요약
-                        </h2>
-                    )}
+                    <h2 className="text-sm font-semibold text-zinc-900 dark:text-white line-clamp-1">
+                        {videoInfo?.title || '유튜브 영상 요약'}
+                    </h2>
                 </div>
 
                 {/* 영상 플레이어 - 고정 */}
                 <div className="flex-shrink-0 w-full bg-black">
                     <div className="w-full aspect-video">
-                        {videoId ? (
-                            <iframe
-                                ref={iframeRef}
-                                src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1`}
-                                className="w-full h-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                            />
-                        ) : (
-                            <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center">
-                                <Youtube className="w-16 h-16 text-zinc-700 mb-4" />
-                                <p className="text-zinc-500 text-sm">유튜브 링크를 입력하세요</p>
-                            </div>
-                        )}
+                        <iframe
+                            ref={iframeRef}
+                            src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1`}
+                            className="w-full h-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                        />
                     </div>
                 </div>
 
@@ -165,53 +164,50 @@ export function YoutubeViewer({
                 )}
 
                 {/* 댓글 섹션 - 별도 스크롤 컨테이너 */}
-                {videoId && (
-                    <div className="flex-1 min-h-0 overflow-y-auto border-t border-zinc-200 dark:border-zinc-800">
-                        <div className="p-4">
-                            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                                <MessageSquare className="w-4 h-4" />
-                                댓글 {comments.length > 0 ? `${comments.length}개` : ''}
-                            </h3>
-                            {comments.length > 0 && (
-                                <div className="space-y-4">
-                                    {comments.map((comment) => (
-                                        <div key={comment.id} className="flex gap-3">
-                                            <img
-                                                src={comment.authorImage}
-                                                alt={comment.author}
-                                                className="w-8 h-8 rounded-full flex-shrink-0"
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                                                        {comment.author}
-                                                    </span>
-                                                    <span className="text-xs text-zinc-500">
-                                                        {comment.date}
-                                                    </span>
-                                                </div>
-                                                <p
-                                                    className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap"
-                                                    dangerouslySetInnerHTML={{ __html: comment.text }}
-                                                />
-                                                {comment.likes > 0 && (
-                                                    <div className="flex items-center gap-1 mt-2 text-xs text-zinc-500">
-                                                        <ThumbsUp className="w-3.5 h-3.5" />
-                                                        <span>{comment.likes}</span>
-                                                    </div>
-                                                )}
+                <div className="flex-1 min-h-0 overflow-y-auto border-t border-zinc-200 dark:border-zinc-800">
+                    <div className="p-4">
+                        <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4" />
+                            댓글 {comments.length > 0 ? `${comments.length}개` : ''}
+                        </h3>
+                        {comments.length > 0 && (
+                            <div className="space-y-4">
+                                {comments.map((comment) => (
+                                    <div key={comment.id} className="flex gap-3">
+                                        <img
+                                            src={comment.authorImage}
+                                            alt={comment.author}
+                                            className="w-8 h-8 rounded-full flex-shrink-0"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                                                    {comment.author}
+                                                </span>
+                                                <span className="text-xs text-zinc-500">
+                                                    {comment.date}
+                                                </span>
                                             </div>
+                                            <p
+                                                className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap"
+                                                dangerouslySetInnerHTML={{ __html: comment.text }}
+                                            />
+                                            {comment.likes > 0 && (
+                                                <div className="flex items-center gap-1 mt-2 text-xs text-zinc-500">
+                                                    <ThumbsUp className="w-3.5 h-3.5" />
+                                                    <span>{comment.likes}</span>
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
 
-            {/* 오른쪽: 동영상 정보 패널 (Mapify 스타일) - videoId 있을 때만 표시 */}
-            {videoId && (
+            {/* 오른쪽: 동영상 정보 패널 (Mapify 스타일) */}
             <div className="w-[340px] flex-shrink-0 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col h-full">
                 {/* 패널 헤더 - 왼쪽 제목과 같은 높이 */}
                 <div className="flex items-center justify-between px-4 h-[49px] border-b border-zinc-200 dark:border-zinc-800">
@@ -427,7 +423,6 @@ export function YoutubeViewer({
                     </button>
                 </div>
             </div>
-            )}
         </div>
     )
 }
