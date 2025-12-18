@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { TwoLevelSidebar } from '@/components/nav/TwoLevelSidebar'
 import { Header } from '@/components/nav/Header'
 import { CommitModal } from '@/components/commits/CommitModal'
+import { WorkHistorySidebar } from '@/components/tools/WorkHistorySidebar'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { createClient } from '@/lib/supabase/client'
@@ -139,6 +140,7 @@ export default function DashboardLayout({
       <TwoLevelSidebar />
       <Header />
       <CommitModal />
+      <WorkHistorySidebar />
       <main
         className={cn(
           // 이메일 페이지는 pt-16 제거 (폴더 메뉴가 전체 높이 사용)
