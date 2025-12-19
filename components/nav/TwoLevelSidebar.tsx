@@ -618,7 +618,7 @@ const categories: Category[] = [
       { name: 'AI 요약', href: '/dashboard-group/email?view=ai-summary', icon: Sparkles },
     ]
   },
-  // 메신저 - 회의/토론/발표/자유채팅
+  // 메신저 - 회의/토론/발표/자유채팅 (세션룸 연동)
   {
     id: 'messenger',
     name: '메신저',
@@ -628,6 +628,7 @@ const categories: Category[] = [
         name: '회의실',
         icon: Users,
         children: [
+          { name: '새 회의', href: '/dashboard-group/messenger/session/new?mode=meeting', icon: Plus },
           { name: '진행중', href: '/dashboard-group/messenger?mode=meeting&status=active', icon: Play },
           { name: '예정', href: '/dashboard-group/messenger?mode=meeting&status=scheduled', icon: CalendarDays },
           { name: '완료', href: '/dashboard-group/messenger?mode=meeting&status=completed', icon: CheckCircle },
@@ -638,6 +639,7 @@ const categories: Category[] = [
         name: '진영 토론방',
         icon: Target,
         children: [
+          { name: '새 토론', href: '/dashboard-group/messenger/session/new?mode=debate', icon: Plus },
           { name: '진행중', href: '/dashboard-group/messenger?mode=debate&status=active', icon: Play },
           { name: '예정', href: '/dashboard-group/messenger?mode=debate&status=scheduled', icon: CalendarDays },
           { name: '완료', href: '/dashboard-group/messenger?mode=debate&status=completed', icon: CheckCircle },
@@ -648,13 +650,14 @@ const categories: Category[] = [
         name: '발표실',
         icon: Zap,
         children: [
+          { name: '새 발표', href: '/dashboard-group/messenger/session/new?mode=presentation', icon: Plus },
           { name: '진행중', href: '/dashboard-group/messenger?mode=presentation&status=active', icon: Play },
           { name: '예정', href: '/dashboard-group/messenger?mode=presentation&status=scheduled', icon: CalendarDays },
           { name: '완료', href: '/dashboard-group/messenger?mode=presentation&status=completed', icon: CheckCircle },
           { name: '리포트', href: '/dashboard-group/messenger/presentations', icon: FileText },
         ]
       },
-      { name: '자유채팅', href: '/dashboard-group/messenger?mode=free', icon: TbBrandWechat },
+      { name: '자유채팅', href: '/dashboard-group/messenger/session/new?mode=free', icon: TbBrandWechat },
     ]
   },
   // 팀 - 클릭 시 사이드바 열림
