@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ChatRoom, ChatMessage, ChatParticipant } from '@/types/chat'
+import { ChatRoom, ChatMessage, ChatParticipant, SharedViewerState, SharedMediaType } from '@/types/chat'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
 // 채팅방 목록 훅
@@ -479,4 +479,120 @@ export function usePresence(roomId: string | null) {
   }, [roomId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { onlineUsers }
+}
+
+// 공유 뷰어 관리 훅
+export function useSharedViewer(roomId: string | null) {
+  const [viewerState, setViewerState] = useState<SharedViewerState | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  // 뷰어 상태 조회
+  const fetchViewerState = useCallback(async () => {
+    if (!roomId) return
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/viewer`)
+      if (!res.ok) {
+        setViewerState(null)
+        return
+      }
+      const data = await res.json()
+      setViewerState(data)
+    } catch (err) {
+      console.error('Failed to fetch viewer state:', err)
+    }
+  }, [roomId])
+
+  // 초기 로드
+  useEffect(() => {
+    if (roomId) {
+      fetchViewerState()
+    } else {
+      setViewerState(null)
+    }
+  }, [roomId, fetchViewerState])
+
+  // Polling (500ms)
+  useEffect(() => {
+    if (!roomId) return
+    const interval = setInterval(fetchViewerState, 500)
+    return () => clearInterval(interval)
+  }, [roomId, fetchViewerState])
+
+  // 파일 공유 시작
+  const startSharing = async (file: {
+    url: string
+    name: string
+    type: SharedMediaType
+    totalPages?: number
+    duration?: number
+  }) => {
+    if (!roomId) return
+
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/viewer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          media_type: file.type,
+          media_url: file.url,
+          media_name: file.name,
+          total_pages: file.totalPages,
+          duration: file.duration,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Failed to start sharing')
+      const data = await res.json()
+      setViewerState(data)
+      return data
+    } catch (err) {
+      console.error('Failed to start sharing:', err)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 공유 종료
+  const stopSharing = async () => {
+    if (!roomId) return
+
+    try {
+      await fetch(`/api/chat/rooms/${roomId}/viewer`, { method: 'DELETE' })
+      setViewerState(null)
+    } catch (err) {
+      console.error('Failed to stop sharing:', err)
+    }
+  }
+
+  // 뷰어 제어 액션
+  const sendAction = async (action: string, payload: Record<string, any> = {}) => {
+    if (!roomId) return
+
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/viewer`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...payload }),
+      })
+
+      if (!res.ok) throw new Error('Failed to send action')
+      const data = await res.json()
+      setViewerState(data)
+      return data
+    } catch (err) {
+      console.error('Failed to send action:', err)
+    }
+  }
+
+  return {
+    viewerState,
+    loading,
+    isActive: !!viewerState,
+    startSharing,
+    stopSharing,
+    sendAction,
+    refresh: fetchViewerState,
+  }
 }

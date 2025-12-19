@@ -10,11 +10,13 @@ import {
   ChevronRight, UserMinus, PanelRightClose, PanelRightOpen,
   Clock, Play, Square, Timer, Target, Swords, Presentation,
   MessageSquare, Crown, Shield, Zap, BarChart3, AlertTriangle,
-  CheckCircle2, XCircle, ArrowRight, Mic, MicOff, Volume2
+  CheckCircle2, XCircle, ArrowRight, Mic, MicOff, Volume2,
+  Film, Share2, MonitorPlay
 } from 'lucide-react'
 import { Button } from '@/components/ui'
-import { useChatRooms, useChatRoom, usePresence, useMeeting } from '@/hooks/useChat'
-import { ChatRoom, ChatMessage, ChatParticipant } from '@/types/chat'
+import { useChatRooms, useChatRoom, usePresence, useMeeting, useSharedViewer } from '@/hooks/useChat'
+import { ChatRoom, ChatMessage, ChatParticipant, SharedMediaType } from '@/types/chat'
+import SharedViewer from '@/components/chat/SharedViewer'
 import { DEV_USER, isDevMode } from '@/lib/dev-user'
 import { useAuth } from '@/hooks/useAuth'
 import { PROVIDER_INFO, LLMProvider } from '@/lib/llm/models'
@@ -121,6 +123,9 @@ export default function MessengerPage() {
   } = useChatRoom(activeRoomId)
   const { onlineUsers } = usePresence(activeRoomId)
   const { meetingStatus, loading: meetingLoading, startMeeting, endMeeting } = useMeeting(activeRoomId)
+  const { viewerState, isActive: isViewerActive, startSharing, stopSharing } = useSharedViewer(activeRoomId)
+  const [showSharedViewer, setShowSharedViewer] = useState(false)
+  const shareInputRef = useRef<HTMLInputElement>(null)
   const { user: authUser } = useAuth()
   const { accentColor } = useThemeStore()
   const currentAccent = accentColors.find(c => c.id === accentColor) || accentColors[0]
@@ -267,6 +272,66 @@ export default function MessengerPage() {
       if (imageInputRef.current) imageInputRef.current.value = ''
     }
   }
+
+  // 공유 뷰어용 파일 업로드 핸들러
+  const handleShareFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !activeRoomId) return
+
+    try {
+      setUploading(true)
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('roomId', activeRoomId)
+
+      const res = await fetch('/api/chat/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Upload failed')
+      }
+
+      const { url, fileName, fileType, isImage, isVideo, isPdf } = await res.json()
+
+      // 미디어 타입 결정
+      let mediaType: SharedMediaType = 'image'
+      if (isPdf) mediaType = 'pdf'
+      else if (isVideo) mediaType = 'video'
+
+      // 공유 뷰어 시작
+      await startSharing({
+        url,
+        name: fileName,
+        type: mediaType,
+        // PDF의 경우 총 페이지 수는 클라이언트에서 계산 필요
+        // 비디오의 경우 duration은 클라이언트에서 계산 필요
+      })
+
+      setShowSharedViewer(true)
+
+      // 시스템 메시지로 공유 알림
+      await sendMessage(`[공유 시작] ${fileName}`, {
+        message_type: 'system' as any,
+        metadata: { shared_file: true, url, fileName, fileType },
+      })
+    } catch (err) {
+      console.error('Share file failed:', err)
+      alert(err instanceof Error ? err.message : '파일 공유에 실패했습니다')
+    } finally {
+      setUploading(false)
+      if (shareInputRef.current) shareInputRef.current.value = ''
+    }
+  }
+
+  // 공유 뷰어가 활성화되면 자동으로 표시
+  useEffect(() => {
+    if (isViewerActive && !showSharedViewer) {
+      setShowSharedViewer(true)
+    }
+  }, [isViewerActive])
 
   // 채팅방 나가기
   const handleLeaveRoom = async () => {
@@ -600,6 +665,31 @@ export default function MessengerPage() {
             <Button size="icon" variant="ghost" className="text-zinc-500 hover:text-accent">
               <Video className="w-5 h-5" />
             </Button>
+
+            {/* 화면 공유 버튼 */}
+            {isViewerActive ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-accent hover:text-accent"
+                onClick={() => setShowSharedViewer(!showSharedViewer)}
+                title={showSharedViewer ? '공유 화면 숨기기' : '공유 화면 보기'}
+              >
+                <MonitorPlay className="w-5 h-5" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-zinc-500 hover:text-accent"
+                onClick={() => shareInputRef.current?.click()}
+                title="화면 공유"
+                disabled={uploading}
+              >
+                <Share2 className="w-5 h-5" />
+              </Button>
+            )}
+
             <div className={`w-px h-6 mx-2 ${isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`}></div>
 
             {/* 채팅방 설정 드롭다운 */}
@@ -686,8 +776,24 @@ export default function MessengerPage() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
+          {/* Shared Viewer Panel - 공유 화면이 활성화되면 왼쪽에 표시 */}
+          {showSharedViewer && isViewerActive && (
+            <div className={`w-1/2 border-r flex-shrink-0 ${
+              isDark ? 'border-zinc-800/50' : 'border-zinc-200'
+            }`}>
+              <SharedViewer
+                roomId={activeRoomId!}
+                onClose={() => {
+                  setShowSharedViewer(false)
+                  stopSharing()
+                }}
+                accentColor={currentAccent.color}
+              />
+            </div>
+          )}
+
           {/* Main Content Column */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className={`flex-1 flex flex-col min-w-0 ${showSharedViewer && isViewerActive ? 'w-1/2' : ''}`}>
             {/* Meeting Status Bar - Enterprise Style */}
             {meetingStatus?.is_meeting_active && (() => {
               // 진행자 정보 찾기
@@ -1056,6 +1162,14 @@ export default function MessengerPage() {
               ref={imageInputRef}
               onChange={(e) => handleFileUpload(e, 'image')}
               accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+            />
+            {/* Hidden share file input (PDF, Image, Video) */}
+            <input
+              type="file"
+              ref={shareInputRef}
+              onChange={handleShareFile}
+              accept="application/pdf,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime"
               className="hidden"
             />
 

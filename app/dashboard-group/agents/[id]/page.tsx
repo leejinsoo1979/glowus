@@ -66,15 +66,16 @@ import { createClient } from '@/lib/supabase/client'
 import type { DeployedAgent, AgentStatus } from '@/types/database'
 import { getAppLogo } from '@/components/icons/app-logos'
 import { AgentOSPanel } from '@/components/agent/AgentOSPanel'
+import { BrainMapLayout } from '@/components/brain-map/BrainMapLayout'
 
-type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'memory' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
+type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'brainmap' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
 
 const tabs = [
   { id: 'about' as TabType, label: '소개', icon: User },
   { id: 'chat' as TabType, label: '채팅', icon: MessageSquare },
   { id: 'history' as TabType, label: '대화기록', icon: Clock },
   { id: 'workspace' as TabType, label: '워크스페이스', icon: Briefcase },
-  { id: 'memory' as TabType, label: '메모리', icon: Brain },
+  { id: 'brainmap' as TabType, label: 'Brain Map', icon: Brain },
   { id: 'knowledge' as TabType, label: '지식베이스', icon: BookOpen },
   { id: 'integrations' as TabType, label: '앱 연동', icon: Link2 },
   { id: 'apis' as TabType, label: 'API 연결', icon: Zap },
@@ -4010,6 +4011,9 @@ export default function AgentProfilePage() {
           {/* About Tab */}
           {activeTab === 'about' && (
             <div className="space-y-8">
+              {/* Agent OS Panel - Radar Chart */}
+              <AgentOSPanel agentId={agent.id} isDark={isDark} />
+
               {/* Profile Section */}
               <div>
                 {/* Section Header */}
@@ -5863,202 +5867,10 @@ export default function AgentProfilePage() {
             </div>
           )}
 
-          {/* Memory Tab */}
-          {activeTab === 'memory' && (
-            <div className="space-y-8">
-              <div>
-                <h2 className={cn('text-2xl md:text-3xl font-bold mb-4', isDark ? 'text-white' : 'text-zinc-900')}>
-                  메모리
-                </h2>
-                <div className="w-10 h-1 bg-accent rounded-full mb-6" />
-              </div>
-
-              {/* Agent OS v2.0 Panel */}
-              <AgentOSPanel agentId={agent.id} isDark={isDark} />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Work Logs */}
-                <div
-                  className={cn(
-                    'p-4 md:p-6 rounded-xl md:rounded-2xl border',
-                    isDark ? 'bg-zinc-800/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-4">
-                    <FileText className="w-5 h-5 text-blue-500" />
-                    <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>업무 로그</h4>
-                    <span
-                      className={cn(
-                        'ml-auto text-xs px-2 py-0.5 rounded-full',
-                        isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-600'
-                      )}
-                    >
-                      {agent.work_logs?.length || 0}개
-                    </span>
-                  </div>
-                  {agent.work_logs && agent.work_logs.length > 0 ? (
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                      {agent.work_logs.map((log: any) => {
-                        const logType = logTypeLabels[log.log_type] || {
-                          label: log.log_type,
-                          icon: FileText,
-                          color: '#6b7280',
-                        }
-                        return (
-                          <div key={log.id} className={cn('p-3 rounded-lg', isDark ? 'bg-zinc-900' : 'bg-white')}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span
-                                className="text-xs px-1.5 py-0.5 rounded"
-                                style={{ backgroundColor: `${logType.color}20`, color: logType.color }}
-                              >
-                                {logType.label}
-                              </span>
-                              <span className={cn('text-xs ml-auto', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                                {formatTimeAgo(log.created_at, mounted)}
-                              </span>
-                            </div>
-                            <p className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
-                              {log.title}
-                            </p>
-                            {log.summary && (
-                              <p className={cn('text-xs mt-1 line-clamp-2', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
-                                {log.summary}
-                              </p>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                      아직 업무 로그가 없습니다
-                    </p>
-                  )}
-                </div>
-
-                {/* Knowledge Base */}
-                <div
-                  className={cn(
-                    'p-4 md:p-6 rounded-xl md:rounded-2xl border',
-                    isDark ? 'bg-zinc-800/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-4">
-                    <BookOpen className="w-5 h-5 text-green-500" />
-                    <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>지식 베이스</h4>
-                    <span
-                      className={cn(
-                        'ml-auto text-xs px-2 py-0.5 rounded-full',
-                        isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-600'
-                      )}
-                    >
-                      {agent.knowledge?.length || 0}개
-                    </span>
-                  </div>
-                  {agent.knowledge && agent.knowledge.length > 0 ? (
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                      {agent.knowledge.map((item: any) => (
-                        <div key={item.id} className={cn('p-3 rounded-lg', isDark ? 'bg-zinc-900' : 'bg-white')}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span
-                              className={cn(
-                                'text-xs px-1.5 py-0.5 rounded',
-                                isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-600'
-                              )}
-                            >
-                              {knowledgeTypeLabels[item.knowledge_type] || item.knowledge_type}
-                            </span>
-                            <span className={cn('text-xs ml-auto', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                              신뢰도 {Math.round((item.confidence || 0.8) * 100)}%
-                            </span>
-                          </div>
-                          <p className={cn('text-sm font-medium', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
-                            {item.subject}
-                          </p>
-                          <p className={cn('text-xs mt-1 line-clamp-2', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
-                            {item.content}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                      아직 지식 베이스가 없습니다
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Commits */}
-              <div
-                className={cn(
-                  'p-4 md:p-6 rounded-xl md:rounded-2xl border',
-                  isDark ? 'bg-zinc-800/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                )}
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <GitCommit className="w-5 h-5 text-purple-500" />
-                  <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>업무 커밋</h4>
-                  <span
-                    className={cn(
-                      'ml-auto text-xs px-2 py-0.5 rounded-full',
-                      isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-600'
-                    )}
-                  >
-                    {agent.commits?.length || 0}개
-                  </span>
-                </div>
-                {agent.commits && agent.commits.length > 0 ? (
-                  <div className="space-y-3">
-                    {agent.commits.map((commit: any) => (
-                      <div key={commit.id} className={cn('p-4 rounded-lg', isDark ? 'bg-zinc-900' : 'bg-white')}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span
-                            className={cn(
-                              'text-xs px-2 py-0.5 rounded-full',
-                              isDark ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-600'
-                            )}
-                          >
-                            {commit.commit_type}
-                          </span>
-                          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                            {formatDate(commit.period_start, mounted)} ~ {formatDate(commit.period_end, mounted)}
-                          </span>
-                        </div>
-                        <h5 className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>{commit.title}</h5>
-                        <p className={cn('text-sm mt-1', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
-                          {commit.summary}
-                        </p>
-                        {commit.learnings && commit.learnings.length > 0 && (
-                          <div className="mt-3">
-                            <span className={cn('text-xs font-medium', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                              배운 점:
-                            </span>
-                            <ul className="mt-1 space-y-1">
-                              {commit.learnings.map((learning: string, idx: number) => (
-                                <li
-                                  key={idx}
-                                  className={cn(
-                                    'text-xs flex items-start gap-1',
-                                    isDark ? 'text-zinc-400' : 'text-zinc-600'
-                                  )}
-                                >
-                                  <span className="text-green-500">•</span>
-                                  {learning}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                    아직 업무 커밋이 없습니다
-                  </p>
-                )}
-              </div>
+          {/* Brain Map Tab */}
+          {activeTab === 'brainmap' && (
+            <div className="h-[calc(100vh-200px)] min-h-[600px]">
+              <BrainMapLayout agentId={agent.id} isDark={isDark} />
             </div>
           )}
 

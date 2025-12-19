@@ -189,3 +189,31 @@ export interface RealtimeTypingEvent {
   participant_type: ParticipantType
   is_typing: boolean
 }
+
+// 공유 뷰어 타입
+export type SharedMediaType = 'pdf' | 'image' | 'video'
+
+export interface SharedViewerState {
+  id: string
+  room_id: string
+  media_type: SharedMediaType
+  media_url: string
+  media_name: string
+  current_page?: number      // PDF 현재 페이지
+  total_pages?: number       // PDF 총 페이지
+  current_time?: number      // 비디오 현재 시간 (초)
+  duration?: number          // 비디오 총 길이 (초)
+  is_playing?: boolean       // 비디오 재생 중 여부
+  zoom_level?: number        // 확대 레벨
+  presenter_id?: string      // 현재 제어권을 가진 사용자/에이전트
+  presenter_type?: ParticipantType
+  created_at: string
+  updated_at: string
+}
+
+export interface SharedViewerControl {
+  action: 'page_change' | 'seek' | 'play' | 'pause' | 'zoom' | 'take_control' | 'release_control'
+  page?: number
+  time?: number
+  zoom?: number
+}

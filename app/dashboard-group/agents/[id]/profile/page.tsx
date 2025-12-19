@@ -23,7 +23,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { AgentProfile, type AgentProfileData } from '@/components/agent/AgentProfile'
 import { StatsRadar, StatsRadarPanel, type AgentStatsData } from '@/components/agent/StatsRadar'
-import { KnowledgeGraph3DPanel } from '@/components/agent/KnowledgeGraph3D'
+import { BrainMapLayout } from '@/components/brain-map/BrainMapLayout'
 import { createClient } from '@/lib/supabase/client'
 
 // ============================================
@@ -758,8 +758,8 @@ export default function AgentProfilePage() {
         )}
 
         {activeTab === 'brain' && (
-          <div className="space-y-6">
-            <KnowledgeGraph3DPanel
+          <div className="h-[calc(100vh-180px)]">
+            <BrainMapLayout
               agentId={agentId}
               isDark={isDark}
             />

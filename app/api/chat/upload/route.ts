@@ -26,16 +26,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Room ID is required' }, { status: 400 })
     }
 
-    // 파일 크기 제한 (10MB)
-    const maxSize = 10 * 1024 * 1024
-    if (file.size > maxSize) {
-      return NextResponse.json({ error: '파일 크기는 10MB 이하여야 합니다' }, { status: 400 })
-    }
-
     // 허용된 파일 타입
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    const allowedFileTypes = [
-      ...allowedImageTypes,
+    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo']
+    const allowedDocTypes = [
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -44,12 +38,22 @@ export async function POST(request: NextRequest) {
       'text/plain',
       'text/csv',
     ]
+    const allowedFileTypes = [...allowedImageTypes, ...allowedVideoTypes, ...allowedDocTypes]
 
     if (!allowedFileTypes.includes(file.type)) {
       return NextResponse.json({ error: '지원하지 않는 파일 형식입니다' }, { status: 400 })
     }
 
     const isImage = allowedImageTypes.includes(file.type)
+    const isVideo = allowedVideoTypes.includes(file.type)
+
+    // 파일 크기 제한 (비디오: 100MB, 기타: 10MB)
+    const maxSize = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      return NextResponse.json({
+        error: isVideo ? '비디오 파일 크기는 100MB 이하여야 합니다' : '파일 크기는 10MB 이하여야 합니다'
+      }, { status: 400 })
+    }
     const fileExt = file.name.split('.').pop()
     const fileName = `${roomId}/${user.id}/${Date.now()}.${fileExt}`
     const bucket = 'chat-files'
@@ -82,6 +86,8 @@ export async function POST(request: NextRequest) {
       fileSize: file.size,
       fileType: file.type,
       isImage,
+      isVideo,
+      isPdf: file.type === 'application/pdf',
     })
   } catch (error) {
     console.error('File upload error:', error)
