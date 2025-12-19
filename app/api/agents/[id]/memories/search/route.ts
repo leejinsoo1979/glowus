@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import {
   searchMemories,
   hybridSearch,
@@ -22,7 +23,12 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data } = await supabase.auth.getUser()
+      user = data.user
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

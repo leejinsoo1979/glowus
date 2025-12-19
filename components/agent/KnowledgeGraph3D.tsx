@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import * as THREE from 'three'
 import { cn } from '@/lib/utils'
 import {
   Brain,
@@ -507,31 +508,40 @@ export function KnowledgeGraph3D({
 
   // 노드 3D 오브젝트 생성
   const nodeThreeObject = useCallback((node: any) => {
-    const THREE = require('three')
-    const config = NODE_TYPE_CONFIG[node.type as MemoryNodeType]
+    const config = NODE_TYPE_CONFIG[node.type as MemoryNodeType] || NODE_TYPE_CONFIG.private
 
-    // Sphere geometry
-    const geometry = new THREE.SphereGeometry(node.val || 5, 16, 16)
+    // Sphere geometry with more segments for smoother look
+    const geometry = new THREE.SphereGeometry(node.val || 5, 32, 32)
     const material = new THREE.MeshPhongMaterial({
       color: config.color,
       emissive: config.emissive,
-      emissiveIntensity: 0.3,
-      shininess: 100,
+      emissiveIntensity: 0.4,
+      shininess: 150,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.95,
     })
 
     const sphere = new THREE.Mesh(geometry, material)
 
-    // 글로우 효과
-    const glowGeometry = new THREE.SphereGeometry((node.val || 5) * 1.3, 16, 16)
+    // 외부 글로우 효과
+    const glowGeometry = new THREE.SphereGeometry((node.val || 5) * 1.4, 24, 24)
     const glowMaterial = new THREE.MeshBasicMaterial({
       color: config.color,
       transparent: true,
-      opacity: 0.15,
+      opacity: 0.2,
     })
     const glow = new THREE.Mesh(glowGeometry, glowMaterial)
     sphere.add(glow)
+
+    // 내부 코어 글로우
+    const coreGeometry = new THREE.SphereGeometry((node.val || 5) * 0.5, 16, 16)
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: '#ffffff',
+      transparent: true,
+      opacity: 0.3,
+    })
+    const core = new THREE.Mesh(coreGeometry, coreMaterial)
+    sphere.add(core)
 
     return sphere
   }, [])
@@ -729,6 +739,44 @@ export function KnowledgeGraph3D({
 }
 
 // ============================================
+// Mock data for development/demo
+// ============================================
+
+const MOCK_GRAPH_DATA: KnowledgeGraphData = {
+  nodes: [
+    { id: '1', type: 'private', label: '프로젝트 기획 회의', importance: 8, tags: ['기획', '회의'], project: 'GlowUS', created_at: new Date().toISOString() },
+    { id: '2', type: 'meeting', label: '스프린트 리뷰', importance: 7, tags: ['스프린트', '리뷰'], project: 'GlowUS', created_at: new Date(Date.now() - 86400000).toISOString() },
+    { id: '3', type: 'team', label: '팀 브레인스토밍', importance: 9, tags: ['아이디어', '협업'], project: 'GlowUS', created_at: new Date(Date.now() - 172800000).toISOString() },
+    { id: '4', type: 'injected', label: 'React 18 문서', importance: 6, tags: ['React', '기술'], created_at: new Date(Date.now() - 259200000).toISOString() },
+    { id: '5', type: 'execution', label: 'API 개발 완료', importance: 10, tags: ['개발', 'API'], project: 'GlowUS', created_at: new Date(Date.now() - 345600000).toISOString() },
+    { id: '6', type: 'private', label: '버그 수정 노트', importance: 5, tags: ['버그', '수정'], project: 'GlowUS', created_at: new Date(Date.now() - 432000000).toISOString() },
+    { id: '7', type: 'meeting', label: '고객 피드백 정리', importance: 8, tags: ['고객', '피드백'], project: 'GlowUS', created_at: new Date(Date.now() - 518400000).toISOString() },
+    { id: '8', type: 'injected', label: 'TypeScript 가이드', importance: 7, tags: ['TypeScript', '가이드'], created_at: new Date(Date.now() - 604800000).toISOString() },
+    { id: '9', type: 'team', label: '디자인 시스템 검토', importance: 8, tags: ['디자인', 'UI'], project: 'GlowUS', created_at: new Date(Date.now() - 691200000).toISOString() },
+    { id: '10', type: 'execution', label: '배포 파이프라인 구축', importance: 9, tags: ['DevOps', '배포'], project: 'GlowUS', created_at: new Date(Date.now() - 777600000).toISOString() },
+    { id: '11', type: 'private', label: '성능 최적화 계획', importance: 7, tags: ['성능', '최적화'], project: 'GlowUS', created_at: new Date(Date.now() - 864000000).toISOString() },
+    { id: '12', type: 'meeting', label: '주간 스탠드업', importance: 5, tags: ['스탠드업', '주간'], project: 'GlowUS', created_at: new Date(Date.now() - 950400000).toISOString() },
+  ],
+  edges: [
+    { source: '1', target: '2', type: 'co-occurrence', weight: 0.8 },
+    { source: '1', target: '3', type: 'causal', weight: 0.9 },
+    { source: '2', target: '5', type: 'reference', weight: 0.7 },
+    { source: '3', target: '4', type: 'reference', weight: 0.6 },
+    { source: '4', target: '8', type: 'co-occurrence', weight: 0.9 },
+    { source: '5', target: '10', type: 'causal', weight: 0.85 },
+    { source: '6', target: '5', type: 'reference', weight: 0.7 },
+    { source: '7', target: '9', type: 'participation', weight: 0.75 },
+    { source: '8', target: '11', type: 'reference', weight: 0.65 },
+    { source: '9', target: '3', type: 'co-occurrence', weight: 0.8 },
+    { source: '10', target: '11', type: 'causal', weight: 0.7 },
+    { source: '11', target: '6', type: 'reference', weight: 0.6 },
+    { source: '12', target: '2', type: 'participation', weight: 0.8 },
+    { source: '1', target: '7', type: 'co-occurrence', weight: 0.5 },
+    { source: '3', target: '9', type: 'participation', weight: 0.7 },
+  ],
+}
+
+// ============================================
 // 패널 컴포넌트 (API 연동)
 // ============================================
 
@@ -744,17 +792,34 @@ export function KnowledgeGraph3DPanel({
   const [data, setData] = useState<KnowledgeGraphData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [usingMockData, setUsingMockData] = useState(false)
 
   useEffect(() => {
     const fetchGraphData = async () => {
       try {
         setLoading(true)
+        setUsingMockData(false)
         const res = await fetch(`/api/agents/${agentId}/memories/graph`)
         if (!res.ok) throw new Error('그래프 데이터 로드 실패')
         const result = await res.json()
-        setData(result)
+
+        // API가 nodes를 반환하는지 확인
+        const graphNodes = result.nodes || []
+        const graphEdges = result.edges || []
+
+        // 데이터가 없으면 mock 데이터 사용
+        if (graphNodes.length === 0) {
+          setData(MOCK_GRAPH_DATA)
+          setUsingMockData(true)
+        } else {
+          setData({ nodes: graphNodes, edges: graphEdges })
+        }
       } catch (err: any) {
-        setError(err.message)
+        console.error('Graph data fetch error:', err)
+        // 에러 발생 시에도 mock 데이터로 fallback
+        setData(MOCK_GRAPH_DATA)
+        setUsingMockData(true)
+        setError(null) // 에러 숨기고 mock 데이터 표시
       } finally {
         setLoading(false)
       }
@@ -804,22 +869,37 @@ export function KnowledgeGraph3DPanel({
   return (
     <div
       className={cn(
-        'rounded-xl border overflow-hidden',
-        isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200',
+        'rounded-2xl border overflow-hidden backdrop-blur-sm',
+        isDark ? 'bg-zinc-900/50 border-zinc-800' : 'bg-white/80 border-zinc-200',
         className
       )}
     >
       <div className={cn(
-        'flex items-center gap-2 px-4 py-3 border-b',
-        isDark ? 'border-zinc-700' : 'border-zinc-200'
+        'flex items-center gap-3 px-5 py-4 border-b',
+        isDark ? 'border-zinc-800' : 'border-zinc-200'
       )}>
-        <Brain className="w-5 h-5 text-violet-500" />
-        <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>
-          에이전트의 뇌 (3D)
-        </h4>
-        <span className={cn('text-xs ml-auto', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-          옵시디언 스타일 지식 그래프
-        </span>
+        <div className={cn(
+          'p-2 rounded-xl',
+          isDark ? 'bg-violet-500/20' : 'bg-violet-100'
+        )}>
+          <Brain className="w-5 h-5 text-violet-500" />
+        </div>
+        <div className="flex-1">
+          <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>
+            에이전트의 뇌
+          </h4>
+          <p className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            3D 지식 그래프 시각화
+          </p>
+        </div>
+        {usingMockData && (
+          <span className={cn(
+            'text-[10px] px-2 py-1 rounded-full',
+            isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'
+          )}>
+            데모 데이터
+          </span>
+        )}
       </div>
       <KnowledgeGraph3D
         data={data}
