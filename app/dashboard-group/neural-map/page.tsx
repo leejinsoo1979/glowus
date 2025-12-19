@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
@@ -26,10 +27,17 @@ import {
   Loader2,
 } from 'lucide-react'
 
-// Placeholder for 3D Canvas (Phase 2)
-function NeuralMapCanvasPlaceholder() {
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
+// Dynamically import 3D Canvas (uses browser APIs)
+const NeuralMapCanvas = dynamic(
+  () => import('@/components/neural-map/canvas/NeuralMapCanvas').then((mod) => mod.NeuralMapCanvas),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+// Loading fallback for canvas
+function CanvasLoadingFallback() {
   const currentTheme = useNeuralMapStore((s) => s.currentTheme)
 
   return (
@@ -40,28 +48,8 @@ function NeuralMapCanvasPlaceholder() {
       }}
     >
       <div className="text-center space-y-4">
-        <div className="relative">
-          {/* Fake glow effect */}
-          <div
-            className="absolute inset-0 blur-3xl opacity-50"
-            style={{ backgroundColor: currentTheme.node.colors.self }}
-          />
-          <div
-            className="relative w-24 h-24 rounded-full mx-auto flex items-center justify-center"
-            style={{
-              backgroundColor: currentTheme.node.colors.self,
-              boxShadow: `0 0 60px ${currentTheme.node.colors.self}40`,
-            }}
-          >
-            <span className="text-3xl font-bold text-black/80">SELF</span>
-          </div>
-        </div>
-        <p className={cn('text-lg font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
-          3D Neural Map
-        </p>
-        <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
-          Phase 2에서 R3F + d3-force-3d 렌더링 구현 예정
-        </p>
+        <Loader2 className="w-12 h-12 animate-spin text-zinc-400 mx-auto" />
+        <p className="text-zinc-400 text-sm">3D 뉴럴맵 로딩중...</p>
       </div>
     </div>
   )
@@ -223,15 +211,7 @@ export default function NeuralMapPage() {
                 </div>
               </div>
             ) : (
-              <Suspense
-                fallback={
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
-                  </div>
-                }
-              >
-                <NeuralMapCanvasPlaceholder />
-              </Suspense>
+              <NeuralMapCanvas className="absolute inset-0" />
             )}
           </div>
         </div>

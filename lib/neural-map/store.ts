@@ -31,6 +31,12 @@ import {
 // Store State Interface
 // ============================================
 
+interface CameraState {
+  position: NodePosition
+  target: NodePosition
+  zoom?: number
+}
+
 interface NeuralMapState {
   // Graph Data
   graph: NeuralGraph | null
@@ -54,6 +60,7 @@ interface NeuralMapState {
   // Camera
   cameraPosition: NodePosition
   cameraTarget: NodePosition
+  cameraState: CameraState
   isAnimatingCamera: boolean
 
   // Modal
@@ -113,6 +120,8 @@ interface NeuralMapActions {
   // Selection
   selectNode: (id: string, multi?: boolean) => void
   selectNodes: (ids: string[]) => void
+  setSelectedNodes: (ids: string[]) => void
+  addSelectedNode: (id: string) => void
   deselectAll: () => void
   setHoveredNode: (id: string | null) => void
 
@@ -129,6 +138,7 @@ interface NeuralMapActions {
   // Camera
   setCameraPosition: (position: NodePosition) => void
   setCameraTarget: (target: NodePosition) => void
+  setCameraState: (state: CameraState) => void
   focusOnNode: (nodeId: string) => void
   resetCamera: () => void
   setAnimatingCamera: (animating: boolean) => void
@@ -190,6 +200,10 @@ const initialState: NeuralMapState = {
 
   cameraPosition: CAMERA_SETTINGS.initialPosition,
   cameraTarget: CAMERA_SETTINGS.initialTarget,
+  cameraState: {
+    position: CAMERA_SETTINGS.initialPosition,
+    target: CAMERA_SETTINGS.initialTarget,
+  },
   isAnimatingCamera: false,
 
   modalType: null,
@@ -359,6 +373,18 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             state.selectedNodeIds = ids
           }),
 
+        setSelectedNodes: (ids) =>
+          set((state) => {
+            state.selectedNodeIds = ids
+          }),
+
+        addSelectedNode: (id) =>
+          set((state) => {
+            if (!state.selectedNodeIds.includes(id)) {
+              state.selectedNodeIds.push(id)
+            }
+          }),
+
         deselectAll: () =>
           set((state) => {
             state.selectedNodeIds = []
@@ -416,6 +442,13 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         setCameraTarget: (target) =>
           set((state) => {
             state.cameraTarget = target
+          }),
+
+        setCameraState: (cameraState) =>
+          set((state) => {
+            state.cameraState = cameraState
+            state.cameraPosition = cameraState.position
+            state.cameraTarget = cameraState.target
           }),
 
         focusOnNode: (nodeId) =>

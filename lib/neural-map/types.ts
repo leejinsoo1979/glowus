@@ -99,6 +99,11 @@ export interface NeuralEdge {
   label?: string
   bidirectional: boolean
 
+  // Alias for compatibility
+  sourceId?: string
+  targetId?: string
+  strength?: number
+
   // 근거
   evidence?: EdgeEvidence[]
 
@@ -129,6 +134,7 @@ export type ViewTab = 'radial' | 'clusters' | 'pathfinder' | 'roadmap' | 'insigh
 export interface CameraState {
   position: NodePosition
   target: NodePosition
+  zoom?: number
 }
 
 export interface ViewState {
@@ -243,6 +249,9 @@ export interface ThemeEdge {
   defaultOpacity: number
   selectedOpacity: number
   particlesEnabled: boolean
+  baseColor?: string
+  baseOpacity?: number
+  highlightOpacity?: number
 }
 
 export interface ThemePostProcessing {
@@ -315,6 +324,9 @@ export interface LabelPolicy {
   showConditions: LabelShowConditions
   largeGraphPolicy: LargeGraphPolicy
   hugeGraphPolicy: HugeGraphPolicy
+  maxVisible?: number
+  fontSize?: number
+  maxLength?: number
 }
 
 // ============================================
@@ -326,6 +338,9 @@ export interface LODDistances {
   labelHide: number
   nodeSimplify: number
   clusterProxy: number
+  near: number
+  far: number
+  medium: number
 }
 
 // ============================================

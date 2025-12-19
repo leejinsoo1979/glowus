@@ -37,6 +37,9 @@ export const LOD_DISTANCES: LODDistances = {
   labelHide: 300,        // 라벨 숨김
   nodeSimplify: 500,     // 노드 단순화 (구 → 점)
   clusterProxy: 800,     // 클러스터로 합침
+  near: 100,             // 가까운 거리
+  medium: 300,           // 중간 거리
+  far: 500,              // 먼 거리
 }
 
 // ============================================
@@ -46,6 +49,9 @@ export const LOD_DISTANCES: LODDistances = {
 export const LABEL_POLICY: LabelPolicy = {
   // 기본 상태
   defaultVisible: false,              // 라벨 기본 OFF
+  maxVisible: 100,                    // 최대 표시 개수
+  fontSize: 0.5,                      // 라벨 폰트 크기
+  maxLength: 20,                      // 라벨 최대 길이
 
   // 표시 조건 (OR 조건)
   showConditions: {
@@ -83,6 +89,9 @@ export const NODE_THRESHOLDS = {
   NORMAL: 500,          // 일반 렌더링
   LARGE: 3000,          // InstancedMesh 적용
   HUGE: 10000,          // 극한 최적화
+  INSTANCED: 500,       // InstancedMesh 사용 임계값
+  LOD_MEDIUM: 1000,     // 중간 LOD 임계값
+  LOD_LOW: 5000,        // 낮은 LOD 임계값
 }
 
 // ============================================
@@ -108,6 +117,8 @@ export const FORCE_SETTINGS = {
   // Charge force (repulsion)
   chargeStrength: -100,
   chargeDistanceMax: 500,
+  theta: 0.8,              // Barnes-Hut approximation theta
+  distanceMax: 500,        // Maximum distance for charge force
 
   // Center force
   centerStrength: 0.05,
@@ -173,6 +184,7 @@ export const CAMERA_SETTINGS = {
   // Initial position
   initialPosition: { x: 0, y: 50, z: 200 },
   initialTarget: { x: 0, y: 0, z: 0 },
+  defaultPosition: { x: 0, y: 50, z: 200 },  // Alias for initialPosition
 
   // Smooth damp
   dampingFactor: 0.05,
@@ -191,6 +203,8 @@ export const CAMERA_SETTINGS = {
 // ============================================
 
 export const POST_PROCESSING = {
+  enabled: true,  // Enable post-processing
+
   // Bloom
   bloom: {
     intensity: 1.2,
@@ -201,6 +215,7 @@ export const POST_PROCESSING = {
 
   // SSAO
   ssao: {
+    enabled: true,  // Enable SSAO
     samples: 16,
     radius: 0.1,
     intensity: 20,
@@ -232,6 +247,9 @@ export const THEME_PRESETS: NeuralMapTheme[] = [
       defaultOpacity: 0.5,
       selectedOpacity: 1.0,
       particlesEnabled: true,
+      baseColor: '#6366f1',
+      baseOpacity: 0.5,
+      highlightOpacity: 1.0,
     },
     postProcessing: {
       bloomIntensity: 1.2,
@@ -268,6 +286,9 @@ export const THEME_PRESETS: NeuralMapTheme[] = [
       defaultOpacity: 0.4,
       selectedOpacity: 0.9,
       particlesEnabled: false,
+      baseColor: '#0284c7',
+      baseOpacity: 0.4,
+      highlightOpacity: 0.9,
     },
     postProcessing: {
       bloomIntensity: 0.5,
@@ -306,6 +327,9 @@ export const THEME_PRESETS: NeuralMapTheme[] = [
       defaultOpacity: 0.45,
       selectedOpacity: 1.0,
       particlesEnabled: true,
+      baseColor: '#22c55e',
+      baseOpacity: 0.45,
+      highlightOpacity: 1.0,
     },
     postProcessing: {
       bloomIntensity: 1.0,
@@ -357,6 +381,7 @@ export const ANIMATION_DURATIONS = {
   nodeHover: 150,
   panelToggle: 300,
   cameraFocus: 800,
+  cameraMove: 800,    // Camera movement animation
   nodeAppear: 400,
   tabSwitch: 200,
 }

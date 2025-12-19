@@ -41,7 +41,6 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-three/drei": "^9.117.3",
     "@react-three/fiber": "^8.17.10",
-    "@react-three/postprocessing": "^2.16.3",
     "@splinetool/react-spline": "^4.1.0",
     "@splinetool/runtime": "^1.12.6",
     "@supabase/ssr": "^0.1.0",
