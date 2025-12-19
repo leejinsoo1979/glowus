@@ -133,7 +133,7 @@ export async function GET(request: Request, { params }: RouteParams) {
     // NeuralGraph 형식으로 반환
     const graph = {
       version: '2.0',
-      userId: user.id,
+      userId: userId,
       agentId: neuralMap.agent_id,
       rootNodeId: neuralMap.root_node_id,
       title: neuralMap.title,

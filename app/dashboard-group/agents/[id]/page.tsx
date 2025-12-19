@@ -3579,7 +3579,7 @@ export default function AgentProfilePage() {
 
   if (loading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-6">
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-white dark:bg-zinc-950 z-50">
         {/* Animated Bot Icon */}
         <div className="relative">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full blur-xl opacity-30 animate-pulse" />

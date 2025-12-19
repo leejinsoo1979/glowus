@@ -95,18 +95,25 @@ export async function POST(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     // 맵 소유권 확인
-    const { data: neuralMap } = await supabase
+    const { data: neuralMap } = await adminSupabase
       .from('neural_maps')
       .select('id')
       .eq('id', mapId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (!neuralMap) {
@@ -132,7 +139,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // 중복 엣지 확인
-    const { data: existing } = await supabase
+    const { data: existing } = await adminSupabase
       .from('neural_edges')
       .select('id')
       .eq('map_id', mapId)
@@ -144,7 +151,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Edge already exists' }, { status: 409 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_edges')
       .insert({
         map_id: mapId,
@@ -202,12 +209,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const adminSupabase = createAdminClient()
 
     const { searchParams } = new URL(request.url)
     const edgeId = searchParams.get('edgeId')
@@ -216,7 +218,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'edgeId is required' }, { status: 400 })
     }
 
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('neural_edges')
       .delete()
       .eq('id', edgeId)

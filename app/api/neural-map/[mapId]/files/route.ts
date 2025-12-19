@@ -7,7 +7,12 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+
+// DEV 모드 설정
+const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 interface RouteParams {
   params: Promise<{ mapId: string }>
@@ -18,25 +23,32 @@ export async function GET(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     // 맵 소유권 확인
-    const { data: neuralMap } = await supabase
+    const { data: neuralMap } = await adminSupabase
       .from('neural_maps')
       .select('id')
       .eq('id', mapId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (!neuralMap) {
       return NextResponse.json({ error: 'Neural map not found' }, { status: 404 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_files')
       .select('*')
       .eq('map_id', mapId)
@@ -77,18 +89,25 @@ export async function POST(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     // 맵 소유권 확인
-    const { data: neuralMap } = await supabase
+    const { data: neuralMap } = await adminSupabase
       .from('neural_maps')
       .select('id')
       .eq('id', mapId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (!neuralMap) {
@@ -118,9 +137,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
     }
 
-    // Storage에 파일 업로드
-    const fileName = `${user.id}/${mapId}/${Date.now()}-${file.name}`
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    // Storage에 파일 업로드 (adminSupabase for storage operations)
+    const fileName = `${userId}/${mapId}/${Date.now()}-${file.name}`
+    const { data: uploadData, error: uploadError } = await adminSupabase.storage
       .from('neural-files')
       .upload(fileName, file, {
         cacheControl: '3600',
@@ -133,12 +152,12 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // 공개 URL 가져오기
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = adminSupabase.storage
       .from('neural-files')
       .getPublicUrl(uploadData.path)
 
     // DB에 메타데이터 저장
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_files')
       .insert({
         map_id: mapId,
@@ -153,7 +172,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (error) {
       console.error('Failed to save file metadata:', error)
       // 업로드된 파일 삭제
-      await supabase.storage.from('neural-files').remove([uploadData.path])
+      await adminSupabase.storage.from('neural-files').remove([uploadData.path])
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -188,12 +207,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const adminSupabase = createAdminClient()
 
     const { searchParams } = new URL(request.url)
     const fileId = searchParams.get('fileId')
@@ -203,7 +217,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     }
 
     // 파일 정보 조회 (URL에서 storage path 추출)
-    const { data: file } = await supabase
+    const { data: file } = await adminSupabase
       .from('neural_files')
       .select('url')
       .eq('id', fileId)
@@ -215,12 +229,12 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       // Storage에서 파일 삭제
       const path = fileData.url.split('/neural-files/').pop()
       if (path) {
-        await supabase.storage.from('neural-files').remove([path])
+        await adminSupabase.storage.from('neural-files').remove([path])
       }
     }
 
     // DB에서 메타데이터 삭제
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('neural_files')
       .delete()
       .eq('id', fileId)

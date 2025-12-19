@@ -97,6 +97,7 @@ export default function MessengerPage() {
   const [inputText, setInputText] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showNewChat, setShowNewChat] = useState(false)
+  const [newChatMode, setNewChatMode] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [showRoomSettings, setShowRoomSettings] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -148,9 +149,11 @@ export default function MessengerPage() {
   // URL 파라미터로 새 채팅방 생성 모달 열기
   useEffect(() => {
     const action = searchParams.get('action')
+    const mode = searchParams.get('mode')
     if (action === 'new') {
+      setNewChatMode(mode)
       setShowNewChat(true)
-      // URL에서 action 파라미터 제거
+      // URL에서 파라미터 제거
       router.replace('/dashboard-group/messenger')
     }
   }, [searchParams, router])
@@ -1415,7 +1418,11 @@ export default function MessengerPage() {
         {showNewChat && (
           <NewChatModal
             isDark={isDark}
-            onClose={() => setShowNewChat(false)}
+            initialMode={newChatMode}
+            onClose={() => {
+              setShowNewChat(false)
+              setNewChatMode(null)
+            }}
             onCreateRoom={async (data) => {
               const { topic, duration, facilitator_id, ...roomData } = data
               const room = await createRoom(roomData)
@@ -1705,10 +1712,12 @@ interface AgentConfig {
 
 function NewChatModal({
   isDark,
+  initialMode,
   onClose,
   onCreateRoom
 }: {
   isDark: boolean
+  initialMode?: string | null
   onClose: () => void
   onCreateRoom: (data: any) => Promise<{ id: string } | void>
 }) {
@@ -1716,13 +1725,23 @@ function NewChatModal({
   const { accentColor } = useThemeStore()
   const currentAccent = accentColors.find(c => c.id === accentColor) || accentColors[0]
 
+  // initialMode에 따라 기본 purpose 설정
+  const getDefaultPurpose = () => {
+    switch (initialMode) {
+      case 'meeting': return 'strategic_decision'
+      case 'debate': return 'risk_analysis'
+      case 'presentation': return 'idea_generation'
+      default: return ''
+    }
+  }
+
   const [loading, setLoading] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [teamMembers, setTeamMembers] = useState<any[]>([])
   const [agents, setAgents] = useState<any[]>([])
 
   // [A] 회의 목적 (WHY)
-  const [purpose, setPurpose] = useState('')
+  const [purpose, setPurpose] = useState(getDefaultPurpose())
 
   // [B] AI 에이전트 구성 (WHO)
   const [agentConfigs, setAgentConfigs] = useState<AgentConfig[]>([])
