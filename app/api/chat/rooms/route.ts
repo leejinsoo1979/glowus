@@ -9,7 +9,7 @@ import { getDevUserIfEnabled } from '@/lib/dev-user'
 export async function GET(request: NextRequest) {
   console.log('[CHAT API] GET /api/chat/rooms 시작')
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const adminClient = createAdminClient()
     console.log('[CHAT API] Supabase client 생성됨')
 
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
 // POST: 새 채팅방 생성
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const adminClient = createAdminClient()
 
     // DEV 바이패스 체크

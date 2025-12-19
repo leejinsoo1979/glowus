@@ -9,7 +9,7 @@
 CREATE TABLE IF NOT EXISTS neural_maps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
+  agent_id UUID REFERENCES deployed_agents(id) ON DELETE SET NULL,
   title TEXT NOT NULL DEFAULT 'My Neural Map',
   root_node_id UUID,
   view_state JSONB DEFAULT '{}',

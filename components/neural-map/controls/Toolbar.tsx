@@ -151,8 +151,8 @@ export function Toolbar() {
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
             isDark
-              ? 'bg-violet-600 hover:bg-violet-500 text-white'
-              : 'bg-violet-500 hover:bg-violet-400 text-white'
+              ? 'bg-blue-600 hover:bg-blue-500 text-white'
+              : 'bg-blue-500 hover:bg-blue-400 text-white'
           )}
           title="연결 추가 (E)"
         >

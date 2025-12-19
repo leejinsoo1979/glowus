@@ -21,7 +21,7 @@ interface NodeMeshProps {
 // Node geometry sizes by type (Self is 1.5x of base size 2)
 const BASE_NODE_SIZE = 2
 const NODE_SIZES: Record<NodeType, number> = {
-  self: BASE_NODE_SIZE * 1.5,  // 3 = 1.5배
+  self: BASE_NODE_SIZE * 1.8,
   concept: 1.5,
   project: 2,
   doc: 1.2,
@@ -33,13 +33,13 @@ const NODE_SIZES: Record<NodeType, number> = {
   insight: 1.6,
 }
 
-// Self 노드 골드 색상
+// Self node color
 const SELF_NODE_COLOR = '#FFD700'
 
 // Create shared geometries
-const sphereGeometry = new THREE.SphereGeometry(1, 32, 32)
+const sphereGeometry = new THREE.SphereGeometry(1, 64, 64)
+const sphereGeometryMed = new THREE.SphereGeometry(1, 32, 32)
 const sphereGeometryLow = new THREE.SphereGeometry(1, 16, 16)
-const sphereGeometryVeryLow = new THREE.SphereGeometry(1, 8, 8)
 
 export function NodeMesh({
   nodes,
@@ -146,8 +146,8 @@ export function NodeMesh({
   // Get LOD geometry based on distance
   const getLODGeometry = useCallback(
     (distance: number) => {
-      if (distance > LOD_DISTANCES.far) return sphereGeometryVeryLow
-      if (distance > LOD_DISTANCES.medium) return sphereGeometryLow
+      if (distance > LOD_DISTANCES.far) return sphereGeometryLow
+      if (distance > LOD_DISTANCES.medium) return sphereGeometryMed
       return sphereGeometry
     },
     []
@@ -180,7 +180,7 @@ export function NodeMesh({
   return (
     <group>
       {nodes.map((node) => (
-        <IndividualNode
+        <PlanetNode
           key={node.id}
           node={node}
           isSelected={selectedNodeIds.includes(node.id)}
@@ -197,8 +197,8 @@ export function NodeMesh({
   )
 }
 
-// Individual node component for small graphs
-interface IndividualNodeProps {
+// Planet-style node component
+interface PlanetNodeProps {
   node: SimNode
   isSelected: boolean
   isHovered: boolean
@@ -210,7 +210,7 @@ interface IndividualNodeProps {
   getLODGeometry: (distance: number) => THREE.SphereGeometry
 }
 
-function IndividualNode({
+function PlanetNode({
   node,
   isSelected,
   isHovered,
@@ -220,44 +220,23 @@ function IndividualNode({
   onDrag,
   onDragEnd,
   getLODGeometry,
-}: IndividualNodeProps) {
+}: PlanetNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null)
-  const ringRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
   const isDragging = useRef(false)
 
   const isSelf = node.type === 'self'
+  const nodeColor = isSelf ? SELF_NODE_COLOR : NODE_COLORS[node.type]
 
   // Calculate size based on type and importance
   const size = useMemo(() => {
-    return NODE_SIZES[node.type] * (1 + node.importance / 200)
-  }, [node.type, node.importance])
-
-  // Calculate color - Self 노드는 골드
-  const color = useMemo(() => {
-    if (isSelected) return '#ffffff'
-    if (isSelf) {
-      const baseColor = new THREE.Color(SELF_NODE_COLOR)
-      if (isHovered) baseColor.multiplyScalar(1.3)
-      return baseColor
-    }
-    const baseColor = new THREE.Color(NODE_COLORS[node.type])
-    if (isHovered) baseColor.multiplyScalar(1.5)
-    return baseColor
-  }, [node.type, isSelected, isHovered, isSelf])
-
-  // Ring rotation animation for Self node
-  useFrame((state) => {
-    if (ringRef.current && isSelf) {
-      ringRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.5) * 0.2
-      ringRef.current.rotation.y += 0.01
-    }
-  })
+    const baseSize = NODE_SIZES[node.type] * (1 + node.importance / 150)
+    return isHovered ? baseSize * 1.1 : baseSize
+  }, [node.type, node.importance, isHovered])
 
   // Update LOD based on distance to camera
   useFrame(() => {
     if (!meshRef.current) return
-
     const distance = camera.position.distanceTo(meshRef.current.position)
     meshRef.current.geometry = getLODGeometry(distance)
   })
@@ -279,7 +258,6 @@ function IndividualNode({
       event.stopPropagation()
       isDragging.current = true
       onDragStart?.(node.id)
-      // Capture pointer for drag
       ;(event.target as HTMLElement)?.setPointerCapture?.(event.pointerId)
     },
     [node.id, onDragStart]
@@ -290,9 +268,6 @@ function IndividualNode({
     (event: ThreeEvent<PointerEvent>) => {
       if (!isDragging.current) return
       event.stopPropagation()
-
-      // Calculate new position based on pointer movement
-      // This is a simplified version; real implementation would use raycasting
       if (meshRef.current && event.point) {
         onDrag?.(node.id, event.point)
       }
@@ -314,7 +289,7 @@ function IndividualNode({
 
   return (
     <group position={[node.x, node.y, node.z]}>
-      {/* Main node sphere */}
+      {/* Main planet sphere */}
       <mesh
         ref={meshRef}
         scale={size}
@@ -325,51 +300,30 @@ function IndividualNode({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        <sphereGeometry args={[1, 32, 32]} />
+        <sphereGeometry args={[1, 64, 64]} />
         <meshStandardMaterial
-          color={color}
-          metalness={isSelf ? 0.6 : 0.3}
-          roughness={isSelf ? 0.3 : 0.7}
-          emissive={isSelf ? SELF_NODE_COLOR : (isSelected || isHovered ? color : '#000000')}
-          emissiveIntensity={isSelf ? 0.4 : (isSelected ? 0.5 : isHovered ? 0.3 : 0)}
+          color={isSelected ? '#ffffff' : nodeColor}
+          metalness={isSelf ? 0.9 : 0.6}
+          roughness={isSelf ? 0.1 : 0.3}
+          emissive={nodeColor}
+          emissiveIntensity={isSelected ? 2.5 : isHovered ? 2.0 : isSelf ? 1.5 : 1.0}
         />
       </mesh>
 
-      {/* Self 노드 전용: 링 오브젝트 */}
-      {isSelf && (
-        <mesh ref={ringRef} scale={size * 1.5}>
-          <torusGeometry args={[1, 0.05, 16, 64]} />
-          <meshStandardMaterial
-            color={SELF_NODE_COLOR}
-            metalness={0.8}
-            roughness={0.2}
-            emissive={SELF_NODE_COLOR}
-            emissiveIntensity={0.6}
-            transparent
-            opacity={0.8}
-          />
-        </mesh>
-      )}
 
-      {/* Self 노드 전용: 외곽 글로우 */}
-      {isSelf && (
-        <mesh scale={size * 1.2}>
-          <sphereGeometry args={[1, 32, 32]} />
-          <meshBasicMaterial
-            color={SELF_NODE_COLOR}
-            transparent
-            opacity={0.15}
-          />
-        </mesh>
-      )}
-
-      {/* Selection indicator ring */}
+      {/* Selection indicator ring (for non-self nodes) */}
       {isSelected && !isSelf && (
-        <mesh scale={size * 1.3}>
-          <torusGeometry args={[1, 0.03, 16, 32]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.8} />
+        <mesh scale={size * 1.4} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[1, 0.02, 16, 64]} />
+          <meshBasicMaterial
+            color="#ffffff"
+            transparent
+            opacity={0.9}
+            blending={THREE.AdditiveBlending}
+          />
         </mesh>
       )}
+
     </group>
   )
 }

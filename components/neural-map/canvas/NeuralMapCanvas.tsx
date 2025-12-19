@@ -3,7 +3,7 @@
 
 import { Suspense, useRef, useEffect, useCallback, useState } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
-import { Preload, AdaptiveDpr, AdaptiveEvents, PerformanceMonitor } from '@react-three/drei'
+import { Preload, AdaptiveDpr, AdaptiveEvents, PerformanceMonitor, Stars } from '@react-three/drei'
 import * as THREE from 'three'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { THEME_PRESETS, POST_PROCESSING, CAMERA_SETTINGS } from '@/lib/neural-map/constants'
@@ -12,8 +12,7 @@ import { NodeMesh } from './NodeMesh'
 import { EdgeLine } from './EdgeLine'
 import { LabelSystem } from './LabelSystem'
 import { CameraController } from './CameraController'
-// PostProcessing disabled due to Three.js version compatibility
-// import { PostProcessingEffects } from './PostProcessing'
+import { StarField, NebulaCloud } from './StarField'
 
 interface NeuralMapCanvasProps {
   className?: string
@@ -47,6 +46,8 @@ export function NeuralMapCanvas({ className }: NeuralMapCanvasProps) {
           alpha: false,
           powerPreference: 'high-performance',
           stencil: false,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.5,
         }}
         onCreated={({ gl }) => {
           gl.setClearColor(new THREE.Color(theme.background.gradient[0]))
@@ -70,10 +71,19 @@ export function NeuralMapCanvas({ className }: NeuralMapCanvasProps) {
 
 // Loading indicator while scene loads
 function LoadingIndicator() {
+  const meshRef = useRef<THREE.Mesh>(null)
+
+  useFrame((state) => {
+    if (meshRef.current) {
+      meshRef.current.rotation.x = state.clock.elapsedTime
+      meshRef.current.rotation.y = state.clock.elapsedTime * 0.5
+    }
+  })
+
   return (
-    <mesh>
-      <sphereGeometry args={[1, 16, 16]} />
-      <meshBasicMaterial color="#6366f1" wireframe />
+    <mesh ref={meshRef}>
+      <icosahedronGeometry args={[2, 1]} />
+      <meshBasicMaterial color="#FFD700" wireframe />
     </mesh>
   )
 }
@@ -173,19 +183,35 @@ function SceneContent() {
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[50, 50, 50]} intensity={0.6} />
-      <directionalLight position={[-50, -50, -50]} intensity={0.2} />
+      {/* Cosmic Lighting */}
+      <ambientLight intensity={0.3} color="#3a4a5a" />
+      <directionalLight position={[100, 100, 50]} intensity={0.8} color="#ffffff" />
+      <directionalLight position={[-100, -50, -100]} intensity={0.3} color="#4a9eff" />
 
-      {/* Background */}
-      <BackgroundGradient colors={theme.background.gradient} />
+      {/* Point lights for dramatic effect */}
+      <pointLight position={[0, 0, 0]} intensity={1.5} color="#FFD700" distance={200} decay={2} />
+      <pointLight position={[150, 50, 100]} intensity={0.8} color="#00BFFF" distance={300} decay={2} />
+      <pointLight position={[-150, -50, -100]} intensity={0.5} color="#00BFFF" distance={300} decay={2} />
+
+      {/* Background gradient sphere */}
+      <CosmicBackground colors={theme.background.gradient} />
+
+      {/* Very subtle background - nodes are the real stars */}
+      <Stars
+        radius={1000}
+        depth={50}
+        count={500}
+        factor={2}
+        saturation={0}
+        fade
+        speed={0.1}
+      />
 
       {/* Camera controls */}
       <CameraController />
 
-      {/* Post-processing effects - disabled due to Three.js version compatibility */}
-      {/* {POST_PROCESSING.enabled && <PostProcessingEffects />} */}
+      {/* Fog for depth - starts far to not hide stars */}
+      <fog attach="fog" args={[theme.background.gradient[1], 500, 2000]} />
 
       {/* Edges */}
       {simLinks.length > 0 && (
@@ -216,28 +242,30 @@ function SceneContent() {
   )
 }
 
-// Background gradient sphere
-interface BackgroundGradientProps {
+// Cosmic background with gradient and glow
+interface CosmicBackgroundProps {
   colors: [string, string]
 }
 
-function BackgroundGradient({ colors }: BackgroundGradientProps) {
+function CosmicBackground({ colors }: CosmicBackgroundProps) {
   const meshRef = useRef<THREE.Mesh>(null)
+  const glowRef = useRef<THREE.Mesh>(null)
   const { scene } = useThree()
 
   useEffect(() => {
     // Create gradient texture
     const canvas = document.createElement('canvas')
     canvas.width = 2
-    canvas.height = 256
+    canvas.height = 512
 
     const ctx = canvas.getContext('2d')
     if (ctx) {
-      const gradient = ctx.createLinearGradient(0, 0, 0, 256)
+      const gradient = ctx.createLinearGradient(0, 0, 0, 512)
       gradient.addColorStop(0, colors[0])
-      gradient.addColorStop(1, colors[1])
+      gradient.addColorStop(0.5, colors[1])
+      gradient.addColorStop(1, '#000005')
       ctx.fillStyle = gradient
-      ctx.fillRect(0, 0, 2, 256)
+      ctx.fillRect(0, 0, 2, 512)
     }
 
     const texture = new THREE.CanvasTexture(canvas)
@@ -249,15 +277,38 @@ function BackgroundGradient({ colors }: BackgroundGradientProps) {
       material.needsUpdate = true
     }
 
-    // Also set scene background color
+    // Set scene background
     scene.background = new THREE.Color(colors[0])
   }, [colors, scene])
 
+  // Animate subtle glow
+  useFrame((state) => {
+    if (glowRef.current) {
+      const scale = 1 + Math.sin(state.clock.elapsedTime * 0.2) * 0.02
+      glowRef.current.scale.setScalar(scale)
+    }
+  })
+
   return (
-    <mesh ref={meshRef} scale={[-1, 1, 1]}>
-      <sphereGeometry args={[500, 32, 32]} />
-      <meshBasicMaterial side={THREE.BackSide} />
-    </mesh>
+    <group>
+      {/* Main background sphere */}
+      <mesh ref={meshRef} scale={[-1, 1, 1]}>
+        <sphereGeometry args={[800, 64, 64]} />
+        <meshBasicMaterial side={THREE.BackSide} />
+      </mesh>
+
+      {/* Central glow effect */}
+      <mesh ref={glowRef} position={[0, 0, -100]}>
+        <sphereGeometry args={[150, 32, 32]} />
+        <meshBasicMaterial
+          color="#0a1a2a"
+          transparent
+          opacity={0.2}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
   )
 }
 

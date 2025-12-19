@@ -1655,7 +1655,25 @@ export function TwoLevelSidebar() {
                                   className="overflow-hidden pl-4 space-y-0.5"
                                 >
                                   {item.children!.map((child) => {
-                                    const childActive = child.href && (pathname === child.href || pathname.startsWith(child.href + '?'))
+                                    // 메신저 하위 메뉴의 active 상태는 URL 파라미터로 체크
+                                    let childActive = false
+                                    if (child.href) {
+                                      const childUrl = new URL(child.href, 'http://localhost')
+                                      const childPath = childUrl.pathname
+                                      const childMode = childUrl.searchParams.get('mode')
+                                      const childStatus = childUrl.searchParams.get('status')
+                                      const currentMode = searchParams.get('mode')
+                                      const currentStatus = searchParams.get('status')
+
+                                      if (pathname === childPath) {
+                                        // 메신저 하위 메뉴: mode와 status 파라미터 매칭
+                                        if (childMode || childStatus) {
+                                          childActive = childMode === currentMode && childStatus === currentStatus
+                                        } else {
+                                          childActive = !currentMode && !currentStatus
+                                        }
+                                      }
+                                    }
                                     const ChildIcon = child.icon
                                     return (
                                       <Link

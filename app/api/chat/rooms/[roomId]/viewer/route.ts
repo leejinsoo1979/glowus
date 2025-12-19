@@ -31,8 +31,8 @@ export async function GET(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { data, error } = await adminSupabase
-      .from('shared_viewer_state')
+    const { data, error } = await (adminSupabase
+      .from('shared_viewer_state') as any)
       .select('*')
       .eq('room_id', roomId)
       .single()
@@ -89,13 +89,13 @@ export async function POST(
     }
 
     // 기존 뷰어 상태 삭제 후 새로 생성
-    await adminSupabase
-      .from('shared_viewer_state')
+    await (adminSupabase
+      .from('shared_viewer_state') as any)
       .delete()
       .eq('room_id', roomId)
 
-    const { data, error } = await adminSupabase
-      .from('shared_viewer_state')
+    const { data, error } = await (adminSupabase
+      .from('shared_viewer_state') as any)
       .insert({
         room_id: roomId,
         media_type,
@@ -162,8 +162,8 @@ export async function PATCH(
     }
 
     // 현재 상태 조회
-    const { data: current } = await adminSupabase
-      .from('shared_viewer_state')
+    const { data: current } = await (adminSupabase
+      .from('shared_viewer_state') as any)
       .select('*')
       .eq('room_id', roomId)
       .single()
@@ -266,8 +266,8 @@ export async function PATCH(
         return NextResponse.json({ error: '알 수 없는 액션입니다' }, { status: 400 })
     }
 
-    const { data, error } = await adminSupabase
-      .from('shared_viewer_state')
+    const { data, error } = await (adminSupabase
+      .from('shared_viewer_state') as any)
       .update(updates)
       .eq('room_id', roomId)
       .select()
@@ -308,8 +308,8 @@ export async function DELETE(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { error } = await adminSupabase
-      .from('shared_viewer_state')
+    const { error } = await (adminSupabase
+      .from('shared_viewer_state') as any)
       .delete()
       .eq('room_id', roomId)
 

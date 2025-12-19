@@ -24,13 +24,13 @@ interface EdgeEditorModalProps {
 }
 
 const EDGE_TYPE_OPTIONS: { value: EdgeType; label: string; icon: React.ReactNode; description: string; color: string }[] = [
-  { value: 'parent_child', label: '상위-하위', icon: <GitBranch className="w-4 h-4" />, description: '계층 관계', color: '#6366f1' },
-  { value: 'references', label: '참조', icon: <Link className="w-4 h-4" />, description: '참조 관계', color: '#8b5cf6' },
+  { value: 'parent_child', label: '상위-하위', icon: <GitBranch className="w-4 h-4" />, description: '계층 관계', color: '#3B82F6' },
+  { value: 'references', label: '참조', icon: <Link className="w-4 h-4" />, description: '참조 관계', color: '#0EA5E9' },
   { value: 'supports', label: '지지', icon: <ThumbsUp className="w-4 h-4" />, description: '지지/뒷받침', color: '#22c55e' },
   { value: 'contradicts', label: '반박', icon: <ThumbsDown className="w-4 h-4" />, description: '반박/충돌', color: '#ef4444' },
   { value: 'causes', label: '인과', icon: <ArrowRight className="w-4 h-4" />, description: '원인-결과', color: '#f59e0b' },
   { value: 'same_topic', label: '같은 주제', icon: <Layers className="w-4 h-4" />, description: '동일 토픽', color: '#06b6d4' },
-  { value: 'sequence', label: '순서', icon: <ListOrdered className="w-4 h-4" />, description: '순차적 관계', color: '#ec4899' },
+  { value: 'sequence', label: '순서', icon: <ListOrdered className="w-4 h-4" />, description: '순차적 관계', color: '#14B8A6' },
 ]
 
 export function EdgeEditorModal({ mapId, onClose }: EdgeEditorModalProps) {
@@ -288,7 +288,7 @@ export function EdgeEditorModal({ mapId, onClose }: EdgeEditorModalProps) {
               disabled={!sourceId || !targetId || sourceId === targetId || isSubmitting}
               className={cn(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2',
-                'bg-violet-600 hover:bg-violet-500 text-white',
+                'bg-blue-600 hover:bg-blue-500 text-white',
                 (!sourceId || !targetId || sourceId === targetId || isSubmitting) && 'opacity-50 cursor-not-allowed'
               )}
             >

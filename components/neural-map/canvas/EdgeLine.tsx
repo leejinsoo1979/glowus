@@ -19,13 +19,13 @@ interface EdgeLineProps {
 
 // Edge colors by type
 const EDGE_COLORS: Record<EdgeType, string> = {
-  parent_child: '#6366f1',
-  references: '#8b5cf6',
+  parent_child: '#3B82F6',
+  references: '#0EA5E9',
   supports: '#22c55e',
   contradicts: '#ef4444',
   causes: '#f59e0b',
   same_topic: '#06b6d4',
-  sequence: '#ec4899',
+  sequence: '#14B8A6',
 }
 
 // Edge dash patterns by type
@@ -198,7 +198,7 @@ function InstancedEdges({
           itemSize={3}
         />
       </bufferGeometry>
-      <lineBasicMaterial vertexColors transparent opacity={0.4} />
+      <lineBasicMaterial vertexColors transparent opacity={0.6} />
     </lineSegments>
   )
 }
@@ -225,13 +225,13 @@ function IndividualEdge({
   onClick,
   onHover,
 }: IndividualEdgeProps) {
-  // Calculate line width based on strength
+  // Calculate line width based on strength - thicker lines
   const lineWidth = useMemo(() => {
-    return 0.5 + link.strength * 2
+    return 1.0 + link.strength * 3
   }, [link.strength])
 
-  // Calculate opacity
-  const opacity = isHighlighted ? highlightOpacity : baseOpacity * link.strength
+  // Calculate opacity - more visible
+  const opacity = isHighlighted ? highlightOpacity : Math.max(0.4, baseOpacity * link.strength)
 
   // Line points
   const points = useMemo(() => {
@@ -240,7 +240,7 @@ function IndividualEdge({
 
   // Get edge color based on type
   const edgeColor = useMemo(() => {
-    return EDGE_COLORS[link.type] || '#6366f1'
+    return EDGE_COLORS[link.type] || '#3B82F6'
   }, [link.type])
 
   return (
@@ -250,8 +250,6 @@ function IndividualEdge({
       lineWidth={lineWidth}
       transparent
       opacity={opacity}
-      // Interaction handlers would need custom implementation
-      // as drei Line doesn't support onClick directly
     />
   )
 }

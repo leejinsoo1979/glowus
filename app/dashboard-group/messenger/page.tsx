@@ -158,6 +158,29 @@ export default function MessengerPage() {
     }
   }, [searchParams, router])
 
+  // URL에서 room 파라미터 읽어서 채팅방 선택
+  useEffect(() => {
+    const roomIdFromUrl = searchParams.get('room')
+    if (roomIdFromUrl && rooms.length > 0) {
+      const roomExists = rooms.some(r => r.id === roomIdFromUrl)
+      if (roomExists && activeRoomId !== roomIdFromUrl) {
+        setActiveRoomId(roomIdFromUrl)
+      }
+    }
+  }, [searchParams, rooms, activeRoomId])
+
+  // 채팅방 선택 시 URL 업데이트 함수
+  const selectRoom = (room: ChatRoom) => {
+    setActiveRoomId(room.id)
+    const roomModeType = detectRoomMode(room)
+    const params = new URLSearchParams()
+    params.set('room', room.id)
+    if (roomModeType !== 'chat') {
+      params.set('mode', roomModeType)
+    }
+    router.replace(`/dashboard-group/messenger?${params.toString()}`, { scroll: false })
+  }
+
   // 필터링된 채팅방
   const filteredRooms = rooms.filter(room => {
     if (!searchQuery) return true
@@ -529,7 +552,7 @@ export default function MessengerPage() {
               return (
                 <button
                   key={room.id}
-                  onClick={() => setActiveRoomId(room.id)}
+                  onClick={() => selectRoom(room)}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-left ${
                     activeRoomId === room.id
                       ? isDark ? 'bg-zinc-800' : 'bg-zinc-100'
@@ -600,7 +623,10 @@ export default function MessengerPage() {
                 size="icon"
                 variant="ghost"
                 className="lg:hidden -ml-2 flex-shrink-0"
-                onClick={() => setActiveRoomId(null)}
+                onClick={() => {
+                  setActiveRoomId(null)
+                  router.replace('/dashboard-group/messenger', { scroll: false })
+                }}
               >
                 <ChevronLeft className="w-5 h-5" />
               </Button>
@@ -1467,7 +1493,16 @@ export default function MessengerPage() {
             onCreateRoom={async (data) => {
               const { topic, duration, facilitator_id, ...roomData } = data
               const room = await createRoom(roomData)
-              setActiveRoomId(room.id)
+              if (room) {
+                const newRoomMode = detectRoomMode(room)
+                setActiveRoomId(room.id)
+                const params = new URLSearchParams()
+                params.set('room', room.id)
+                if (newRoomMode !== 'chat') {
+                  params.set('mode', newRoomMode)
+                }
+                router.replace(`/dashboard-group/messenger?${params.toString()}`, { scroll: false })
+              }
               setShowNewChat(false)
 
               // 주제가 있으면 회의 시작 및 첫 메시지 전송

@@ -34,7 +34,7 @@ function FileIcon({ type }: { type: string }) {
     case 'image':
       return <Image className="w-4 h-4 text-emerald-400" />
     case 'video':
-      return <Film className="w-4 h-4 text-purple-400" />
+      return <Film className="w-4 h-4 text-cyan-400" />
     case 'markdown':
       return <FileCode className="w-4 h-4 text-blue-400" />
     default:

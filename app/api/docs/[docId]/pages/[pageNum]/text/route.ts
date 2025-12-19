@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getDevUserIfEnabled } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
-import pdfParse from 'pdf-parse'
+// @ts-ignore - pdf-parse has no proper type exports
+const pdfParse = require('pdf-parse')
 
 /**
  * PDF 페이지별 텍스트 추출 API
@@ -42,16 +43,16 @@ export async function GET(
     }
 
     // shared_viewer_state에서 PDF 정보 조회
-    const { data: viewerState, error: viewerError } = await adminClient
-      .from('shared_viewer_state')
+    const { data: viewerState, error: viewerError } = await (adminClient
+      .from('shared_viewer_state') as any)
       .select('*')
       .eq('id', docId)
       .single()
 
     if (viewerError || !viewerState) {
       // docId가 room_id인 경우 시도
-      const { data: viewerByRoom } = await adminClient
-        .from('shared_viewer_state')
+      const { data: viewerByRoom } = await (adminClient
+        .from('shared_viewer_state') as any)
         .select('*')
         .eq('room_id', docId)
         .single()

@@ -19,13 +19,13 @@ export const NODE_COLORS: Record<NodeType, string> = {
   self:     '#FFD700',  // 골드
   concept:  '#00BFFF',  // 시안
   project:  '#10B981',  // 에메랄드
-  doc:      '#8B5CF6',  // 퍼플
+  doc:      '#3B82F6',  // 블루
   idea:     '#F59E0B',  // 앰버
   decision: '#EF4444',  // 레드
-  memory:   '#EC4899',  // 핑크
-  task:     '#06B6D4',  // 틸
-  person:   '#6366F1',  // 인디고
-  insight:  '#A855F7',  // 바이올렛
+  memory:   '#14B8A6',  // 틸
+  task:     '#06B6D4',  // 시안
+  person:   '#0EA5E9',  // 스카이블루
+  insight:  '#22D3EE',  // 시안라이트
 }
 
 // ============================================
@@ -231,10 +231,10 @@ export const THEME_PRESETS: NeuralMapTheme[] = [
     id: 'cosmic-dark',
     name: 'Cosmic Dark',
     background: {
-      gradient: ['#0a0a0f', '#1a1a2e'],
+      gradient: ['#050510', '#0a0a1a'],
       starsEnabled: true,
       starsColor: '#ffffff',
-      starsCount: 500,
+      starsCount: 5000,
     },
     node: {
       colors: NODE_COLORS,
@@ -247,7 +247,7 @@ export const THEME_PRESETS: NeuralMapTheme[] = [
       defaultOpacity: 0.5,
       selectedOpacity: 1.0,
       particlesEnabled: true,
-      baseColor: '#6366f1',
+      baseColor: '#3B82F6',
       baseOpacity: 0.5,
       highlightOpacity: 1.0,
     },
