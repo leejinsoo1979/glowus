@@ -169,21 +169,32 @@ export function BrainMap3D({
 
     const fg = fgRef.current
 
-    // 렌더러에 Bloom 추가
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(dimensions.width, dimensions.height),
-      bloomStrength,  // strength
-      0.4,            // radius
-      0.1             // threshold
-    )
+    try {
+      // 렌더러에 Bloom 추가
+      const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(dimensions.width, dimensions.height),
+        bloomStrength,  // strength
+        0.4,            // radius
+        0.1             // threshold
+      )
 
-    fg.postProcessingComposer?.().addPass(bloomPass)
+      // postProcessingComposer가 있으면 bloom 추가
+      const composer = fg.postProcessingComposer?.()
+      if (composer) {
+        composer.addPass(bloomPass)
+      }
 
-    // 배경색 설정
-    fg.scene?.().background = new THREE.Color(isDark ? '#09090b' : '#ffffff')
+      // 배경색 설정
+      const scene = fg.scene?.()
+      if (scene) {
+        scene.background = new THREE.Color(isDark ? '#09090b' : '#ffffff')
+      }
 
-    // 카메라 설정
-    fg.cameraPosition({ z: 500 })
+      // 카메라 설정
+      fg.cameraPosition({ z: 500 })
+    } catch (error) {
+      console.warn('[BrainMap3D] Bloom effect setup failed:', error)
+    }
   }, [fgRef.current, dimensions, bloomStrength, isDark])
 
   // 특정 노드로 포커스
