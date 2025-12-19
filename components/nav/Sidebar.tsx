@@ -30,6 +30,7 @@ import {
   BrainCircuit,
   MessageSquare,
   Layers,
+  Orbit,
 } from 'lucide-react'
 import { TbBrandWechat } from 'react-icons/tb'
 
@@ -43,6 +44,7 @@ const navigation = [
   { name: '이메일', href: '/dashboard-group/email', icon: Mail },
   { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
   { name: 'AI 에이전트', href: '/dashboard-group/agents', icon: BrainCircuit },
+  { name: '뉴럴맵', href: '/dashboard-group/neural-map', icon: Orbit },
   { name: '리포트', href: '/dashboard-group/reports', icon: FileText },
   { name: '팀 관리', href: '/dashboard-group/team', icon: Users },
   { name: 'AI 인사이트', href: '/dashboard-group/insights', icon: Sparkles },

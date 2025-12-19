@@ -1,0 +1,403 @@
+/**
+ * Neural Map Types
+ * 3D Knowledge Graph Visualization for Users
+ */
+
+// ============================================
+// Node Types
+// ============================================
+
+export type NodeType =
+  | 'self'      // 중심 (유일)
+  | 'concept'   // 개념
+  | 'project'   // 프로젝트
+  | 'doc'       // 문서
+  | 'idea'      // 아이디어
+  | 'decision'  // 의사결정
+  | 'memory'    // 기억
+  | 'task'      // 할일
+  | 'person'    // 사람
+  | 'insight'   // AI 인사이트
+
+export interface SourceRef {
+  fileId: string
+  kind: 'pdf' | 'image' | 'video' | 'markdown'
+  page?: number               // PDF 페이지
+  timestamp?: number          // 비디오 초
+  anchor?: string             // 마크다운 헤딩
+}
+
+export interface NodeStats {
+  views: number
+  lastOpened?: string
+}
+
+export interface NodePosition {
+  x: number
+  y: number
+  z: number
+}
+
+export interface NeuralNode {
+  id: string
+  type: NodeType
+  title: string
+  summary?: string
+  content?: string              // 마크다운 상세 내용
+  tags: string[]
+  importance: number            // 1-10
+
+  // 계층
+  parentId?: string
+  clusterId?: string
+
+  // 문서 연결
+  sourceRef?: SourceRef
+
+  // 시각화
+  color?: string
+  expanded: boolean
+  pinned: boolean
+
+  // 메타
+  createdAt: string
+  updatedAt: string
+
+  // 3D 위치 (런타임)
+  position?: NodePosition
+
+  // 통계
+  stats?: NodeStats
+}
+
+// ============================================
+// Edge Types
+// ============================================
+
+export type EdgeType =
+  | 'parent_child'   // 계층
+  | 'references'     // 참조
+  | 'supports'       // 지지
+  | 'contradicts'    // 반박
+  | 'causes'         // 인과
+  | 'same_topic'     // 같은 주제
+  | 'sequence'       // 순서 (로드맵)
+
+export interface EdgeEvidence {
+  fileId: string
+  page?: number
+  quote?: string
+  note?: string
+}
+
+export interface NeuralEdge {
+  id: string
+  source: string
+  target: string
+  type: EdgeType
+  weight: number                // 0.1 ~ 1.0
+  label?: string
+  bidirectional: boolean
+
+  // 근거
+  evidence?: EdgeEvidence[]
+
+  createdAt: string
+}
+
+// ============================================
+// Cluster Types
+// ============================================
+
+export interface NeuralCluster {
+  id: string
+  title: string
+  description?: string
+  color: string
+  keywords: string[]            // TOP 5 키워드
+  cohesion: number              // 응집도 0~1
+  centerNodeId?: string         // 대표 노드
+  createdAt: string
+}
+
+// ============================================
+// Graph Container
+// ============================================
+
+export type ViewTab = 'radial' | 'clusters' | 'pathfinder' | 'roadmap' | 'insights'
+
+export interface CameraState {
+  position: NodePosition
+  target: NodePosition
+}
+
+export interface ViewState {
+  activeTab: ViewTab
+  expandedNodeIds: string[]
+  pinnedNodeIds: string[]
+  selectedNodeIds: string[]
+  cameraPosition: NodePosition
+  cameraTarget: NodePosition
+}
+
+export interface NeuralGraph {
+  version: string               // "2.0"
+  userId: string
+  agentId?: string              // 프로필 연결
+  rootNodeId: string            // Self ID
+  title: string
+
+  nodes: NeuralNode[]
+  edges: NeuralEdge[]
+  clusters: NeuralCluster[]
+
+  // 뷰 상태
+  viewState: ViewState
+
+  // 테마
+  themeId: string
+
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================
+// File Types
+// ============================================
+
+export type NeuralFileType = 'pdf' | 'image' | 'video' | 'markdown'
+
+export interface NeuralFile {
+  id: string
+  mapId: string
+  name: string
+  type: NeuralFileType
+  url: string
+  size: number
+  linkedNodeCount?: number
+  createdAt: string
+}
+
+// ============================================
+// Analysis Job Types
+// ============================================
+
+export type AnalysisJobStatus = 'queued' | 'processing' | 'completed' | 'failed'
+
+export interface AnalysisJob {
+  id: string
+  mapId: string
+  status: AnalysisJobStatus
+  progress: number  // 0-100
+  fileIds: string[]
+  instructions?: string
+  result?: {
+    nodes: NeuralNode[]
+    edges: NeuralEdge[]
+    clusters: NeuralCluster[]
+  }
+  error?: string
+  createdAt: string
+  completedAt?: string
+}
+
+// ============================================
+// History (Undo/Redo)
+// ============================================
+
+export type HistoryActionType =
+  | 'add_node'
+  | 'delete_node'
+  | 'update_node'
+  | 'add_edge'
+  | 'delete_edge'
+  | 'move_node'
+
+export interface HistoryAction {
+  type: HistoryActionType
+  payload: unknown
+  inverse: unknown
+  timestamp: number
+}
+
+// ============================================
+// Theme Types
+// ============================================
+
+export interface ThemeBackground {
+  gradient: [string, string]  // 그라데이션 시작/끝
+  starsEnabled: boolean
+  starsColor: string
+  starsCount: number
+}
+
+export interface ThemeNode {
+  colors: Record<NodeType, string>
+  emissiveIntensity: number
+  hoverScale: number
+  selectedOutlineColor: string
+  selectedOutlineWidth: number
+}
+
+export interface ThemeEdge {
+  defaultOpacity: number
+  selectedOpacity: number
+  particlesEnabled: boolean
+}
+
+export interface ThemePostProcessing {
+  bloomIntensity: number
+  bloomThreshold: number
+  ssaoIntensity: number
+}
+
+export interface ThemeUI {
+  panelBackground: string
+  textColor: string
+  accentColor: string
+  borderColor: string
+}
+
+export interface NeuralMapTheme {
+  id: string
+  name: string
+  background: ThemeBackground
+  node: ThemeNode
+  edge: ThemeEdge
+  postProcessing: ThemePostProcessing
+  ui: ThemeUI
+}
+
+// ============================================
+// Insights Types
+// ============================================
+
+export interface NeuralMapInsights {
+  centralNodes: NeuralNode[]
+  bridgeNodes: NeuralNode[]
+  deadEnds: NeuralNode[]
+  recentChanges: {
+    added: number
+    removed: number
+  }
+  suggestions: {
+    type: string
+    nodeIds: string[]
+    description: string
+  }[]
+}
+
+// ============================================
+// Label Policy Types
+// ============================================
+
+export interface LabelShowConditions {
+  hover: boolean
+  selected: boolean
+  distanceThreshold: number
+}
+
+export interface LargeGraphPolicy {
+  enabled: boolean
+  maxVisibleLabels: number
+  priority: string[]
+}
+
+export interface HugeGraphPolicy {
+  enabled: boolean
+  maxVisibleLabels: number
+  showOnlySelected: boolean
+  useSimpleLabels: boolean
+}
+
+export interface LabelPolicy {
+  defaultVisible: boolean
+  showConditions: LabelShowConditions
+  largeGraphPolicy: LargeGraphPolicy
+  hugeGraphPolicy: HugeGraphPolicy
+}
+
+// ============================================
+// LOD Types
+// ============================================
+
+export interface LODDistances {
+  labelShow: number
+  labelHide: number
+  nodeSimplify: number
+  clusterProxy: number
+}
+
+// ============================================
+// Radial Layout Types
+// ============================================
+
+export interface RadialLayoutConfig {
+  centerNode: string
+  ringGap: number
+  angleSpread: number
+  jitter: number
+}
+
+// ============================================
+// Pathfinder Types
+// ============================================
+
+export interface PathfinderResult {
+  path: string[]               // node IDs
+  totalWeight: number
+  edges: NeuralEdge[]
+}
+
+// ============================================
+// UI State Types
+// ============================================
+
+export type RightPanelTab = 'inspector' | 'actions' | 'chat'
+
+export interface PanelState {
+  leftPanelWidth: number
+  rightPanelWidth: number
+  leftPanelCollapsed: boolean
+  rightPanelCollapsed: boolean
+  rightPanelTab: RightPanelTab
+}
+
+export interface SearchState {
+  query: string
+  results: NeuralNode[]
+  isSearching: boolean
+}
+
+// ============================================
+// Modal Types
+// ============================================
+
+export type ModalType = 'document' | 'nodeEditor' | 'export' | 'import' | 'settings' | null
+
+export interface ModalState {
+  type: ModalType
+  data?: unknown
+}
+
+// ============================================
+// Simulation Types (d3-force-3d)
+// ============================================
+
+export interface SimulationNode extends NeuralNode {
+  x?: number
+  y?: number
+  z?: number
+  vx?: number
+  vy?: number
+  vz?: number
+  fx?: number | null
+  fy?: number | null
+  fz?: number | null
+}
+
+export interface SimulationLink {
+  source: string | SimulationNode
+  target: string | SimulationNode
+  weight: number
+}
