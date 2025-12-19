@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import * as THREE from 'three'
 import { cn } from '@/lib/utils'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 import type { BrainNode, BrainEdge, NodeType, EdgeType } from '@/types/brain-map'
 
 // @ts-ignore - three.js examples JSM modules don't have proper type declarations
@@ -25,17 +26,18 @@ const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), {
   ),
 })
 
-// 노드 타입별 색상 (단일 톤 기반 밝기 조절)
+// PRD 12.1 기준 노드 타입별 색상
+// 🔵 Memory, 🟢 Concept, 🟡 Person, 🟣 Project/Doc, 🔴 Workflow/Task, ⚪ Decision
 const NODE_COLORS: Record<NodeType, string> = {
-  memory: '#00D9FF',    // 시안
-  concept: '#00BFFF',   // 밝은 파랑
-  person: '#FF6B9D',    // 핑크
-  doc: '#7C3AED',       // 보라
-  task: '#10B981',      // 초록
-  decision: '#F59E0B',  // 주황
-  meeting: '#6366F1',   // 인디고
-  tool: '#8B5CF6',      // 퍼플
-  skill: '#14B8A6',     // 틸
+  memory: '#3B82F6',    // 🔵 파랑 - 기억
+  concept: '#22C55E',   // 🟢 초록 - 개념
+  person: '#EAB308',    // 🟡 노랑 - 사람
+  doc: '#8B5CF6',       // 🟣 보라 - 프로젝트/문서
+  task: '#EF4444',      // 🔴 빨강 - 워크플로우/작업
+  decision: '#F8FAFC',  // ⚪ 흰색 - 의사결정
+  meeting: '#A855F7',   // 🟣 퍼플 - 회의
+  tool: '#06B6D4',      // 시안 - 도구
+  skill: '#14B8A6',     // 틸 - 스킬
 }
 
 // 노드 타입 라벨
@@ -110,6 +112,10 @@ export function BrainMap3D({
   const [isLoading, setIsLoading] = useState(true)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // 사용자 테마 색상 가져오기
+  const accentColor = useThemeStore((s) => s.accentColor)
+  const userAccentHex = accentColors.find(c => c.id === accentColor)?.color || '#3b82f6'
 
   // 컨테이너 크기 감지
   useEffect(() => {
@@ -223,12 +229,14 @@ export function BrainMap3D({
     // Sphere geometry
     const geometry = new THREE.SphereGeometry(size, 32, 32)
 
-    // Material with emissive glow
-    const color = new THREE.Color(node.color || '#888888')
+    // Material with emissive glow - 하이라이트 시 사용자 테마 색상 적용
+    const baseColor = new THREE.Color(node.color || '#888888')
+    const highlightColor = new THREE.Color(userAccentHex)
+    const color = isHighlighted ? highlightColor : baseColor
     const material = new THREE.MeshStandardMaterial({
       color: color,
-      emissive: color,
-      emissiveIntensity: isHighlighted ? 0.8 : 0.3,
+      emissive: isHighlighted ? highlightColor : baseColor,
+      emissiveIntensity: isHighlighted ? 1.0 : 0.3,
       metalness: 0.3,
       roughness: 0.4,
     })
@@ -270,7 +278,7 @@ export function BrainMap3D({
     }
 
     return sphere
-  }, [hoveredNode, selectedNode, highlightNodes, showLabels])
+  }, [hoveredNode, selectedNode, highlightNodes, showLabels, userAccentHex])
 
   // 링크 렌더링
   const linkColor = useCallback((linkObj: any) => {

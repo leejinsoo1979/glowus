@@ -15,6 +15,8 @@ import {
   Redo2,
   Search,
   Save,
+  Plus,
+  Link2,
 } from 'lucide-react'
 
 export function Toolbar() {
@@ -28,6 +30,7 @@ export function Toolbar() {
   const setTheme = useNeuralMapStore((s) => s.setTheme)
   const searchQuery = useNeuralMapStore((s) => s.searchQuery)
   const setSearchQuery = useNeuralMapStore((s) => s.setSearchQuery)
+  const openModal = useNeuralMapStore((s) => s.openModal)
 
   const currentTheme = THEME_PRESETS.find((t) => t.id === themeId)
 
@@ -129,6 +132,36 @@ export function Toolbar() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2">
+        {/* Add Node / Edge */}
+        <button
+          onClick={() => openModal('nodeEditor')}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            isDark
+              ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+              : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+          )}
+          title="노드 추가 (N)"
+        >
+          <Plus className="w-4 h-4" />
+          노드
+        </button>
+        <button
+          onClick={() => openModal('export', { mode: 'edge' })}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+            isDark
+              ? 'bg-violet-600 hover:bg-violet-500 text-white'
+              : 'bg-violet-500 hover:bg-violet-400 text-white'
+          )}
+          title="연결 추가 (E)"
+        >
+          <Link2 className="w-4 h-4" />
+          연결
+        </button>
+
+        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+
         {/* Undo/Redo */}
         <div className="flex items-center gap-1">
           <button

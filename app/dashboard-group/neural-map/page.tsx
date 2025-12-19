@@ -17,6 +17,10 @@ import { Toolbar } from '@/components/neural-map/controls/Toolbar'
 import { ViewTabs } from '@/components/neural-map/controls/ViewTabs'
 import { StatusBar } from '@/components/neural-map/controls/StatusBar'
 
+// Modals
+import { NodeEditorModal } from '@/components/neural-map/modals/NodeEditorModal'
+import { EdgeEditorModal } from '@/components/neural-map/modals/EdgeEditorModal'
+
 // Lucide Icons
 import {
   PanelRightClose,
@@ -58,6 +62,8 @@ export default function NeuralMapPage() {
 
   // Store
   const {
+    mapId,
+    setMapId,
     graph,
     isLoading,
     error,
@@ -67,7 +73,10 @@ export default function NeuralMapPage() {
     setGraph,
     setLoading,
     setError,
+    setFiles,
     currentTheme,
+    modalType,
+    closeModal,
   } = useNeuralMapStore()
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
@@ -76,61 +85,59 @@ export default function NeuralMapPage() {
     setMounted(true)
   }, [])
 
-  // Load initial graph (mock for now)
+  // Load or create neural map
   useEffect(() => {
-    const loadGraph = async () => {
+    const loadOrCreateMap = async () => {
       setLoading(true)
       try {
-        // TODO: Replace with actual API call
-        // const res = await fetch('/api/neural-map')
-        // const data = await res.json()
-        // setGraph(data)
+        // 1. 기존 맵 목록 조회
+        const listRes = await fetch('/api/neural-map')
+        const maps = await listRes.json()
 
-        // Mock data for now
-        const mockGraph: NeuralGraph = {
-          version: '2.0',
-          userId: 'mock-user',
-          rootNodeId: 'self-node',
-          title: 'My Neural Map',
-          nodes: [
-            {
-              id: 'self-node',
-              type: 'self',
-              title: 'SELF',
-              summary: '나의 중심 노드',
-              tags: [],
-              importance: 10,
-              expanded: true,
-              pinned: true,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              position: { x: 0, y: 0, z: 0 },
-            },
-          ],
-          edges: [],
-          clusters: [],
-          viewState: {
-            activeTab: 'radial',
-            expandedNodeIds: ['self-node'],
-            pinnedNodeIds: ['self-node'],
-            selectedNodeIds: [],
-            cameraPosition: { x: 0, y: 50, z: 200 },
-            cameraTarget: { x: 0, y: 0, z: 0 },
-          },
-          themeId: 'cosmic-dark',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+        let targetMapId: string
+
+        if (Array.isArray(maps) && maps.length > 0) {
+          // 가장 최근 맵 사용
+          targetMapId = maps[0].id
+        } else {
+          // 2. 맵이 없으면 새로 생성
+          const createRes = await fetch('/api/neural-map', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: 'My Neural Map' }),
+          })
+
+          if (!createRes.ok) {
+            throw new Error('Failed to create neural map')
+          }
+
+          const newMap = await createRes.json()
+          targetMapId = newMap.id
         }
-        setGraph(mockGraph)
+
+        setMapId(targetMapId)
+
+        // 3. 맵 전체 데이터 로드
+        const mapRes = await fetch(`/api/neural-map/${targetMapId}`)
+        if (!mapRes.ok) {
+          throw new Error('Failed to load neural map')
+        }
+
+        const { graph: graphData, files } = await mapRes.json()
+        setGraph(graphData)
+        setFiles(files || [])
       } catch (err) {
+        console.error('Neural map load error:', err)
         setError(err instanceof Error ? err.message : 'Failed to load graph')
       } finally {
         setLoading(false)
       }
     }
 
-    loadGraph()
-  }, [setGraph, setLoading, setError])
+    if (mounted) {
+      loadOrCreateMap()
+    }
+  }, [mounted, setGraph, setFiles, setLoading, setError, setMapId])
 
   if (!mounted) {
     return null
@@ -211,6 +218,14 @@ export default function NeuralMapPage() {
 
       {/* Status Bar */}
       <StatusBar />
+
+      {/* Modals */}
+      {modalType === 'nodeEditor' && (
+        <NodeEditorModal mapId={mapId} onClose={closeModal} />
+      )}
+      {modalType === 'export' && (
+        <EdgeEditorModal mapId={mapId} onClose={closeModal} />
+      )}
     </div>
   )
 }

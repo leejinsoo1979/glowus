@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
+import { useNeuralMapApi } from '@/lib/neural-map/useNeuralMapApi'
 import type { NeuralFile } from '@/lib/neural-map/types'
 import {
   Search,
@@ -20,6 +21,9 @@ import {
   Clock,
   Plus,
   File,
+  Trash2,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react'
 
 // 파일 타입별 아이콘
@@ -46,15 +50,63 @@ interface FileGroup {
   files: NeuralFile[]
 }
 
-export function FileTreePanel() {
+interface FileTreePanelProps {
+  mapId: string | null
+}
+
+export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['pdf', 'image']))
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Store에서 파일 목록 가져오기
   const files = useNeuralMapStore((s) => s.files)
+  const addFile = useNeuralMapStore((s) => s.addFile)
+  const removeFile = useNeuralMapStore((s) => s.removeFile)
   const currentTheme = useNeuralMapStore((s) => s.currentTheme)
+
+  // API hook
+  const { uploadFile, deleteFile } = useNeuralMapApi(mapId)
+
+  // 파일 업로드 핸들러
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (!selectedFile || !mapId) return
+
+    setIsUploading(true)
+    try {
+      const result = await uploadFile(selectedFile)
+      if (result) {
+        addFile(result)
+      }
+    } catch (error) {
+      console.error('File upload error:', error)
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  // 파일 삭제 핸들러
+  const handleDeleteFile = async (fileId: string) => {
+    if (!mapId) return
+    const success = await deleteFile(fileId)
+    if (success) {
+      removeFile(fileId)
+    }
+  }
+
+  // 파일 열기 핸들러
+  const handleOpenFile = (file: NeuralFile) => {
+    if (file.url) {
+      window.open(file.url, '_blank')
+    }
+  }
 
   // 파일을 타입별로 그룹화
   const fileGroups: FileGroup[] = [
@@ -196,10 +248,10 @@ export function FileTreePanel() {
                     className="overflow-hidden"
                   >
                     {group.files.map((file) => (
-                      <button
+                      <div
                         key={file.id}
                         className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm ml-4',
+                          'group flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm ml-4',
                           isDark
                             ? 'hover:bg-zinc-800 text-zinc-400'
                             : 'hover:bg-zinc-100 text-zinc-600'
@@ -207,7 +259,29 @@ export function FileTreePanel() {
                       >
                         <FileIcon type={file.type} />
                         <span className="flex-1 text-left truncate">{file.name}</span>
-                      </button>
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenFile(file)}
+                            className={cn(
+                              'p-1 rounded transition-colors',
+                              isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'
+                            )}
+                            title="파일 열기"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFile(file.id)}
+                            className={cn(
+                              'p-1 rounded transition-colors text-red-400',
+                              isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'
+                            )}
+                            title="파일 삭제"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </motion.div>
                 )}
@@ -250,17 +324,36 @@ export function FileTreePanel() {
 
       {/* Upload Button */}
       <div className={cn('p-3 border-t', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileUpload}
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.mp4,.webm,.mov,.avi,.md,.markdown,.txt"
+          className="hidden"
+        />
         <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading || !mapId}
           className={cn(
             'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
-            'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/25'
+            'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/25',
+            (isUploading || !mapId) && 'opacity-50 cursor-not-allowed'
           )}
           style={{
             background: `linear-gradient(135deg, ${accentColor}, ${accentColor}dd)`,
           }}
         >
-          <Upload className="w-4 h-4" />
-          <span>파일 업로드</span>
+          {isUploading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>업로드 중...</span>
+            </>
+          ) : (
+            <>
+              <Upload className="w-4 h-4" />
+              <span>파일 업로드</span>
+            </>
+          )}
         </button>
       </div>
     </div>

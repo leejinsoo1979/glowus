@@ -15,6 +15,7 @@ import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal
 import { CreateWorkModal } from '@/app/dashboard-group/works/create-modal'
 import { EmailSidebarChat } from '@/components/email/EmailSidebarChat'
 import { FileTreePanel } from '@/components/neural-map/panels/FileTreePanel'
+import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { EmailAccount, EmailMessage } from '@/types/email'
 import { useTeamStore } from '@/stores/teamStore'
 import { CgMenuGridO } from 'react-icons/cg'
@@ -987,6 +988,7 @@ export function TwoLevelSidebar() {
   const { activeCategory, setActiveCategory, sidebarOpen, setSidebarOpen, toggleSidebar } = useUIStore()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const neuralMapId = useNeuralMapStore((s) => s.mapId)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const [selectedCompanyMenu, setSelectedCompanyMenu] = useState<string | null>(null)
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false)
@@ -1267,6 +1269,8 @@ export function TwoLevelSidebar() {
                     targetPath = '/dashboard-group/calendar'
                   } else if (category.id === 'neural-map') {
                     targetPath = '/dashboard-group/neural-map'
+                  } else if (category.id === 'messenger') {
+                    targetPath = '/dashboard-group/messenger'
                   } else {
                     // 첫 번째 아이템의 href 사용 (# 시작하는 건 제외)
                     const firstItem = category.items.find(item => item.href && !item.href.startsWith('#'))
@@ -1393,7 +1397,7 @@ export function TwoLevelSidebar() {
               )}
             >
               <div className="h-full" style={{ width: 280 }}>
-                <FileTreePanel />
+                <FileTreePanel mapId={neuralMapId} />
               </div>
             </motion.aside>
           )}

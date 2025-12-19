@@ -36,7 +36,10 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { BrainNode, BrainCluster, BrainInsight, NodeType } from '@/types/brain-map'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 import { NodeDetailPopup } from './NodeDetailPopup'
+import { RoadmapPanel } from './RoadmapPanel'
+import { ClusterPanel } from './ClusterPanel'
 
 // 검색 결과 타입
 interface SearchResult {
@@ -52,7 +55,7 @@ const BrainMap3D = dynamic(() => import('./BrainMap3D'), {
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-950">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
         <span className="text-zinc-400 text-sm">3D 그래프 초기화 중...</span>
       </div>
     </div>
@@ -67,14 +70,7 @@ const TABS = [
   { id: 'roadmap' as TabType, label: '로드맵', icon: GitBranch },
 ]
 
-// 클러스터 라벨 (A ~ L)
-const CLUSTER_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
-
-// 클러스터 색상
-const CLUSTER_COLORS = [
-  '#FF6B9D', '#00D9FF', '#7C3AED', '#10B981', '#F59E0B', '#6366F1',
-  '#EC4899', '#14B8A6', '#8B5CF6', '#F97316', '#06B6D4', '#84CC16',
-]
+// ClusterPanel에서 사용하므로 상수 제거
 
 interface BrainMapLayoutProps {
   agentId: string
@@ -82,6 +78,10 @@ interface BrainMapLayoutProps {
 }
 
 export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) {
+  // 사용자 테마 색상
+  const accentColor = useThemeStore((s) => s.accentColor)
+  const userAccentHex = accentColors.find(c => c.id === accentColor)?.color || '#3b82f6'
+
   // State
   const [activeTab, setActiveTab] = useState<TabType>('pathfinder')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -110,10 +110,8 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
   const endInputRef = useRef<HTMLInputElement>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Cluster state
-  const [clusters, setClusters] = useState<BrainCluster[]>([])
+  // Cluster state (selectedCluster는 3D 그래프 하이라이트용으로 유지)
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null)
-  const [resolution, setResolution] = useState(50)
 
   // Insights state
   const [insights, setInsights] = useState<BrainInsight[]>([])
@@ -125,21 +123,7 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
   // 하이라이트할 노드 ID들
   const [highlightNodes, setHighlightNodes] = useState<Set<string>>(new Set())
 
-  // 클러스터 데이터 로드
-  useEffect(() => {
-    const fetchClusters = async () => {
-      try {
-        const res = await fetch(`/api/agents/${agentId}/brain/clusters`)
-        if (res.ok) {
-          const data = await res.json()
-          setClusters(data.clusters || [])
-        }
-      } catch (error) {
-        console.error('Failed to fetch clusters:', error)
-      }
-    }
-    fetchClusters()
-  }, [agentId])
+  // 클러스터 데이터는 ClusterPanel에서 처리
 
   // Insights 로드
   useEffect(() => {
@@ -270,20 +254,6 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
     setHighlightNodes(new Set())
   }
 
-  // 클러스터 선택
-  const handleClusterSelect = (clusterId: string) => {
-    if (selectedCluster === clusterId) {
-      setSelectedCluster(null)
-      setHighlightNodes(new Set())
-    } else {
-      setSelectedCluster(clusterId)
-      const cluster = clusters.find(c => c.clusterId === clusterId)
-      if (cluster) {
-        setHighlightNodes(new Set(cluster.centralNodeIds))
-      }
-    }
-  }
-
   // 노드 클릭 핸들러
   const handleNodeClick = useCallback((node: BrainNode) => {
     setSelectedNode(node)
@@ -327,11 +297,12 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
                   className={cn(
                     'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                     activeTab === tab.id
-                      ? 'bg-cyan-500 text-white'
+                      ? 'text-white'
                       : isDark
                         ? 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
                         : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
                   )}
+                  style={activeTab === tab.id ? { backgroundColor: userAccentHex } : undefined}
                 >
                   <Icon className="w-4 h-4" />
                   <span className="hidden lg:inline">{tab.label}</span>
@@ -365,12 +336,13 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
                       isDark
                         ? 'bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500'
                         : 'bg-white border-zinc-300 text-zinc-900 placeholder-zinc-400',
-                      'border focus:outline-none focus:ring-2 focus:ring-cyan-500',
-                      startNodeId && 'border-cyan-500'
+                      'border focus:outline-none focus:ring-2',
+                      startNodeId ? 'ring-2' : ''
                     )}
+                    style={startNodeId ? { borderColor: userAccentHex, boxShadow: `0 0 0 2px ${userAccentHex}40` } : undefined}
                   />
                   {isLoadingStart ? (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-500 animate-spin" />
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin" style={{ color: userAccentHex }} />
                   ) : (
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                   )}
@@ -425,12 +397,13 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
                       isDark
                         ? 'bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500'
                         : 'bg-white border-zinc-300 text-zinc-900 placeholder-zinc-400',
-                      'border focus:outline-none focus:ring-2 focus:ring-cyan-500',
-                      endNodeId && 'border-cyan-500'
+                      'border focus:outline-none focus:ring-2',
+                      endNodeId ? 'ring-2' : ''
                     )}
+                    style={endNodeId ? { borderColor: userAccentHex, boxShadow: `0 0 0 2px ${userAccentHex}40` } : undefined}
                   />
                   {isLoadingEnd ? (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-500 animate-spin" />
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin" style={{ color: userAccentHex }} />
                   ) : (
                     <Target className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                   )}
@@ -474,11 +447,12 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
                   className={cn(
                     'flex-1 py-2 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2',
                     startNode && endNode && !isSearching
-                      ? 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                      ? 'text-white'
                       : isDark
                         ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                         : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                   )}
+                  style={startNode && endNode && !isSearching ? { backgroundColor: userAccentHex } : undefined}
                 >
                   {isSearching ? (
                     <>
@@ -516,7 +490,7 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
               {pathNodes.length > 0 && (
                 <div className="mt-4 space-y-2">
                   <h4 className={cn('text-sm font-semibold flex items-center gap-2', isDark ? 'text-white' : 'text-zinc-900')}>
-                    <Route className="w-4 h-4 text-cyan-500" />
+                    <Route className="w-4 h-4" style={{ color: userAccentHex }} />
                     경로 ({pathNodes.length - 1}단계)
                   </h4>
                   <div className="space-y-1">
@@ -527,15 +501,19 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
                           'flex items-center gap-2 p-2 rounded-lg text-xs',
                           isDark ? 'bg-zinc-800' : 'bg-white border border-zinc-200',
                           idx === 0 && 'border-l-2 border-l-green-500',
-                          idx === pathNodes.length - 1 && 'border-l-2 border-l-cyan-500'
+                          idx === pathNodes.length - 1 && 'border-l-2'
                         )}
+                        style={idx === pathNodes.length - 1 ? { borderLeftColor: userAccentHex } : undefined}
                       >
-                        <span className={cn(
-                          'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
-                          idx === 0 ? 'bg-green-500 text-white' :
-                          idx === pathNodes.length - 1 ? 'bg-cyan-500 text-white' :
-                          'bg-zinc-600 text-white'
-                        )}>
+                        <span
+                          className={cn(
+                            'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
+                            idx === 0 ? 'bg-green-500 text-white' :
+                            idx === pathNodes.length - 1 ? 'text-white' :
+                            'bg-zinc-600 text-white'
+                          )}
+                          style={idx === pathNodes.length - 1 ? { backgroundColor: userAccentHex } : undefined}
+                        >
                           {idx + 1}
                         </span>
                         <div className="flex-1 min-w-0">
@@ -556,158 +534,36 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
             </div>
           )}
 
-          {/* 클러스터 */}
+          {/* 클러스터 - ClusterPanel 사용 */}
           {activeTab === 'clusters' && (
-            <div className="space-y-4">
-              {/* 해상도 슬라이더 */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className={cn('text-xs font-medium', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
-                    해상도
-                  </label>
-                  <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                    {resolution}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  value={resolution}
-                  onChange={(e) => setResolution(Number(e.target.value))}
-                  className="w-full accent-cyan-500"
-                />
-              </div>
-
-              {/* 클러스터 버튼 그리드 */}
-              <div>
-                <h4 className={cn('text-xs font-medium mb-2', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
-                  클러스터
-                </h4>
-                <div className="grid grid-cols-4 gap-2">
-                  {CLUSTER_LABELS.map((label, idx) => {
-                    const cluster = clusters[idx]
-                    const isSelected = selectedCluster === cluster?.clusterId
-                    const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length]
-
-                    return (
-                      <button
-                        key={label}
-                        onClick={() => cluster && handleClusterSelect(cluster.clusterId)}
-                        disabled={!cluster}
-                        className={cn(
-                          'aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-bold transition-all',
-                          isSelected
-                            ? 'ring-2 ring-white scale-110'
-                            : 'hover:scale-105',
-                          !cluster && 'opacity-30 cursor-not-allowed'
-                        )}
-                        style={{
-                          backgroundColor: cluster ? `${color}30` : undefined,
-                          color: cluster ? color : undefined,
-                          borderColor: color,
-                        }}
-                      >
-                        <span>{label}</span>
-                        {cluster && (
-                          <span className="text-[10px] opacity-70">{cluster.nodeCount}개</span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* 선택된 클러스터 정보 */}
-              {selectedCluster && (
-                <div className={cn(
-                  'p-3 rounded-lg',
-                  isDark ? 'bg-zinc-800' : 'bg-white border border-zinc-200'
-                )}>
-                  {(() => {
-                    const cluster = clusters.find(c => c.clusterId === selectedCluster)
-                    if (!cluster) return null
-                    const idx = clusters.indexOf(cluster)
-                    const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length]
-
-                    return (
-                      <>
-                        <div className="flex items-center gap-2 mb-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className={cn('font-semibold text-sm', isDark ? 'text-white' : 'text-zinc-900')}>
-                            {cluster.label}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {cluster.topKeywords?.map((keyword, i) => (
-                            <span
-                              key={i}
-                              className={cn(
-                                'px-2 py-0.5 rounded text-xs',
-                                isDark ? 'bg-zinc-700 text-zinc-300' : 'bg-zinc-100 text-zinc-600'
-                              )}
-                            >
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
-                        <div className={cn('text-xs mt-2', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                          응집도: {Math.round((cluster.cohesionScore || 0) * 100)}%
-                        </div>
-                      </>
-                    )
-                  })()}
-                </div>
-              )}
-
-              {/* AI 분석 버튼 */}
-              <button
-                onClick={() => setShowAnalysis(true)}
-                className={cn(
-                  'w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors',
-                  'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
-                )}
-              >
-                <Sparkles className="w-4 h-4" />
-                AI 분석
-              </button>
+            <div className="h-full -mx-4 -my-4">
+              <ClusterPanel
+                agentId={agentId}
+                isDark={isDark}
+                onClusterSelect={(cluster, nodeIds) => {
+                  if (cluster) {
+                    setSelectedCluster(cluster.clusterId)
+                    setHighlightNodes(new Set(nodeIds))
+                  } else {
+                    setSelectedCluster(null)
+                    setHighlightNodes(new Set())
+                  }
+                }}
+              />
             </div>
           )}
 
-          {/* 로드맵 */}
+          {/* 로드맵 - RoadmapPanel 사용 */}
           {activeTab === 'roadmap' && (
-            <div className="space-y-4">
-              <p className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
-                시간 순서에 따른 기억/이벤트 흐름을 트리 구조로 시각화합니다.
-              </p>
-
-              {/* 필터 */}
-              <div className="space-y-2">
-                <label className={cn('text-xs font-medium', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
-                  노드 타입 필터
-                </label>
-                <div className="flex flex-wrap gap-1">
-                  {(['memory', 'meeting', 'decision', 'task'] as NodeType[]).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => toggleNodeTypeFilter(type)}
-                      className={cn(
-                        'px-2 py-1 rounded text-xs transition-colors',
-                        nodeTypeFilters.has(type)
-                          ? 'bg-cyan-500 text-white'
-                          : isDark
-                            ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                      )}
-                    >
-                      {type}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="h-full -mx-4 -my-4">
+              <RoadmapPanel
+                agentId={agentId}
+                isDark={isDark}
+                onEventClick={(event) => {
+                  // 이벤트 클릭 시 관련 노드 하이라이트
+                  setHighlightNodes(new Set(event.relatedNodes))
+                }}
+              />
             </div>
           )}
         </div>

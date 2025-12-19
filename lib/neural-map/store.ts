@@ -38,6 +38,9 @@ interface CameraState {
 }
 
 interface NeuralMapState {
+  // Map ID
+  mapId: string | null
+
   // Graph Data
   graph: NeuralGraph | null
   isLoading: boolean
@@ -96,6 +99,9 @@ interface NeuralMapState {
 // ============================================
 
 interface NeuralMapActions {
+  // Map ID
+  setMapId: (mapId: string | null) => void
+
   // Graph
   setGraph: (graph: NeuralGraph) => void
   clearGraph: () => void
@@ -183,6 +189,8 @@ interface NeuralMapActions {
 // ============================================
 
 const initialState: NeuralMapState = {
+  mapId: null,
+
   graph: null,
   isLoading: false,
   error: null,
@@ -236,6 +244,12 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
     persist(
       immer((set, get) => ({
         ...initialState,
+
+        // ========== Map ID ==========
+        setMapId: (mapId) =>
+          set((state) => {
+            state.mapId = mapId
+          }),
 
         // ========== Graph ==========
         setGraph: (graph) =>
