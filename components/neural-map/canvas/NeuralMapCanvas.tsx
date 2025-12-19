@@ -242,74 +242,20 @@ function SceneContent() {
   )
 }
 
-// Cosmic background with gradient and glow
+// Simple dark background
 interface CosmicBackgroundProps {
   colors: [string, string]
 }
 
 function CosmicBackground({ colors }: CosmicBackgroundProps) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const glowRef = useRef<THREE.Mesh>(null)
   const { scene } = useThree()
 
   useEffect(() => {
-    // Create gradient texture
-    const canvas = document.createElement('canvas')
-    canvas.width = 2
-    canvas.height = 512
+    // Set simple dark background - no gradient
+    scene.background = new THREE.Color('#050508')
+  }, [scene])
 
-    const ctx = canvas.getContext('2d')
-    if (ctx) {
-      const gradient = ctx.createLinearGradient(0, 0, 0, 512)
-      gradient.addColorStop(0, colors[0])
-      gradient.addColorStop(0.5, colors[1])
-      gradient.addColorStop(1, '#000005')
-      ctx.fillStyle = gradient
-      ctx.fillRect(0, 0, 2, 512)
-    }
-
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.needsUpdate = true
-
-    if (meshRef.current) {
-      const material = meshRef.current.material as THREE.MeshBasicMaterial
-      material.map = texture
-      material.needsUpdate = true
-    }
-
-    // Set scene background
-    scene.background = new THREE.Color(colors[0])
-  }, [colors, scene])
-
-  // Animate subtle glow
-  useFrame((state) => {
-    if (glowRef.current) {
-      const scale = 1 + Math.sin(state.clock.elapsedTime * 0.2) * 0.02
-      glowRef.current.scale.setScalar(scale)
-    }
-  })
-
-  return (
-    <group>
-      {/* Main background sphere */}
-      <mesh ref={meshRef} scale={[-1, 1, 1]}>
-        <sphereGeometry args={[800, 64, 64]} />
-        <meshBasicMaterial side={THREE.BackSide} />
-      </mesh>
-
-      {/* Central glow effect */}
-      <mesh ref={glowRef} position={[0, 0, -100]}>
-        <sphereGeometry args={[150, 32, 32]} />
-        <meshBasicMaterial
-          color="#0a1a2a"
-          transparent
-          opacity={0.2}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  )
+  return null
 }
 
 // Grid helper for development
