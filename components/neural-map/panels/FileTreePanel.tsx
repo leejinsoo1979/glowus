@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralFile } from '@/lib/neural-map/types'
@@ -22,57 +21,11 @@ import {
   Plus,
 } from 'lucide-react'
 
-interface FolderItem {
-  id: string
-  name: string
-  type: 'folder'
-  children: (FolderItem | FileItem)[]
-  expanded?: boolean
+interface FileGroup {
+  type: 'pdf' | 'image' | 'video' | 'markdown'
+  label: string
+  files: NeuralFile[]
 }
-
-interface FileItem {
-  id: string
-  name: string
-  type: 'file'
-  fileType: 'pdf' | 'image' | 'video' | 'markdown'
-  linkedNodes?: number
-}
-
-// Mock folder structure
-const mockFolders: FolderItem[] = [
-  {
-    id: 'docs',
-    name: '문서',
-    type: 'folder',
-    expanded: true,
-    children: [
-      { id: 'doc-1', name: '프로젝트 기획서.pdf', type: 'file', fileType: 'pdf', linkedNodes: 5 },
-      { id: 'doc-2', name: '회의록_12월.md', type: 'file', fileType: 'markdown', linkedNodes: 3 },
-    ],
-  },
-  {
-    id: 'images',
-    name: '이미지',
-    type: 'folder',
-    children: [
-      { id: 'img-1', name: '아키텍처_다이어그램.png', type: 'file', fileType: 'image', linkedNodes: 2 },
-    ],
-  },
-  {
-    id: 'videos',
-    name: '비디오',
-    type: 'folder',
-    children: [],
-  },
-  {
-    id: 'ideas',
-    name: '아이디어',
-    type: 'folder',
-    children: [
-      { id: 'idea-1', name: '신규 기능 아이디어.md', type: 'file', fileType: 'markdown', linkedNodes: 8 },
-    ],
-  },
-]
 
 function FileIcon({ type }: { type: string }) {
   switch (type) {

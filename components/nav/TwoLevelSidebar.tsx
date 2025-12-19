@@ -78,6 +78,7 @@ import {
   Star,
   Wrench,
   Package,
+  Orbit,
 } from 'lucide-react'
 
 // 중첩 메뉴 아이템 타입
@@ -684,6 +685,16 @@ const categories: Category[] = [
       { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
     ]
   },
+  // 뉴럴맵
+  {
+    id: 'neural-map',
+    name: '뉴럴맵',
+    icon: Orbit,
+    items: [
+      { name: '내 뉴럴맵', href: '/dashboard-group/neural-map', icon: Orbit },
+      { name: '새 맵 생성', href: '/dashboard-group/neural-map/new', icon: Plus },
+    ]
+  },
   // 마이페이지 - 클릭 시 사이드바 열림
   {
     id: 'mypage',
@@ -1119,6 +1130,7 @@ export function TwoLevelSidebar() {
     if (pathname.startsWith('/dashboard-group/agents') ||
       pathname.startsWith('/dashboard-group/workflows') ||
       pathname.startsWith('/agent-builder')) return 'agents'
+    if (pathname.startsWith('/dashboard-group/neural-map')) return 'neural-map'
     if (pathname.startsWith('/dashboard-group/works')) {
       const tab = searchParams.get('tab')
       if (tab === 'tools') return 'apps'
@@ -1252,6 +1264,8 @@ export function TwoLevelSidebar() {
                     targetPath = '/dashboard-group/team'
                   } else if (category.id === 'calendar') {
                     targetPath = '/dashboard-group/calendar'
+                  } else if (category.id === 'neural-map') {
+                    targetPath = '/dashboard-group/neural-map'
                   } else {
                     // 첫 번째 아이템의 href 사용 (# 시작하는 건 제외)
                     const firstItem = category.items.find(item => item.href && !item.href.startsWith('#'))

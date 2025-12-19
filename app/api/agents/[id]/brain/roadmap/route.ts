@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic'
 /**
  * Brain Map - Roadmap API (시간순 타임라인)
  * GET /api/agents/:agentId/brain/roadmap
+ *
+ * 실제 DB 데이터 기반 시간순 타임라인 시각화
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -10,18 +12,54 @@ import { createClient } from '@/lib/supabase/server'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import type { BrainNode, BrainEdge, NodeType, EdgeType } from '@/types/brain-map'
 
+// DB Row types
+interface WorkLogRow {
+  id: string
+  title: string
+  summary: string | null
+  log_type: string
+  importance: number | null
+  created_at: string
+}
+
+interface KnowledgeRow {
+  id: string
+  title: string
+  summary: string | null
+  knowledge_type: string
+  tags: string[] | null
+  created_at: string
+}
+
+interface CommitRow {
+  id: string
+  title: string
+  summary: string | null
+  commit_type: string | null
+  created_at: string
+}
+
 interface RoadmapEvent {
   id: string
   timestamp: number
-  type: 'milestone' | 'decision' | 'learning' | 'creation'
+  type: 'milestone' | 'decision' | 'learning' | 'creation' | 'conversation' | 'task'
   title: string
   description: string
   relatedNodes: string[]
   importance: number
+  category: string
+}
+
+interface TimeGroup {
+  label: string
+  startTime: number
+  endTime: number
+  events: RoadmapEvent[]
 }
 
 interface RoadmapResponse {
   timeline: RoadmapEvent[]
+  timeGroups: TimeGroup[]
   nodes: BrainNode[]
   edges: BrainEdge[]
   dateRange: {
@@ -30,66 +68,87 @@ interface RoadmapResponse {
   }
 }
 
-// Mock roadmap data
-function generateMockRoadmap(startDate: number, endDate: number): RoadmapResponse {
-  const types: NodeType[] = ['memory', 'concept', 'decision', 'task', 'meeting']
-  const edgeTypes: EdgeType[] = ['follows', 'causes', 'related']
-  const eventTypes: Array<'milestone' | 'decision' | 'learning' | 'creation'> = [
-    'milestone', 'decision', 'learning', 'creation'
-  ]
+// Map log_type to event type
+function mapLogTypeToEventType(logType: string): RoadmapEvent['type'] {
+  const mapping: Record<string, RoadmapEvent['type']> = {
+    'conversation': 'conversation',
+    'task_work': 'task',
+    'decision': 'decision',
+    'discovery': 'learning',
+    'meeting': 'milestone',
+    'reflection': 'learning',
+  }
+  return mapping[logType] || 'creation'
+}
 
-  const eventCount = Math.floor(Math.random() * 15) + 10
-  const timeline: RoadmapEvent[] = []
-  const nodes: BrainNode[] = []
-  const edges: BrainEdge[] = []
+// Map knowledge_type to event type
+function mapKnowledgeTypeToEventType(knowledgeType: string): RoadmapEvent['type'] {
+  const mapping: Record<string, RoadmapEvent['type']> = {
+    'project': 'milestone',
+    'team': 'learning',
+    'business': 'decision',
+    'technical': 'learning',
+    'personal': 'creation',
+    'market': 'learning',
+    'product': 'milestone',
+  }
+  return mapping[knowledgeType] || 'learning'
+}
 
-  for (let i = 0; i < eventCount; i++) {
-    const timestamp = startDate + Math.random() * (endDate - startDate)
-    const nodeId = `roadmap-node-${i}`
-    const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)]
+// Group events by time granularity
+function groupEventsByTime(
+  events: RoadmapEvent[],
+  granularity: 'day' | 'week' | 'month'
+): TimeGroup[] {
+  const groups: Map<string, TimeGroup> = new Map()
 
-    timeline.push({
-      id: `event-${i}`,
-      timestamp,
-      type: eventType,
-      title: `${eventType === 'milestone' ? '마일스톤' : eventType === 'decision' ? '결정' : eventType === 'learning' ? '학습' : '생성'} #${i}`,
-      description: `타임라인 이벤트 설명입니다.`,
-      relatedNodes: [nodeId],
-      importance: Math.floor(Math.random() * 10) + 1,
-    })
+  events.forEach(event => {
+    const date = new Date(event.timestamp)
+    let groupKey: string
+    let groupLabel: string
+    let groupStart: Date
+    let groupEnd: Date
 
-    nodes.push({
-      id: nodeId,
-      type: types[Math.floor(Math.random() * types.length)],
-      title: `노드 #${i}`,
-      summary: `로드맵 노드입니다.`,
-      createdAt: timestamp,
-      importance: Math.floor(Math.random() * 10) + 1,
-      confidence: Math.random(),
-    })
+    if (granularity === 'day') {
+      groupKey = date.toISOString().split('T')[0]
+      groupLabel = date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' })
+      groupStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      groupEnd = new Date(groupStart.getTime() + 86400000 - 1)
+    } else if (granularity === 'week') {
+      const weekStart = new Date(date)
+      weekStart.setDate(date.getDate() - date.getDay())
+      groupKey = weekStart.toISOString().split('T')[0]
+      groupLabel = `${weekStart.getMonth() + 1}월 ${Math.ceil(weekStart.getDate() / 7)}주차`
+      groupStart = weekStart
+      groupEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1)
+    } else {
+      groupKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      groupLabel = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })
+      groupStart = new Date(date.getFullYear(), date.getMonth(), 1)
+      groupEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59)
+    }
 
-    // 시간순 연결
-    if (i > 0) {
-      edges.push({
-        id: `edge-${i}`,
-        source: `roadmap-node-${i - 1}`,
-        target: nodeId,
-        type: edgeTypes[Math.floor(Math.random() * edgeTypes.length)],
-        weight: 0.5 + Math.random() * 0.5,
-        createdAt: timestamp,
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        label: groupLabel,
+        startTime: groupStart.getTime(),
+        endTime: groupEnd.getTime(),
+        events: [],
       })
     }
-  }
 
-  // Sort timeline by timestamp
-  timeline.sort((a, b) => a.timestamp - b.timestamp)
+    groups.get(groupKey)!.events.push(event)
+  })
 
-  return {
-    timeline,
-    nodes,
-    edges,
-    dateRange: { start: startDate, end: endDate },
-  }
+  // Sort groups by time and events within each group
+  const sortedGroups = Array.from(groups.values())
+    .sort((a, b) => a.startTime - b.startTime)
+
+  sortedGroups.forEach(group => {
+    group.events.sort((a, b) => a.timestamp - b.timestamp)
+  })
+
+  return sortedGroups
 }
 
 export async function GET(
@@ -100,9 +159,16 @@ export async function GET(
     const { id: agentId } = await params
     const { searchParams } = new URL(request.url)
 
-    const startDate = parseInt(searchParams.get('startDate') || String(Date.now() - 30 * 86400000))
-    const endDate = parseInt(searchParams.get('endDate') || String(Date.now()))
-    const granularity = searchParams.get('granularity') || 'day' // day, week, month
+    const startDateParam = searchParams.get('startDate')
+    const endDateParam = searchParams.get('endDate')
+    const granularity = (searchParams.get('granularity') || 'day') as 'day' | 'week' | 'month'
+
+    // Default: last 30 days
+    const endDate = endDateParam ? parseInt(endDateParam) : Date.now()
+    const startDate = startDateParam ? parseInt(startDateParam) : (endDate - 30 * 86400000)
+
+    const startDateISO = new Date(startDate).toISOString()
+    const endDateISO = new Date(endDate).toISOString()
 
     const supabase = await createClient()
     let user: any = isDevMode() ? DEV_USER : null
@@ -115,17 +181,167 @@ export async function GET(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    // TODO: 실제 타임라인 데이터 조회
-    // 현재는 Mock 데이터 반환
-    const roadmap = generateMockRoadmap(startDate, endDate)
+    // Fetch all data sources in parallel
+    const [workLogsResult, knowledgeResult, commitsResult] = await Promise.all([
+      // Work logs (conversations, tasks, meetings)
+      supabase
+        .from('agent_work_logs')
+        .select('id, title, summary, log_type, importance, created_at')
+        .eq('agent_id', agentId)
+        .gte('created_at', startDateISO)
+        .lte('created_at', endDateISO)
+        .order('created_at', { ascending: true }),
+
+      // Knowledge
+      supabase
+        .from('agent_knowledge')
+        .select('id, title, summary, knowledge_type, tags, created_at')
+        .eq('agent_id', agentId)
+        .gte('created_at', startDateISO)
+        .lte('created_at', endDateISO)
+        .order('created_at', { ascending: true }),
+
+      // Commits (daily summaries)
+      supabase
+        .from('agent_commits')
+        .select('id, title, summary, commit_type, created_at')
+        .eq('agent_id', agentId)
+        .gte('created_at', startDateISO)
+        .lte('created_at', endDateISO)
+        .order('created_at', { ascending: true }),
+    ])
+
+    const workLogs = (workLogsResult.data || []) as WorkLogRow[]
+    const knowledge = (knowledgeResult.data || []) as KnowledgeRow[]
+    const commits = (commitsResult.data || []) as CommitRow[]
+
+    // Convert to timeline events
+    const events: RoadmapEvent[] = []
+    const nodes: BrainNode[] = []
+
+    // Process work logs
+    workLogs.forEach(log => {
+      const timestamp = new Date(log.created_at).getTime()
+      const nodeId = `log-${log.id}`
+
+      events.push({
+        id: `event-log-${log.id}`,
+        timestamp,
+        type: mapLogTypeToEventType(log.log_type),
+        title: log.title,
+        description: log.summary || '',
+        relatedNodes: [nodeId],
+        importance: log.importance || 5,
+        category: log.log_type,
+      })
+
+      nodes.push({
+        id: nodeId,
+        type: log.log_type === 'conversation' ? 'memory' :
+              log.log_type === 'task_work' ? 'task' :
+              log.log_type === 'meeting' ? 'meeting' : 'memory',
+        title: log.title,
+        summary: log.summary || undefined,
+        createdAt: timestamp,
+        importance: log.importance || 5,
+        confidence: 0.9,
+      })
+    })
+
+    // Process knowledge
+    knowledge.forEach(k => {
+      const timestamp = new Date(k.created_at).getTime()
+      const nodeId = `knowledge-${k.id}`
+
+      events.push({
+        id: `event-knowledge-${k.id}`,
+        timestamp,
+        type: mapKnowledgeTypeToEventType(k.knowledge_type),
+        title: k.title,
+        description: k.summary || '',
+        relatedNodes: [nodeId],
+        importance: 7,
+        category: k.knowledge_type,
+      })
+
+      nodes.push({
+        id: nodeId,
+        type: 'concept',
+        title: k.title,
+        summary: k.summary || undefined,
+        tags: k.tags || [],
+        createdAt: timestamp,
+        importance: 7,
+        confidence: 0.85,
+      })
+    })
+
+    // Process commits (milestones)
+    commits.forEach(commit => {
+      const timestamp = new Date(commit.created_at).getTime()
+      const nodeId = `commit-${commit.id}`
+
+      events.push({
+        id: `event-commit-${commit.id}`,
+        timestamp,
+        type: 'milestone',
+        title: commit.title,
+        description: commit.summary || '',
+        relatedNodes: [nodeId],
+        importance: 8,
+        category: commit.commit_type || 'daily',
+      })
+
+      nodes.push({
+        id: nodeId,
+        type: 'decision',
+        title: commit.title,
+        summary: commit.summary || undefined,
+        createdAt: timestamp,
+        importance: 8,
+        confidence: 1.0,
+      })
+    })
+
+    // Sort events by timestamp
+    events.sort((a, b) => a.timestamp - b.timestamp)
+
+    // Create sequential edges (timeline connections)
+    const edges: BrainEdge[] = []
+    for (let i = 1; i < nodes.length; i++) {
+      edges.push({
+        id: `edge-timeline-${i}`,
+        source: nodes[i - 1].id,
+        target: nodes[i].id,
+        type: 'follows',
+        weight: 0.7,
+        createdAt: nodes[i].createdAt || Date.now(),
+      })
+    }
+
+    // Group events by granularity
+    const timeGroups = groupEventsByTime(events, granularity)
 
     return NextResponse.json({
-      ...roadmap,
-      meta: {
-        eventCount: roadmap.timeline.length,
-        granularity,
+      timeline: events,
+      timeGroups,
+      nodes,
+      edges,
+      dateRange: {
+        start: startDate,
+        end: endDate
       },
-    })
+      meta: {
+        eventCount: events.length,
+        nodeCount: nodes.length,
+        granularity,
+        sources: {
+          workLogs: workLogs.length,
+          knowledge: knowledge.length,
+          commits: commits.length,
+        },
+      },
+    } as RoadmapResponse & { meta: any })
   } catch (error) {
     console.error('[Brain Roadmap API] Error:', error)
     return NextResponse.json(

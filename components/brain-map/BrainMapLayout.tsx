@@ -36,6 +36,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { BrainNode, BrainCluster, BrainInsight, NodeType } from '@/types/brain-map'
+import { NodeDetailPopup } from './NodeDetailPopup'
 
 // 검색 결과 타입
 interface SearchResult {
@@ -857,63 +858,13 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
       )}
 
       {/* 선택된 노드 상세 팝업 */}
-      {selectedNode && (
-        <div className={cn(
-          'absolute bottom-4 left-1/2 -translate-x-1/2 z-20',
-          'w-full max-w-md p-4 rounded-2xl',
-          isDark ? 'bg-zinc-900/95 border border-zinc-800' : 'bg-white/95 border border-zinc-200',
-          'shadow-2xl backdrop-blur-sm'
-        )}>
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                'w-10 h-10 rounded-xl flex items-center justify-center',
-                'bg-gradient-to-br from-cyan-500 to-blue-600'
-              )}>
-                <Brain className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>
-                  {selectedNode.title}
-                </h4>
-                <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                  {selectedNode.type}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={() => setSelectedNode(null)}
-              className={cn(
-                'p-1 rounded-lg transition-colors',
-                isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-600'
-              )}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          {selectedNode.summary && (
-            <p className={cn('text-sm mt-3', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
-              {selectedNode.summary}
-            </p>
-          )}
-          <div className="flex gap-2 mt-4">
-            <button className={cn(
-              'flex-1 py-2 rounded-lg text-xs font-medium transition-colors',
-              isDark
-                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
-            )}>
-              패스파인더 탐색
-            </button>
-            <button className={cn(
-              'flex-1 py-2 rounded-lg text-xs font-medium transition-colors',
-              'bg-cyan-500 hover:bg-cyan-600 text-white'
-            )}>
-              로드맵 탐색
-            </button>
-          </div>
-        </div>
-      )}
+      <NodeDetailPopup
+        agentId={agentId}
+        selectedNode={selectedNode}
+        onClose={() => setSelectedNode(null)}
+        onNodeSelect={handleNodeClick}
+        isDark={isDark}
+      />
     </div>
   )
 }
