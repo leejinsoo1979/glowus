@@ -618,18 +618,43 @@ const categories: Category[] = [
       { name: 'AI 요약', href: '/dashboard-group/email?view=ai-summary', icon: Sparkles },
     ]
   },
-  // 메신저 - 사람 + AI 대화
+  // 메신저 - 회의/토론/발표/자유채팅
   {
     id: 'messenger',
     name: '메신저',
     icon: TbBrandWechat,
     items: [
-      { name: '전체 채팅', href: '/dashboard-group/messenger', icon: TbBrandWechat },
-      { name: '개인 채팅', href: '/dashboard-group/messenger?view=dm', icon: User },
-      { name: '팀 채널', href: '/dashboard-group/messenger?view=team', icon: Users },
-      { name: '프로젝트 채널', href: '/dashboard-group/messenger?view=projects', icon: FolderKanban },
-      { name: '에이전트 채팅', href: '/dashboard-group/messenger?view=agents', icon: Bot },
-      { name: '회의록', href: '/dashboard-group/messenger/meetings', icon: FileText },
+      {
+        name: '회의실',
+        icon: Users,
+        children: [
+          { name: '진행중', href: '/dashboard-group/messenger?mode=meeting&status=active', icon: Play },
+          { name: '예정', href: '/dashboard-group/messenger?mode=meeting&status=scheduled', icon: CalendarDays },
+          { name: '완료', href: '/dashboard-group/messenger?mode=meeting&status=completed', icon: CheckCircle },
+          { name: '회의록', href: '/dashboard-group/messenger/meetings', icon: FileText },
+        ]
+      },
+      {
+        name: '진영 토론방',
+        icon: Target,
+        children: [
+          { name: '진행중', href: '/dashboard-group/messenger?mode=debate&status=active', icon: Play },
+          { name: '예정', href: '/dashboard-group/messenger?mode=debate&status=scheduled', icon: CalendarDays },
+          { name: '완료', href: '/dashboard-group/messenger?mode=debate&status=completed', icon: CheckCircle },
+          { name: '리포트', href: '/dashboard-group/messenger/debates', icon: FileText },
+        ]
+      },
+      {
+        name: '발표실',
+        icon: Zap,
+        children: [
+          { name: '진행중', href: '/dashboard-group/messenger?mode=presentation&status=active', icon: Play },
+          { name: '예정', href: '/dashboard-group/messenger?mode=presentation&status=scheduled', icon: CalendarDays },
+          { name: '완료', href: '/dashboard-group/messenger?mode=presentation&status=completed', icon: CheckCircle },
+          { name: '리포트', href: '/dashboard-group/messenger/presentations', icon: FileText },
+        ]
+      },
+      { name: '자유채팅', href: '/dashboard-group/messenger?mode=free', icon: TbBrandWechat },
     ]
   },
   // 팀 - 클릭 시 사이드바 열림
