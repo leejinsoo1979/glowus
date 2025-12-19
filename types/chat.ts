@@ -193,6 +193,56 @@ export interface RealtimeTypingEvent {
 // 공유 뷰어 타입
 export type SharedMediaType = 'pdf' | 'image' | 'video'
 
+// Selection 타입 (텍스트/영역 선택)
+export interface ViewerSelection {
+  type: 'text' | 'region'
+  // 텍스트 선택
+  text?: string
+  startOffset?: number
+  endOffset?: number
+  // 영역 선택 (이미지/PDF)
+  region?: {
+    x: number      // 좌상단 X (0-1 정규화)
+    y: number      // 좌상단 Y (0-1 정규화)
+    width: number  // 너비 (0-1 정규화)
+    height: number // 높이 (0-1 정규화)
+  }
+  page?: number    // PDF 페이지 번호
+}
+
+// 주석 타입
+export interface ViewerAnnotation {
+  id: string
+  type: 'highlight' | 'note' | 'pointer' | 'drawing'
+  page?: number
+  region?: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  color?: string
+  text?: string
+  created_by: string
+  created_by_type: ParticipantType
+  created_at: string
+}
+
+// 하이라이트 영역 타입
+export interface HighlightRegion {
+  id: string
+  page?: number
+  region: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  color: string
+  label?: string
+  created_by: string
+}
+
 export interface SharedViewerState {
   id: string
   room_id: string
@@ -207,13 +257,35 @@ export interface SharedViewerState {
   zoom_level?: number        // 확대 레벨
   presenter_id?: string      // 현재 제어권을 가진 사용자/에이전트
   presenter_type?: ParticipantType
+  // Selection 지원 (v2)
+  selection?: ViewerSelection | null
+  annotations?: ViewerAnnotation[]
+  highlight_regions?: HighlightRegion[]
   created_at: string
   updated_at: string
 }
 
 export interface SharedViewerControl {
-  action: 'page_change' | 'seek' | 'play' | 'pause' | 'zoom' | 'take_control' | 'release_control'
+  action:
+    | 'page_change'
+    | 'seek'
+    | 'play'
+    | 'pause'
+    | 'zoom'
+    | 'take_control'
+    | 'release_control'
+    | 'select'           // 텍스트/영역 선택
+    | 'clear_selection'  // 선택 해제
+    | 'add_annotation'   // 주석 추가
+    | 'remove_annotation'// 주석 삭제
+    | 'highlight'        // 하이라이트 추가
+    | 'clear_highlight'  // 하이라이트 삭제
   page?: number
   time?: number
   zoom?: number
+  selection?: ViewerSelection
+  annotation?: Omit<ViewerAnnotation, 'id' | 'created_at'>
+  annotation_id?: string
+  highlight?: Omit<HighlightRegion, 'id'>
+  highlight_id?: string
 }

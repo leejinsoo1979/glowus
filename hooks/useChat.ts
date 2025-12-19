@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ChatRoom, ChatMessage, ChatParticipant, SharedViewerState, SharedMediaType } from '@/types/chat'
+import { ChatRoom, ChatMessage, ChatParticipant, SharedViewerState, SharedMediaType, ViewerSelection, ViewerAnnotation, HighlightRegion } from '@/types/chat'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
 // 채팅방 목록 훅
@@ -485,6 +485,8 @@ export function usePresence(roomId: string | null) {
 export function useSharedViewer(roomId: string | null) {
   const [viewerState, setViewerState] = useState<SharedViewerState | null>(null)
   const [loading, setLoading] = useState(false)
+  const supabaseRef = useRef(createClient())
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   // 뷰어 상태 조회
   const fetchViewerState = useCallback(async () => {
@@ -502,20 +504,51 @@ export function useSharedViewer(roomId: string | null) {
     }
   }, [roomId])
 
-  // 초기 로드
+  // 초기 로드 + WebSocket Realtime 구독
   useEffect(() => {
-    if (roomId) {
-      fetchViewerState()
-    } else {
+    if (!roomId) {
       setViewerState(null)
+      return
     }
-  }, [roomId, fetchViewerState])
 
-  // Polling (500ms)
-  useEffect(() => {
-    if (!roomId) return
-    const interval = setInterval(fetchViewerState, 500)
-    return () => clearInterval(interval)
+    // 초기 상태 로드
+    fetchViewerState()
+
+    // Supabase Realtime 채널 구독
+    const supabase = supabaseRef.current
+    const channel = supabase
+      .channel(`shared_viewer:${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE 모두 감지
+          schema: 'public',
+          table: 'shared_viewer_state',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          console.log('[SharedViewer Realtime]', payload.eventType, payload)
+
+          if (payload.eventType === 'DELETE') {
+            setViewerState(null)
+          } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            setViewerState(payload.new as SharedViewerState)
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[SharedViewer Realtime] Subscription status:', status)
+      })
+
+    channelRef.current = channel
+
+    // Cleanup
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
   }, [roomId, fetchViewerState])
 
   // 파일 공유 시작
@@ -586,6 +619,31 @@ export function useSharedViewer(roomId: string | null) {
     }
   }
 
+  // Selection 편의 메소드
+  const select = async (selection: ViewerSelection) => {
+    return sendAction('select', { selection })
+  }
+
+  const clearSelection = async () => {
+    return sendAction('clear_selection')
+  }
+
+  const addAnnotation = async (annotation: Omit<ViewerAnnotation, 'id' | 'created_at'>) => {
+    return sendAction('add_annotation', { annotation })
+  }
+
+  const removeAnnotation = async (annotationId: string) => {
+    return sendAction('remove_annotation', { annotation_id: annotationId })
+  }
+
+  const addHighlight = async (highlight: Omit<HighlightRegion, 'id'>) => {
+    return sendAction('highlight', { highlight })
+  }
+
+  const clearHighlight = async (highlightId?: string) => {
+    return sendAction('clear_highlight', highlightId ? { highlight_id: highlightId } : {})
+  }
+
   return {
     viewerState,
     loading,
@@ -594,5 +652,12 @@ export function useSharedViewer(roomId: string | null) {
     stopSharing,
     sendAction,
     refresh: fetchViewerState,
+    // Selection 메소드
+    select,
+    clearSelection,
+    addAnnotation,
+    removeAnnotation,
+    addHighlight,
+    clearHighlight,
   }
 }

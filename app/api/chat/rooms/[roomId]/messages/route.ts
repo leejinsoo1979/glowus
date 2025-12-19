@@ -26,6 +26,12 @@ import {
   MeetingContext,
   AgentPromptContext,
 } from '@/lib/meeting/prompt-templates'
+import {
+  validateEvidence,
+  getRegenerationPrompt,
+  SharedContentInfo,
+  parseEvidenceTags,
+} from '@/lib/meeting/evidence-validator'
 
 // GET: 메시지 목록 조회 (페이지네이션)
 export async function GET(
@@ -1561,6 +1567,130 @@ async function generateAgentResponseHandler(
       .eq('id', roomId)
       .single()
 
+    // 🔥 공유 뷰어 상태 조회 (에이전트가 "실제로 보는" 자료)
+    const { data: sharedViewer } = await supabase
+      .from('shared_viewer_state')
+      .select('*')
+      .eq('room_id', roomId)
+      .single()
+
+    // 공유 자료 컨텍스트 준비
+    let sharedContentImages: string[] = []
+    let sharedContentContext = ''
+
+    if (sharedViewer) {
+      console.log(`[generateAgentResponse] 🖼️ 공유 자료 감지: ${sharedViewer.media_type} - ${sharedViewer.media_name}`)
+
+      if (sharedViewer.media_type === 'image') {
+        // 이미지: Vision 모델에 직접 전달
+        sharedContentImages.push(sharedViewer.media_url)
+        sharedContentContext = `
+## 📎 현재 공유 중인 자료
+- 파일명: ${sharedViewer.media_name}
+- 유형: 이미지
+- 줌: ${sharedViewer.zoom_level || 1}x
+
+⚠️ 위 이미지가 현재 회의 참가자들에게 공유되고 있습니다.
+이미지 내용을 분석하고 답변에 반영하세요.
+답변 시 반드시 [Evidence: ${sharedViewer.media_name}] 형식으로 근거를 표기하세요.`
+      } else if (sharedViewer.media_type === 'pdf') {
+        // PDF: 현재 페이지 텍스트 추출 및 전달
+        const currentPage = sharedViewer.current_page || 1
+        let pdfPageText = ''
+
+        // PDF 텍스트 추출 시도
+        try {
+          const pdfTextResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/docs/${roomId}/pages/${currentPage}/text`
+          )
+          if (pdfTextResponse.ok) {
+            const pdfTextData = await pdfTextResponse.json()
+            pdfPageText = pdfTextData.text || ''
+            console.log(`[generateAgentResponse] 📄 PDF p.${currentPage} 텍스트 추출 완료 (${pdfPageText.length}자)`)
+          }
+        } catch (pdfError) {
+          console.warn('[generateAgentResponse] PDF 텍스트 추출 실패:', pdfError)
+        }
+
+        sharedContentContext = `
+## 📎 현재 공유 중인 PDF 문서
+- 파일명: ${sharedViewer.media_name}
+- 현재 페이지: ${currentPage} / ${sharedViewer.total_pages || '?'}
+- 줌: ${sharedViewer.zoom_level || 1}x
+
+${pdfPageText ? `### 현재 페이지(p.${currentPage}) 내용:
+---
+${pdfPageText.slice(0, 3000)}${pdfPageText.length > 3000 ? '\n... (이하 생략)' : ''}
+---` : '(페이지 텍스트를 추출할 수 없습니다)'}
+
+⚠️ 위 PDF가 현재 회의 참가자들에게 공유되고 있습니다.
+현재 페이지(p.${currentPage})를 기준으로 답변하세요.
+답변 시 반드시 [Evidence: ${sharedViewer.media_name} p.${currentPage} "인용문"] 형식으로 근거를 표기하세요.
+근거 없이 "봤다/확인했다" 표현 금지!`
+      } else if (sharedViewer.media_type === 'video') {
+        // 비디오: 현재 타임스탬프 정보 전달
+        const currentTime = sharedViewer.playback_time || 0
+        const formattedTime = `${Math.floor(currentTime / 60)}:${String(Math.floor(currentTime % 60)).padStart(2, '0')}`
+        sharedContentContext = `
+## 📎 현재 공유 중인 비디오
+- 파일명: ${sharedViewer.media_name}
+- 현재 재생 위치: ${formattedTime} (${currentTime}초)
+- 총 길이: ${sharedViewer.duration || '?'}초
+- 재생 상태: ${sharedViewer.is_playing ? '재생 중' : '일시정지'}
+- URL: ${sharedViewer.media_url}
+
+⚠️ 위 비디오가 현재 회의 참가자들에게 공유되고 있습니다.
+현재 재생 위치(${formattedTime})를 기준으로 답변하세요.
+답변 시 반드시 [Evidence: ${sharedViewer.media_name} ${formattedTime}] 형식으로 근거를 표기하세요.
+근거 없이 "봤다/확인했다" 표현 금지!`
+      }
+
+      // 🔥 Selection 정보 추가 (v2)
+      if (sharedViewer.selection) {
+        const sel = sharedViewer.selection as any
+        if (sel.type === 'text' && sel.text) {
+          sharedContentContext += `
+
+### 🎯 현재 선택된 텍스트
+\`\`\`
+${sel.text}
+\`\`\`
+${sel.page ? `(p.${sel.page}에서 선택됨)` : ''}
+
+위 선택된 텍스트에 대해 답변할 때 반드시 이 내용을 참조하세요.`
+        } else if (sel.type === 'region' && sel.region) {
+          sharedContentContext += `
+
+### 🎯 현재 선택된 영역
+- 위치: (${Math.round(sel.region.x * 100)}%, ${Math.round(sel.region.y * 100)}%)
+- 크기: ${Math.round(sel.region.width * 100)}% x ${Math.round(sel.region.height * 100)}%
+${sel.page ? `- 페이지: p.${sel.page}` : ''}
+
+사용자가 이 영역을 지목하고 있습니다. 해당 영역의 내용에 대해 답변하세요.`
+        }
+      }
+
+      // 하이라이트 정보 추가
+      if (sharedViewer.highlight_regions && (sharedViewer.highlight_regions as any[]).length > 0) {
+        const highlights = sharedViewer.highlight_regions as any[]
+        sharedContentContext += `
+
+### 📌 하이라이트된 영역 (${highlights.length}개)
+${highlights.map((h, i) => `${i + 1}. ${h.label || '영역'} ${h.page ? `(p.${h.page})` : ''}`).join('\n')}`
+      }
+
+      // 주석 정보 추가
+      if (sharedViewer.annotations && (sharedViewer.annotations as any[]).length > 0) {
+        const notes = (sharedViewer.annotations as any[]).filter(a => a.type === 'note' && a.text)
+        if (notes.length > 0) {
+          sharedContentContext += `
+
+### 📝 참가자 메모
+${notes.map((n, i) => `${i + 1}. "${n.text}" ${n.page ? `(p.${n.page})` : ''}`).join('\n')}`
+        }
+      }
+    }
+
     // 에이전트 메모리 컨텍스트 로드
     let memoryContext = ''
     let identityInfo: any = null
@@ -1712,6 +1842,11 @@ ${memoryContext}
 위 기억을 바탕으로 일관성 있게 응답하세요. 이전에 한 말이나 결정을 기억하고 참조하세요.`
     }
 
+    // 🔥 공유 자료 컨텍스트 추가 (에이전트가 "실제로 보는" 자료)
+    if (sharedContentContext) {
+      enhancedSystemPrompt += `\n\n${sharedContentContext}`
+    }
+
     // 🔥 사용자의 LLM API 키 가져오기
     let userApiKey: string | undefined
     if (userId) {
@@ -1730,6 +1865,13 @@ ${memoryContext}
     // LangChain을 사용한 응답 생성
     let response: string
 
+    // 에이전트 설정 (블록 외부에서 선언)
+    const agentWithConfig = {
+      ...agent,
+      system_prompt: enhancedSystemPrompt,
+      apiKey: userApiKey, // 🔥 사용자 API 키 주입
+    }
+
     if (room?.is_meeting_active && room?.meeting_topic) {
       // 미팅 모드: 에이전트 간 토론
       const otherAgentIds = agentIds.filter((id: string) => id !== agent.id)
@@ -1743,14 +1885,6 @@ ${memoryContext}
         otherAgents = otherAgentData?.map((a: any) => ({ name: a.name, role: 'AI 에이전트' })) || []
       }
 
-      // 에이전트 설정을 LangChain 형식으로 변환 (메모리 포함)
-      // agent.llm_provider, agent.model을 우선 사용 (DB 저장값)
-      const agentWithConfig = {
-        ...agent,
-        system_prompt: enhancedSystemPrompt,
-        apiKey: userApiKey, // 🔥 사용자 API 키 주입
-      }
-
       console.log(`[generateAgentResponse] 미팅 모드 - ${agent.name} using ${agent.llm_provider || 'ollama'}/${agent.model || 'qwen2.5:3b'}`)
       response = await generateAgentMeetingResponse(
         agentWithConfig,
@@ -1761,14 +1895,9 @@ ${memoryContext}
       )
     } else {
       // 일반 채팅 모드 (메모리 포함)
-      // agent.llm_provider, agent.model을 우선 사용 (DB 저장값)
-      const agentWithConfig = {
-        ...agent,
-        system_prompt: enhancedSystemPrompt,
-        apiKey: userApiKey, // 🔥 사용자 API 키 주입
-      }
 
       console.log(`[generateAgentResponse] LangChain 응답 생성 시작, ${agent.name} using ${agent.llm_provider || 'ollama'}/${agent.model || 'qwen2.5:3b'}`)
+      console.log(`[generateAgentResponse] 🖼️ 공유 이미지 ${sharedContentImages.length}개 전달`)
       response = await generateAgentChatResponse(
         agentWithConfig,
         userMessage.content,
@@ -1777,9 +1906,68 @@ ${memoryContext}
           roomName: room?.name || '채팅방',
           roomType: room?.type,
           participantNames,
-        }
+        },
+        sharedContentImages  // 🔥 공유 자료 이미지 전달 (Vision 모델 자동 전환)
       )
       console.log('[generateAgentResponse] LangChain 응답 생성 완료:', response?.slice(0, 100))
+    }
+
+    // 🔥 Evidence 검증 (공유 자료가 있을 때만)
+    if (sharedViewer && response) {
+      const sharedContentInfo: SharedContentInfo = {
+        mediaType: sharedViewer.media_type as 'pdf' | 'image' | 'video' | null,
+        mediaName: sharedViewer.media_name,
+        currentPage: sharedViewer.current_page,
+        playbackTime: sharedViewer.playback_time,
+        // Selection 정보 (v2)
+        selection: sharedViewer.selection || null,
+        annotations: sharedViewer.annotations || [],
+        highlightRegions: sharedViewer.highlight_regions || [],
+      }
+
+      const validationResult = validateEvidence(response, sharedContentInfo)
+      console.log(`[generateAgentResponse] 🔍 Evidence 검증 결과:`, validationResult)
+
+      // 검증 실패 시 재생성 (최대 2회)
+      if (!validationResult.valid && validationResult.action === 'regenerate') {
+        console.log(`[generateAgentResponse] ⚠️ Evidence 검증 실패, 재생성 시도`)
+
+        for (let retry = 0; retry < 2; retry++) {
+          const correctionPrompt = getRegenerationPrompt(validationResult, sharedContentInfo)
+          const retryMessage = `${userMessage.content}\n\n${correctionPrompt}`
+
+          response = await generateAgentChatResponse(
+            agentWithConfig,
+            retryMessage,
+            recentMessages?.reverse() || [],
+            {
+              roomName: room?.name || '채팅방',
+              roomType: room?.type,
+              participantNames,
+            },
+            sharedContentImages
+          )
+
+          const retryValidation = validateEvidence(response, sharedContentInfo)
+          console.log(`[generateAgentResponse] 🔄 재생성 ${retry + 1}회 결과:`, retryValidation)
+
+          if (retryValidation.valid) {
+            console.log(`[generateAgentResponse] ✅ 재생성 성공`)
+            break
+          }
+
+          if (retry === 1) {
+            console.log(`[generateAgentResponse] ❌ 재생성 실패, 경고 메시지 추가`)
+            response = `${response}\n\n⚠️ 참고: 위 내용에는 구체적인 근거 표기가 누락되었을 수 있습니다. 정확한 확인을 위해 공유된 자료를 직접 확인해주세요.`
+          }
+        }
+      }
+
+      // Evidence 태그 파싱 및 메타데이터에 저장
+      const parsedEvidence = parseEvidenceTags(response)
+      if (parsedEvidence.length > 0) {
+        console.log(`[generateAgentResponse] 📎 Evidence 태그 ${parsedEvidence.length}개 발견:`, parsedEvidence.map(e => e.docName))
+      }
     }
 
     // 에이전트 응답 메시지 저장
@@ -1795,6 +1983,13 @@ ${memoryContext}
         provider: agent.llm_provider || 'ollama',
         agent_name: agent.name,
         has_memory: !!memoryContext,
+        // 🔥 공유 자료 컨텍스트 기록
+        shared_content: sharedViewer ? {
+          type: sharedViewer.media_type,
+          name: sharedViewer.media_name,
+          page: sharedViewer.current_page,
+          timestamp: sharedViewer.playback_time,
+        } : null,
       },
     })
 

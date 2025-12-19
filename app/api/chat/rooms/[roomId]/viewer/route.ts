@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
-import { SharedMediaType } from '@/types/chat'
+import { SharedMediaType, ViewerSelection, ViewerAnnotation, HighlightRegion } from '@/types/chat'
 
 // 현재 공유 뷰어 상태 조회
 export async function GET(
@@ -149,11 +149,16 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { action, page, time, zoom } = body as {
+    const { action, page, time, zoom, selection, annotation, annotation_id, highlight, highlight_id } = body as {
       action: string
       page?: number
       time?: number
       zoom?: number
+      selection?: ViewerSelection
+      annotation?: Omit<ViewerAnnotation, 'id' | 'created_at'>
+      annotation_id?: string
+      highlight?: Omit<HighlightRegion, 'id'>
+      highlight_id?: string
     }
 
     // 현재 상태 조회
@@ -204,6 +209,57 @@ export async function PATCH(
       case 'release_control':
         updates.presenter_id = null
         updates.presenter_type = null
+        break
+
+      // Selection 지원 (v2)
+      case 'select':
+        if (selection) {
+          updates.selection = selection
+        }
+        break
+
+      case 'clear_selection':
+        updates.selection = null
+        break
+
+      case 'add_annotation':
+        if (annotation) {
+          const newAnnotation: ViewerAnnotation = {
+            ...annotation,
+            id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+          }
+          const currentAnnotations = current.annotations || []
+          updates.annotations = [...currentAnnotations, newAnnotation]
+        }
+        break
+
+      case 'remove_annotation':
+        if (annotation_id) {
+          const currentAnnotations = current.annotations || []
+          updates.annotations = currentAnnotations.filter((a: ViewerAnnotation) => a.id !== annotation_id)
+        }
+        break
+
+      case 'highlight':
+        if (highlight) {
+          const newHighlight: HighlightRegion = {
+            ...highlight,
+            id: crypto.randomUUID(),
+          }
+          const currentHighlights = current.highlight_regions || []
+          updates.highlight_regions = [...currentHighlights, newHighlight]
+        }
+        break
+
+      case 'clear_highlight':
+        if (highlight_id) {
+          const currentHighlights = current.highlight_regions || []
+          updates.highlight_regions = currentHighlights.filter((h: HighlightRegion) => h.id !== highlight_id)
+        } else {
+          // highlight_id 없으면 전체 클리어
+          updates.highlight_regions = []
+        }
         break
 
       default:
