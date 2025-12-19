@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import {
@@ -88,6 +89,8 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function MessengerPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null)
@@ -141,6 +144,16 @@ export default function MessengerPage() {
     if (!activeRoom) return null
     return (activeRoom as any).meeting_config || null
   }, [activeRoom])
+
+  // URL 파라미터로 새 채팅방 생성 모달 열기
+  useEffect(() => {
+    const action = searchParams.get('action')
+    if (action === 'new') {
+      setShowNewChat(true)
+      // URL에서 action 파라미터 제거
+      router.replace('/dashboard-group/messenger')
+    }
+  }, [searchParams, router])
 
   // 필터링된 채팅방
   const filteredRooms = rooms.filter(room => {

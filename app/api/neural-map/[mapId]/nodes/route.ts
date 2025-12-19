@@ -8,7 +8,12 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+
+// DEV 모드 설정
+const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 interface RouteParams {
   params: Promise<{ mapId: string }>
@@ -19,25 +24,32 @@ export async function GET(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     // 맵 소유권 확인
-    const { data: neuralMap } = await supabase
+    const { data: neuralMap } = await adminSupabase
       .from('neural_maps')
       .select('id')
       .eq('id', mapId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (!neuralMap) {
       return NextResponse.json({ error: 'Neural map not found' }, { status: 404 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_nodes')
       .select('*')
       .eq('map_id', mapId)
@@ -101,18 +113,25 @@ export async function POST(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     // 맵 소유권 확인
-    const { data: neuralMap } = await supabase
+    const { data: neuralMap } = await adminSupabase
       .from('neural_maps')
       .select('id')
       .eq('id', mapId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (!neuralMap) {
@@ -138,7 +157,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'type and title are required' }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_nodes')
       .insert({
         map_id: mapId,
@@ -218,12 +237,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 export async function PATCH(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const adminSupabase = createAdminClient()
 
     const body = await request.json()
     const { nodeId, ...updates } = body
@@ -235,6 +249,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     // 스네이크 케이스로 변환
     const dbUpdates: Record<string, unknown> = {}
     if (updates.title !== undefined) dbUpdates.title = updates.title
+    if (updates.type !== undefined) dbUpdates.type = updates.type
     if (updates.summary !== undefined) dbUpdates.summary = updates.summary
     if (updates.content !== undefined) dbUpdates.content = updates.content
     if (updates.tags !== undefined) dbUpdates.tags = updates.tags
@@ -247,7 +262,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (updates.pinned !== undefined) dbUpdates.pinned = updates.pinned
     if (updates.position !== undefined) dbUpdates.position = updates.position
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_nodes')
       .update(dbUpdates as unknown as never)
       .eq('id', nodeId)
@@ -314,12 +329,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const adminSupabase = createAdminClient()
 
     const { searchParams } = new URL(request.url)
     const nodeId = searchParams.get('nodeId')
@@ -329,7 +339,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     }
 
     // Self 노드는 삭제 불가
-    const { data: node } = await supabase
+    const { data: node } = await adminSupabase
       .from('neural_nodes')
       .select('type')
       .eq('id', nodeId)
@@ -340,7 +350,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Cannot delete self node' }, { status: 400 })
     }
 
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('neural_nodes')
       .delete()
       .eq('id', nodeId)

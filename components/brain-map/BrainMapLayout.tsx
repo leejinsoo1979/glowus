@@ -553,17 +553,23 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
             </div>
           )}
 
-          {/* 로드맵 - RoadmapPanel 사용 */}
+          {/* 로드맵 - 메인 뷰에서 표시 */}
           {activeTab === 'roadmap' && (
-            <div className="h-full -mx-4 -my-4">
-              <RoadmapPanel
-                agentId={agentId}
-                isDark={isDark}
-                onEventClick={(event) => {
-                  // 이벤트 클릭 시 관련 노드 하이라이트
-                  setHighlightNodes(new Set(event.relatedNodes))
-                }}
-              />
+            <div className="space-y-4">
+              <p className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
+                시간 순서에 따른 기억/이벤트 흐름을 타임라인으로 시각화합니다.
+              </p>
+              <div className={cn(
+                'p-3 rounded-lg text-sm',
+                isDark ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-700'
+              )}>
+                <p className="font-medium mb-1">사용법:</p>
+                <ul className="text-xs space-y-1 list-disc list-inside">
+                  <li>일/주/월별 그룹 선택</li>
+                  <li>이벤트 타입 필터링</li>
+                  <li>이벤트 클릭하여 상세 보기</li>
+                </ul>
+              </div>
             </div>
           )}
         </div>
@@ -596,53 +602,74 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
         {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
       </button>
 
-      {/* 메인 3D 뷰 */}
+      {/* 메인 뷰 - 탭에 따라 다른 뷰 렌더링 */}
       <div className="flex-1 relative">
-        <BrainMap3D
-          agentId={agentId}
-          isDark={isDark}
-          onNodeClick={handleNodeClick}
-          onNodeHover={handleNodeHover}
-          highlightNodes={highlightNodes}
-          showLabels={true}
-          bloomStrength={1.5}
-        />
+        {/* 패스파인더 & 클러스터: 3D 그래프 */}
+        {(activeTab === 'pathfinder' || activeTab === 'clusters') && (
+          <>
+            <BrainMap3D
+              agentId={agentId}
+              isDark={isDark}
+              onNodeClick={handleNodeClick}
+              onNodeHover={handleNodeHover}
+              highlightNodes={highlightNodes}
+              showLabels={true}
+              bloomStrength={1.5}
+            />
 
-        {/* 줌 컨트롤 */}
-        <div className={cn(
-          'absolute top-4 left-4 flex flex-col gap-1',
-        )}>
-          <button
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-600',
-              'border',
-              isDark ? 'border-zinc-700' : 'border-zinc-200'
-            )}
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-600',
-              'border',
-              isDark ? 'border-zinc-700' : 'border-zinc-200'
-            )}
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-600',
-              'border',
-              isDark ? 'border-zinc-700' : 'border-zinc-200'
-            )}
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
-        </div>
+            {/* 줌 컨트롤 */}
+            <div className={cn(
+              'absolute top-4 left-4 flex flex-col gap-1',
+            )}>
+              <button
+                className={cn(
+                  'p-2 rounded-lg transition-colors',
+                  isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-600',
+                  'border',
+                  isDark ? 'border-zinc-700' : 'border-zinc-200'
+                )}
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                className={cn(
+                  'p-2 rounded-lg transition-colors',
+                  isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-600',
+                  'border',
+                  isDark ? 'border-zinc-700' : 'border-zinc-200'
+                )}
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <button
+                className={cn(
+                  'p-2 rounded-lg transition-colors',
+                  isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-600',
+                  'border',
+                  isDark ? 'border-zinc-700' : 'border-zinc-200'
+                )}
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* 로드맵: 전체 화면 타임라인 */}
+        {activeTab === 'roadmap' && (
+          <div className={cn(
+            'w-full h-full',
+            isDark ? 'bg-zinc-950' : 'bg-white'
+          )}>
+            <RoadmapPanel
+              agentId={agentId}
+              isDark={isDark}
+              onEventClick={(event) => {
+                setHighlightNodes(new Set(event.relatedNodes))
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* AI 분석 모달 */}

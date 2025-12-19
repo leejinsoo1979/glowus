@@ -7,7 +7,12 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+
+// DEV 모드 설정
+const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 interface RouteParams {
   params: Promise<{ mapId: string }>
@@ -18,25 +23,32 @@ export async function GET(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     // 맵 소유권 확인
-    const { data: neuralMap } = await supabase
+    const { data: neuralMap } = await adminSupabase
       .from('neural_maps')
       .select('id')
       .eq('id', mapId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (!neuralMap) {
       return NextResponse.json({ error: 'Neural map not found' }, { status: 404 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_edges')
       .select('*')
       .eq('map_id', mapId)

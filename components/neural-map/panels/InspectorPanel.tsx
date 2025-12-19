@@ -23,6 +23,7 @@ import {
   Calendar,
   Eye,
   X,
+  Loader2,
 } from 'lucide-react'
 
 const tabs: { id: RightPanelTab; label: string; icon: typeof Info }[] = [
@@ -46,7 +47,12 @@ const nodeTypes: { value: NodeType; label: string }[] = [
 function InspectorTab({ isDark }: { isDark: boolean }) {
   const selectedNode = useNeuralMapStore(selectFirstSelectedNode)
   const updateNode = useNeuralMapStore((s) => s.updateNode)
+  const deleteNode = useNeuralMapStore((s) => s.deleteNode)
+  const mapId = useNeuralMapStore((s) => s.mapId)
+  const deselectAll = useNeuralMapStore((s) => s.deselectAll)
   const [tagInput, setTagInput] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   if (!selectedNode) {
     return (
@@ -74,6 +80,59 @@ function InspectorTab({ isDark }: { isDark: boolean }) {
     updateNode(selectedNode.id, {
       tags: selectedNode.tags.filter((t) => t !== tag),
     })
+  }
+
+  // API에 변경사항 저장
+  const handleSave = async () => {
+    if (!mapId || !selectedNode) return
+
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/neural-map/${mapId}/nodes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: selectedNode.id,
+          title: selectedNode.title,
+          type: selectedNode.type,
+          summary: selectedNode.summary,
+          importance: selectedNode.importance,
+          tags: selectedNode.tags,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Failed to save node')
+    } catch (err) {
+      console.error('Node save error:', err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // 노드 삭제
+  const handleDelete = async () => {
+    if (!mapId || !selectedNode) return
+    if (selectedNode.type === 'self') {
+      alert('Self 노드는 삭제할 수 없습니다.')
+      return
+    }
+    if (!confirm('이 노드를 삭제하시겠습니까?')) return
+
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/neural-map/${mapId}/nodes?nodeId=${selectedNode.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) throw new Error('Failed to delete node')
+
+      deleteNode(selectedNode.id)
+      deselectAll()
+    } catch (err) {
+      console.error('Node delete error:', err)
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -233,23 +292,37 @@ function InspectorTab({ isDark }: { isDark: boolean }) {
       {/* Buttons */}
       <div className="flex gap-2 pt-4">
         <button
+          onClick={handleSave}
+          disabled={isSaving}
           className={cn(
             'flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-            'bg-blue-600 hover:bg-blue-500 text-white'
+            'bg-blue-600 hover:bg-blue-500 text-white',
+            isSaving && 'opacity-50 cursor-not-allowed'
           )}
         >
-          <Save className="w-4 h-4" />
+          {isSaving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
           저장
         </button>
         <button
+          onClick={handleDelete}
+          disabled={isDeleting || selectedNode.type === 'self'}
           className={cn(
             'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
             isDark
               ? 'bg-zinc-800 hover:bg-red-900/50 text-zinc-400 hover:text-red-400'
-              : 'bg-zinc-200 hover:bg-red-100 text-zinc-600 hover:text-red-600'
+              : 'bg-zinc-200 hover:bg-red-100 text-zinc-600 hover:text-red-600',
+            (isDeleting || selectedNode.type === 'self') && 'opacity-50 cursor-not-allowed'
           )}
         >
-          <Trash2 className="w-4 h-4" />
+          {isDeleting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Trash2 className="w-4 h-4" />
+          )}
         </button>
       </div>
     </div>

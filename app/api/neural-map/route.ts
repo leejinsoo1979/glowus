@@ -6,22 +6,34 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+
+// DEV 모드 설정
+const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // GET /api/neural-map - 사용자의 뉴럴맵 목록 조회
 export async function GET() {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('neural_maps')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('updated_at', { ascending: false })
 
     if (error) {
@@ -40,20 +52,27 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const adminSupabase = createAdminClient()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    if (DEV_MODE) {
+      userId = DEV_USER_ID
+    } else {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      userId = user.id
     }
 
     const body = await request.json()
     const { title = 'My Neural Map', agentId } = body
 
     // 1. 뉴럴맵 생성
-    const { data: neuralMap, error: mapError } = await supabase
+    const { data: neuralMap, error: mapError } = await adminSupabase
       .from('neural_maps')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         agent_id: agentId || null,
         title,
         theme_id: 'cosmic-dark',
@@ -75,7 +94,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Self 노드 생성
-    const { data: selfNode, error: nodeError } = await supabase
+    const { data: selfNode, error: nodeError } = await adminSupabase
       .from('neural_nodes')
       .insert({
         map_id: neuralMap.id,
@@ -93,12 +112,12 @@ export async function POST(request: Request) {
     if (nodeError) {
       console.error('Failed to create self node:', nodeError)
       // 롤백: 맵 삭제
-      await supabase.from('neural_maps').delete().eq('id', neuralMap.id)
+      await adminSupabase.from('neural_maps').delete().eq('id', neuralMap.id)
       return NextResponse.json({ error: nodeError.message }, { status: 500 })
     }
 
     // 3. root_node_id 업데이트
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminSupabase
       .from('neural_maps')
       .update({ root_node_id: selfNode.id })
       .eq('id', neuralMap.id)
