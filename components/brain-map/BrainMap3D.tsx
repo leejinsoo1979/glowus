@@ -90,6 +90,7 @@ interface BrainMap3DProps {
   onNodeClick?: (node: BrainNode) => void
   onNodeHover?: (node: BrainNode | null) => void
   highlightNodes?: Set<string>
+  filterTypes?: Set<NodeType>  // 필터링할 노드 타입 (비어있으면 모두 표시)
   focusNodeId?: string
   showLabels?: boolean
   bloomStrength?: number
@@ -101,12 +102,13 @@ export function BrainMap3D({
   onNodeClick,
   onNodeHover,
   highlightNodes,
+  filterTypes,
   focusNodeId,
   showLabels = true,
   bloomStrength = 1.5,
 }: BrainMap3DProps) {
   const fgRef = useRef<any>(null)
-  const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
+  const [rawGraphData, setRawGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -158,11 +160,11 @@ export function BrainMap3D({
           color: EDGE_COLORS[edge.type] || '#666666',
         }))
 
-        setGraphData({ nodes, links })
+        setRawGraphData({ nodes, links })
       } catch (error) {
         console.error('[BrainMap3D] Error fetching data:', error)
         // Fallback to mock data
-        setGraphData(generateMockData())
+        setRawGraphData(generateMockData())
       } finally {
         setIsLoading(false)
       }
@@ -170,6 +172,27 @@ export function BrainMap3D({
 
     fetchData()
   }, [agentId])
+
+  // 필터링된 그래프 데이터
+  const graphData = useMemo(() => {
+    // 필터가 없거나 비어있으면 전체 표시
+    if (!filterTypes || filterTypes.size === 0) {
+      return rawGraphData
+    }
+
+    // 필터된 노드
+    const filteredNodes = rawGraphData.nodes.filter(node => filterTypes.has(node.type))
+    const filteredNodeIds = new Set(filteredNodes.map(n => n.id))
+
+    // 필터된 노드들 사이의 링크만 유지
+    const filteredLinks = rawGraphData.links.filter(link => {
+      const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source
+      const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target
+      return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId)
+    })
+
+    return { nodes: filteredNodes, links: filteredLinks }
+  }, [rawGraphData, filterTypes])
 
   // Bloom 이펙트 설정
   useEffect(() => {

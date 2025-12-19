@@ -543,6 +543,72 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
                   </div>
                 </div>
               )}
+
+              {/* 노드 타입 필터 */}
+              <div className={cn('mt-6 pt-4 border-t', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
+                <h4 className={cn('text-xs font-semibold mb-3', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
+                  노드 타입 필터
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {(['memory', 'concept', 'person', 'doc', 'task', 'decision'] as NodeType[]).map((type) => {
+                    const isActive = nodeTypeFilters.has(type)
+                    const colors: Record<NodeType, string> = {
+                      memory: '#3B82F6',
+                      concept: '#22C55E',
+                      person: '#EAB308',
+                      doc: '#8B5CF6',
+                      task: '#EF4444',
+                      decision: '#F8FAFC',
+                      meeting: '#A855F7',
+                      tool: '#06B6D4',
+                      skill: '#14B8A6',
+                    }
+                    const labels: Record<NodeType, string> = {
+                      memory: '기억',
+                      concept: '개념',
+                      person: '사람',
+                      doc: '문서',
+                      task: '작업',
+                      decision: '결정',
+                      meeting: '회의',
+                      tool: '도구',
+                      skill: '스킬',
+                    }
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => toggleNodeTypeFilter(type)}
+                        className={cn(
+                          'px-2 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5',
+                          isActive
+                            ? 'text-white shadow-md'
+                            : isDark
+                              ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                              : 'bg-zinc-200 text-zinc-600 hover:bg-zinc-300'
+                        )}
+                        style={isActive ? { backgroundColor: colors[type] } : undefined}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: colors[type] }}
+                        />
+                        {labels[type]}
+                      </button>
+                    )
+                  })}
+                </div>
+                {nodeTypeFilters.size > 0 && (
+                  <button
+                    onClick={() => setNodeTypeFilters(new Set())}
+                    className={cn(
+                      'mt-2 text-xs',
+                      isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'
+                    )}
+                  >
+                    필터 초기화
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -614,6 +680,7 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
               onNodeClick={handleNodeClick}
               onNodeHover={handleNodeHover}
               highlightNodes={highlightNodes}
+              filterTypes={nodeTypeFilters}
               showLabels={true}
               bloomStrength={1.5}
             />
