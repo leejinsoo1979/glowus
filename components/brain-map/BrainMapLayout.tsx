@@ -285,20 +285,22 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
           sidebarOpen ? 'w-80' : 'w-12'
         )}
       >
-        {/* 사이드바 토글 버튼 */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className={cn(
-            'absolute -right-3 top-20 z-20 p-1 rounded-full border shadow-md transition-colors',
-            isDark
-              ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-400'
-              : 'bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-600'
-          )}
-        >
-          {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </button>
         {/* 탭 헤더 */}
-        <div className={cn('p-4 border-b', isDark ? 'border-zinc-800' : 'border-zinc-200', !sidebarOpen && 'hidden')}>
+        <div className={cn('p-4 border-b flex items-center gap-2', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
+          {/* 사이드바 토글 버튼 */}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={cn(
+              'p-1.5 rounded-lg transition-colors flex-shrink-0',
+              isDark
+                ? 'hover:bg-zinc-800 text-zinc-400'
+                : 'hover:bg-zinc-200 text-zinc-600'
+            )}
+          >
+            {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+
+          {sidebarOpen && (
           <div className="flex gap-1">
             {TABS.map((tab) => {
               const Icon = tab.icon
@@ -322,6 +324,7 @@ export function BrainMapLayout({ agentId, isDark = true }: BrainMapLayoutProps) 
               )
             })}
           </div>
+          )}
         </div>
 
         {/* 탭 컨텐츠 */}
