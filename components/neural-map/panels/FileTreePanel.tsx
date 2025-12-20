@@ -441,17 +441,96 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     setIsExpanded(true)
 
     try {
+      // 1. 폴더 구조 추출 및 폴더 노드 생성
+      const folderPaths = new Set<string>()
+      validFiles.forEach(({ path }) => {
+        const parts = path.split('/')
+        // 마지막(파일)을 제외한 폴더 경로들
+        for (let i = 1; i < parts.length; i++) {
+          folderPaths.add(parts.slice(0, i).join('/'))
+        }
+      })
+
+      // 폴더 노드 생성 (계층 순서대로)
+      const sortedFolders = Array.from(folderPaths).sort((a, b) => a.split('/').length - b.split('/').length)
+      const folderNodeMap = new Map<string, string>() // path -> nodeId
+
+      // Self 노드 찾기
+      const selfNode = graph?.nodes.find(n => n.type === 'self')
+
+      for (const folderPath of sortedFolders) {
+        const parts = folderPath.split('/')
+        const folderName = parts[parts.length - 1]
+        const parentPath = parts.slice(0, -1).join('/')
+
+        try {
+          const folderNode = await createNode({
+            type: 'project' as any, // 폴더는 project 타입으로
+            title: folderName,
+            summary: `📁 ${folderPath}`,
+            tags: ['folder', 'directory'],
+            importance: 6,
+          })
+
+          if (folderNode) {
+            folderNodeMap.set(folderPath, folderNode.id)
+
+            // 부모 폴더 또는 Self 노드와 연결
+            const parentNodeId = parentPath ? folderNodeMap.get(parentPath) : selfNode?.id
+            if (parentNodeId) {
+              await createEdge({
+                sourceId: parentNodeId,
+                targetId: folderNode.id,
+                type: 'parent_child',
+                weight: 0.8,
+              })
+            }
+          }
+        } catch (err) {
+          console.error('폴더 노드 생성 실패:', folderPath, err)
+        }
+      }
+
+      // 2. 파일 업로드 및 폴더에 연결
       let lastResult = null
       for (let i = 0; i < validFiles.length; i++) {
         setUploadingCount(validFiles.length - i)
         const { file, path } = validFiles[i]
+
+        // 파일이 속한 폴더 경로
+        const pathParts = path.split('/')
+        const parentFolderPath = pathParts.slice(0, -1).join('/')
+
         const result = await processFileUpload(file, path)
+
+        // 파일 노드를 폴더 노드에 연결 (processFileUpload 내부에서 self와 연결되므로 추가 연결)
+        if (result && parentFolderPath && folderNodeMap.has(parentFolderPath)) {
+          const folderNodeId = folderNodeMap.get(parentFolderPath)!
+
+          // 최근 생성된 노드 찾기 (파일명으로)
+          const fileNode = graph?.nodes.find(n => n.title === result.name || n.title === file.name)
+          if (fileNode) {
+            try {
+              await createEdge({
+                sourceId: folderNodeId,
+                targetId: fileNode.id,
+                type: 'parent_child',
+                weight: 0.6,
+              })
+            } catch (err) {
+              // 이미 연결되어 있을 수 있음
+            }
+          }
+        }
+
         if (result) lastResult = result
       }
 
       if (lastResult) {
         setSelectedFileId(lastResult.id)
       }
+
+      console.log(`폴더 업로드 완료: ${sortedFolders.length}개 폴더, ${validFiles.length}개 파일`)
     } catch (error) {
       console.error('Folder upload error:', error)
     } finally {

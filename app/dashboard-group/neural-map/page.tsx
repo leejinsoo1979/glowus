@@ -48,6 +48,15 @@ const Graph2DView = dynamic(
   }
 )
 
+// Dynamically import Cosmic Force Graph (3D universe style)
+const CosmicForceGraph = dynamic(
+  () => import('@/components/neural-map/canvas/CosmicForceGraph').then((mod) => mod.CosmicForceGraph),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
 // Loading fallback for canvas
 function CanvasLoadingFallback() {
   const currentTheme = useNeuralMapStore((s) => s.currentTheme)
@@ -216,6 +225,8 @@ export default function NeuralMapPage() {
               </div>
             ) : activeTab === 'graph2d' ? (
               <Graph2DView className="absolute inset-0" />
+            ) : activeTab === 'cosmic' ? (
+              <CosmicForceGraph className="absolute inset-0" />
             ) : (
               <NeuralMapCanvas className="absolute inset-0" />
             )}
