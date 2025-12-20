@@ -26,7 +26,24 @@ import {
   FolderClosed,
   Upload,
   Sparkles,
+  PenLine,
+  ArrowUpDown,
+  ChevronsDownUp,
+  X,
+  Check,
 } from 'lucide-react'
+
+// 정렬 옵션 타입
+type SortOption = 'name-asc' | 'name-desc' | 'modified-new' | 'modified-old' | 'created-new' | 'created-old'
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'name-asc', label: 'File name (A to Z)' },
+  { value: 'name-desc', label: 'File name (Z to A)' },
+  { value: 'modified-new', label: 'Modified time (new to old)' },
+  { value: 'modified-old', label: 'Modified time (old to new)' },
+  { value: 'created-new', label: 'Created time (new to old)' },
+  { value: 'created-old', label: 'Created time (old to new)' },
+]
 
 // VS Code 스타일 파일 아이콘
 function FileIcon({ type, name }: { type: string; name?: string }) {
@@ -142,8 +159,11 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadingCount, setUploadingCount] = useState(0)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  const [sortOption, setSortOption] = useState<SortOption>('name-asc')
+  const [showSortMenu, setShowSortMenu] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+  const sortMenuRef = useRef<HTMLDivElement>(null)
 
   // Store
   const files = useNeuralMapStore((s) => s.files)
@@ -177,6 +197,33 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       }
       return next
     })
+  }
+
+  // 모든 폴더 접기
+  const collapseAll = () => {
+    setExpandedFolders(new Set())
+    setIsExpanded(false)
+  }
+
+  // 정렬 메뉴 외부 클릭 감지
+  const handleClickOutside = (e: MouseEvent) => {
+    if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+      setShowSortMenu(false)
+    }
+  }
+
+  // 외부 클릭 이벤트 등록
+  // useEffect로 처리 - showSortMenu 변경 시 이벤트 등록/해제
+  if (typeof window !== 'undefined' && showSortMenu) {
+    setTimeout(() => {
+      const handler = (e: Event) => {
+        if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+          setShowSortMenu(false)
+        }
+      }
+      document.addEventListener('mousedown', handler)
+      return () => document.removeEventListener('mousedown', handler)
+    }, 0)
   }
 
   // 파일에 해당하는 노드 찾기
@@ -355,57 +402,134 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
   return (
     <div className={cn('h-full flex flex-col text-[13px]', isDark ? 'bg-[#1e1e1e]' : 'bg-[#f3f3f3]')}>
-      {/* VS Code 스타일 헤더 - EXPLORER */}
+      {/* Obsidian 스타일 상단 툴바 */}
       <div className={cn(
-        'h-[35px] flex items-center justify-between px-3 select-none',
-        isDark ? 'text-[#bbbbbb]' : 'text-[#616161]'
+        'h-[40px] flex items-center justify-center gap-1 px-2 border-b select-none',
+        isDark ? 'border-[#3c3c3c] text-[#999999]' : 'border-[#d4d4d4] text-[#666666]'
       )}>
-        <span className="text-[11px] font-semibold tracking-wider uppercase">탐색기</span>
-        <div className="flex items-center gap-0.5">
-          {isUploading || isAnalyzing ? (
-            <div className="flex items-center gap-1 px-2">
-              {isAnalyzing ? (
-                <>
-                  <Sparkles className="w-4 h-4 animate-pulse text-amber-400" />
-                  <span className="text-[10px] text-amber-400">AI 분석중</span>
-                </>
-              ) : (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-[10px]">{uploadingCount}</span>
-                </>
+        {isUploading || isAnalyzing ? (
+          <div className="flex items-center gap-2 px-3">
+            {isAnalyzing ? (
+              <>
+                <Sparkles className="w-4 h-4 animate-pulse text-amber-400" />
+                <span className="text-[11px] text-amber-400">AI 분석중...</span>
+              </>
+            ) : (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-[11px]">업로드 중... ({uploadingCount})</span>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* 새 노트 */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!mapId}
+              className={cn(
+                'p-2 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#e8e8e8]',
+                !mapId && 'opacity-50 cursor-not-allowed'
               )}
+              title="New note"
+            >
+              <PenLine className="w-[18px] h-[18px]" />
+            </button>
+
+            {/* 새 폴더 */}
+            <button
+              onClick={() => folderInputRef.current?.click()}
+              disabled={!mapId}
+              className={cn(
+                'p-2 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#e8e8e8]',
+                !mapId && 'opacity-50 cursor-not-allowed'
+              )}
+              title="New folder"
+            >
+              <FolderPlus className="w-[18px] h-[18px]" />
+            </button>
+
+            {/* 정렬 */}
+            <div className="relative" ref={sortMenuRef}>
+              <button
+                onClick={() => setShowSortMenu(!showSortMenu)}
+                className={cn(
+                  'p-2 rounded transition-colors',
+                  isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#e8e8e8]',
+                  showSortMenu && (isDark ? 'bg-[#3c3c3c]' : 'bg-[#e8e8e8]')
+                )}
+                title="Sort"
+              >
+                <ArrowUpDown className="w-[18px] h-[18px]" />
+              </button>
+
+              {/* 정렬 드롭다운 메뉴 */}
+              <AnimatePresence>
+                {showSortMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.15 }}
+                    className={cn(
+                      'absolute top-full left-0 mt-1 py-1 rounded-md shadow-lg z-50 min-w-[200px]',
+                      isDark ? 'bg-[#2d2d2d] border border-[#454545]' : 'bg-white border border-[#d4d4d4]'
+                    )}
+                  >
+                    {SORT_OPTIONS.map((option, idx) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setSortOption(option.value)
+                          setShowSortMenu(false)
+                        }}
+                        className={cn(
+                          'w-full px-3 py-1.5 text-left text-[13px] flex items-center gap-2 transition-colors',
+                          isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#f0f0f0]',
+                          // 구분선 추가 (2개씩 그룹)
+                          (idx === 2 || idx === 4) && (isDark ? 'border-t border-[#454545] mt-1 pt-2' : 'border-t border-[#e0e0e0] mt-1 pt-2')
+                        )}
+                      >
+                        {sortOption === option.value ? (
+                          <Check className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <span className="w-4" />
+                        )}
+                        <span>{option.label}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          ) : (
-            <>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!mapId}
-                className={cn(
-                  'p-1 rounded hover:bg-white/10 transition-colors',
-                  !mapId && 'opacity-50 cursor-not-allowed'
-                )}
-                title="파일 업로드"
-              >
-                <FilePlus className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => folderInputRef.current?.click()}
-                disabled={!mapId}
-                className={cn(
-                  'p-1 rounded hover:bg-white/10 transition-colors',
-                  !mapId && 'opacity-50 cursor-not-allowed'
-                )}
-                title="폴더 업로드"
-              >
-                <FolderPlus className="w-4 h-4" />
-              </button>
-            </>
-          )}
-          <button className="p-1 rounded hover:bg-white/10 transition-colors" title="새로고침">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
+
+            {/* 모두 접기 */}
+            <button
+              onClick={collapseAll}
+              className={cn(
+                'p-2 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#e8e8e8]'
+              )}
+              title="Collapse all"
+            >
+              <ChevronsDownUp className="w-[18px] h-[18px]" />
+            </button>
+
+            {/* 닫기 (패널 접기) */}
+            <button
+              onClick={() => setIsExpanded(false)}
+              className={cn(
+                'p-2 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#e8e8e8]'
+              )}
+              title="Close"
+            >
+              <X className="w-[18px] h-[18px]" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* 파일 트리 영역 */}
