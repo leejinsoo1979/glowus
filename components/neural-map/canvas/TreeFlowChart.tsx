@@ -171,9 +171,9 @@ function calculateLayout(root: TreeNode): { width: number; height: number } {
   }
 
   const rootWidth = calculateWidths(root)
-  positionNodes(root, 0, 40, rootWidth)
+  positionNodes(root, 80, 60, rootWidth)
 
-  return { width: maxWidth + 80, height: maxHeight + 80 }
+  return { width: maxWidth + 160, height: maxHeight + 120 }
 }
 
 // Collect import edges for rendering
@@ -226,12 +226,14 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
 
-      const scaleX = (containerWidth - 100) / dimensions.width
-      const scaleY = (containerHeight - 100) / dimensions.height
-      const scale = Math.min(scaleX, scaleY, 1)
+      // More padding and limit max scale to 0.85 to ensure everything fits
+      const scaleX = (containerWidth - 200) / dimensions.width
+      const scaleY = (containerHeight - 150) / dimensions.height
+      const scale = Math.min(scaleX, scaleY, 0.85)
 
+      // Center horizontally and add some top padding
       const x = (containerWidth - dimensions.width * scale) / 2
-      const y = 40
+      const y = 60
 
       setTransform({ x, y, scale })
     }
@@ -293,12 +295,12 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
 
-      const scaleX = (containerWidth - 100) / dimensions.width
-      const scaleY = (containerHeight - 100) / dimensions.height
-      const scale = Math.min(scaleX, scaleY, 1)
+      const scaleX = (containerWidth - 200) / dimensions.width
+      const scaleY = (containerHeight - 150) / dimensions.height
+      const scale = Math.min(scaleX, scaleY, 0.85)
 
       const x = (containerWidth - dimensions.width * scale) / 2
-      const y = 40
+      const y = 60
 
       setTransform({ x, y, scale })
     }
