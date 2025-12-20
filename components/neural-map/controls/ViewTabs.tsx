@@ -11,10 +11,12 @@ import {
   Route,
   Map,
   Lightbulb,
+  Network,
 } from 'lucide-react'
 
 const viewTabs: { id: ViewTab; label: string; icon: typeof Circle; description: string }[] = [
-  { id: 'radial', label: 'Radial', icon: Circle, description: '방사형 맵' },
+  { id: 'radial', label: '3D', icon: Circle, description: '3D 방사형 맵' },
+  { id: 'graph2d', label: 'Graph', icon: Network, description: '2D 그래프 (Obsidian 스타일)' },
   { id: 'clusters', label: 'Clusters', icon: Layers, description: '주제 군집' },
   { id: 'pathfinder', label: 'Pathfinder', icon: Route, description: '경로 탐색' },
   { id: 'roadmap', label: 'Roadmap', icon: Map, description: '로드뷰' },
