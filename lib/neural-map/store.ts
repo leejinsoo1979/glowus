@@ -196,6 +196,9 @@ interface NeuralMapActions {
 
   // Demo
   loadMockProjectData: () => void
+
+  // Build graph from real files
+  buildGraphFromFiles: () => void
 }
 
 // ============================================
@@ -961,6 +964,265 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             }
 
             state.files = files
+            state.expandedNodeIds = new Set([rootNode.id])
+          }),
+
+        // ========== Build Graph from Real Files ==========
+        buildGraphFromFiles: () =>
+          set((state) => {
+            const currentFiles = state.files
+            if (!currentFiles || currentFiles.length === 0) {
+              return // No files to visualize
+            }
+
+            // ID 생성 헬퍼
+            const generateId = () => `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+            // 프로젝트 이름 추출 (첫 번째 폴더 또는 "My Project")
+            const firstPath = currentFiles[0]?.path || currentFiles[0]?.name
+            const projectName = firstPath?.split('/')[0] || 'My Project'
+
+            // 루트 노드 (프로젝트)
+            const rootNode: NeuralNode = {
+              id: generateId(),
+              type: 'self',
+              title: projectName,
+              summary: `${currentFiles.length}개 파일`,
+              tags: ['project'],
+              importance: 10,
+              expanded: true,
+              pinned: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+
+            const nodes: NeuralNode[] = [rootNode]
+            const edges: NeuralEdge[] = []
+
+            // 폴더 노드 맵 (path -> nodeId)
+            const folderMap = new Map<string, string>()
+            folderMap.set('', rootNode.id) // 루트
+
+            // 파일 노드 맵 (filePath -> nodeId) - import 분석용
+            const fileNodeMap = new Map<string, string>()
+
+            // 모든 폴더 경로 수집 및 생성
+            const allFolderPaths = new Set<string>()
+            currentFiles.forEach(file => {
+              const filePath = file.path || file.name
+              const parts = filePath.split('/')
+              // 마지막은 파일명이므로 제외
+              for (let i = 1; i < parts.length; i++) {
+                allFolderPaths.add(parts.slice(0, i).join('/'))
+              }
+            })
+
+            // 폴더 정렬 (부모 먼저 생성되도록)
+            const sortedFolders = Array.from(allFolderPaths).sort((a, b) => {
+              const depthA = a.split('/').length
+              const depthB = b.split('/').length
+              return depthA - depthB
+            })
+
+            // 폴더 노드 생성
+            sortedFolders.forEach(folderPath => {
+              if (folderMap.has(folderPath)) return // 이미 존재
+
+              const folderId = generateId()
+              const folderName = folderPath.split('/').pop() || folderPath
+              const parentPath = folderPath.includes('/')
+                ? folderPath.substring(0, folderPath.lastIndexOf('/'))
+                : ''
+
+              const folderNode: NeuralNode = {
+                id: folderId,
+                type: 'folder' as any,
+                title: folderName,
+                summary: `폴더: ${folderPath}`,
+                tags: ['folder'],
+                importance: 7,
+                parentId: folderMap.get(parentPath) || rootNode.id,
+                expanded: false,
+                pinned: false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+
+              nodes.push(folderNode)
+              folderMap.set(folderPath, folderId)
+
+              // 부모와 연결
+              edges.push({
+                id: generateId(),
+                source: folderMap.get(parentPath) || rootNode.id,
+                target: folderId,
+                type: 'parent_child',
+                weight: 0.8,
+                bidirectional: false,
+                createdAt: new Date().toISOString(),
+              })
+            })
+
+            // 파일 노드 생성
+            currentFiles.forEach(file => {
+              const fileId = generateId()
+              const filePath = file.path || file.name
+              const fileName = file.name
+              const ext = fileName.split('.').pop()?.toLowerCase() || ''
+
+              // 파일 타입 결정
+              const fileType = ['tsx', 'ts', 'js', 'jsx', 'py', 'java', 'go', 'rs'].includes(ext) ? 'code' :
+                             ['css', 'scss', 'less', 'sass'].includes(ext) ? 'style' :
+                             ['json', 'yaml', 'yml', 'toml', 'xml', 'env'].includes(ext) ? 'config' :
+                             ['md', 'mdx', 'txt', 'rst'].includes(ext) ? 'doc' :
+                             ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico'].includes(ext) ? 'image' :
+                             ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video' :
+                             ['pdf'].includes(ext) ? 'pdf' : 'file'
+
+              // 부모 폴더 찾기
+              const parentPath = filePath.includes('/')
+                ? filePath.substring(0, filePath.lastIndexOf('/'))
+                : ''
+              const parentId = folderMap.get(parentPath) || rootNode.id
+
+              const fileNode: NeuralNode = {
+                id: fileId,
+                type: fileType as any,
+                title: fileName,
+                summary: filePath,
+                tags: [ext, fileType],
+                importance: 5,
+                parentId: parentId,
+                expanded: false,
+                pinned: false,
+                createdAt: file.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                // 실제 파일 참조
+                sourceRef: {
+                  fileId: file.id,
+                  kind: file.type as any,
+                },
+              }
+
+              nodes.push(fileNode)
+              fileNodeMap.set(filePath, fileId)
+
+              // 부모와 연결
+              edges.push({
+                id: generateId(),
+                source: parentId,
+                target: fileId,
+                type: 'parent_child',
+                weight: 0.6,
+                bidirectional: false,
+                createdAt: new Date().toISOString(),
+              })
+            })
+
+            // 코드 파일 간 import 관계 추론 (같은 폴더/인접 폴더 기반 휴리스틱)
+            const codeFiles = currentFiles.filter(f => {
+              const ext = f.name.split('.').pop()?.toLowerCase() || ''
+              return ['tsx', 'ts', 'js', 'jsx'].includes(ext)
+            })
+
+            // 간단한 휴리스틱: 같은 상위 폴더 내 파일들은 서로 import 가능성 있음
+            const folderFiles = new Map<string, string[]>()
+            codeFiles.forEach(file => {
+              const filePath = file.path || file.name
+              const parentPath = filePath.includes('/')
+                ? filePath.substring(0, filePath.lastIndexOf('/'))
+                : ''
+              const existing = folderFiles.get(parentPath) || []
+              existing.push(filePath)
+              folderFiles.set(parentPath, existing)
+            })
+
+            // 공통 유틸리티 패턴 감지 (lib, utils, hooks, components 폴더)
+            const utilityPatterns = ['lib', 'utils', 'hooks', 'helpers', 'shared', 'common']
+            const componentPatterns = ['components', 'ui', 'elements']
+
+            codeFiles.forEach(file => {
+              const filePath = file.path || file.name
+              const sourceId = fileNodeMap.get(filePath)
+              if (!sourceId) return
+
+              const fileName = file.name.replace(/\.(tsx?|jsx?)$/, '')
+
+              // 유틸리티 파일 찾아서 연결
+              currentFiles.forEach(targetFile => {
+                const targetPath = targetFile.path || targetFile.name
+                if (targetPath === filePath) return
+
+                const targetId = fileNodeMap.get(targetPath)
+                if (!targetId) return
+
+                // 유틸리티 폴더의 파일들은 많은 곳에서 import됨
+                const isUtilityTarget = utilityPatterns.some(p => targetPath.includes(`/${p}/`) || targetPath.startsWith(`${p}/`))
+                const isComponentTarget = componentPatterns.some(p => targetPath.includes(`/${p}/`) || targetPath.startsWith(`${p}/`))
+
+                // 현재 파일이 페이지/레이아웃이고 타겟이 컴포넌트면 연결
+                const isPageOrLayout = fileName.includes('page') || fileName.includes('layout') || fileName.includes('route')
+
+                if (isPageOrLayout && isComponentTarget) {
+                  edges.push({
+                    id: generateId(),
+                    source: sourceId,
+                    target: targetId,
+                    type: 'imports',
+                    label: `import ${targetFile.name.replace(/\.(tsx?|jsx?)$/, '')}`,
+                    weight: 0.5,
+                    bidirectional: false,
+                    createdAt: new Date().toISOString(),
+                  })
+                } else if (isUtilityTarget && !isPageOrLayout) {
+                  // 일반 파일이 유틸리티 import
+                  edges.push({
+                    id: generateId(),
+                    source: sourceId,
+                    target: targetId,
+                    type: 'imports',
+                    label: `import ${targetFile.name.replace(/\.(tsx?|jsx?)$/, '')}`,
+                    weight: 0.4,
+                    bidirectional: false,
+                    createdAt: new Date().toISOString(),
+                  })
+                }
+              })
+            })
+
+            // 그래프 설정
+            const graphData = {
+              nodes,
+              edges,
+              clusters: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+
+            if (state.graph) {
+              state.graph.nodes = graphData.nodes
+              state.graph.edges = graphData.edges
+              state.graph.clusters = graphData.clusters
+              state.graph.updatedAt = graphData.updatedAt
+            } else {
+              state.graph = {
+                ...graphData,
+                version: '2.0',
+                userId: '',
+                rootNodeId: rootNode.id,
+                title: projectName,
+                viewState: {
+                  activeTab: 'radial',
+                  expandedNodeIds: [rootNode.id],
+                  pinnedNodeIds: [],
+                  selectedNodeIds: [],
+                  cameraPosition: { x: 0, y: 0, z: 0 },
+                  cameraTarget: { x: 0, y: 0, z: 0 },
+                },
+                themeId: 'cosmic-dark',
+              } as NeuralGraph
+            }
+
             state.expandedNodeIds = new Set([rootNode.id])
           }),
       })),

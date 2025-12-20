@@ -33,6 +33,7 @@ import {
   X,
   Check,
   Play,
+  Eye,
 } from 'lucide-react'
 
 // 정렬 옵션 타입
@@ -176,6 +177,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
   const openEditor = useNeuralMapStore((s) => s.openEditor)
   const loadMockProjectData = useNeuralMapStore((s) => s.loadMockProjectData)
+  const buildGraphFromFiles = useNeuralMapStore((s) => s.buildGraphFromFiles)
 
   // API
   const { uploadFile, deleteFile, createNode, createEdge, analyzeFile } = useNeuralMapApi(mapId)
@@ -593,6 +595,20 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
               title="New folder"
             >
               <FolderPlus className="w-[18px] h-[18px]" />
+            </button>
+
+            {/* 시각화 - 실제 파일 기반 */}
+            <button
+              onClick={buildGraphFromFiles}
+              disabled={files.length === 0}
+              className={cn(
+                'p-2 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c] text-blue-400' : 'hover:bg-[#e8e8e8] text-blue-600',
+                files.length === 0 && 'opacity-50 cursor-not-allowed'
+              )}
+              title="Visualize uploaded files"
+            >
+              <Eye className="w-[18px] h-[18px]" />
             </button>
 
             {/* 데모 로드 */}
