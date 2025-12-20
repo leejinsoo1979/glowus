@@ -123,24 +123,6 @@ export function Header() {
               }`} />
           </motion.button>
 
-          {/* Work History Panel Toggle */}
-          <motion.button
-            onClick={toggleWorkHistory}
-            className={`p-2.5 rounded-xl transition-colors ${isDark
-              ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
-              : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900'
-              }`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            title={workHistoryOpen ? '작업 목록 닫기' : '작업 목록 열기'}
-          >
-            {workHistoryOpen ? (
-              <PanelRightClose className="w-5 h-5" />
-            ) : (
-              <PanelRightOpen className="w-5 h-5" />
-            )}
-          </motion.button>
-
           {/* User Menu */}
           <div className="relative">
             <motion.button
@@ -257,6 +239,24 @@ export function Header() {
               )}
             </AnimatePresence>
           </div>
+
+          {/* Work History Panel Toggle - 맨 우측 */}
+          <motion.button
+            onClick={toggleWorkHistory}
+            className={`p-2.5 rounded-xl transition-colors ${isDark
+              ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+              : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+              }`}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title={workHistoryOpen ? '작업 목록 닫기' : '작업 목록 열기'}
+          >
+            {workHistoryOpen ? (
+              <PanelRightClose className="w-5 h-5" />
+            ) : (
+              <PanelRightOpen className="w-5 h-5" />
+            )}
+          </motion.button>
         </div>
     </header>
   )
