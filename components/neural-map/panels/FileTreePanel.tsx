@@ -6,49 +6,49 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useNeuralMapApi } from '@/lib/neural-map/useNeuralMapApi'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 import type { NeuralFile } from '@/lib/neural-map/types'
 import {
   Search,
-  FolderOpen,
-  Folder,
+  ChevronRight,
+  ChevronDown,
   FileText,
   Image,
   Film,
   FileCode,
-  Upload,
-  ChevronRight,
-  ChevronDown,
-  Clock,
-  Plus,
   File,
   Trash2,
   Loader2,
-  ExternalLink,
-  Orbit,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  FolderClosed,
+  Upload,
 } from 'lucide-react'
 
-// 파일 타입별 아이콘
-function FileIcon({ type }: { type: string }) {
-  switch (type) {
-    case 'pdf':
-      return <FileText className="w-4 h-4 text-red-400" />
-    case 'image':
-      return <Image className="w-4 h-4 text-emerald-400" />
-    case 'video':
-      return <Film className="w-4 h-4 text-cyan-400" />
-    case 'markdown':
-      return <FileCode className="w-4 h-4 text-blue-400" />
-    default:
-      return <File className="w-4 h-4 text-zinc-400" />
-  }
-}
+// VS Code 스타일 파일 아이콘
+function FileIcon({ type, name }: { type: string; name?: string }) {
+  const ext = name?.split('.').pop()?.toLowerCase()
 
-// 파일 그룹 (타입별 분류)
-interface FileGroup {
-  type: string
-  label: string
-  icon: React.ReactNode
-  files: NeuralFile[]
+  // 확장자별 아이콘 매핑
+  if (ext === 'pdf') return <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
+  if (ext === 'md' || ext === 'markdown') return <FileCode className="w-4 h-4 text-blue-400 flex-shrink-0" />
+  if (ext === 'txt') return <FileText className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext || '')) {
+    return <Image className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+  }
+  if (['mp4', 'webm', 'mov', 'avi'].includes(ext || '')) {
+    return <Film className="w-4 h-4 text-purple-400 flex-shrink-0" />
+  }
+
+  // 타입별 폴백
+  switch (type) {
+    case 'pdf': return <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
+    case 'image': return <Image className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+    case 'video': return <Film className="w-4 h-4 text-purple-400 flex-shrink-0" />
+    case 'markdown': return <FileCode className="w-4 h-4 text-blue-400 flex-shrink-0" />
+    default: return <File className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+  }
 }
 
 interface FileTreePanelProps {
@@ -58,41 +58,74 @@ interface FileTreePanelProps {
 export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
-  const [searchQuery, setSearchQuery] = useState('')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['pdf', 'image']))
+  const [isExpanded, setIsExpanded] = useState(true)
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Store에서 파일 목록 가져오기
+  // Store
   const files = useNeuralMapStore((s) => s.files)
   const addFile = useNeuralMapStore((s) => s.addFile)
   const removeFile = useNeuralMapStore((s) => s.removeFile)
-  const currentTheme = useNeuralMapStore((s) => s.currentTheme)
   const graph = useNeuralMapStore((s) => s.graph)
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
 
-  // API hook
+  // API
   const { uploadFile, deleteFile, createNode, createEdge } = useNeuralMapApi(mapId)
+
+  // 사용자 테마
+  const { accentColor: userAccentColor } = useThemeStore()
+  const currentAccent = accentColors.find((c) => c.id === userAccentColor) || accentColors[0]
+
+  const mapTitle = graph?.title || 'Untitled Map'
 
   // 파일에 해당하는 노드 찾기
   const findNodeByFileName = (fileName: string) => {
     return graph?.nodes.find(n => n.title === fileName)
   }
 
-  // 파일 업로드 핸들러
+  // 파일 클릭 핸들러
+  const handleFileClick = (file: NeuralFile) => {
+    setSelectedFileId(file.id)
+    const node = findNodeByFileName(file.name)
+    if (node) {
+      setSelectedNodes([node.id])
+      focusOnNode(node.id)
+    }
+  }
+
+  // 파일 더블클릭 - 외부에서 열기
+  const handleFileDoubleClick = (file: NeuralFile) => {
+    if (file.url) {
+      window.open(file.url, '_blank')
+    }
+  }
+
+  // 파일 삭제
+  const handleDeleteFile = async (e: React.MouseEvent, fileId: string) => {
+    e.stopPropagation()
+    if (!mapId) return
+    const success = await deleteFile(fileId)
+    if (success) {
+      removeFile(fileId)
+      if (selectedFileId === fileId) {
+        setSelectedFileId(null)
+      }
+    }
+  }
+
+  // 파일 업로드
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile || !mapId) return
 
     setIsUploading(true)
     try {
-      // 1. 파일 업로드
       const result = await uploadFile(selectedFile)
       if (result) {
         addFile(result)
 
-        // 2. 파일에 대한 노드 생성
         const nodeType = result.type === 'pdf' ? 'doc' :
                         result.type === 'markdown' ? 'doc' :
                         result.type === 'image' ? 'memory' :
@@ -106,7 +139,6 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           importance: 5,
         })
 
-        // 3. Self 노드 찾아서 엣지 생성
         if (newNode && graph?.nodes) {
           const selfNode = graph.nodes.find(n => n.type === 'self')
           if (selfNode) {
@@ -129,302 +161,210 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     }
   }
 
-  // 파일 삭제 핸들러
-  const handleDeleteFile = async (fileId: string) => {
-    if (!mapId) return
-    const success = await deleteFile(fileId)
-    if (success) {
-      removeFile(fileId)
-    }
-  }
-
-  // 파일 열기 핸들러 (외부 링크)
-  const handleOpenFile = (file: NeuralFile) => {
-    if (file.url) {
-      window.open(file.url, '_blank')
-    }
-  }
-
-  // 파일 클릭 핸들러 - 해당 노드 선택 및 포커스
-  const handleFileClick = (file: NeuralFile) => {
-    const node = findNodeByFileName(file.name)
-    if (node) {
-      setSelectedNodes([node.id])
-      focusOnNode(node.id)
-    }
-  }
-
-  // 파일을 타입별로 그룹화
-  const fileGroups: FileGroup[] = [
-    {
-      type: 'pdf',
-      label: '문서',
-      icon: <FileText className="w-4 h-4" />,
-      files: files.filter((f) => f.type === 'pdf'),
-    },
-    {
-      type: 'image',
-      label: '이미지',
-      icon: <Image className="w-4 h-4" />,
-      files: files.filter((f) => f.type === 'image'),
-    },
-    {
-      type: 'video',
-      label: '비디오',
-      icon: <Film className="w-4 h-4" />,
-      files: files.filter((f) => f.type === 'video'),
-    },
-    {
-      type: 'markdown',
-      label: '마크다운',
-      icon: <FileCode className="w-4 h-4" />,
-      files: files.filter((f) => f.type === 'markdown'),
-    },
-  ].filter((group) => group.files.length > 0)
-
-  // 검색 필터링
-  const filteredGroups = searchQuery
-    ? fileGroups.map((group) => ({
-        ...group,
-        files: group.files.filter((f) =>
-          f.name.toLowerCase().includes(searchQuery.toLowerCase())
-        ),
-      })).filter((group) => group.files.length > 0)
-    : fileGroups
-
-  const toggleGroup = (type: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(type)) {
-        next.delete(type)
-      } else {
-        next.add(type)
-      }
-      return next
-    })
-  }
-
-  // 테마 색상 사용
-  const accentColor = currentTheme?.ui?.accentColor || '#3B82F6'
-
   return (
-    <div className="h-full flex flex-col">
-      {/* Map Title Header */}
-      <div className={cn('p-4 border-b', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-        <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: accentColor }}
-          >
-            <Orbit className="w-5 h-5 text-white" />
-          </div>
-          <h1 className={cn('font-semibold truncate', isDark ? 'text-zinc-100' : 'text-zinc-900')}>
-            {graph?.title || 'My Neural Map'}
-          </h1>
-        </div>
-      </div>
-
-      {/* File Tree Header */}
-      <div className={cn('p-3 border-b', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className={cn('text-sm font-semibold', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
-            파일 트리
-          </h2>
+    <div className={cn('h-full flex flex-col text-[13px]', isDark ? 'bg-[#1e1e1e]' : 'bg-[#f3f3f3]')}>
+      {/* VS Code 스타일 헤더 - EXPLORER */}
+      <div className={cn(
+        'h-[35px] flex items-center justify-between px-3 select-none',
+        isDark ? 'text-[#bbbbbb]' : 'text-[#616161]'
+      )}>
+        <span className="text-[11px] font-semibold tracking-wider uppercase">탐색기</span>
+        <div className="flex items-center gap-0.5">
           <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || !mapId}
             className={cn(
-              'p-1.5 rounded-lg transition-colors',
-              isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'
+              'p-1 rounded hover:bg-white/10 transition-colors',
+              (isUploading || !mapId) && 'opacity-50 cursor-not-allowed'
             )}
-            title="새 폴더"
+            title="새 파일"
           >
-            <Plus className="w-4 h-4" />
+            {isUploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+          </button>
+          <button className="p-1 rounded hover:bg-white/10 transition-colors" title="새로고침">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button className="p-1 rounded hover:bg-white/10 transition-colors" title="더보기">
+            <MoreHorizontal className="w-4 h-4" />
           </button>
         </div>
-
-        {/* Search */}
-        <div className="relative">
-          <Search
-            className={cn(
-              'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4',
-              isDark ? 'text-zinc-500' : 'text-zinc-400'
-            )}
-          />
-          <input
-            type="text"
-            placeholder="파일 검색..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              'w-full pl-9 pr-3 py-2 text-sm rounded-lg border outline-none transition-colors',
-              isDark
-                ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-600'
-                : 'bg-zinc-50 border-zinc-200 text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-300'
-            )}
-          />
-        </div>
       </div>
 
-      {/* File Groups */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {filteredGroups.length === 0 ? (
-          <div className={cn('text-center py-8', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            <File className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">파일이 없습니다</p>
-            <p className="text-xs mt-1">파일을 업로드해주세요</p>
-          </div>
-        ) : (
-          filteredGroups.map((group) => (
-            <div key={group.type}>
-              <button
-                onClick={() => toggleGroup(group.type)}
-                className={cn(
-                  'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm',
-                  isDark
-                    ? 'hover:bg-zinc-800 text-zinc-300'
-                    : 'hover:bg-zinc-100 text-zinc-700'
-                )}
-              >
-                {expandedGroups.has(group.type) ? (
-                  <ChevronDown className="w-4 h-4 text-zinc-500" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-zinc-500" />
-                )}
-                {expandedGroups.has(group.type) ? (
-                  <FolderOpen className="w-4 h-4" style={{ color: accentColor }} />
-                ) : (
-                  <Folder className="w-4 h-4" style={{ color: accentColor }} />
-                )}
-                <span className="flex-1 text-left truncate">{group.label}</span>
-                <span className={cn('text-xs', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
-                  {group.files.length}
-                </span>
-              </button>
-              <AnimatePresence>
-                {expandedGroups.has(group.type) && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
-                  >
-                    {group.files.map((file) => {
-                      const hasNode = !!findNodeByFileName(file.name)
-                      return (
-                        <div
-                          key={file.id}
-                          onClick={() => handleFileClick(file)}
-                          className={cn(
-                            'group flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm ml-4 cursor-pointer',
-                            isDark
-                              ? 'hover:bg-zinc-800 text-zinc-400'
-                              : 'hover:bg-zinc-100 text-zinc-600',
-                            hasNode && (isDark ? 'border-l-2 border-blue-500' : 'border-l-2 border-blue-500')
-                          )}
-                        >
-                          <FileIcon type={file.type} />
-                          <span className="flex-1 text-left truncate">{file.name}</span>
-                          {hasNode && (
-                            <span className="w-2 h-2 rounded-full bg-blue-500" title="노드 연결됨" />
-                          )}
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleOpenFile(file) }}
-                              className={cn(
-                                'p-1 rounded transition-colors',
-                                isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'
-                              )}
-                              title="파일 열기"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id) }}
-                              className={cn(
-                                'p-1 rounded transition-colors text-red-400',
-                                isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'
-                              )}
-                              title="파일 삭제"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Recent Files */}
-      <div className={cn('p-3 border-t', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-        <div className="flex items-center gap-2 mb-2">
-          <Clock className="w-4 h-4 text-zinc-500" />
-          <span className={cn('text-xs font-medium', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
-            최근 사용
-          </span>
-        </div>
-        <div className="space-y-1">
-          {files.slice(0, 3).map((file) => (
-            <button
-              key={file.id}
-              className={cn(
-                'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm',
-                isDark
-                  ? 'hover:bg-zinc-800 text-zinc-400'
-                  : 'hover:bg-zinc-100 text-zinc-600'
-              )}
-            >
-              <FileIcon type={file.type} />
-              <span className="truncate">{file.name}</span>
-            </button>
-          ))}
-          {files.length === 0 && (
-            <p className={cn('text-xs', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
-              최근 사용 파일 없음
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Upload Button */}
-      <div className={cn('p-3 border-t', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          onChange={handleFileUpload}
-          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.mp4,.webm,.mov,.avi,.md,.markdown,.txt"
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading || !mapId}
+      {/* 파일 트리 영역 */}
+      <div className="flex-1 overflow-y-auto">
+        {/* 루트 폴더 (맵 이름) */}
+        <div
+          onClick={() => setIsExpanded(!isExpanded)}
           className={cn(
-            'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
-            'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/25',
-            (isUploading || !mapId) && 'opacity-50 cursor-not-allowed'
+            'flex items-center gap-1 py-[3px] px-2 cursor-pointer select-none',
+            isDark
+              ? 'hover:bg-[#2a2d2e] text-[#cccccc]'
+              : 'hover:bg-[#e8e8e8] text-[#3b3b3b]',
+            'font-semibold text-[11px] uppercase tracking-wide'
           )}
-          style={{
-            background: `linear-gradient(135deg, ${accentColor}, ${accentColor}dd)`,
-          }}
         >
-          {isUploading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>업로드 중...</span>
-            </>
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4 flex-shrink-0" />
           ) : (
-            <>
-              <Upload className="w-4 h-4" />
-              <span>파일 업로드</span>
-            </>
+            <ChevronRight className="w-4 h-4 flex-shrink-0" />
           )}
-        </button>
+          <span className="truncate">{mapTitle}</span>
+        </div>
+
+        {/* 파일 목록 */}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              {files.length === 0 ? (
+                <div className={cn(
+                  'py-4 px-6 text-center',
+                  isDark ? 'text-zinc-500' : 'text-zinc-400'
+                )}>
+                  <p className="text-xs">파일이 없습니다</p>
+                </div>
+              ) : (
+                files.map((file) => {
+                  const isSelected = selectedFileId === file.id
+                  const hasNode = !!findNodeByFileName(file.name)
+
+                  return (
+                    <div
+                      key={file.id}
+                      onClick={() => handleFileClick(file)}
+                      onDoubleClick={() => handleFileDoubleClick(file)}
+                      className={cn(
+                        'group flex items-center gap-1.5 py-[3px] pr-2 cursor-pointer select-none',
+                        'pl-6', // 들여쓰기
+                        isSelected
+                          ? isDark
+                            ? 'bg-[#094771] text-white'
+                            : 'bg-[#0060c0] text-white'
+                          : isDark
+                            ? 'hover:bg-[#2a2d2e] text-[#cccccc]'
+                            : 'hover:bg-[#e8e8e8] text-[#3b3b3b]'
+                      )}
+                    >
+                      <FileIcon type={file.type} name={file.name} />
+                      <span className="flex-1 truncate">{file.name}</span>
+
+                      {/* 노드 연결 표시 */}
+                      {hasNode && !isSelected && (
+                        <div
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: currentAccent.color }}
+                          title="노드 연결됨"
+                        />
+                      )}
+
+                      {/* 삭제 버튼 - 호버 시 표시 */}
+                      <button
+                        onClick={(e) => handleDeleteFile(e, file.id)}
+                        className={cn(
+                          'p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+                          isSelected
+                            ? 'hover:bg-white/20'
+                            : isDark
+                              ? 'hover:bg-zinc-700'
+                              : 'hover:bg-zinc-300'
+                        )}
+                        title="삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      {/* 하단 패널들 (VS Code 스타일) */}
+      <div className={cn('border-t', isDark ? 'border-[#3c3c3c]' : 'border-[#d4d4d4]')}>
+        {/* 개요 섹션 */}
+        <CollapsibleSection title="개요" isDark={isDark} defaultClosed>
+          <div className={cn('py-2 px-4 text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            문서 개요가 없습니다
+          </div>
+        </CollapsibleSection>
+
+        {/* 타임라인 섹션 */}
+        <CollapsibleSection title="타임라인" isDark={isDark} defaultClosed>
+          <div className={cn('py-2 px-4 text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            타임라인 항목이 없습니다
+          </div>
+        </CollapsibleSection>
+      </div>
+
+      {/* 숨겨진 파일 입력 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        onChange={handleFileUpload}
+        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.mp4,.webm,.mov,.avi,.md,.markdown,.txt"
+        className="hidden"
+      />
+    </div>
+  )
+}
+
+// 접을 수 있는 섹션 컴포넌트
+function CollapsibleSection({
+  title,
+  isDark,
+  children,
+  defaultClosed = false
+}: {
+  title: string
+  isDark: boolean
+  children: React.ReactNode
+  defaultClosed?: boolean
+}) {
+  const [isExpanded, setIsExpanded] = useState(!defaultClosed)
+
+  return (
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          'w-full flex items-center gap-1 py-[3px] px-2 select-none',
+          isDark
+            ? 'hover:bg-[#2a2d2e] text-[#bbbbbb]'
+            : 'hover:bg-[#e8e8e8] text-[#616161]',
+          'text-[11px] font-semibold uppercase tracking-wide'
+        )}
+      >
+        {isExpanded ? (
+          <ChevronDown className="w-4 h-4 flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 flex-shrink-0" />
+        )}
+        <span>{title}</span>
+      </button>
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
