@@ -286,27 +286,34 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
     setIsPanning(false)
   }, [])
 
-  // Zoom handlers
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? 0.9 : 1.1
-    const newScale = Math.max(0.1, Math.min(3, transform.scale * delta))
+  // Zoom handlers - use native event listener for non-passive wheel events
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
 
-    // Zoom towards mouse position
-    const rect = containerRef.current?.getBoundingClientRect()
-    if (rect) {
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
 
-      const scaleChange = newScale / transform.scale
-      const newX = mouseX - (mouseX - transform.x) * scaleChange
-      const newY = mouseY - (mouseY - transform.y) * scaleChange
+      setTransform(prev => {
+        const newScale = Math.max(0.1, Math.min(3, prev.scale * delta))
 
-      setTransform({ x: newX, y: newY, scale: newScale })
-    } else {
-      setTransform(prev => ({ ...prev, scale: newScale }))
+        // Zoom towards mouse position
+        const rect = container.getBoundingClientRect()
+        const mouseX = e.clientX - rect.left
+        const mouseY = e.clientY - rect.top
+
+        const scaleChange = newScale / prev.scale
+        const newX = mouseX - (mouseX - prev.x) * scaleChange
+        const newY = mouseY - (mouseY - prev.y) * scaleChange
+
+        return { x: newX, y: newY, scale: newScale }
+      })
     }
-  }, [transform])
+
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => container.removeEventListener('wheel', handleWheel)
+  }, [])
 
   // Zoom controls
   const zoomIn = () => setTransform(prev => ({ ...prev, scale: Math.min(3, prev.scale * 1.2) }))
@@ -476,7 +483,6 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
     >
       {/* Zoom controls */}
       <div className={cn(
