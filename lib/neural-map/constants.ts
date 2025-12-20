@@ -26,6 +26,8 @@ export const NODE_COLORS: Record<NodeType, string> = {
   task:     '#06B6D4',  // 시안
   person:   '#0EA5E9',  // 스카이블루
   insight:  '#22D3EE',  // 시안라이트
+  folder:   '#6B7280',  // 그레이
+  file:     '#9CA3AF',  // 라이트그레이
 }
 
 // ============================================

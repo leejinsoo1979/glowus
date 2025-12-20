@@ -45,7 +45,7 @@ const FILE_TYPE_COLORS: Record<string, string> = {
 
 // 노드 타입별 색상 (fallback)
 const NODE_COLORS: Record<string, string> = {
-  self: '#ffd700',      // Gold (중심 노드)
+  self: '#8b5cf6',      // Purple (테마색 - 중심 노드)
   concept: '#3b82f6',   // Blue
   project: '#10b981',   // Green
   doc: '#f59e0b',       // Amber
@@ -294,6 +294,7 @@ interface GraphNode {
   color: string
   fileType?: string  // 파일 확장자
   fileSize?: number  // 파일 크기
+  parentId?: string  // 부모 노드 ID
   x?: number
   y?: number
 }
@@ -322,26 +323,38 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const selectedNodeIds = useNeuralMapStore((s) => s.selectedNodeIds)
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const openModal = useNeuralMapStore((s) => s.openModal)
+  const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
 
-  // radialDistance/graphExpanded에 따른 effective 값 계산
-  const effectiveDistance = graphExpanded ? radialDistance : radialDistance * 0.3
-
   // 컨테이너 크기 감지
   useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
     const updateDimensions = () => {
-      if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        })
-      }
+      setDimensions({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      })
     }
 
+    // 초기 크기 설정
     updateDimensions()
+
+    // ResizeObserver로 컨테이너 크기 변화 감지
+    const resizeObserver = new ResizeObserver(() => {
+      updateDimensions()
+    })
+    resizeObserver.observe(container)
+
+    // window resize도 감지 (fallback)
     window.addEventListener('resize', updateDimensions)
-    return () => window.removeEventListener('resize', updateDimensions)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateDimensions)
+    }
   }, [])
 
   // 파일 이름으로 파일 찾기
@@ -365,26 +378,39 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     }
   }, [files])
 
-  // 그래프 데이터 변환 (effectiveDistance 기반 초기 위치 포함)
+  // 그래프 데이터 변환 (필터링 + 방사 거리 대비)
   const graphData = useMemo(() => {
     if (!graph) return { nodes: [], links: [] }
 
-    // 중심점
-    const centerX = dimensions.width / 2
-    const centerY = dimensions.height / 2
+    // 노드 맵 생성 (부모 참조용)
+    const nodeMap = new Map(graph.nodes.map(n => [n.id, n]))
 
-    // 중심 노드 찾기
-    const selfNodeIndex = graph.nodes.findIndex(n => n.type === 'self')
-    const otherNodesCount = graph.nodes.length - (selfNodeIndex >= 0 ? 1 : 0)
-    let angleIndex = 0
+    // 재귀적 가시성 체크 함수
+    const isVisible = (nodeId: string): boolean => {
+      const node = nodeMap.get(nodeId)
+      if (!node) return false
+      if (node.type === 'self') return true // 루트는 항상 보임
+      if (!node.parentId) return true // 부모가 없으면 보임
 
-    const nodes: GraphNode[] = graph.nodes.map((node, index) => {
+      // 부모가 확장목록에 없으면(닫힘) -> 안보임
+      const parent = nodeMap.get(node.parentId)
+      if (parent && !expandedNodeIds.has(parent.id)) return false
+
+      // 부모 자체도 보여야 함 (재귀)
+      return isVisible(node.parentId)
+    }
+
+    // 가시성 필터링 적용
+    const visibleNodes = graph.nodes.filter(node => isVisible(node.id))
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
+
+    const nodes: GraphNode[] = visibleNodes.map((node) => {
       // 노드 제목으로 파일 매칭
       const matchedFile = fileMap.get(node.title) || fileMap.get(node.id)
       const ext = getExtension(node.title)
       const hasFileExt = ext && FILE_TYPE_COLORS[ext]
 
-      // 색상 결정: 파일 타입 → 노드 타입 → 기본값
+      // 색상 결정
       let nodeColor = NODE_COLORS[node.type] || '#6b7280'
       if (hasFileExt) {
         nodeColor = FILE_TYPE_COLORS[ext]
@@ -393,31 +419,26 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         nodeColor = SELECTED_COLOR
       }
 
-      // 크기 결정: 파일 크기 기반 또는 중요도 기반 (더 균일하게)
-      let nodeSize = 8 // 기본 크기
+      // 크기 결정 - 더 작게!
+      let nodeSize = 4 // 기본 크기 (작게)
       if (node.type === 'self') {
-        nodeSize = 12 // Self 노드
+        nodeSize = 16 // Self 노드 - 적당한 크기
+      } else if (node.type === 'folder') {
+        nodeSize = 5 // 폴더는 약간 크게
       } else if (matchedFile?.size) {
-        nodeSize = fileSizeToNodeSize(matchedFile.size, fileSizeRange.min, fileSizeRange.max)
+        // 파일 크기에 따라 3~6 범위
+        nodeSize = 3 + (fileSizeToNodeSize(matchedFile.size, fileSizeRange.min, fileSizeRange.max) - 6) * 0.5
+        nodeSize = Math.max(3, Math.min(6, nodeSize))
       } else {
-        nodeSize = 7 + Math.min((node.importance || 0), 3) // 7~10 범위
+        nodeSize = 4 + Math.min((node.importance || 0), 2) * 0.5
       }
 
-      // 초기 위치 계산 (effectiveDistance 기반)
-      let x = centerX
-      let y = centerY
-
-      if (node.type === 'self') {
-        // 중심 노드는 화면 중앙에 고정
-        x = centerX
-        y = centerY
-      } else {
-        // 다른 노드들은 방사형으로 배치
-        const angle = (angleIndex * 2 * Math.PI) / Math.max(otherNodesCount, 1)
-        x = centerX + Math.cos(angle) * effectiveDistance
-        y = centerY + Math.sin(angle) * effectiveDistance
-        angleIndex++
-      }
+      // SELF 노드 위치 고정
+      const isSelf = node.type === 'self'
+      const angle = Math.random() * Math.PI * 2
+      // 초기 배치 거리를 radialDistance에 비례하게 설정
+      const initDist = radialDistance ? radialDistance * 1.5 : 300
+      const distance = initDist + Math.random() * (radialDistance * 0.5)
 
       return {
         id: node.id,
@@ -427,21 +448,24 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         color: nodeColor,
         fileType: ext || undefined,
         fileSize: matchedFile?.size,
-        x,
-        y,
-        fx: x, // 모든 노드 위치 고정 (드래그로만 이동 가능)
-        fy: y,
+        parentId: node.parentId,
+        ...(isSelf
+          ? { fx: 0, fy: 0, x: 0, y: 0 }
+          : { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance }
+        ),
       }
     })
 
-    const links: GraphLink[] = graph.edges.map((edge) => ({
-      source: edge.source,
-      target: edge.target,
-      type: edge.type,
-    }))
+    const links: GraphLink[] = graph.edges
+      .filter(edge => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+      .map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+      }))
 
     return { nodes, links }
-  }, [graph, files, fileMap, fileSizeRange, selectedNodeIds, effectiveDistance, dimensions.width, dimensions.height])
+  }, [graph, files, fileMap, fileSizeRange, selectedNodeIds, expandedNodeIds, radialDistance])
 
   // 노드 클릭 핸들러
   const handleNodeClick = useCallback((node: any) => {
@@ -470,14 +494,17 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
   // 노드 캔버스 렌더링 (파일 타입 아이콘 포함)
   const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    // 위치가 유효하지 않으면 렌더링 스킵
+    if (!isFinite(node.x) || !isFinite(node.y)) return
+
     const label = node.name
     const fontSize = 11 / globalScale
     const isSelected = selectedNodeIds.includes(node.id)
     const isHovered = hoveredNode === node.id
 
     // 노드 크기 (고정 크기, 줌에 따라 자연스럽게 스케일)
-    const baseSize = node.val || 8
-    const actualSize = baseSize // 고정 크기 사용 (줌 시 자연스럽게 확대/축소)
+    const baseSize = node.val || 4
+    const actualSize = baseSize
 
     // 색상 결정
     let fillColor = node.color || '#6b7280'
@@ -508,25 +535,65 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     ctx.shadowBlur = 0
 
-    // 파일 타입 아이콘 그리기
-    if (node.fileType) {
-      const iconSize = Math.max(actualSize * 1.2, 8)
-      drawFileTypeIcon(ctx, node.fileType, node.x, node.y, iconSize)
-    } else if (node.type === 'self') {
-      // Self 노드는 별 모양
-      ctx.fillStyle = '#ffffff'
-      const starSize = actualSize * 0.5
+    // 파일 타입 아이콘 그리기 (SELF 노드는 프로젝트 아이콘 우선)
+    if (node.type === 'self') {
+      // Self 노드 - 프로젝트 중앙 아이콘
+      ctx.save()
+
+      // 외곽 글로우 링 (테마색)
+      const gradient = ctx.createRadialGradient(
+        node.x, node.y, actualSize * 0.6,
+        node.x, node.y, actualSize * 1.3
+      )
+      gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)')
+      gradient.addColorStop(1, 'rgba(139, 92, 246, 0)')
       ctx.beginPath()
-      for (let i = 0; i < 5; i++) {
-        const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2
-        const r = i === 0 ? starSize : starSize
-        const x = node.x + Math.cos(angle) * r
-        const y = node.y + Math.sin(angle) * r
-        if (i === 0) ctx.moveTo(x, y)
-        else ctx.lineTo(x, y)
-      }
+      ctx.arc(node.x, node.y, actualSize * 1.3, 0, Math.PI * 2)
+      ctx.fillStyle = gradient
+      ctx.fill()
+
+      // 프로젝트 폴더 아이콘
+      const s = actualSize * 0.45
+      ctx.strokeStyle = '#ffffff'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
+      ctx.lineWidth = 2
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+
+      // 폴더 본체
+      ctx.beginPath()
+      ctx.moveTo(node.x - s, node.y - s * 0.3)
+      ctx.lineTo(node.x - s, node.y + s * 0.8)
+      ctx.lineTo(node.x + s, node.y + s * 0.8)
+      ctx.lineTo(node.x + s, node.y - s * 0.5)
+      ctx.lineTo(node.x + s * 0.2, node.y - s * 0.5)
+      ctx.lineTo(node.x - s * 0.1, node.y - s * 0.9)
+      ctx.lineTo(node.x - s, node.y - s * 0.9)
       ctx.closePath()
       ctx.fill()
+      ctx.stroke()
+
+      // 폴더 탭
+      ctx.beginPath()
+      ctx.moveTo(node.x - s, node.y - s * 0.3)
+      ctx.lineTo(node.x + s, node.y - s * 0.3)
+      ctx.stroke()
+
+      // 중앙 점 3개 (파일 표시)
+      ctx.fillStyle = '#ffffff'
+      const dotY = node.y + s * 0.25
+      const dotR = s * 0.12
+      ctx.beginPath()
+      ctx.arc(node.x - s * 0.4, dotY, dotR, 0, Math.PI * 2)
+      ctx.arc(node.x, dotY, dotR, 0, Math.PI * 2)
+      ctx.arc(node.x + s * 0.4, dotY, dotR, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.restore()
+    } else if (node.fileType) {
+      // 파일 타입 아이콘
+      const iconSize = Math.max(actualSize * 1.2, 8)
+      drawFileTypeIcon(ctx, node.fileType, node.x, node.y, iconSize)
     }
 
     // 라벨 그리기
@@ -565,19 +632,24 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     ctx.stroke()
   }, [isDark])
 
-  // effectiveDistance에 따라 줌 레벨 조정
+  // 그래프 로드 후 자동 줌 맞춤 (SELF 노드 중심)
   useEffect(() => {
     if (graphRef.current && graphData.nodes.length > 0) {
       setTimeout(() => {
-        // effectiveDistance에 반비례하여 줌 설정
-        // 50 -> 줌 2.5 (확대), 300 -> 줌 0.4 (축소)
-        const zoomLevel = 150 / effectiveDistance
-        const clampedZoom = Math.max(0.3, Math.min(3, zoomLevel))
-        graphRef.current?.zoom(clampedZoom, 300)
-        graphRef.current?.centerAt(dimensions.width / 2, dimensions.height / 2, 300)
-      }, 200)
+        // SELF 노드(0,0)를 중심으로 적절한 줌 레벨 설정
+        graphRef.current?.centerAt(0, 0, 300)
+        graphRef.current?.zoom(1.5, 300)
+      }, 500)
     }
-  }, [effectiveDistance, graphData.nodes.length, dimensions.width, dimensions.height])
+  }, [graphData.nodes.length])
+
+  // radialDistance 변경 시 시뮬레이션 재시작
+  useEffect(() => {
+    if (graphRef.current && radialDistance) {
+      // d3 시뮬레이션 재가열로 노드 재배치
+      graphRef.current.d3ReheatSimulation?.()
+    }
+  }, [radialDistance])
 
   return (
     <div
@@ -590,7 +662,6 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       }}
     >
       <ForceGraph2D
-        key={`graph-${effectiveDistance}`}
         ref={graphRef}
         graphData={graphData}
         width={dimensions.width}
@@ -600,7 +671,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         nodeCanvasObject={nodeCanvasObject}
         nodePointerAreaPaint={(node: any, color, ctx) => {
           ctx.beginPath()
-          ctx.arc(node.x, node.y, 8, 0, 2 * Math.PI)
+          ctx.arc(node.x, node.y, node.val || 4, 0, 2 * Math.PI)
           ctx.fillStyle = color
           ctx.fill()
         }}
@@ -615,10 +686,26 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         linkDirectionalParticles={0}
         // 물리 엔진 설정 (Force-directed)
         dagMode={undefined}
-        d3VelocityDecay={0.3}
-        d3AlphaDecay={0.02}
-        cooldownTicks={100}
-        warmupTicks={100}
+        d3VelocityDecay={0.4}
+        d3AlphaDecay={0.01}
+        cooldownTicks={300}
+        warmupTicks={200}
+        // 노드 간 거리 (방사거리와 연동) - 강한 척력으로 퍼뜨림
+        // @ts-ignore - d3Force is a valid prop but not in type definitions
+        d3Force={(forceName: string, force: any) => {
+          const effectiveDistance = radialDistance * 1.2
+          const effectiveStrength = -radialDistance * 4 // 훨씬 강한 척력
+
+          if (forceName === 'charge') {
+            force.strength(effectiveStrength).distanceMax(radialDistance * 5)
+          }
+          if (forceName === 'link') {
+            force.distance(effectiveDistance).strength(0.15)
+          }
+          if (forceName === 'center') {
+            force.strength(0.02)
+          }
+        }}
         // 상호작용
         onBackgroundClick={handleBackgroundClick}
         enableNodeDrag={true}
@@ -637,3 +724,5 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     </div>
   )
 }
+
+export default Graph2DView

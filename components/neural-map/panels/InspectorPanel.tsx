@@ -476,6 +476,78 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
   // graphExpanded - 노드 펼침/수축 (사이드바와 별개)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
   const setGraphExpanded = useNeuralMapStore((s) => s.setGraphExpanded)
+  // 파일트리 자동 펼침 위한 스토어 함수들
+  const graph = useNeuralMapStore((s) => s.graph)
+  const expandNode = useNeuralMapStore((s) => s.expandNode)
+  const collapseNode = useNeuralMapStore((s) => s.collapseNode)
+  const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
+
+  // 노드 펼침 토글 핸들러 - 전체 파일트리 펼침/접힘
+  const handleGraphExpandedToggle = () => {
+    const newExpanded = !graphExpanded
+    setGraphExpanded(newExpanded)
+
+    if (!graph) return
+
+    // 폴더 노드들만 추출 (project, folder 타입 모두 폴더로 처리)
+    const folderNodes = graph.nodes.filter(n => n.type === 'folder' || n.type === 'project' || n.type === 'self')
+
+    if (newExpanded) {
+      // 전체 펼치기
+      folderNodes.forEach((node) => {
+        expandNode(node.id)
+      })
+    } else {
+      // 전체 접기 (self 제외)
+      folderNodes.forEach(node => {
+        if (node.type !== 'self') {
+          collapseNode(node.id)
+        }
+      })
+    }
+  }
+
+  // radialDistance 변경 시 파일트리 자동 펼침
+  const handleRadialDistanceChange = (value: number) => {
+    setRadialDistance(value)
+
+    if (!graph) return
+
+    // 폴더 노드들만 추출하고 계층 구조 정렬 (project, folder 타입 모두 폴더로 처리)
+    const folderNodes = graph.nodes.filter(n => n.type === 'folder' || n.type === 'project' || n.type === 'self')
+
+    // parentId를 기반으로 depth 계산
+    const getDepth = (nodeId: string, nodes: typeof folderNodes, depth = 0): number => {
+      const node = nodes.find(n => n.id === nodeId)
+      if (!node || !node.parentId) return depth
+      return getDepth(node.parentId, nodes, depth + 1)
+    }
+
+    // depth로 정렬
+    const sortedFolders = folderNodes
+      .map(node => ({ ...node, calculatedDepth: getDepth(node.id, folderNodes) }))
+      .sort((a, b) => a.calculatedDepth - b.calculatedDepth)
+
+    // radialDistance 비율에 따라 펼칠 폴더 개수 결정
+    // 50~300 범위에서 0%~100%로 변환
+    const ratio = (value - 50) / 250
+    const foldersToExpand = Math.floor(sortedFolders.length * ratio)
+
+    // 모든 폴더 먼저 접기
+    sortedFolders.forEach(node => {
+      if (expandedNodeIds.has(node.id) && node.type !== 'self') {
+        collapseNode(node.id)
+      }
+    })
+
+    // 비율에 따라 위에서부터 순차적으로 펼치기
+    sortedFolders.slice(0, foldersToExpand + 1).forEach((node, index) => {
+      // 약간의 딜레이로 순차적 효과
+      setTimeout(() => {
+        expandNode(node.id)
+      }, index * 30)
+    })
+  }
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-6">
@@ -509,7 +581,7 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
             max={300}
             step={10}
             value={radialDistance}
-            onChange={(e) => setRadialDistance(parseInt(e.target.value))}
+            onChange={(e) => handleRadialDistanceChange(parseInt(e.target.value))}
             className="w-full h-2 rounded-lg appearance-none cursor-pointer"
             style={{
               background: `linear-gradient(to right, ${currentAccent.color} 0%, ${currentAccent.color} ${((radialDistance - 50) / 250) * 100}%, ${isDark ? '#3f3f46' : '#e4e4e7'} ${((radialDistance - 50) / 250) * 100}%, ${isDark ? '#3f3f46' : '#e4e4e7'} 100%)`,
@@ -528,7 +600,7 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
               노드 펼침
             </label>
             <button
-              onClick={() => setGraphExpanded(!graphExpanded)}
+              onClick={handleGraphExpandedToggle}
               className={cn(
                 'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
                 graphExpanded
@@ -550,7 +622,7 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
             </button>
           </div>
           <p className={cn('text-[10px]', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
-            {graphExpanded ? '노드가 방사 거리만큼 펼쳐집니다' : '노드가 중심으로 수축됩니다'}
+            {graphExpanded ? '모든 폴더가 펼쳐집니다' : '모든 폴더가 접힙니다'}
           </p>
         </div>
       </div>
@@ -568,7 +640,7 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
           ].map((preset) => (
             <button
               key={preset.value}
-              onClick={() => setRadialDistance(preset.value)}
+              onClick={() => handleRadialDistanceChange(preset.value)}
               className={cn(
                 'px-3 py-2 text-xs rounded-lg font-medium transition-all',
                 radialDistance === preset.value
@@ -594,7 +666,7 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
           isDark ? 'bg-zinc-800/50 text-zinc-500' : 'bg-zinc-100/50 text-zinc-500'
         )}
       >
-        <p>💡 좌측 사이드바를 접으면 그래프 노드들이 중심으로 수축하고, 펼치면 방사형으로 확장됩니다.</p>
+        <p>💡 방사 거리 슬라이더를 움직이면 좌측 파일트리가 자동으로 펼쳐지면서 그래프 노드들이 확장됩니다.</p>
       </div>
     </div>
   )

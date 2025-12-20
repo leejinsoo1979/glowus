@@ -6,6 +6,9 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
+
+enableMapSet()
 import type {
   NeuralGraph,
   NeuralNode,
@@ -277,7 +280,7 @@ const initialState: NeuralMapState = {
 
   // Graph Settings
   radialDistance: 150, // 기본 방사 거리
-  graphExpanded: true, // 기본 펼침 상태
+  graphExpanded: false, // 기본 접힘 상태 (첫 클릭에 펼침)
 }
 
 // ============================================
@@ -300,7 +303,14 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         setGraph: (graph) =>
           set((state) => {
             state.graph = graph
-            state.expandedNodeIds = new Set(graph.viewState?.expandedNodeIds || [])
+            // viewState에서 expandedNodeIds 복원, 없으면 빈 Set
+            const initialExpanded = new Set<string>(graph.viewState?.expandedNodeIds || [])
+            // 루트(self) 노드는 항상 펼침 상태로 시작
+            const selfNode = graph.nodes.find(n => n.type === 'self')
+            if (selfNode) {
+              initialExpanded.add(selfNode.id)
+            }
+            state.expandedNodeIds = initialExpanded
           }),
 
         clearGraph: () =>
@@ -662,7 +672,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         // ========== Expansion ==========
         expandNode: (id) =>
           set((state) => {
-            state.expandedNodeIds.add(id)
+            // 새로운 Set 생성으로 React 리렌더링 트리거
+            state.expandedNodeIds = new Set([...state.expandedNodeIds, id])
             const node = state.graph?.nodes.find((n) => n.id === id)
             if (node) {
               node.expanded = true
@@ -671,7 +682,10 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
 
         collapseNode: (id) =>
           set((state) => {
-            state.expandedNodeIds.delete(id)
+            // 새로운 Set 생성으로 React 리렌더링 트리거
+            const newSet = new Set(state.expandedNodeIds)
+            newSet.delete(id)
+            state.expandedNodeIds = newSet
             const node = state.graph?.nodes.find((n) => n.id === id)
             if (node) {
               node.expanded = false
@@ -786,7 +800,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
 
               const folderNode: NeuralNode = {
                 id: folderId,
-                type: 'folder' as any,
+                type: 'folder',
                 title: folderName,
                 summary: `폴더: ${folder.path}`,
                 tags: ['folder'],
@@ -817,9 +831,9 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 const fileId = generateId()
                 const ext = fileName.split('.').pop() || ''
                 const fileType = ['tsx', 'ts', 'js', 'jsx'].includes(ext) ? 'code' :
-                               ext === 'css' ? 'style' :
-                               ext === 'json' ? 'config' :
-                               ext === 'md' ? 'doc' : 'file'
+                  ext === 'css' ? 'style' :
+                    ext === 'json' ? 'config' :
+                      ext === 'md' ? 'doc' : 'file'
 
                 const fileNode: NeuralNode = {
                   id: fileId,
@@ -1084,7 +1098,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
 
               const folderNode: NeuralNode = {
                 id: folderId,
-                type: 'folder' as any,
+                type: 'folder',
                 title: folderName,
                 summary: `폴더: ${folderPath}`,
                 tags: ['folder'],
@@ -1120,12 +1134,12 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
 
               // 파일 타입 결정
               const fileType = ['tsx', 'ts', 'js', 'jsx', 'py', 'java', 'go', 'rs'].includes(ext) ? 'code' :
-                             ['css', 'scss', 'less', 'sass'].includes(ext) ? 'style' :
-                             ['json', 'yaml', 'yml', 'toml', 'xml', 'env'].includes(ext) ? 'config' :
-                             ['md', 'mdx', 'txt', 'rst'].includes(ext) ? 'doc' :
-                             ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico'].includes(ext) ? 'image' :
-                             ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video' :
-                             ['pdf'].includes(ext) ? 'pdf' : 'file'
+                ['css', 'scss', 'less', 'sass'].includes(ext) ? 'style' :
+                  ['json', 'yaml', 'yml', 'toml', 'xml', 'env'].includes(ext) ? 'config' :
+                    ['md', 'mdx', 'txt', 'rst'].includes(ext) ? 'doc' :
+                      ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico'].includes(ext) ? 'image' :
+                        ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video' :
+                          ['pdf'].includes(ext) ? 'pdf' : 'file'
 
               // 부모 폴더 찾기
               const parentPath = filePath.includes('/')

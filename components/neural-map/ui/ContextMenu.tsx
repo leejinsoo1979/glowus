@@ -66,6 +66,8 @@ const NODE_TYPE_ICONS: Record<NodeType, React.ReactNode> = {
   task: <CheckSquare className="w-4 h-4" />,
   person: <User className="w-4 h-4" />,
   insight: <Zap className="w-4 h-4" />,
+  folder: <Folder className="w-4 h-4" />,
+  file: <FileText className="w-4 h-4" />,
 }
 
 const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -79,6 +81,8 @@ const NODE_TYPE_LABELS: Record<NodeType, string> = {
   task: '할일',
   person: '사람',
   insight: '인사이트',
+  folder: '폴더',
+  file: '파일',
 }
 
 // ============================================

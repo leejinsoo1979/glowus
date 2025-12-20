@@ -1,92 +1,71 @@
-# Glowus
+# GlowUS: Organizational AI Workforce OS
 
-스타트업과 투자자를 연결하는 통합 플랫폼. 업무 관리부터 투자 유치까지.
+> **"개인 도구(Tool)에서 조직 인력(Workforce)으로"**
+>
+> GlowUS는 AI를 단순한 생산성 도구가 아닌, 조직의 **"디지털 직원"**으로 운용하기 위한 차세대 운영체제입니다.
+> 우리는 기능(Feature)을 호출하는 것이 아니라, 책임과 권한을 가진 **에이전트(Agent)**들을 고용하고 관리합니다.
 
-## 🚀 시작하기
+![GlowUS Dashboard](https://your-image-url.com) *(AI 조직 관제탑 예시)*
 
-### 1. 의존성 설치
+---
+
+## 🏗️ 4-Core Engine Architecture
+
+GlowUS는 단순한 챗봇이 아닙니다. 다음 4가지 핵심 엔진이 유기적으로 결합된 **'조직 운영체제'**입니다.
+
+### 1. 🧠 Agent Identity & Growth Engine (자아 및 성장 엔진)
+*   **"신입에서 임원까지"**: 에이전트는 경험(실행, 실패, 학습)을 통해 성장합니다.
+*   **Memory Layer**: 1:1 대화(Private)와 팀 지식(Team)을 철저히 분리/보존합니다.
+*   **Persona**: 단순한 말투 설정이 아닌, 관계와 맥락에 따라 적응하는 일관된 자아를 가집니다.
+
+### 2. 🛠️ Skill OS & Marketplace (스킬 엔진)
+*   **"도구의 표준화"**: 이메일, 검색, 코딩 등 모든 능력을 표준화된 'Skill'로 관리합니다.
+*   **Marketplace**: 검증된 에이전트와 스킬 셋을 자산처럼 거래하고, 다른 조직으로 이식할 수 있습니다.
+*   **Model Agnostic**: LLM은 교체 가능한 부품일 뿐, 기술은 OS에 귀속됩니다.
+
+### 3. ⚡ Workflow Compiler & Runtime (실행 엔진)
+*   **"대화에서 실행으로"**: 자연어 지시를 **Work Unit(업무 단위)**으로 변환합니다.
+*   **Compiler**: Planner가 만든 계획을 실행 가능한 그래프(Graph IR)로 컴파일합니다.
+*   **Runner**: 조건문, 루프, 승인 절차가 포함된 복잡한 업무를 멱등성을 보장하며 실행합니다.
+
+### 4. 🛡️ Governance & Trust Engine (신뢰 엔진)
+*   **"신뢰할 수 없다면 쓸 수 없다"**: 모든 행동은 감사 로그(Audit Log)로 투명하게 기록됩니다.
+*   **HITL (Human-in-the-Loop)**: 고위험 작업(결제, 삭제)은 반드시 '컨펌 패킷'을 통해 인간 승인을 받습니다.
+*   **Agent Score**: 에이전트의 신뢰도와 성과를 수치화하여 관리합니다.
+
+---
+
+## 📂 Project Structure
 
 ```bash
-npm install
-```
-
-### 2. 환경 변수 설정
-
-`.env.example`을 `.env.local`로 복사하고 값을 채워주세요:
-
-```bash
-cp .env.example .env.local
-```
-
-필요한 환경 변수:
-- `NEXT_PUBLIC_SUPABASE_URL`: Supabase 프로젝트 URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anon key
-- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key (서버 사이드용)
-- `OPENAI_API_KEY`: OpenAI API 키 (AI 기능용)
-
-### 3. Supabase 설정
-
-1. [Supabase](https://supabase.com)에서 새 프로젝트 생성
-2. SQL Editor에서 `supabase_migration.sql` 실행
-3. Authentication > Providers에서 이메일 인증 활성화
-4. 프로젝트 설정에서 URL과 API 키 복사
-
-### 4. 개발 서버 실행
-
-```bash
-npm run dev
-```
-
-[http://localhost:3000](http://localhost:3000)에서 확인
-
-## 📁 프로젝트 구조
-
-```
 glowus/
-├── app/                    # Next.js App Router
-│   ├── auth-group/        # 인증 페이지 (로그인, 회원가입)
-│   ├── dashboard-group/   # 대시보드 페이지
-│   └── api/               # API Routes
-├── components/
-│   ├── ui/                # 기본 UI 컴포넌트
-│   ├── nav/               # 네비게이션 컴포넌트
-│   ├── commits/           # 커밋 관련 컴포넌트
-│   └── dashboard/         # 대시보드 컴포넌트
+├── app/
+│   ├── dashboard-group/   # [관제탑] 워크보드, 인박스, 에이전트 프로필
+│   └── agent-builder/     # [인사팀] 에이전트 생성(Genesis) 및 스킬 관리
 ├── lib/
-│   ├── supabase/          # Supabase 클라이언트
-│   └── utils/             # 유틸리티 함수
-├── hooks/                 # Custom React Hooks
-├── stores/                # Zustand 상태 관리
-└── types/                 # TypeScript 타입 정의
+│   ├── memory/            # [기억소] 5계층 메모리 (Private/Team/Meeting...)
+│   ├── engine/            # [싱행기] Workflow Compiler & Runner
+│   └── skills/            # [무기고] 스킬 레지스트리 및 통합 모듈
+└── components/
+    ├── neural-map/        # 에이전트 뇌구조(Brain Map) 시각화
+    └── workflow/          # 워크플로우 그래프 편집기
 ```
 
-## 🛠 기술 스택
+---
 
-- **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
-- **State**: Zustand, React Query
-- **Backend**: Supabase (PostgreSQL, Auth, Realtime, Storage)
-- **AI**: LangChain, OpenAI GPT-4 (추후 구현)
+## 🚀 Getting Started
 
-## 📋 주요 기능
+AI 조직을 설립할 준비가 되셨습니까?
 
-### 스타트업 (창업자)
-- ✅ 팀 대시보드 및 KPI 모니터링
-- ✅ 커밋 기반 업무 기록
-- 🔄 프로젝트/태스크 관리 (칸반, 간트)
-- 🔄 AI 인사이트 및 위험 예측
-- 🔄 투자자 공개 프로필
+1.  **System Ignition**
+    ```bash
+    npm install
+    npm run dev
+    ```
 
-### 투자자 (VC)
-- 🔄 스타트업 탐색 및 필터링
-- 🔄 투자 파이프라인 관리
-- 🔄 AI 기반 스타트업 추천
+2.  **First Hiring (Genesis)**
+    *   `localhost:3000`에 접속하여 당신의 첫 번째 AI 직원을 채용하십시오.
+    *   그들에게 **스킬(Skill)**을 주고, **규칙(Policy)**을 정해주십시오.
 
-## 🔜 다음 단계
-
-1. **Phase 2**: 프로젝트/태스크 CRUD, 칸반 보드, 간트 차트
-2. **Phase 3**: AI 분석, 투자자 대시보드
-3. **Phase 4**: 알림, 성능 최적화, 배포
-
-## 📄 라이선스
-
-MIT License
+> **"Be the Architect of Intelligence."**
+> AI를 비서로 부리지 말고, 조직의 자산으로 키우십시오.

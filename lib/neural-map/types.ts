@@ -18,6 +18,8 @@ export type NodeType =
   | 'task'      // 할일
   | 'person'    // 사람
   | 'insight'   // AI 인사이트
+  | 'folder'    // 폴더
+  | 'file'      // 파일
 
 export interface SourceRef {
   fileId: string

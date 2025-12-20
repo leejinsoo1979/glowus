@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
@@ -15,7 +15,6 @@ import { MarkdownEditorPanel } from '@/components/neural-map/panels/MarkdownEdit
 import { CodePreviewPanel } from '@/components/neural-map/panels/CodePreviewPanel'
 
 // Controls
-import { Toolbar } from '@/components/neural-map/controls/Toolbar'
 import { ViewTabs } from '@/components/neural-map/controls/ViewTabs'
 import { StatusBar } from '@/components/neural-map/controls/StatusBar'
 
@@ -26,7 +25,8 @@ import { EdgeEditorModal } from '@/components/neural-map/modals/EdgeEditorModal'
 // Lucide Icons
 import {
   Loader2,
-  ChevronDown,
+  PanelRightClose,
+  PanelRightOpen,
 } from 'lucide-react'
 
 // Dynamically import 3D Canvas (uses browser APIs)
@@ -105,9 +105,9 @@ export default function NeuralMapPage() {
     isLoading,
     error,
     rightPanelWidth,
+    setRightPanelWidth,
     rightPanelCollapsed,
-    headerCollapsed,
-    toggleHeader,
+    toggleRightPanel,
     setGraph,
     setLoading,
     setError,
@@ -124,9 +124,56 @@ export default function NeuralMapPage() {
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
 
+  // 리사이즈 상태
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // 리사이즈 핸들러
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    resizeRef.current = {
+      startX: e.clientX,
+      startWidth: rightPanelWidth,
+    }
+  }, [rightPanelWidth])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !resizeRef.current) return
+
+      const delta = resizeRef.current.startX - e.clientX
+      const newWidth = resizeRef.current.startWidth + delta
+
+      // 최소 200px, 최대 600px
+      if (newWidth >= 200 && newWidth <= 600) {
+        setRightPanelWidth(newWidth)
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      resizeRef.current = null
+    }
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing, setRightPanelWidth])
 
   // Load or create neural map
   useEffect(() => {
@@ -188,32 +235,6 @@ export default function NeuralMapPage() {
 
   return (
     <div className={cn('h-full flex flex-col overflow-hidden', isDark ? 'bg-zinc-950' : 'bg-zinc-50')}>
-      {/* Collapsed Header Bar - 접힌 상태일 때만 표시 */}
-      {headerCollapsed && (
-        <div
-          className={cn(
-            'border-b flex-shrink-0',
-            isDark ? 'bg-zinc-900/95 border-zinc-800' : 'bg-white border-zinc-200'
-          )}
-        >
-          <button
-            onClick={toggleHeader}
-            className={cn(
-              'w-full h-8 flex items-center justify-center gap-2 transition-colors',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-                : 'hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600'
-            )}
-          >
-            <ChevronDown className="w-4 h-4" />
-            <span className="text-xs">헤더 펼치기</span>
-          </button>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <Toolbar />
-
       {/* Main Content - 2 Panel Layout (Left sidebar is in TwoLevelSidebar) */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Center - 3D Canvas */}
@@ -264,6 +285,31 @@ export default function NeuralMapPage() {
         {/* Code Preview Panel */}
         <CodePreviewPanel />
 
+        {/* Right Panel Resize Handle - 드래그로 크기 조절 */}
+        <div
+          onMouseDown={handleResizeStart}
+          onDoubleClick={toggleRightPanel}
+          className={cn(
+            'flex-shrink-0 h-full w-2 flex items-center justify-center cursor-col-resize',
+            'transition-all duration-150 group',
+            isResizing
+              ? isDark ? 'bg-violet-600' : 'bg-violet-500'
+              : isDark
+                ? 'bg-zinc-900 hover:bg-zinc-700'
+                : 'bg-zinc-100 hover:bg-zinc-200'
+          )}
+          title="드래그하여 크기 조절 / 더블클릭하여 패널 토글"
+        >
+          <div className={cn(
+            'w-0.5 h-12 rounded-full transition-all duration-150',
+            isResizing
+              ? 'bg-white'
+              : isDark
+                ? 'bg-zinc-600 group-hover:bg-zinc-400'
+                : 'bg-zinc-300 group-hover:bg-zinc-500'
+          )} />
+        </div>
+
         {/* Right Panel - Inspector/Actions/Chat */}
         <AnimatePresence initial={false}>
           {!rightPanelCollapsed && (
@@ -271,7 +317,8 @@ export default function NeuralMapPage() {
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: rightPanelWidth, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: isResizing ? 0 : 0.2 }}
+              style={{ width: isResizing ? rightPanelWidth : undefined }}
               className={cn(
                 'h-full border-l flex-shrink-0 overflow-hidden',
                 isDark ? 'bg-zinc-900/95 border-zinc-800' : 'bg-white border-zinc-200'

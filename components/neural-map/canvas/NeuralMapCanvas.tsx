@@ -161,6 +161,7 @@ function SceneContent() {
       nodeCount: visibleNodes.length,
       enableRadialLayout: true,
       centerNodeId: graph.nodes.find((n) => n.type === 'self')?.id,
+      radialDistance: radialDistance, // Inject dynamic radial distance
       onTick: (state) => {
         setSimNodes([...state.nodes])
         setSimLinks([...state.links])
@@ -178,9 +179,9 @@ function SceneContent() {
     simulationRef.current = simulation
 
     return () => {
-      simulation.dispose()
+      simulation.stop()
     }
-  }, [graph, expandedNodeIds, setSimulationAlpha, setSimulationRunning])
+  }, [graph, expandedNodeIds, radialDistance, setSimulationAlpha, setSimulationRunning])
 
   // Handle node click
   const handleNodeClick = useCallback(

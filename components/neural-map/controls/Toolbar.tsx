@@ -18,8 +18,6 @@ import {
   Save,
   Plus,
   Link2,
-  PanelRightClose,
-  PanelRightOpen,
 } from 'lucide-react'
 
 export function Toolbar() {
@@ -35,8 +33,6 @@ export function Toolbar() {
   const openModal = useNeuralMapStore((s) => s.openModal)
   const headerCollapsed = useNeuralMapStore((s) => s.headerCollapsed)
   const toggleHeader = useNeuralMapStore((s) => s.toggleHeader)
-  const rightPanelCollapsed = useNeuralMapStore((s) => s.rightPanelCollapsed)
-  const toggleRightPanel = useNeuralMapStore((s) => s.toggleRightPanel)
 
   // User theme accent color
   const { accentColor } = useThemeStore()
@@ -54,20 +50,6 @@ export function Toolbar() {
         isDark ? 'bg-zinc-900/95 border-zinc-800' : 'bg-white border-zinc-200'
       )}
     >
-      {/* Left: 접기 버튼 */}
-      <button
-        onClick={toggleHeader}
-        className={cn(
-          'p-1.5 rounded transition-colors',
-          isDark
-            ? 'hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-            : 'hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600'
-        )}
-        title="헤더 접기 (Toolbar + Tabs)"
-      >
-        <ChevronUp className="w-4 h-4" />
-      </button>
-
       {/* Center: Mode & Search */}
       <div className="flex items-center gap-3">
         {/* Mode Selector */}
@@ -302,22 +284,18 @@ export function Toolbar() {
 
         <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
-        {/* Right Panel Toggle */}
+        {/* 헤더 접기 버튼 */}
         <button
-          onClick={toggleRightPanel}
+          onClick={toggleHeader}
           className={cn(
             'p-2 rounded-lg transition-colors',
             isDark
               ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
               : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
           )}
-          title={rightPanelCollapsed ? '우측 패널 열기' : '우측 패널 닫기'}
+          title="헤더 접기 (Toolbar + Tabs)"
         >
-          {rightPanelCollapsed ? (
-            <PanelRightOpen className="w-4 h-4" />
-          ) : (
-            <PanelRightClose className="w-4 h-4" />
-          )}
+          <ChevronUp className="w-4 h-4" />
         </button>
       </div>
     </div>

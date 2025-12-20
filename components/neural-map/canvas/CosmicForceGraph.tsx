@@ -60,6 +60,7 @@ interface GraphNode {
   fileType?: string   // 파일 확장자
   fileSize?: number   // 파일 크기
   nodeSize?: number   // 계산된 노드 크기
+  parentId?: string   // 부모 노드 ID
   x?: number
   y?: number
   z?: number
@@ -70,7 +71,10 @@ interface GraphNode {
 interface GraphLink {
   source: string
   target: string
-  kind: 'parent' | 'reference' | 'sibling'
+  kind: 'parent' | 'reference' | 'sibling' | 'imports'
+  particles: number  // 파티클 개수
+  particleWidth: number  // 파티클 크기
+  particleColor: string  // 파티클 색상
 }
 
 interface CosmicForceGraphProps {
@@ -90,6 +94,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
+  const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
 
   // UI Store - 사이드바 상태와 그래프 연동
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
@@ -124,18 +129,33 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
     }
   }, [files])
 
+  // 노드 가시성 체크: 부모가 접혀있으면 숨김
+  const isNodeVisible = useCallback((nodeId: string, parentId?: string): boolean => {
+    if (!parentId) return true // 부모 없으면 항상 표시
+
+    // 부모가 펼쳐져 있는지 확인
+    if (!expandedNodeIds.has(parentId)) return false
+
+    // 부모의 부모도 재귀적으로 확인
+    const parentNode = graph?.nodes.find(n => n.id === parentId)
+    if (parentNode?.parentId) {
+      return isNodeVisible(parentId, parentNode.parentId)
+    }
+
+    return true
+  }, [expandedNodeIds, graph?.nodes])
+
   // Convert graph data to force-graph format
   const convertToGraphData = useCallback(() => {
     if (!graph) return { nodes: [], links: [] }
 
-    const nodes: GraphNode[] = []
-    const links: GraphLink[] = []
+    const allNodes: GraphNode[] = []
     const nodeMap = new Map<string, GraphNode>()
 
     // Find root/self node
     const selfNode = graph.nodes.find(n => n.type === 'self')
 
-    // Build nodes
+    // Build all nodes first
     graph.nodes.forEach((node, index) => {
       const depth = node.type === 'self' ? 0 :
                     node.parentId ? 2 : 1
@@ -163,29 +183,42 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         fileType: ext || undefined,
         fileSize: matchedFile?.size,
         nodeSize,
+        parentId: node.parentId, // 부모 ID 추가
         __node: node,
       }
 
-      nodes.push(graphNode)
+      allNodes.push(graphNode)
       nodeMap.set(node.id, graphNode)
     })
 
-    // Build links from edges
-    graph.edges.forEach((edge) => {
-      const sourceExists = nodeMap.has(edge.source)
-      const targetExists = nodeMap.has(edge.target)
+    // 가시성 필터링: 부모가 접혀있으면 숨김
+    const nodes = allNodes.filter(node => isNodeVisible(node.id, node.parentId))
 
-      if (sourceExists && targetExists) {
+    // 보이는 노드의 ID Set 생성
+    const visibleNodeIds = new Set(nodes.map(n => n.id))
+
+    // Build links from edges (only for visible nodes)
+    const links: GraphLink[] = []
+    graph.edges.forEach((edge) => {
+      const sourceVisible = visibleNodeIds.has(edge.source)
+      const targetVisible = visibleNodeIds.has(edge.target)
+
+      if (sourceVisible && targetVisible) {
+        const linkKind = edge.type === 'parent_child' ? 'parent' : edge.type === 'imports' ? 'imports' : 'reference'
         links.push({
           source: edge.source,
           target: edge.target,
-          kind: edge.type === 'parent_child' ? 'parent' : edge.type === 'imports' ? 'imports' : 'reference',
+          kind: linkKind,
+          // 파티클 설정: parent와 imports 링크에 파티클 표시
+          particles: linkKind === 'parent' ? 5 : linkKind === 'imports' ? 4 : 0,
+          particleWidth: 6, // 매우 큰 크기
+          particleColor: '#ffffff', // 흰색으로 눈에 띄게
         })
       }
     })
 
     return { nodes, links }
-  }, [graph, fileMap, fileSizeRange])
+  }, [graph, fileMap, fileSizeRange, isNodeVisible, expandedNodeIds])
 
   // Add stars to scene
   const addStars = useCallback((scene: any, THREE: any, count = 1500) => {
@@ -273,7 +306,6 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
       const Graph = ForceGraph3D()(containerRef.current!)
         .backgroundColor(isDark ? '#070A12' : '#f8fafc')
-        .graphData({ nodes, links })
         .nodeLabel((n: any) => `
           <div style="
             font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
@@ -602,9 +634,14 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         .linkOpacity((l: any) => l.kind === 'imports' ? 0.6 : 0.3)
         .linkWidth((l: any) => l.kind === 'parent' ? 1.5 : l.kind === 'imports' ? 1.2 : 0.8)
         .linkColor((l: any) => l.kind === 'parent' ? '#4a9eff' : l.kind === 'imports' ? '#f59e0b' : '#6b7280')
-        .linkDirectionalParticles((l: any) => l.kind === 'parent' ? 3 : l.kind === 'imports' ? 2 : 0)
-        .linkDirectionalParticleWidth((l: any) => l.kind === 'imports' ? 2 : 1.5)
-        .linkDirectionalParticleColor((l: any) => l.kind === 'imports' ? '#f59e0b' : '#4a9eff')
+        // 링크 파티클 설정 - 데이터 전송 효과
+        .linkDirectionalParticles((link: any) => link.kind === 'parent' ? 4 : link.kind === 'imports' ? 3 : 0)
+        .linkDirectionalParticleSpeed(0.006)
+        .linkDirectionalParticleWidth(4)
+        .linkDirectionalParticleResolution(10)
+        .linkDirectionalParticleColor((link: any) => link.kind === 'imports' ? '#fbbf24' : '#60a5fa')
+        // 모든 설정 후 데이터 로드 (파티클이 제대로 적용되려면 graphData는 마지막에 호출)
+        .graphData({ nodes, links })
         .onNodeClick((node: any) => {
           if (!node) return
 
@@ -714,7 +751,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
       graphRef.current = Graph
 
-      // Resize handling
+      // Resize handling (ResizeObserver로 컨테이너 크기 변화 감지)
       const handleResize = () => {
         if (containerRef.current && graphRef.current) {
           graphRef.current
@@ -723,9 +760,18 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         }
       }
 
+      // ResizeObserver로 컨테이너 크기 변화 감지
+      const resizeObserver = new ResizeObserver(() => {
+        handleResize()
+      })
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current)
+      }
+
       window.addEventListener('resize', handleResize)
 
       return () => {
+        resizeObserver.disconnect()
         window.removeEventListener('resize', handleResize)
         // Clean up animation interval
         if ((Graph as any).__animationInterval) {
@@ -741,6 +787,13 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
     const { nodes, links } = convertToGraphData()
     graphRef.current.graphData({ nodes, links })
+
+    // 데이터 업데이트 후 파티클 설정 재적용 - 초기화와 동일한 설정 사용
+    graphRef.current
+      .linkDirectionalParticles((link: any) => link.kind === 'parent' ? 4 : link.kind === 'imports' ? 3 : 0)
+      .linkDirectionalParticleSpeed(0.006)
+      .linkDirectionalParticleWidth(4)
+      .linkDirectionalParticleColor((link: any) => link.kind === 'imports' ? '#fbbf24' : '#60a5fa')
 
     // Re-center after update - wait for simulation to settle
     setTimeout(() => {

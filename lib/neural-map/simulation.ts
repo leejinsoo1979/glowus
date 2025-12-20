@@ -61,6 +61,7 @@ export interface SimulationOptions {
   nodeCount: number
   enableRadialLayout: boolean
   centerNodeId?: string
+  radialDistance?: number
   onTick?: (state: SimulationState) => void
   onEnd?: () => void
 }
@@ -118,7 +119,7 @@ export class NeuralMapSimulation {
    * Create d3-force-3d simulation with configured forces
    */
   private createSimulation(): ForceSimulation3D<SimNode> {
-    const { nodeCount, enableRadialLayout, centerNodeId } = this.options
+    const { nodeCount, enableRadialLayout, centerNodeId, radialDistance = 150 } = this.options
     const settings = FORCE_SETTINGS
 
     // Create base simulation
@@ -126,6 +127,12 @@ export class NeuralMapSimulation {
       .numDimensions(3)
       .alphaDecay(settings.alphaDecay)
       .velocityDecay(settings.velocityDecay)
+
+    // Calculate dynamic link distance based on radial distance
+    // If radialDistance is large (e.g. 300), links should be longer to allow spread.
+    // Base is 50. 
+    // radialDistance ranges 50~300.
+    const baseLinkDist = radialDistance ? radialDistance * 0.4 : settings.linkDistance
 
     // Link force
     const linkForce = forceLink<SimNode, SimLink>(this.links)
@@ -135,9 +142,17 @@ export class NeuralMapSimulation {
         const sourceNode = this.nodes.find((n) => n.id === getNodeId(link.source))
         const targetNode = this.nodes.find((n) => n.id === getNodeId(link.target))
         const avgImportance = ((sourceNode?.importance ?? 50) + (targetNode?.importance ?? 50)) / 2
-        return settings.linkDistance * (1 + (100 - avgImportance) / 100)
+        return baseLinkDist * (1 + (100 - avgImportance) / 100)
       })
-      .strength((link: SimLink) => link.strength * settings.linkStrength)
+      .strength((link: SimLink) => {
+        // [AGGRESSIVE FIX] If radial distance is set (> 100), WEAKEN links significantly
+        // This stops them from fighting the radial expansion.
+        const base = link.strength * settings.linkStrength
+        if (radialDistance && radialDistance > 100) {
+          return base * 0.1 // 10x weaker links when expanding
+        }
+        return base
+      })
 
     sim.force('link', linkForce)
 
@@ -147,10 +162,12 @@ export class NeuralMapSimulation {
         // More important nodes have stronger repulsion
         const baseStrength = settings.chargeStrength
         const importanceMultiplier = 1 + node.importance / 100
-        return baseStrength * importanceMultiplier
+        // Scale repulsion with radial distance too, to fill the space
+        const spreadMultiplier = radialDistance ? (radialDistance / 50) : 1 // More aggressive spread
+        return baseStrength * importanceMultiplier * spreadMultiplier
       })
       .theta(settings.theta)
-      .distanceMax(settings.distanceMax)
+      .distanceMax(settings.distanceMax * (radialDistance ? radialDistance / 150 : 1))
 
     sim.force('charge', chargeForce)
 
@@ -174,32 +191,52 @@ export class NeuralMapSimulation {
     // Radial layout for center node
     if (enableRadialLayout && centerNodeId) {
       const centerNode = this.nodes.find((n) => n.id === centerNodeId)
+      console.log('[Simulation] Radial Layout Config:', {
+        enableRadialLayout,
+        centerNodeId,
+        foundCenter: !!centerNode,
+        radialDistance,
+        nodeCount: this.nodes.length
+      })
+
       if (centerNode) {
         // Pin center node to (0,0,0) explicitly
         centerNode.fx = 0
         centerNode.fy = 0
         centerNode.fz = 0
 
-        // ... (rest of radial logic)
-
         const radialForce = forceRadial<SimNode>(
-          (node) => {
+          (node, i, nodes) => {
             if (node.id === centerNodeId) return 0
+
             // Distance based on connection to center
             const isConnected = this.links.some(
               (l) =>
                 getNodeId(l.source) === centerNodeId &&
                 getNodeId(l.target) === node.id
             )
-            return isConnected ? 30 : 60
+
+            // Use dynamic radialDistance or default logic
+            const baseDist = radialDistance
+            const targetRadius = isConnected ? baseDist * 0.4 : baseDist
+
+            // Log first few nodes to check if radius is varying
+            if (i < 3) console.log(`[Simulation] Node ${node.id} radius: ${targetRadius} (connected: ${isConnected})`)
+
+            return targetRadius
           },
           0,
           0,
           0
-        ).strength(0.1)
+        ).strength(1.0) // Stronger radial force to enforce layout
 
         sim.force('radial', radialForce)
+        console.log('[Simulation] Radial Force added')
+      } else {
+        console.warn('[Simulation] Center node not found despite ID provided')
       }
+    } else {
+      console.log('[Simulation] Radial Layout skipped', { enableRadialLayout, centerNodeId })
     }
 
     return sim

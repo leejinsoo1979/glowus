@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -196,8 +196,8 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
   const mapTitle = graph?.title || 'Untitled Map'
 
-  // 파일 트리 구조 생성
-  const fileTree = buildFileTree(files)
+  // 파일 트리 구조 생성 - useMemo로 메모이제이션하여 무한 루프 방지
+  const fileTree = useMemo(() => buildFileTree(files), [files])
 
   // 폴더 경로로 노드 ID 찾기 (그래프 동기화용)
   const findNodeIdByPath = (folderPath: string): string | undefined => {
@@ -258,26 +258,52 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   useEffect(() => {
     if (!graph?.nodes) return;
 
+    // 폴더/프로젝트 노드들의 ID -> 경로 매핑 생성
+    const nodeIdToPath = new Map<string, string>();
+
+    // fileTree를 순회하며 경로 매핑 생성
+    const buildPathMap = (nodes: TreeNode[], parentPath: string) => {
+      nodes.forEach(node => {
+        const nodePath = parentPath ? `${parentPath}/${node.name}` : node.name;
+
+        if (node.type === 'folder') {
+          // 그래프에서 같은 이름의 폴더 노드 찾기
+          const graphNode = graph.nodes.find(
+            n => (n.type === 'project' || n.type === 'folder') && n.title === node.name
+          );
+          if (graphNode) {
+            nodeIdToPath.set(graphNode.id, nodePath);
+          }
+
+          // 자식 노드도 처리
+          if (node.children.length > 0) {
+            buildPathMap(node.children, nodePath);
+          }
+        }
+      });
+    };
+
+    buildPathMap(fileTree, '');
+
+    // expandedNodeIds를 기반으로 expandedFolders 업데이트
     const newExpandedFolders = new Set<string>();
 
-    // 1. Store에 있는 ID들을 Path로 변환하여 로컬 state에 추가
-    graph.nodes.forEach(node => {
-      if (expandedNodeIds.has(node.id)) {
-        // Find path for this node
-        // (Reverse lookup: Node -> Path is hard without stored path. 
-        //  We rely on Matching Title for now or assume Summary has path)
-        if (node.type === 'project' || (node.type as any) === 'folder') {
-          // Mock data or Uploaded data logic:
-          // We iterate `fileTree` to find matching paths? Efficient enough for small trees.
-          // For now, let's trust the user interaction flow mostly.
-          // But to support "Graph Expand -> Tree Expand", we need this.
-          // Let's skip obscure reverse mapping for now to avoid "messing up"
-          // and focus on Tree -> Graph sync which is requested.
-        }
+    expandedNodeIds.forEach(nodeId => {
+      const path = nodeIdToPath.get(nodeId);
+      if (path) {
+        newExpandedFolders.add(path);
       }
     });
 
-  }, [expandedNodeIds, graph?.nodes]);
+    // self 노드가 확장되어 있으면 루트도 확장
+    const selfNode = graph.nodes.find(n => n.type === 'self');
+    if (selfNode && expandedNodeIds.has(selfNode.id)) {
+      setIsExpanded(true);
+    }
+
+    setExpandedFolders(newExpandedFolders);
+
+  }, [expandedNodeIds, graph?.nodes, fileTree]);
 
   // 모든 폴더 접기
   const collapseAll = () => {
