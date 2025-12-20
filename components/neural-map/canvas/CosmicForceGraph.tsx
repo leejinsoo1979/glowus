@@ -324,9 +324,9 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
     const { nodes, links } = convertToGraphData()
     graphRef.current.graphData({ nodes, links })
 
-    // Re-center after update
+    // Re-center after update with larger padding to account for panels
     setTimeout(() => {
-      graphRef.current?.zoomToFit(400, 80)
+      graphRef.current?.zoomToFit(400, 150)
     }, 300)
   }, [graph, convertToGraphData])
 

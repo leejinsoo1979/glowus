@@ -226,14 +226,17 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
 
-      // More padding and limit max scale to 0.85 to ensure everything fits
-      const scaleX = (containerWidth - 200) / dimensions.width
-      const scaleY = (containerHeight - 150) / dimensions.height
-      const scale = Math.min(scaleX, scaleY, 0.85)
+      // Calculate scale to fit entire tree with generous padding
+      const scaleX = (containerWidth - 100) / dimensions.width
+      const scaleY = (containerHeight - 100) / dimensions.height
+      // Limit max scale to 0.7 to ensure everything fits comfortably
+      const scale = Math.min(scaleX, scaleY, 0.7)
 
-      // Center horizontally and add some top padding
-      const x = (containerWidth - dimensions.width * scale) / 2
-      const y = 60
+      // Center the tree in the available space
+      const scaledWidth = dimensions.width * scale
+      const scaledHeight = dimensions.height * scale
+      const x = (containerWidth - scaledWidth) / 2
+      const y = (containerHeight - scaledHeight) / 2
 
       setTransform({ x, y, scale })
     }
@@ -295,12 +298,14 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
 
-      const scaleX = (containerWidth - 200) / dimensions.width
-      const scaleY = (containerHeight - 150) / dimensions.height
-      const scale = Math.min(scaleX, scaleY, 0.85)
+      const scaleX = (containerWidth - 100) / dimensions.width
+      const scaleY = (containerHeight - 100) / dimensions.height
+      const scale = Math.min(scaleX, scaleY, 0.7)
 
-      const x = (containerWidth - dimensions.width * scale) / 2
-      const y = 60
+      const scaledWidth = dimensions.width * scale
+      const scaledHeight = dimensions.height * scale
+      const x = (containerWidth - scaledWidth) / 2
+      const y = (containerHeight - scaledHeight) / 2
 
       setTransform({ x, y, scale })
     }
