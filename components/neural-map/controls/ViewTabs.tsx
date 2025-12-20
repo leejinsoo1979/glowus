@@ -18,7 +18,6 @@ import {
 } from 'lucide-react'
 
 const viewTabs: { id: ViewTab; label: string; icon: typeof Circle; description: string }[] = [
-  { id: 'radial', label: '3D', icon: Circle, description: '3D 방사형 맵' },
   { id: 'graph2d', label: 'Graph', icon: Network, description: '2D 그래프 (Obsidian 스타일)' },
   { id: 'cosmic', label: 'Cosmic', icon: Sparkles, description: '우주 스타일 3D' },
   { id: 'tree', label: 'Tree', icon: GitBranch, description: '탑다운 트리 플로우차트' },
