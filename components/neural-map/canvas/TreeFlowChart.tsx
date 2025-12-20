@@ -132,7 +132,8 @@ function buildTree(nodes: NeuralNode[], edges: NeuralEdge[]): TreeNode | null {
 
 // Calculate positions for tree layout
 function calculateLayout(root: TreeNode): { width: number; height: number } {
-  let maxWidth = 0
+  let minX = Infinity
+  let maxX = 0
   let maxHeight = 0
 
   // First pass: calculate widths
@@ -153,7 +154,8 @@ function calculateLayout(root: TreeNode): { width: number; height: number } {
     node.y = y
     node.x = x + (availableWidth - NODE_WIDTH) / 2
 
-    maxWidth = Math.max(maxWidth, node.x + NODE_WIDTH)
+    minX = Math.min(minX, node.x)
+    maxX = Math.max(maxX, node.x + NODE_WIDTH)
     maxHeight = Math.max(maxHeight, node.y + NODE_HEIGHT)
 
     if (node.children.length === 0) return
@@ -171,9 +173,23 @@ function calculateLayout(root: TreeNode): { width: number; height: number } {
   }
 
   const rootWidth = calculateWidths(root)
-  positionNodes(root, 80, 60, rootWidth)
+  positionNodes(root, 0, 0, rootWidth)
 
-  return { width: maxWidth + 160, height: maxHeight + 120 }
+  // Normalize positions so minX becomes 0
+  function normalizePositions(node: TreeNode): void {
+    node.x -= minX
+    node.children.forEach(normalizePositions)
+  }
+  if (minX !== Infinity && minX !== 0) {
+    normalizePositions(root)
+  }
+
+  // Add generous margins to ensure nothing is clipped
+  const MARGIN = 100
+  return {
+    width: (maxX - minX) + MARGIN * 2,
+    height: maxHeight + MARGIN * 2
+  }
 }
 
 // Collect import edges for rendering
@@ -226,17 +242,19 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
 
-      // Calculate scale to fit entire tree with generous padding
-      const scaleX = (containerWidth - 100) / dimensions.width
-      const scaleY = (containerHeight - 100) / dimensions.height
-      // Limit max scale to 0.7 to ensure everything fits comfortably
-      const scale = Math.min(scaleX, scaleY, 0.7)
+      // Calculate scale to fit entire tree - be more aggressive with scaling
+      const scaleX = containerWidth / dimensions.width
+      const scaleY = containerHeight / dimensions.height
+      // Use a lower max scale (0.35) to ensure everything fits with room to spare
+      const scale = Math.min(scaleX, scaleY, 0.35)
 
-      // Center the tree in the available space
+      // Center the tree in the available space with offset for margin
+      const MARGIN = 100 // Same as in calculateLayout
       const scaledWidth = dimensions.width * scale
       const scaledHeight = dimensions.height * scale
-      const x = (containerWidth - scaledWidth) / 2
-      const y = (containerHeight - scaledHeight) / 2
+      // Offset by scaled margin to center the actual content
+      const x = (containerWidth - scaledWidth) / 2 + (MARGIN * scale)
+      const y = (containerHeight - scaledHeight) / 2 + (MARGIN * scale)
 
       setTransform({ x, y, scale })
     }
@@ -298,14 +316,15 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
 
-      const scaleX = (containerWidth - 100) / dimensions.width
-      const scaleY = (containerHeight - 100) / dimensions.height
-      const scale = Math.min(scaleX, scaleY, 0.7)
+      const scaleX = containerWidth / dimensions.width
+      const scaleY = containerHeight / dimensions.height
+      const scale = Math.min(scaleX, scaleY, 0.35)
 
+      const MARGIN = 100
       const scaledWidth = dimensions.width * scale
       const scaledHeight = dimensions.height * scale
-      const x = (containerWidth - scaledWidth) / 2
-      const y = (containerHeight - scaledHeight) / 2
+      const x = (containerWidth - scaledWidth) / 2 + (MARGIN * scale)
+      const y = (containerHeight - scaledHeight) / 2 + (MARGIN * scale)
 
       setTransform({ x, y, scale })
     }

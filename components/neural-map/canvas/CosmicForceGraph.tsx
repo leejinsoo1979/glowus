@@ -289,14 +289,28 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
       pointLight2.position.set(-100, -50, -100)
       scene.add(pointLight2)
 
-      // Force tuning
+      // Force tuning - ensure nodes are centered around origin
       Graph.d3Force('charge')?.strength(-180)
       Graph.d3Force('link')?.distance((l: any) => l.kind === 'parent' ? 80 : 120)
+      Graph.d3Force('center', null) // Remove default center if exists
 
-      // Initial camera position
+      // Add explicit center force to keep graph centered at origin
+      import('d3-force-3d').then(d3Force => {
+        if (graphRef.current) {
+          graphRef.current.d3Force('center', d3Force.forceCenter(0, 0, 0))
+        }
+      })
+
+      // Initial camera position - wait for force simulation to settle, then center
       setTimeout(() => {
-        Graph.zoomToFit(500, 100)
-      }, 500)
+        // Center the camera at origin with smooth transition
+        Graph.cameraPosition({ x: 0, y: 0, z: 400 }, { x: 0, y: 0, z: 0 }, 500)
+      }, 800)
+
+      // After camera centered, zoom to fit all nodes
+      setTimeout(() => {
+        Graph.zoomToFit(600, 250)
+      }, 1500)
 
       graphRef.current = Graph
 
@@ -324,10 +338,16 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
     const { nodes, links } = convertToGraphData()
     graphRef.current.graphData({ nodes, links })
 
-    // Re-center after update with larger padding to account for panels
+    // Re-center after update - wait for force simulation to settle
     setTimeout(() => {
-      graphRef.current?.zoomToFit(400, 150)
-    }, 300)
+      // First center the camera
+      graphRef.current?.cameraPosition({ x: 0, y: 0, z: 400 }, { x: 0, y: 0, z: 0 }, 400)
+    }, 500)
+
+    // Then zoom to fit all nodes
+    setTimeout(() => {
+      graphRef.current?.zoomToFit(500, 250)
+    }, 1000)
   }, [graph, convertToGraphData])
 
   // Update selection
