@@ -24,8 +24,6 @@ import { EdgeEditorModal } from '@/components/neural-map/modals/EdgeEditorModal'
 
 // Lucide Icons
 import {
-  PanelRightClose,
-  PanelRightOpen,
   Loader2,
   ChevronDown,
 } from 'lucide-react'
@@ -89,7 +87,6 @@ export default function NeuralMapPage() {
     error,
     rightPanelWidth,
     rightPanelCollapsed,
-    toggleRightPanel,
     headerCollapsed,
     toggleHeader,
     setGraph,
@@ -259,23 +256,6 @@ export default function NeuralMapPage() {
           )}
         </AnimatePresence>
 
-        {/* Right Panel Toggle Button */}
-        <button
-          onClick={toggleRightPanel}
-          className={cn(
-            'absolute top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-l-lg transition-all',
-            isDark
-              ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
-              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600'
-          )}
-          style={{ right: rightPanelCollapsed ? 0 : rightPanelWidth }}
-        >
-          {rightPanelCollapsed ? (
-            <PanelRightOpen className="w-4 h-4" />
-          ) : (
-            <PanelRightClose className="w-4 h-4" />
-          )}
-        </button>
       </div>
 
       {/* Status Bar */}

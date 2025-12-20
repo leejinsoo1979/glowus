@@ -18,6 +18,8 @@ import {
   Save,
   Plus,
   Link2,
+  PanelRightClose,
+  PanelRightOpen,
 } from 'lucide-react'
 
 export function Toolbar() {
@@ -33,6 +35,8 @@ export function Toolbar() {
   const openModal = useNeuralMapStore((s) => s.openModal)
   const headerCollapsed = useNeuralMapStore((s) => s.headerCollapsed)
   const toggleHeader = useNeuralMapStore((s) => s.toggleHeader)
+  const rightPanelCollapsed = useNeuralMapStore((s) => s.rightPanelCollapsed)
+  const toggleRightPanel = useNeuralMapStore((s) => s.toggleRightPanel)
 
   // User theme accent color
   const { accentColor } = useThemeStore()
@@ -294,6 +298,26 @@ export function Toolbar() {
         >
           <Save className="w-4 h-4" />
           저장
+        </button>
+
+        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+
+        {/* Right Panel Toggle */}
+        <button
+          onClick={toggleRightPanel}
+          className={cn(
+            'p-2 rounded-lg transition-colors',
+            isDark
+              ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+              : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
+          )}
+          title={rightPanelCollapsed ? '우측 패널 열기' : '우측 패널 닫기'}
+        >
+          {rightPanelCollapsed ? (
+            <PanelRightOpen className="w-4 h-4" />
+          ) : (
+            <PanelRightClose className="w-4 h-4" />
+          )}
         </button>
       </div>
     </div>
