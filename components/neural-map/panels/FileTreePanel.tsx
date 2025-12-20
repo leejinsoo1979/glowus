@@ -214,52 +214,57 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     }
   }
 
-  // 단일 파일 업로드 처리 (path: 폴더 내 상대 경로)
+  // 단일 파일 업로드 처리 - VS Code처럼 즉시 반영
   const processFileUpload = async (file: File, path?: string) => {
     const result = await uploadFile(file, path)
     if (result) {
+      // 1. 파일 트리에 즉시 추가
       addFile(result)
 
-      const nodeType = result.type === 'pdf' ? 'doc' :
-                      result.type === 'markdown' ? 'doc' :
-                      result.type === 'image' ? 'memory' :
-                      result.type === 'video' ? 'memory' : 'doc'
-
-      const newNode = await createNode({
-        type: nodeType as any,
-        title: result.name,
-        summary: `${result.type} 파일 - AI 분석 중...`,
-        tags: [result.type],
-        importance: 5,
-      })
-
-      if (newNode && graph?.nodes) {
-        const selfNode = graph.nodes.find(n => n.type === 'self')
-        if (selfNode) {
-          await createEdge({
-            sourceId: selfNode.id,
-            targetId: newNode.id,
-            type: 'parent_child',
-            weight: 0.7,
-          })
-        }
-      }
-
-      // AI 분석으로 하위 노드 자동 생성 (옵시디언 스타일 방사형)
-      // PDF, 마크다운 파일만 분석 (이미지/비디오는 내용 추출 불가)
-      if (result.type === 'pdf' || result.type === 'markdown') {
-        setIsAnalyzing(true)
+      // 2. 노드 생성 및 AI 분석은 백그라운드에서 비동기 실행 (UI 블로킹 없음)
+      ;(async () => {
         try {
-          const analysisResult = await analyzeFile(result.id)
-          if (analysisResult?.nodes && analysisResult.nodes.length > 0) {
-            console.log(`AI 분석 완료: ${analysisResult.nodes.length}개 노드 생성`)
+          const nodeType = result.type === 'pdf' ? 'doc' :
+                          result.type === 'markdown' ? 'doc' :
+                          result.type === 'image' ? 'memory' :
+                          result.type === 'video' ? 'memory' : 'doc'
+
+          const newNode = await createNode({
+            type: nodeType as any,
+            title: result.name,
+            summary: `${result.type} 파일`,
+            tags: [result.type],
+            importance: 5,
+          })
+
+          if (newNode && graph?.nodes) {
+            const selfNode = graph.nodes.find(n => n.type === 'self')
+            if (selfNode) {
+              await createEdge({
+                sourceId: selfNode.id,
+                targetId: newNode.id,
+                type: 'parent_child',
+                weight: 0.7,
+              })
+            }
+          }
+
+          // AI 분석 (백그라운드)
+          if (result.type === 'pdf' || result.type === 'markdown') {
+            setIsAnalyzing(true)
+            try {
+              const analysisResult = await analyzeFile(result.id)
+              if (analysisResult?.nodes && analysisResult.nodes.length > 0) {
+                console.log(`AI 분석 완료: ${analysisResult.nodes.length}개 노드 생성`)
+              }
+            } finally {
+              setIsAnalyzing(false)
+            }
           }
         } catch (err) {
-          console.error('AI 분석 실패:', err)
-        } finally {
-          setIsAnalyzing(false)
+          console.error('백그라운드 처리 실패:', err)
         }
-      }
+      })()
 
       return result
     }
