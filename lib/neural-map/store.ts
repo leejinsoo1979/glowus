@@ -93,6 +93,10 @@ interface NeuralMapState {
 
   // Expanded nodes (for lazy loading)
   expandedNodeIds: Set<string>
+
+  // Editor
+  editorOpen: boolean
+  editorCollapsed: boolean
 }
 
 // ============================================
@@ -184,6 +188,11 @@ interface NeuralMapActions {
   collapseNode: (id: string) => void
   toggleNodeExpansion: (id: string) => void
   setExpandedNodes: (ids: string[]) => void
+
+  // Editor
+  openEditor: () => void
+  closeEditor: () => void
+  toggleEditorCollapse: () => void
 }
 
 // ============================================
@@ -236,6 +245,9 @@ const initialState: NeuralMapState = {
   simulationAlpha: 1,
 
   expandedNodeIds: new Set(),
+
+  editorOpen: false,
+  editorCollapsed: false,
 }
 
 // ============================================
@@ -646,6 +658,21 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         setExpandedNodes: (ids) =>
           set((state) => {
             state.expandedNodeIds = new Set(ids)
+          }),
+
+        // ========== Editor ==========
+        openEditor: () =>
+          set((state) => {
+            state.editorOpen = true
+            state.editorCollapsed = false
+          }),
+        closeEditor: () =>
+          set((state) => {
+            state.editorOpen = false
+          }),
+        toggleEditorCollapse: () =>
+          set((state) => {
+            state.editorCollapsed = !state.editorCollapsed
           }),
       })),
       {

@@ -173,6 +173,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const graph = useNeuralMapStore((s) => s.graph)
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
+  const openEditor = useNeuralMapStore((s) => s.openEditor)
 
   // API
   const { uploadFile, deleteFile, createNode, createEdge, analyzeFile } = useNeuralMapApi(mapId)
@@ -487,7 +488,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           <>
             {/* 새 노트 */}
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openEditor}
               disabled={!mapId}
               className={cn(
                 'p-2 rounded transition-colors',

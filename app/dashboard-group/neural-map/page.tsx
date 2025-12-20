@@ -11,6 +11,7 @@ import type { NeuralGraph, NeuralNode, ViewTab } from '@/lib/neural-map/types'
 
 // Panels
 import { InspectorPanel } from '@/components/neural-map/panels/InspectorPanel'
+import { MarkdownEditorPanel } from '@/components/neural-map/panels/MarkdownEditorPanel'
 
 // Controls
 import { Toolbar } from '@/components/neural-map/controls/Toolbar'
@@ -90,6 +91,10 @@ export default function NeuralMapPage() {
     modalType,
     closeModal,
     activeTab,
+    editorOpen,
+    editorCollapsed,
+    closeEditor,
+    toggleEditorCollapse,
   } = useNeuralMapStore()
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
@@ -216,6 +221,14 @@ export default function NeuralMapPage() {
             )}
           </div>
         </div>
+
+        {/* Markdown Editor Panel */}
+        <MarkdownEditorPanel
+          isOpen={editorOpen}
+          onClose={closeEditor}
+          isCollapsed={editorCollapsed}
+          onToggleCollapse={toggleEditorCollapse}
+        />
 
         {/* Right Panel - Inspector/Actions/Chat */}
         <AnimatePresence initial={false}>
