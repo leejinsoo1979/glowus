@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useNeuralMapApi } from '@/lib/neural-map/useNeuralMapApi'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
+import { parseWikiLinks, extractTitle } from '@/lib/neural-map/markdown-parser'
 import type { NeuralFile } from '@/lib/neural-map/types'
 import {
   Search,
@@ -268,7 +269,17 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       // 1. 파일 트리에 즉시 추가
       addFile(result)
 
-      // 2. 노드 생성 및 AI 분석은 백그라운드에서 비동기 실행 (UI 블로킹 없음)
+      // 2. 마크다운 파일인 경우 내용 읽기 (링크 파싱용)
+      let fileContent: string | null = null
+      if (result.type === 'markdown') {
+        try {
+          fileContent = await file.text()
+        } catch (err) {
+          console.error('파일 내용 읽기 실패:', err)
+        }
+      }
+
+      // 3. 노드 생성 및 AI 분석은 백그라운드에서 비동기 실행 (UI 블로킹 없음)
       ;(async () => {
         try {
           const nodeType = result.type === 'pdf' ? 'doc' :
@@ -276,10 +287,16 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                           result.type === 'image' ? 'memory' :
                           result.type === 'video' ? 'memory' : 'doc'
 
+          // 마크다운인 경우 제목 추출
+          const nodeTitle = fileContent
+            ? extractTitle(fileContent, result.name)
+            : result.name
+
           const newNode = await createNode({
             type: nodeType as any,
-            title: result.name,
+            title: nodeTitle,
             summary: `${result.type} 파일`,
+            content: result.type === 'markdown' ? fileContent || undefined : undefined,
             tags: [result.type],
             importance: 5,
           })
@@ -293,6 +310,51 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                 type: 'parent_child',
                 weight: 0.7,
               })
+            }
+
+            // [[위키링크]] 파싱 및 엣지 생성
+            if (fileContent) {
+              const wikiLinks = parseWikiLinks(fileContent)
+              console.log(`[[링크]] ${wikiLinks.length}개 발견:`, wikiLinks.map(l => l.target))
+
+              for (const link of wikiLinks) {
+                // 기존 노드에서 제목으로 찾기
+                const existingNode = graph.nodes.find(
+                  n => n.title.toLowerCase() === link.target.toLowerCase()
+                )
+
+                if (existingNode) {
+                  // 기존 노드와 연결
+                  await createEdge({
+                    sourceId: newNode.id,
+                    targetId: existingNode.id,
+                    type: 'references',
+                    weight: 0.5,
+                    label: link.alias || undefined,
+                  })
+                  console.log(`엣지 생성: ${nodeTitle} → ${existingNode.title}`)
+                } else {
+                  // 새 노드 생성 후 연결
+                  const linkedNode = await createNode({
+                    type: 'concept',
+                    title: link.target,
+                    summary: '[[링크]]에서 자동 생성',
+                    tags: ['auto-generated'],
+                    importance: 3,
+                  })
+
+                  if (linkedNode) {
+                    await createEdge({
+                      sourceId: newNode.id,
+                      targetId: linkedNode.id,
+                      type: 'references',
+                      weight: 0.5,
+                      label: link.alias || undefined,
+                    })
+                    console.log(`새 노드 + 엣지 생성: ${nodeTitle} → ${link.target}`)
+                  }
+                }
+              }
             }
           }
 
