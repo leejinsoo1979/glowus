@@ -325,6 +325,9 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
 
+  // radialDistance/graphExpanded에 따른 effective 값 계산
+  const effectiveDistance = graphExpanded ? radialDistance : radialDistance * 0.3
+
   // 컨테이너 크기 감지
   useEffect(() => {
     const updateDimensions = () => {
@@ -362,11 +365,20 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     }
   }, [files])
 
-  // 그래프 데이터 변환
+  // 그래프 데이터 변환 (effectiveDistance 기반 초기 위치 포함)
   const graphData = useMemo(() => {
     if (!graph) return { nodes: [], links: [] }
 
-    const nodes: GraphNode[] = graph.nodes.map((node) => {
+    // 중심점
+    const centerX = dimensions.width / 2
+    const centerY = dimensions.height / 2
+
+    // 중심 노드 찾기
+    const selfNodeIndex = graph.nodes.findIndex(n => n.type === 'self')
+    const otherNodesCount = graph.nodes.length - (selfNodeIndex >= 0 ? 1 : 0)
+    let angleIndex = 0
+
+    const nodes: GraphNode[] = graph.nodes.map((node, index) => {
       // 노드 제목으로 파일 매칭
       const matchedFile = fileMap.get(node.title) || fileMap.get(node.id)
       const ext = getExtension(node.title)
@@ -391,6 +403,22 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         nodeSize = 7 + Math.min((node.importance || 0), 3) // 7~10 범위
       }
 
+      // 초기 위치 계산 (effectiveDistance 기반)
+      let x = centerX
+      let y = centerY
+
+      if (node.type === 'self') {
+        // 중심 노드는 화면 중앙에 고정
+        x = centerX
+        y = centerY
+      } else {
+        // 다른 노드들은 방사형으로 배치
+        const angle = (angleIndex * 2 * Math.PI) / Math.max(otherNodesCount, 1)
+        x = centerX + Math.cos(angle) * effectiveDistance
+        y = centerY + Math.sin(angle) * effectiveDistance
+        angleIndex++
+      }
+
       return {
         id: node.id,
         name: node.title,
@@ -399,6 +427,10 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         color: nodeColor,
         fileType: ext || undefined,
         fileSize: matchedFile?.size,
+        x,
+        y,
+        fx: x, // 모든 노드 위치 고정 (드래그로만 이동 가능)
+        fy: y,
       }
     })
 
@@ -409,7 +441,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     }))
 
     return { nodes, links }
-  }, [graph, files, fileMap, fileSizeRange, selectedNodeIds])
+  }, [graph, files, fileMap, fileSizeRange, selectedNodeIds, effectiveDistance, dimensions.width, dimensions.height])
 
   // 노드 클릭 핸들러
   const handleNodeClick = useCallback((node: any) => {
@@ -533,39 +565,19 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     ctx.stroke()
   }, [isDark])
 
-  // 초기 줌 설정
+  // effectiveDistance에 따라 줌 레벨 조정
   useEffect(() => {
     if (graphRef.current && graphData.nodes.length > 0) {
       setTimeout(() => {
-        graphRef.current?.zoomToFit(400, 50)
-      }, 500)
+        // effectiveDistance에 반비례하여 줌 설정
+        // 50 -> 줌 2.5 (확대), 300 -> 줌 0.4 (축소)
+        const zoomLevel = 150 / effectiveDistance
+        const clampedZoom = Math.max(0.3, Math.min(3, zoomLevel))
+        graphRef.current?.zoom(clampedZoom, 300)
+        graphRef.current?.centerAt(dimensions.width / 2, dimensions.height / 2, 300)
+      }, 200)
     }
-  }, [graphData.nodes.length])
-
-  // radialDistance/graphExpanded에 따른 effective 값 계산
-  const effectiveDistance = graphExpanded ? radialDistance : radialDistance * 0.2
-  const effectiveStrength = graphExpanded ? -radialDistance * 2 : -30
-
-  // radialDistance/graphExpanded 변경 시 force 설정 및 시뮬레이션 재시작
-  useEffect(() => {
-    if (!graphRef.current || graphData.nodes.length === 0) return
-
-    const graph = graphRef.current
-
-    // force 설정
-    const linkForce = graph.d3Force('link')
-    if (linkForce && typeof linkForce.distance === 'function') {
-      linkForce.distance(effectiveDistance)
-    }
-
-    const chargeForce = graph.d3Force('charge')
-    if (chargeForce && typeof chargeForce.strength === 'function') {
-      chargeForce.strength(effectiveStrength)
-    }
-
-    // 시뮬레이션 재시작 - alpha 값을 높게 설정하여 확실히 움직이게 함
-    graph.d3ReheatSimulation()
-  }, [radialDistance, graphExpanded, effectiveDistance, effectiveStrength, graphData.nodes.length])
+  }, [effectiveDistance, graphData.nodes.length, dimensions.width, dimensions.height])
 
   return (
     <div
@@ -578,7 +590,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       }}
     >
       <ForceGraph2D
-        key={`graph-${graphExpanded}-${radialDistance}`}
+        key={`graph-${effectiveDistance}`}
         ref={graphRef}
         graphData={graphData}
         width={dimensions.width}

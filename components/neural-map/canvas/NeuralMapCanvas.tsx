@@ -13,6 +13,7 @@ import { EdgeLine } from './EdgeLine'
 import { LabelSystem } from './LabelSystem'
 import { CameraController } from './CameraController'
 import { StarField, NebulaCloud } from './StarField'
+import { CameraResetter } from './CameraResetter'
 
 interface NeuralMapCanvasProps {
   className?: string
@@ -97,6 +98,7 @@ function SceneContent() {
   const setHoveredNode = useNeuralMapStore((s) => s.setHoveredNode)
   const setSimulationRunning = useNeuralMapStore((s) => s.setSimulationRunning)
   const setSimulationAlpha = useNeuralMapStore((s) => s.setSimulationAlpha)
+  const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
 
   // Simulation state
   const simulationRef = useRef<NeuralMapSimulation | null>(null)
@@ -106,7 +108,7 @@ function SceneContent() {
   // Get theme
   const theme = THEME_PRESETS.find((t) => t.id === themeId) || THEME_PRESETS[0]
 
-  // Initialize simulation when graph changes
+  // Initialize simulation when graph changes or expansion changes
   useEffect(() => {
     if (!graph) return
 
@@ -115,9 +117,48 @@ function SceneContent() {
       simulationRef.current.dispose()
     }
 
+    // Visibility Check Helper (Recursive)
+    const isNodeVisible = (nodeId: string): boolean => {
+      const node = graph.nodes.find(n => n.id === nodeId);
+      if (!node) return false;
+
+      // Root items (no parent) are always visible unless we implement root collapsing
+      if (!node.parentId) return true;
+
+      // If parent exists, parent MUST be expanded (in expandedNodeIds)
+      if (expandedNodeIds.has(node.parentId)) {
+        // Parent is expanded, check grandparent recursively
+        return isNodeVisible(node.parentId);
+      } else {
+        // Parent is NOT expanded (collapsed), so this node is hidden
+        return false;
+      }
+    };
+
+    // Filter nodes based on visibility
+    const visibleNodes = graph.nodes.filter(n => {
+      // 1. Self node always visible
+      if (n.type === 'self') return true;
+      // 2. Recursive visibility check
+      return isNodeVisible(n.id);
+    });
+
+    console.log('[Canvas] Visibility Check:', {
+      total: graph.nodes.length,
+      visible: visibleNodes.length,
+      expandedIds: Array.from(expandedNodeIds)
+    });
+
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+
+    // Filter edges (both source and target must be visible)
+    const visibleEdges = graph.edges.filter(e =>
+      visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target)
+    );
+
     // Create new simulation
     const simulation = createSimulation({
-      nodeCount: graph.nodes.length,
+      nodeCount: visibleNodes.length,
       enableRadialLayout: true,
       centerNodeId: graph.nodes.find((n) => n.type === 'self')?.id,
       onTick: (state) => {
@@ -131,7 +172,7 @@ function SceneContent() {
       },
     })
 
-    simulation.init(graph.nodes, graph.edges)
+    simulation.init(visibleNodes, visibleEdges)
     simulation.start()
 
     simulationRef.current = simulation
@@ -139,7 +180,7 @@ function SceneContent() {
     return () => {
       simulation.dispose()
     }
-  }, [graph, setSimulationAlpha, setSimulationRunning])
+  }, [graph, expandedNodeIds, setSimulationAlpha, setSimulationRunning])
 
   // Handle node click
   const handleNodeClick = useCallback(
@@ -209,6 +250,7 @@ function SceneContent() {
 
       {/* Camera controls */}
       <CameraController />
+      <CameraResetter />
 
       {/* Fog for depth - starts far to not hide stars */}
       <fog attach="fog" args={[theme.background.gradient[1], 500, 2000]} />

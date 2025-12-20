@@ -175,12 +175,13 @@ export class NeuralMapSimulation {
     if (enableRadialLayout && centerNodeId) {
       const centerNode = this.nodes.find((n) => n.id === centerNodeId)
       if (centerNode) {
-        // Pin center node
+        // Pin center node to (0,0,0) explicitly
         centerNode.fx = 0
         centerNode.fy = 0
         centerNode.fz = 0
 
-        // Add radial force for other nodes
+        // ... (rest of radial logic)
+
         const radialForce = forceRadial<SimNode>(
           (node) => {
             if (node.id === centerNodeId) return 0
