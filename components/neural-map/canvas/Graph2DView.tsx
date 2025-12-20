@@ -586,6 +586,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       }}
     >
       <ForceGraph2D
+        key={`graph-${sidebarOpen}-${radialDistance}`}
         ref={graphRef}
         graphData={graphData}
         width={dimensions.width}

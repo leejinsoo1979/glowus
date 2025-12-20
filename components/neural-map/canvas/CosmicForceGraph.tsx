@@ -260,8 +260,13 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
     ]).then(([ForceGraph3DModule, THREE]) => {
       const ForceGraph3D = ForceGraph3DModule.default
 
+      // 이미 초기화된 경우 force만 업데이트
       if (graphRef.current) {
-        // Already initialized
+        const currentEffectiveDistance = sidebarOpen ? radialDistance : radialDistance * 0.2
+        const currentEffectiveStrength = sidebarOpen ? -radialDistance * 1.5 : -30
+        graphRef.current.d3Force('charge')?.strength(currentEffectiveStrength)
+        graphRef.current.d3Force('link')?.distance((l: any) => l.kind === 'parent' ? currentEffectiveDistance * 0.5 : currentEffectiveDistance)
+        graphRef.current.d3ReheatSimulation()
         return
       }
 
@@ -729,7 +734,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         }
       }
     })
-  }, [isClient, isDark, selectedNodeIds])
+  }, [isClient, isDark, selectedNodeIds, sidebarOpen, radialDistance])
 
   // Update graph data when store changes
   useEffect(() => {
