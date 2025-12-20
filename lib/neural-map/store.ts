@@ -711,6 +711,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               summary: 'Next.js 14 프로젝트',
               tags: ['project', 'nextjs'],
               importance: 10,
+              expanded: true,
+              pinned: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             }
@@ -739,6 +741,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 tags: ['folder'],
                 importance: 7,
                 parentId: folderMap.get(parentPath) || rootNode.id,
+                expanded: false,
+                pinned: false,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               }
@@ -753,6 +757,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 target: folderId,
                 type: 'parent_child',
                 weight: 0.8,
+                bidirectional: false,
                 createdAt: new Date().toISOString(),
               })
 
@@ -773,6 +778,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                   tags: [ext, fileType],
                   importance: 5,
                   parentId: folderId,
+                  expanded: false,
+                  pinned: false,
                   createdAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 }
@@ -786,21 +793,26 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                   target: fileId,
                   type: 'parent_child',
                   weight: 0.6,
+                  bidirectional: false,
                   createdAt: new Date().toISOString(),
                 })
 
                 // 파일 목록에 추가
                 files.push({
                   id: fileId,
+                  mapId: 'mock-graph',
                   name: fileName,
-                  type: ext === 'md' ? 'markdown' : 'text' as any,
+                  type: ext === 'md' ? 'markdown' : 'image' as any,
+                  url: `mock://${folder.path}/${fileName}`,
                   size: Math.floor(Math.random() * 10000) + 500,
                   path: `${folder.path}/${fileName}`,
                   createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
                 })
               })
             })
+
+            // 파일 경로 -> nodeId 맵 (import 종속성 연결용)
+            const fileNodeMap = new Map<string, string>()
 
             // 루트 파일들 생성
             mockProject.rootFiles.forEach(fileName => {
@@ -815,11 +827,14 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 tags: [ext, 'root'],
                 importance: 6,
                 parentId: rootNode.id,
+                expanded: false,
+                pinned: false,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               }
 
               nodes.push(fileNode)
+              fileNodeMap.set(fileName, fileId)
 
               // 루트와 연결
               edges.push({
@@ -828,29 +843,121 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 target: fileId,
                 type: 'parent_child',
                 weight: 0.7,
+                bidirectional: false,
                 createdAt: new Date().toISOString(),
               })
 
               files.push({
                 id: fileId,
+                mapId: 'mock-graph',
                 name: fileName,
-                type: ext === 'md' ? 'markdown' : 'text' as any,
+                type: ext === 'md' ? 'markdown' : 'image' as any,
+                url: `mock://${fileName}`,
                 size: Math.floor(Math.random() * 5000) + 200,
                 path: fileName,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
               })
             })
 
+            // 이전에 생성된 폴더 내 파일들도 fileNodeMap에 추가
+            mockProject.folders.forEach(folder => {
+              folder.children.forEach(fileName => {
+                const filePath = `${folder.path}/${fileName}`
+                const existingNode = nodes.find(n => n.summary === filePath)
+                if (existingNode) {
+                  fileNodeMap.set(filePath, existingNode.id)
+                }
+              })
+            })
+
+            // ========== Import 종속성 (Dependency) 엣지 생성 ==========
+            const importDependencies = [
+              // app/page.tsx imports
+              { from: 'app/page.tsx', to: 'components/Header.tsx', label: 'import Header' },
+              { from: 'app/page.tsx', to: 'components/Footer.tsx', label: 'import Footer' },
+              { from: 'app/page.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
+
+              // app/layout.tsx imports
+              { from: 'app/layout.tsx', to: 'components/Sidebar.tsx', label: 'import Sidebar' },
+              { from: 'app/layout.tsx', to: 'app/globals.css', label: 'import styles' },
+              { from: 'app/layout.tsx', to: 'lib/utils.ts', label: 'import utils' },
+
+              // app/dashboard/page.tsx imports
+              { from: 'app/dashboard/page.tsx', to: 'components/Header.tsx', label: 'import Header' },
+              { from: 'app/dashboard/page.tsx', to: 'components/ui/Card.tsx', label: 'import Card' },
+              { from: 'app/dashboard/page.tsx', to: 'hooks/useAuth.ts', label: 'import useAuth' },
+              { from: 'app/dashboard/page.tsx', to: 'stores/uiStore.ts', label: 'import uiStore' },
+
+              // components imports
+              { from: 'components/Header.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
+              { from: 'components/Header.tsx', to: 'hooks/useAuth.ts', label: 'import useAuth' },
+              { from: 'components/Header.tsx', to: 'hooks/useTheme.ts', label: 'import useTheme' },
+              { from: 'components/Sidebar.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
+              { from: 'components/Sidebar.tsx', to: 'stores/uiStore.ts', label: 'import uiStore' },
+              { from: 'components/Footer.tsx', to: 'lib/utils.ts', label: 'import utils' },
+
+              // components/ui imports
+              { from: 'components/ui/Modal.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
+              { from: 'components/ui/Card.tsx', to: 'lib/utils.ts', label: 'import cn' },
+              { from: 'components/ui/Button.tsx', to: 'lib/utils.ts', label: 'import cn' },
+              { from: 'components/ui/Input.tsx', to: 'lib/utils.ts', label: 'import cn' },
+
+              // hooks imports
+              { from: 'hooks/useAuth.ts', to: 'stores/authStore.ts', label: 'import authStore' },
+              { from: 'hooks/useAuth.ts', to: 'lib/db.ts', label: 'import db' },
+              { from: 'hooks/useTheme.ts', to: 'stores/uiStore.ts', label: 'import uiStore' },
+
+              // stores imports
+              { from: 'stores/authStore.ts', to: 'types/index.ts', label: 'import types' },
+              { from: 'stores/uiStore.ts', to: 'types/index.ts', label: 'import types' },
+
+              // lib imports
+              { from: 'lib/db.ts', to: 'types/api.ts', label: 'import API types' },
+
+              // api routes imports
+              { from: 'app/api/route.ts', to: 'lib/db.ts', label: 'import db' },
+              { from: 'app/api/users/route.ts', to: 'lib/db.ts', label: 'import db' },
+              { from: 'app/api/users/route.ts', to: 'types/api.ts', label: 'import types' },
+            ]
+
+            // Import 종속성 엣지 추가
+            importDependencies.forEach(dep => {
+              const sourceId = fileNodeMap.get(dep.from)
+              const targetId = fileNodeMap.get(dep.to)
+
+              if (sourceId && targetId) {
+                edges.push({
+                  id: generateId(),
+                  source: sourceId,
+                  target: targetId,
+                  type: 'imports',
+                  label: dep.label,
+                  weight: 0.5,
+                  bidirectional: false,
+                  createdAt: new Date().toISOString(),
+                })
+              }
+            })
+
             // 그래프 설정
-            state.graph = {
-              id: 'mock-graph',
-              title: mockProject.name,
+            const graphData = {
               nodes,
               edges,
               clusters: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+            }
+
+            if (state.graph) {
+              state.graph.nodes = graphData.nodes
+              state.graph.edges = graphData.edges
+              state.graph.clusters = graphData.clusters
+              state.graph.updatedAt = graphData.updatedAt
+            } else {
+              state.graph = {
+                ...graphData,
+                title: mockProject.name,
+              } as any
             }
 
             state.files = files

@@ -77,6 +77,7 @@ export interface NeuralNode {
 export type EdgeType =
   | 'parent_child'   // 계층
   | 'references'     // 참조
+  | 'imports'        // import 종속성
   | 'supports'       // 지지
   | 'contradicts'    // 반박
   | 'causes'         // 인과

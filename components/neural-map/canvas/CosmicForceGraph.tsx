@@ -91,7 +91,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         links.push({
           source: edge.source,
           target: edge.target,
-          kind: edge.type === 'parent_child' ? 'parent' : 'reference',
+          kind: edge.type === 'parent_child' ? 'parent' : edge.type === 'imports' ? 'imports' : 'reference',
         })
       }
     })
@@ -235,12 +235,12 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
           return mesh
         })
-        .linkOpacity(0.3)
-        .linkWidth((l: any) => l.kind === 'parent' ? 1.5 : 0.8)
-        .linkColor((l: any) => l.kind === 'parent' ? '#4a9eff' : '#6b7280')
-        .linkDirectionalParticles((l: any) => l.kind === 'parent' ? 3 : 0)
-        .linkDirectionalParticleWidth(1.5)
-        .linkDirectionalParticleColor(() => '#4a9eff')
+        .linkOpacity((l: any) => l.kind === 'imports' ? 0.6 : 0.3)
+        .linkWidth((l: any) => l.kind === 'parent' ? 1.5 : l.kind === 'imports' ? 1.2 : 0.8)
+        .linkColor((l: any) => l.kind === 'parent' ? '#4a9eff' : l.kind === 'imports' ? '#f59e0b' : '#6b7280')
+        .linkDirectionalParticles((l: any) => l.kind === 'parent' ? 3 : l.kind === 'imports' ? 2 : 0)
+        .linkDirectionalParticleWidth((l: any) => l.kind === 'imports' ? 2 : 1.5)
+        .linkDirectionalParticleColor((l: any) => l.kind === 'imports' ? '#f59e0b' : '#4a9eff')
         .onNodeClick((node: any) => {
           if (!node) return
 
