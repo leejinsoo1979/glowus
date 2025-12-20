@@ -568,14 +568,10 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
         {Math.round(transform.scale * 100)}%
       </div>
 
-      {/* SVG Canvas */}
+      {/* SVG Canvas - fills entire container */}
       <svg
-        width="100%"
-        height="100%"
-        style={{
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transformOrigin: '0 0',
-        }}
+        className="absolute inset-0 w-full h-full"
+        style={{ overflow: 'visible' }}
       >
         {/* Defs for arrowhead */}
         <defs>
@@ -595,13 +591,18 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
           </marker>
         </defs>
 
-        {/* Import dependency edges (behind nodes) */}
-        <g className="import-edges">
-          {renderImportEdges()}
-        </g>
+        {/* Transform group - pan and zoom applied here */}
+        <g
+          transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}
+        >
+          {/* Import dependency edges (behind nodes) */}
+          <g className="import-edges">
+            {renderImportEdges()}
+          </g>
 
-        {/* Tree nodes and parent-child edges */}
-        {renderNode(tree)}
+          {/* Tree nodes and parent-child edges */}
+          {renderNode(tree)}
+        </g>
       </svg>
     </div>
   )
