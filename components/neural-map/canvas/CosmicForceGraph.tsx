@@ -425,8 +425,12 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
             if (ctx) {
               try {
+                // JS 아이콘은 검정색 (#000000), 나머지는 흰색 (#FFFFFF)
+                const isJS = ['js', 'javascript'].includes(ext.toLowerCase())
+                const iconColor = isJS ? '#000000' : '#FFFFFF'
+
                 const svgString = renderToStaticMarkup(
-                  <IconComp size={100} color="#FFFFFF" style={{ display: 'block' }} />
+                  <IconComp size={100} color={iconColor} style={{ display: 'block' }} />
                 )
                 const img = new Image()
                 const svgData = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
@@ -522,17 +526,18 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
           return mesh
         })
-        .linkOpacity((l: any) => l.kind === 'imports' ? 0.6 : 0.3)
-        .linkWidth((l: any) => l.kind === 'parent' ? 1.5 : l.kind === 'imports' ? 1.8 : 0.8)
+        .linkOpacity((l: any) => l.kind === 'imports' ? 0.6 : 0.3) // 투명도 조정 (구조 라인은 더 은은하게)
+        .linkWidth((l: any) => l.kind === 'imports' ? 1.5 : 0.8) // 굵기 축소 (1.8 -> 1.5)
         .linkColor((l: any) =>
-          l.kind === 'parent' ? '#4a9eff88' :
-            l.kind === 'imports' ? (currentTheme.ui.accentColor + 'cc') :
-              (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)')
+          l.kind === 'parent' ? (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)') :
+            l.kind === 'imports' ? (currentTheme.ui.accentColor) : // 점선: 테마색 (불투명, Glow 효과는 Shader로 처리됨)
+              // 구조 라인: 테마색 + 투명도 (Graph2DView와 일치)
+              (currentTheme.ui.accentColor + (isDark ? '4D' : '66')) // hex opacity ~30% / 40%
         )
-        // 링크 파티클 설정 - 2D와 일치하는 데이터 전송 효과
+        // 링크 파티클 설정 - 2D와 일치 (4, 3, 0.01)
         .linkDirectionalParticles((link: any) => link.kind === 'imports' ? 4 : 0)
         .linkDirectionalParticleSpeed(0.01)
-        .linkDirectionalParticleWidth(4)
+        .linkDirectionalParticleWidth(3) // 4 -> 3
         .linkDirectionalParticleResolution(10)
         .linkDirectionalParticleColor(() => currentTheme.ui.accentColor)
         // 모든 설정 후 데이터 로드
