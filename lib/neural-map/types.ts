@@ -85,6 +85,7 @@ export type EdgeType =
   | 'causes'         // 인과
   | 'same_topic'     // 같은 주제
   | 'sequence'       // 순서 (로드맵)
+  | 'semantic'       // 기능적 연결 (ID/Class 등)
 
 export interface EdgeEvidence {
   fileId: string

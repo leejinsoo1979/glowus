@@ -1357,6 +1357,75 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               });
             });
 
+            // ========== 시맨틱 링크 분석 (ID/Class 기반 기능적 연결) ==========
+            // 1. HTML에서 모든 ID와 Class 추출
+            const htmlSelectors = new Map<string, Set<string>>(); // filePath -> Set of selectors
+            currentFiles.forEach(file => {
+              const ext = file.name.split('.').pop()?.toLowerCase() || '';
+              if (ext === 'html' || ext === 'htm') {
+                const content = (file as any).content || '';
+                const selectors = new Set<string>();
+
+                // id="my-id", class="btn primary" 등 추출
+                const idRegex = /id=["']([^"']+)["']/gi;
+                const classRegex = /class=["']([^"']+)["']/gi;
+
+                let match;
+                while ((match = idRegex.exec(content)) !== null) selectors.add(match[1]);
+                while ((match = classRegex.exec(content)) !== null) {
+                  // 클래스는 공백으로 구분된 여러 개일 수 있음
+                  match[1].split(/\s+/).filter(Boolean).forEach(cls => selectors.add(cls));
+                }
+
+                if (selectors.size > 0) {
+                  htmlSelectors.set(file.path || file.name, selectors);
+                }
+              }
+            });
+
+            // 2. JS/CSS에서 해당 셀렉터 사용 여부 확인 및 엣지 생성
+            if (htmlSelectors.size > 0) {
+              currentFiles.forEach(file => {
+                const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                if (!['js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'less'].includes(ext)) return;
+
+                const content = (file as any).content || '';
+                const sourcePath = file.path || file.name;
+                const sourceId = fileNodeMap.get(sourcePath);
+                if (!sourceId) return;
+
+                htmlSelectors.forEach((selectors, htmlPath) => {
+                  const targetId = fileNodeMap.get(htmlPath);
+                  if (!targetId || targetId === sourceId) return;
+
+                  // 이미 직접 로드(imports) 연결이 있는지 확인
+                  const hasDirectLink = edges.some(e =>
+                    (e.source === sourceId && e.target === targetId) ||
+                    (e.source === targetId && e.target === sourceId)
+                  );
+                  if (hasDirectLink) return;
+
+                  // 셀렉터 중 하나라도 포함되어 있는지 확인 (단순 문자열 포함으로 1차 판단)
+                  for (const selector of selectors) {
+                    if (content.includes(selector)) {
+                      edges.push({
+                        id: generateId(),
+                        source: sourceId,
+                        target: targetId,
+                        type: 'semantic',
+                        label: 'functional',
+                        weight: 0.3, // 기능적 연결은 구조적 배치에 큰 영향을 주지 않도록 낮게 설정
+                        bidirectional: true,
+                        createdAt: new Date().toISOString(),
+                      });
+                      dependencyCount++;
+                      break; // 하나라도 찾으면 해당 파일과의 연결 생성 후 중단
+                    }
+                  }
+                });
+              });
+            }
+
             // 기존 parent_child 엣지들의 가중치를 대폭 낮춤 (배경 구조 역할만 수행)
             edges.forEach(edge => {
               if (edge.type === 'parent_child') {
@@ -1364,7 +1433,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               }
             });
 
-            console.log(`[Store] Logic Graph Rebuilt: ${dependencyCount} functional dependencies found.`);
+            console.log(`[Store] Logic Graph Rebuilt: ${dependencyCount} functional/semantic dependencies found.`);
 
             // 그래프 설정
             const graphData = {

@@ -554,6 +554,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     // 엣지 타입별 스타일 설정
     const isImport = link.type === 'imports'
+    const isSemantic = link.type === 'semantic'
 
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
@@ -564,6 +565,11 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       ctx.strokeStyle = '#fbbf24' // Amber-400
       ctx.lineWidth = 3.5 / globalScale
       ctx.setLineDash([6 / globalScale, 4 / globalScale])
+    } else if (isSemantic) {
+      // 기능적 라인: 회색, 얇게, 점선 (ID/Class 연결)
+      ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.4)' : 'rgba(148, 163, 184, 0.6)'
+      ctx.lineWidth = 1.0 / globalScale
+      ctx.setLineDash([2 / globalScale, 2 / globalScale])
     } else {
       // 구조 라인(폴더-파일): 투명도를 높여서 가독성 확보
       ctx.strokeStyle = isDark ? 'rgba(147, 197, 253, 0.3)' : 'rgba(59, 130, 246, 0.4)'
