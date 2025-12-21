@@ -1,9 +1,9 @@
 // @ts-nocheck
 'use client'
 
-import { Suspense, useRef, useEffect, useCallback, useState } from 'react'
+import { Suspense, useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
-import { Preload, AdaptiveDpr, AdaptiveEvents, PerformanceMonitor, Stars } from '@react-three/drei'
+import { Preload, AdaptiveDpr, AdaptiveEvents, PerformanceMonitor } from '@react-three/drei'
 import * as THREE from 'three'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { THEME_PRESETS, POST_PROCESSING, CAMERA_SETTINGS } from '@/lib/neural-map/constants'
@@ -235,18 +235,29 @@ function SceneContent() {
       <pointLight position={[150, 50, 100]} intensity={0.8} color="#00BFFF" distance={300} decay={2} />
       <pointLight position={[-150, -50, -100]} intensity={0.5} color="#00BFFF" distance={300} decay={2} />
 
-      {/* Background gradient sphere */}
+      {/* Background gradient sphere + nebula */}
       <CosmicBackground colors={theme.background.gradient} />
 
-      {/* Very subtle background - nodes are the real stars */}
-      <Stars
-        radius={1000}
-        depth={50}
-        count={500}
-        factor={2}
-        saturation={0}
-        fade
-        speed={0.1}
+      {theme.background.starsEnabled && (
+        <StarField
+          radius={1200}
+          count={theme.background.starsCount}
+          color={theme.background.starsColor}
+        />
+      )}
+
+      {/* Soft nebula clouds for cosmic depth */}
+      <NebulaCloud
+        position={[0, 80, -250]}
+        color={theme.ui?.accentColor || '#3b82f6'}
+        opacity={0.18}
+        scale={380}
+      />
+      <NebulaCloud
+        position={[-200, -40, -180]}
+        color="#342b5d"
+        opacity={0.12}
+        scale={420}
       />
 
       {/* Camera controls */}
@@ -294,11 +305,63 @@ function CosmicBackground({ colors }: CosmicBackgroundProps) {
   const { scene } = useThree()
 
   useEffect(() => {
-    // Set simple dark background - no gradient
-    scene.background = new THREE.Color('#050508')
-  }, [scene])
+    scene.background = new THREE.Color(colors?.[1] || '#050510')
+  }, [scene, colors])
 
-  return null
+  const gradientMaterial = useMemo(() => {
+    const top = new THREE.Color(colors?.[0] || '#0f172a')
+    const bottom = new THREE.Color(colors?.[1] || '#020617')
+
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        colorTop: { value: top },
+        colorBottom: { value: bottom },
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = normalize(worldPosition.xyz);
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 colorTop;
+        uniform vec3 colorBottom;
+        varying vec3 vWorldPosition;
+
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        void main() {
+          float gradient = smoothstep(-0.2, 0.8, vWorldPosition.y);
+          vec3 baseColor = mix(colorBottom, colorTop, gradient);
+
+          float starNoise = hash(vWorldPosition.xy * 20.0);
+          float glow = pow(1.0 - abs(vWorldPosition.y), 2.0);
+
+          vec3 finalColor = baseColor + starNoise * 0.08 + glow * vec3(0.04, 0.02, 0.08);
+          gl_FragColor = vec4(finalColor, 1.0);
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+    })
+  }, [colors])
+
+  useEffect(() => {
+    return () => {
+      gradientMaterial.dispose()
+    }
+  }, [gradientMaterial])
+
+  return (
+    <mesh scale={1200}>
+      <sphereGeometry args={[1, 64, 64]} />
+      <primitive object={gradientMaterial} attach="material" />
+    </mesh>
+  )
 }
 
 // Grid helper for development

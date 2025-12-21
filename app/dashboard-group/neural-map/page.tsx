@@ -40,7 +40,7 @@ const NeuralMapCanvas = dynamic(
 
 // Dynamically import 2D Graph (Obsidian style)
 const Graph2DView = dynamic(
-  () => import('@/components/neural-map/canvas/Graph2DView').then((mod) => mod.Graph2DView),
+  () => import('@/components/neural-map/canvas/Graph2DView').then((mod) => mod.default),
   {
     ssr: false,
     loading: () => <CanvasLoadingFallback />,
@@ -49,16 +49,16 @@ const Graph2DView = dynamic(
 
 // Dynamically import Cosmic Force Graph (3D universe style)
 const CosmicForceGraph = dynamic(
-  () => import('@/components/neural-map/canvas/CosmicForceGraph').then((mod) => mod.CosmicForceGraph),
+  () => import('@/components/neural-map/canvas/CosmicForceGraph').then((mod) => mod.default),
   {
     ssr: false,
     loading: () => <CanvasLoadingFallback />,
   }
 )
 
-// Dynamically import Tree Flow Chart (top-down tree)
-const TreeFlowChart = dynamic(
-  () => import('@/components/neural-map/canvas/TreeFlowChart').then((mod) => mod.TreeFlowChart),
+// Dynamically import Logic Flow (React Flow based Tree)
+const LogicFlow = dynamic(
+  () => import('@/components/neural-map/canvas/logic/LogicFlow').then((mod) => mod.default),
   {
     ssr: false,
     loading: () => <CanvasLoadingFallback />,
@@ -120,6 +120,8 @@ export default function NeuralMapPage() {
     editorCollapsed,
     closeEditor,
     toggleEditorCollapse,
+    selectedNodeIds,
+    setSelectedNodes,
   } = useNeuralMapStore()
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
@@ -127,6 +129,9 @@ export default function NeuralMapPage() {
   // 리사이즈 상태
   const [isResizing, setIsResizing] = useState(false)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  // Map Sub-View Mode (2D default)
+  const [mapViewMode, setMapViewMode] = useState<'2d' | '3d'>('2d')
 
   useEffect(() => {
     setMounted(true)
@@ -260,16 +265,117 @@ export default function NeuralMapPage() {
                   </button>
                 </div>
               </div>
-            ) : activeTab === 'graph2d' ? (
-              <Graph2DView className="absolute inset-0" />
-            ) : activeTab === 'cosmic' ? (
-              <CosmicForceGraph className="absolute inset-0" />
-            ) : activeTab === 'tree' ? (
-              <TreeFlowChart className="absolute inset-0" />
-            ) : activeTab === 'schema' ? (
+            ) : activeTab === 'map' ? (
+              // Map View with Sub-modes
+              <div className="absolute inset-0">
+                {mapViewMode === '2d' ? (
+                  <Graph2DView className="absolute inset-0" />
+                ) : (
+                  <CosmicForceGraph className="absolute inset-0" />
+                )}
+
+                {/* Map View Toggle Controls & Actions */}
+                <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+                  <div className={cn(
+                    "flex rounded-lg shadow-lg border p-1 gap-1",
+                    isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200"
+                  )}>
+                    <button
+                      onClick={() => setMapViewMode('2d')}
+                      className={cn(
+                        "px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                        mapViewMode === '2d'
+                          ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
+                      )}
+                    >
+                      2D Graph
+                    </button>
+
+                    <button
+                      onClick={() => setMapViewMode('3d')}
+                      className={cn(
+                        "px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                        mapViewMode === '3d'
+                          ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
+                      )}
+                    >
+                      Cosmic
+                    </button>
+
+                    {/* Group Action Button */}
+                    {(() => {
+                      if (!graph) return false
+                      const selectedNodes = graph.nodes.filter((n) => selectedNodeIds.includes(n.id))
+                      if (selectedNodes.length < 2) return false
+                      // 이미 부모가 있으면 그룹화 대상에서 제외 (중복 그룹 방지)
+                      if (selectedNodes.some((node) => !!node.parentId)) return false
+                      return true
+                    })() && (
+                      <button
+                        onClick={() => {
+                          if (!graph) return
+                          const nodesToGroup = graph.nodes.filter((n) => selectedNodeIds.includes(n.id) && !n.parentId)
+                          if (nodesToGroup.length < 2) {
+                            return
+                          }
+                          const newGroupId = `group-${Date.now()}`
+                          const newGroupNode: NeuralNode = {
+                            id: newGroupId,
+                            title: 'New Group',
+                            type: 'folder',
+                            tags: [],
+                            importance: 5,
+                            expanded: true,
+                            pinned: false,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            position: { x: 0, y: 0, z: 0 }
+                          }
+
+                          // Add new group node
+                          useNeuralMapStore.getState().addNode(newGroupNode)
+
+                          // Update selected nodes to have this parent
+                          nodesToGroup.forEach(node => {
+                            useNeuralMapStore.getState().updateNode(node.id, { parentId: newGroupId })
+                          })
+
+                          // Select the new group
+                          useNeuralMapStore.getState().setSelectedNodes([newGroupId])
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1",
+                          "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
+                        )}
+                      >
+                        Group ({selectedNodeIds.length})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : activeTab === 'life-stream' ? (
+              <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold mb-2">Life Stream</h2>
+                  <p>Development Pipeline Visualization (The Blueprint) Coming Soon</p>
+                </div>
+              </div>
+            ) : activeTab === 'data' ? (
               <SchemaView className="absolute inset-0" />
+            ) : activeTab === 'logic' ? (
+              <LogicFlow className="absolute inset-0" />
+            ) : activeTab === 'test' ? (
+              <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold mb-2">Test Suite</h2>
+                  <p>Automated Verification & QA Dashboard Coming Soon</p>
+                </div>
+              </div>
             ) : (
-              <NeuralMapCanvas className="absolute inset-0" />
+              <Graph2DView className="absolute inset-0" />
             )}
           </div>
         </div>
@@ -285,7 +391,7 @@ export default function NeuralMapPage() {
         {/* Code Preview Panel */}
         <CodePreviewPanel />
 
-        {/* Right Panel Resize Handle - 드래그로 크기 조절 */}
+        {/* Right Panel Resize Handle */}
         <div
           onMouseDown={handleResizeStart}
           onDoubleClick={toggleRightPanel}
@@ -328,7 +434,6 @@ export default function NeuralMapPage() {
             </motion.div>
           )}
         </AnimatePresence>
-
       </div>
 
       {/* Status Bar */}

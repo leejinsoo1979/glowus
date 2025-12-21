@@ -94,12 +94,12 @@ function FileIcon({ type, name }: { type: string; name?: string }) {
   if (ext === 'txt') return <VscFile className={cn(iconClass, "text-zinc-400")} />
 
   // 이미지
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico'].includes(ext || '')) {
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp'].includes(ext || '')) {
     return <VscFileMedia className={cn(iconClass, "text-emerald-400")} />
   }
 
   // 비디오/미디어
-  if (['mp4', 'webm', 'mov', 'avi', 'mp3', 'wav'].includes(ext || '')) {
+  if (['mp4', 'webm', 'mov', 'avi', 'mp3', 'wav', 'mkv'].includes(ext || '')) {
     return <VscFileMedia className={cn(iconClass, "text-purple-400")} />
   }
 
@@ -115,6 +115,9 @@ function FileIcon({ type, name }: { type: string; name?: string }) {
     case 'image': return <VscFileMedia className={cn(iconClass, "text-emerald-400")} />
     case 'video': return <VscFileMedia className={cn(iconClass, "text-purple-400")} />
     case 'markdown': return <VscMarkdown className={cn(iconClass, "text-sky-400")} />
+    case 'code': return <VscFileCode className={cn(iconClass, "text-cyan-400")} />
+    case 'text': return <VscFile className={cn(iconClass, "text-zinc-400")} />
+    case 'binary': return <VscFile className={cn(iconClass, "text-zinc-500")} />
     default: return <VscFile className={cn(iconClass, "text-zinc-500")} />
   }
 }
@@ -131,15 +134,29 @@ interface TreeNode {
   children: TreeNode[]
 }
 
+const normalizePath = (path: string) =>
+  path
+    .replace(/\\+/g, '/')
+    .replace(/^\/+/, '')
+
 // 파일 목록을 트리 구조로 변환
 function buildFileTree(files: NeuralFile[]): TreeNode[] {
+  console.log('[buildFileTree] Input files:', files.length, files)
+
   const root: TreeNode[] = []
 
   // path가 없는 파일들 (단일 파일 업로드)
   const standaloneFiles = files.filter(f => !f.path)
+  console.log('[buildFileTree] Standalone files (no path):', standaloneFiles.length, standaloneFiles.map(f => f.name))
 
   // path가 있는 파일들 (폴더 업로드)
-  const pathFiles = files.filter(f => f.path)
+  const pathFiles = files
+    .filter(f => f.path)
+    .map((file) => ({
+      file,
+      normalizedPath: normalizePath(file.path!)
+    }))
+  console.log('[buildFileTree] Path files:', pathFiles.length, pathFiles.map(pf => ({ name: pf.file.name, path: pf.normalizedPath })))
 
   // 단일 파일들을 루트에 추가
   standaloneFiles.forEach(file => {
@@ -152,8 +169,9 @@ function buildFileTree(files: NeuralFile[]): TreeNode[] {
   })
 
   // 폴더 구조 파일들 처리
-  pathFiles.forEach(file => {
-    const parts = file.path!.split('/')
+  pathFiles.forEach(({ file, normalizedPath }) => {
+    if (!normalizedPath) return
+    const parts = normalizedPath.split('/')
     let current = root
 
     // 마지막은 파일명이므로 제외하고 폴더 경로만 처리
@@ -197,7 +215,9 @@ function buildFileTree(files: NeuralFile[]): TreeNode[] {
     return nodes
   }
 
-  return sortTree(root)
+  const result = sortTree(root)
+  console.log('[buildFileTree] Final tree:', result)
+  return result
 }
 
 export function FileTreePanel({ mapId }: FileTreePanelProps) {
@@ -218,6 +238,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const files = useNeuralMapStore((s) => s.files)
   const addFile = useNeuralMapStore((s) => s.addFile)
   const removeFile = useNeuralMapStore((s) => s.removeFile)
+  const setFiles = useNeuralMapStore((s) => s.setFiles)
   const graph = useNeuralMapStore((s) => s.graph)
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
@@ -233,7 +254,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
 
   // API
-  const { uploadFile, deleteFile, createNode, createEdge, analyzeFile } = useNeuralMapApi(mapId)
+  const { uploadFile, deleteFile, createNode, createEdge, analyzeFile, removeNode } = useNeuralMapApi(mapId)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   // 사용자 테마
@@ -243,13 +264,27 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const mapTitle = graph?.title || 'Untitled Map'
 
   // 파일 트리 구조 생성 - useMemo로 메모이제이션하여 무한 루프 방지
-  const fileTree = useMemo(() => buildFileTree(files), [files])
+  const fileTree = useMemo(() => {
+    console.log('[FileTree] Building tree from files:', files.length, files)
+    return buildFileTree(files)
+  }, [files])
 
   // 폴더 경로로 노드 ID 찾기 (그래프 동기화용)
   const findNodeIdByPath = (folderPath: string): string | undefined => {
     if (!graph?.nodes) return undefined;
 
-    // 1. 이름과 타입으로 매칭 (가장 정확)
+    // 0. 루트 폴더 (슬래시 없음) → SELF 노드
+    if (!folderPath.includes('/')) {
+      const selfNode = graph.nodes.find(n => n.type === 'self')
+      if (selfNode) return selfNode.id
+    }
+
+    // 1. 직접 ID 매칭 (folder-{path} 형식)
+    const directId = `folder-${folderPath}`
+    const directNode = graph.nodes.find(n => n.id === directId)
+    if (directNode) return directNode.id
+
+    // 2. 이름과 타입으로 매칭 (가장 정확)
     // 폴더 업로드 시 title은 폴더명, summary에 전체 경로가 포함됨
     const parts = folderPath.split('/');
     const folderName = parts[parts.length - 1];
@@ -313,39 +348,39 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         const nodePath = parentPath ? `${parentPath}/${node.name}` : node.name;
 
         if (node.type === 'folder') {
-          // 그래프에서 같은 이름의 폴더 노드 찾기
-          const graphNode = graph.nodes.find(
-            n => (n.type === 'project' || n.type === 'folder') && n.title === node.name
-          );
-          if (graphNode) {
-            nodeIdToPath.set(graphNode.id, nodePath);
-          }
+          const nodeId = findNodeIdByPath(nodePath);
+          if (nodeId) nodeIdToPath.set(nodeId, nodePath);
 
-          // 자식 노드도 처리
-          if (node.children.length > 0) {
+          if (node.children && node.children.length > 0) {
             buildPathMap(node.children, nodePath);
           }
         }
-      });
-    };
+      })
+    }
 
+    // 루트 레벨 순회
     buildPathMap(fileTree, '');
 
-    // expandedNodeIds를 기반으로 expandedFolders 업데이트
-    const newExpandedFolders = new Set<string>();
+    // "노드가 존재하는" 폴더들에 대해서만 로컬 상태 동기화
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
 
-    expandedNodeIds.forEach(nodeId => {
-      const path = nodeIdToPath.get(nodeId);
-      if (path) {
-        newExpandedFolders.add(path);
-      }
+      nodeIdToPath.forEach((path, nodeId) => {
+        if (expandedNodeIds.has(nodeId)) {
+          next.add(path);
+        } else {
+          // 스토어에서 닫혀있으면 로컬에서도 닫음 (단, 노드가 있는 경우만)
+          next.delete(path);
+        }
+      });
+
+      return next;
     });
 
     // graphExpanded 상태에 따라 루트 폴더 펼침/접힘 동기화
     setIsExpanded(graphExpanded);
-    setExpandedFolders(newExpandedFolders);
 
-  }, [expandedNodeIds, graph?.nodes, fileTree, graphExpanded]);
+  }, [expandedNodeIds, graph?.nodes, graphExpanded, fileTree]);
 
   // 모든 폴더 접기
   const collapseAll = () => {
@@ -381,9 +416,19 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
   // 파일 클릭 핸들러 - 코드 미리보기 열기
   const handleFileClick = (file: NeuralFile) => {
+    console.log('[FileTree] File clicked:', file.name, 'id:', file.id, 'hasContent:', !!(file as any).content)
     setSelectedFileId(file.id)
+
+    // 파일 객체에 이미 content가 있으면 그대로 사용
+    // 없으면 새 객체 생성해서 전달 (zustand 객체는 frozen됨)
+    const fileToOpen = (file as any).content
+      ? { ...file }  // 이미 content 있음
+      : file
+
+    console.log('[FileTree] Opening file:', file.name, 'content length:', (fileToOpen as any).content?.length || 0)
+
     // 파일 클릭 시 바로 코드 미리보기 열기
-    openCodePreview(file)
+    openCodePreview(fileToOpen)
 
     const node = findNodeByFileName(file.name)
     if (node) {
@@ -414,7 +459,9 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
   // 단일 파일 업로드 처리 - VS Code처럼 즉시 반영
   const processFileUpload = async (file: File, path?: string) => {
+    console.log('[processFileUpload] Uploading:', file.name, 'type:', file.type, 'path:', path)
     const result = await uploadFile(file, path)
+    console.log('[processFileUpload] Result:', result ? 'SUCCESS' : 'FAILED', file.name)
     if (result) {
       // 1. 파일 트리에 즉시 추가
       addFile(result)
@@ -432,10 +479,12 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       // 3. 노드 생성 및 AI 분석은 백그라운드에서 비동기 실행 (UI 블로킹 없음)
       ; (async () => {
         try {
-          const nodeType = result.type === 'pdf' ? 'doc' :
-            result.type === 'markdown' ? 'doc' :
-              result.type === 'image' ? 'memory' :
-                result.type === 'video' ? 'memory' : 'doc'
+          const nodeType =
+            result.type === 'image' || result.type === 'video'
+              ? 'memory'
+              : result.type === 'binary'
+                ? 'file'
+                : 'doc'
 
           // 마크다운인 경우 제목 추출
           const nodeTitle = fileContent
@@ -562,145 +611,423 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     }
   }
 
-  // 폴더 업로드
+  // 폴더 업로드 - VS Code처럼 로컬 파일 즉시 표시
   const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files
-    if (!selectedFiles || selectedFiles.length === 0 || !mapId) return
+    if (!selectedFiles || selectedFiles.length === 0) return
 
-    // 지원되는 파일만 필터링 (webkitRelativePath 포함)
-    const supportedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.webm', '.mov', '.avi', '.md', '.markdown', '.txt']
+    // 숨김/시스템 파일 제외
+    const ignoredNames = new Set(['.DS_Store', 'Thumbs.db', '.git', 'node_modules', '.next', 'dist', 'build'])
     const validFiles = Array.from(selectedFiles)
       .filter(file => {
-        const ext = '.' + file.name.split('.').pop()?.toLowerCase()
-        return supportedExtensions.includes(ext)
+        const fileName = file.name
+        const pathParts = (file as any).webkitRelativePath?.split('/') || []
+        return !!fileName &&
+          !ignoredNames.has(fileName) &&
+          !pathParts.some((part: string) => ignoredNames.has(part))
       })
-      .map(file => ({
-        file,
-        // webkitRelativePath: "FolderName/subfolder/file.pdf"
-        path: (file as any).webkitRelativePath || file.name
-      }))
 
     if (validFiles.length === 0) {
-      alert('지원되는 파일이 없습니다. (PDF, 이미지, 비디오, 마크다운, 텍스트)')
+      alert('업로드 가능한 파일이 없습니다.')
       return
     }
 
-    setIsUploading(true)
-    setUploadingCount(validFiles.length)
     setIsExpanded(true)
 
-    try {
-      // 1. 폴더 구조 추출 및 폴더 노드 생성
-      const folderPaths = new Set<string>()
-      validFiles.forEach(({ path }) => {
-        const parts = path.split('/')
-        // 마지막(파일)을 제외한 폴더 경로들
-        for (let i = 1; i < parts.length; i++) {
-          folderPaths.add(parts.slice(0, i).join('/'))
-        }
-      })
+    // 파일 타입 결정 함수
+    const getFileType = (fileName: string): string => {
+      const ext = fileName.split('.').pop()?.toLowerCase() || ''
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp']
+      const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv']
+      const mdExts = ['md', 'markdown', 'mdx']
+      const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'scss', 'html', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h']
 
-      // 폴더 노드 생성 (계층 순서대로)
-      const sortedFolders = Array.from(folderPaths).sort((a, b) => a.split('/').length - b.split('/').length)
-      const folderNodeMap = new Map<string, string>() // path -> nodeId
+      if (ext === 'pdf') return 'pdf'
+      if (imageExts.includes(ext)) return 'image'
+      if (videoExts.includes(ext)) return 'video'
+      if (mdExts.includes(ext)) return 'markdown'
+      if (codeExts.includes(ext)) return 'code'
+      return 'text'
+    }
 
-      // Self 노드 찾기
-      const selfNode = graph?.nodes.find(n => n.type === 'self')
+    // 타임스탬프를 한 번만 생성
+    const timestamp = Date.now()
 
-      for (const folderPath of sortedFolders) {
-        const parts = folderPath.split('/')
-        const folderName = parts[parts.length - 1]
-        const parentPath = parts.slice(0, -1).join('/')
+    // 파일 ID 미리 생성
+    const fileIds = validFiles.map((_, index) => `local-${timestamp}-${index}`)
 
+    // 파일 내용 저장용 Map
+    const fileContentsMap = new Map<number, string>()
+
+    // 파일 내용 미리 읽기 (텍스트 파일만)
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i]
+      const type = getFileType(file.name)
+      if (type === 'code' || type === 'markdown' || type === 'text') {
         try {
-          const folderNode = await createNode({
-            type: 'project' as any, // 폴더는 project 타입으로
-            title: folderName,
-            summary: `📁 ${folderPath}`,
-            tags: ['folder', 'directory'],
-            importance: 6,
+          const content = await file.text()
+          fileContentsMap.set(i, content)
+          console.log('[FileTree] Read content for:', file.name, 'length:', content.length)
+        } catch (err) {
+          console.error('파일 읽기 실패:', file.name, err)
+        }
+      }
+    }
+
+    // 로컬 파일을 NeuralFile 형태로 변환 (content 포함)
+    const localFiles: NeuralFile[] = validFiles.map((file, index) => {
+      const rawPath = (file as any).webkitRelativePath || file.name
+      const path = normalizePath(rawPath)
+      const id = fileIds[index]
+      const type = getFileType(file.name) as NeuralFile['type']
+      const content = fileContentsMap.get(index)
+
+      // Blob URL 생성 (이미지/비디오용)
+      const blobUrl = URL.createObjectURL(file)
+
+      const neuralFile: NeuralFile = {
+        id,
+        mapId: mapId || 'local',
+        name: file.name,
+        path: path,
+        type: type,
+        url: blobUrl,
+        size: file.size,
+        createdAt: new Date().toISOString(),
+      }
+
+      // content가 있으면 추가
+      if (content) {
+        (neuralFile as any).content = content
+      }
+
+      return neuralFile
+    })
+
+    // 기존 파일 교체 여부 확인
+    if (files.length > 0) {
+      const choice = window.confirm(
+        `기존 파일 ${files.length}개가 있습니다.\n\n` +
+        `[확인] = 기존 파일 교체\n` +
+        `[취소] = 기존 파일 유지하고 추가`
+      )
+
+      if (choice) {
+        // 기존 파일 교체 - 그래프도 초기화
+        setFiles(localFiles)
+
+        // 프로젝트 폴더 이름 추출 (첫 번째 파일의 루트 폴더)
+        const firstFilePath = localFiles[0]?.path
+        const projectName = firstFilePath?.split('/')[0] || 'Project'
+
+        // 그래프 노드도 초기화 (SELF 노드만 유지, 이름 업데이트)
+        const selfNode = graph?.nodes.find(n => n.type === 'self')
+        if (selfNode && graph) {
+          // SELF 노드 제목을 프로젝트 이름으로 업데이트
+          const updatedSelfNode = { ...selfNode, title: projectName }
+
+          // === 1. 폴더 구조에서 폴더 노드 생성 ===
+          // (루트 폴더는 SELF 노드이므로 제외)
+          const folderPaths = new Set<string>()
+          localFiles.forEach(file => {
+            if (file.path) {
+              const parts = file.path.split('/')
+              // 파일명 제외한 폴더 경로들 수집 (i=2부터: 루트폴더 제외)
+              for (let i = 2; i < parts.length; i++) {
+                folderPaths.add(parts.slice(0, i).join('/'))
+              }
+            }
           })
 
-          if (folderNode) {
-            folderNodeMap.set(folderPath, folderNode.id)
+          const selfX = (selfNode as any).x || 0
+          const selfY = (selfNode as any).y || 0
 
-            // 부모 폴더 또는 Self 노드와 연결
-            const parentNodeId = parentPath ? folderNodeMap.get(parentPath) : selfNode?.id
-            if (parentNodeId) {
-              await createEdge({
-                sourceId: parentNodeId,
-                targetId: folderNode.id,
-                type: 'parent_child',
-                weight: 0.8,
+          // 폴더 노드 생성
+          const folderNodes = Array.from(folderPaths).map((path, index) => {
+            const angle = (2 * Math.PI * index) / (folderPaths.size || 1)
+            const depth = path.split('/').length
+            const radius = 100 + depth * 80
+            return {
+              id: `folder-${path}`,
+              type: 'folder' as const,
+              title: path.split('/').pop() || path,
+              summary: `폴더`,
+              x: selfX + radius * Math.cos(angle),
+              y: selfY + radius * Math.sin(angle),
+              importance: 7,
+              tags: ['folder'],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              expanded: true,
+              pinned: false,
+              parentId: undefined as string | undefined,
+            }
+          })
+
+          // 폴더 간 부모-자식 관계 설정
+          folderNodes.forEach(folder => {
+            const pathParts = folder.id.replace('folder-', '').split('/')
+            if (pathParts.length > 1) {
+              const parentPath = pathParts.slice(0, -1).join('/')
+              folder.parentId = `folder-${parentPath}`
+            }
+          })
+
+          // === 2. 파일 노드 생성 ===
+          const fileNodes = localFiles.map((file, index) => {
+            const angle = (2 * Math.PI * index) / localFiles.length
+            const radius = 150 + (file.path?.split('/').length || 1) * 60
+
+            // 부모 폴더 찾기 (루트 폴더 파일은 SELF에 연결)
+            let parentId: string = updatedSelfNode.id  // 기본: SELF에 연결
+            if (file.path) {
+              const parts = file.path.split('/')
+              // parts.length > 2면 하위 폴더 파일 → 폴더 노드에 연결
+              if (parts.length > 2) {
+                parentId = `folder-${parts.slice(0, -1).join('/')}`
+              }
+              // parts.length === 2면 루트폴더 직속 파일 → SELF에 연결
+            }
+
+            return {
+              id: `node-${file.id}`,
+              type: file.type === 'image' || file.type === 'video' ? 'memory' as const : 'doc' as const,
+              title: file.name,
+              summary: `${file.type} 파일`,
+              x: selfX + radius * Math.cos(angle),
+              y: selfY + radius * Math.sin(angle),
+              importance: 5,
+              tags: [file.type],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              expanded: false,
+              pinned: false,
+              parentId,
+            }
+          })
+
+          // === 3. 엣지 생성: 폴더 구조 ===
+          const structureEdges: any[] = []
+
+          // 루트 폴더들을 SELF에 연결
+          const rootFolderPaths = Array.from(folderPaths).filter(p => !p.includes('/') || p.split('/').length === 1)
+          rootFolderPaths.forEach(path => {
+            structureEdges.push({
+              id: `edge-self-to-folder-${path}`,
+              source: selfNode.id,
+              target: `folder-${path}`,
+              type: 'contains' as const,
+              strength: 8,
+            })
+          })
+
+          // 폴더 간 연결
+          folderNodes.forEach(folder => {
+            if (folder.parentId) {
+              structureEdges.push({
+                id: `edge-${folder.parentId}-to-${folder.id}`,
+                source: folder.parentId,
+                target: folder.id,
+                type: 'contains' as const,
+                strength: 6,
               })
             }
-          }
-        } catch (err) {
-          console.error('폴더 노드 생성 실패:', folderPath, err)
-        }
-      }
+          })
 
-      // 2. 파일 업로드 및 폴더에 연결
-      let lastResult = null
-      for (let i = 0; i < validFiles.length; i++) {
-        setUploadingCount(validFiles.length - i)
-        const { file, path } = validFiles[i]
+          // 파일을 부모 폴더에 연결
+          fileNodes.forEach(fileNode => {
+            const targetFolder = fileNode.parentId || selfNode.id
+            structureEdges.push({
+              id: `edge-${targetFolder}-to-${fileNode.id}`,
+              source: targetFolder,
+              target: fileNode.id,
+              type: 'contains' as const,
+              strength: 5,
+            })
+          })
 
-        // 파일이 속한 폴더 경로
-        const pathParts = path.split('/')
-        const parentFolderPath = pathParts.slice(0, -1).join('/')
+          // === 4. Import 분석으로 종속성 엣지 생성 ===
+          const dependencyEdges: any[] = []
 
-        const result = await processFileUpload(file, path)
-
-        // 파일 노드를 폴더 노드에 연결
-        if (result && parentFolderPath && folderNodeMap.has(parentFolderPath)) {
-          const folderNodeId = folderNodeMap.get(parentFolderPath)!
-
-          // 최근 생성된 노드 찾기 (파일명으로)
-          const fileNode = graph?.nodes.find(n => n.title === result.name || n.title === file.name)
-          if (fileNode) {
-            try {
-              // 1. Edge 생성 (시각적 연결)
-              await createEdge({
-                sourceId: folderNodeId,
-                targetId: fileNode.id,
-                type: 'parent_child',
-                weight: 0.6,
-              })
-
-              // 2. Node 데이터 업데이트 (논리적 연결 - 필터링용)
-              // Store에 직접 업데이트 (API 호출 없이 UI 반응성 위함, 필요시 API 호출 추가)
-              useNeuralMapStore.getState().updateNode(fileNode.id, {
-                parentId: folderNodeId
-              })
-
-            } catch (err) {
-              // 이미 연결되어 있을 수 있음
+          // 파일 ID와 경로 맵 생성
+          const filePathToId = new Map<string, string>()
+          localFiles.forEach(file => {
+            if (file.path) {
+              filePathToId.set(file.path, `node-${file.id}`)
+              // 파일명만으로도 검색 가능
+              filePathToId.set(file.name, `node-${file.id}`)
             }
-          }
+          })
+
+          localFiles.forEach(file => {
+            const content = (file as any).content
+            if (!content || !['code', 'markdown'].includes(file.type)) return
+
+            // Import 문 파싱
+            const imports: string[] = []
+
+            // ES6 imports: import X from './path'
+            const esMatches = content.matchAll(/import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s*,?\s*)*\s*from\s*['"]([^'"]+)['"]/g)
+            for (const match of esMatches) {
+              imports.push(match[1])
+            }
+
+            // CommonJS: require('./path')
+            const cjsMatches = content.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)
+            for (const match of cjsMatches) {
+              imports.push(match[1])
+            }
+
+            // 상대 경로 import만 처리 (npm 패키지 제외)
+            imports.forEach(importPath => {
+              if (!importPath.startsWith('.')) return // npm 패키지 스킵
+
+              // 상대 경로 해석
+              const currentDir = file.path?.split('/').slice(0, -1).join('/') || ''
+              let resolvedPath = importPath
+
+              if (importPath.startsWith('./')) {
+                resolvedPath = currentDir ? `${currentDir}/${importPath.slice(2)}` : importPath.slice(2)
+              } else if (importPath.startsWith('../')) {
+                const dirParts = currentDir.split('/')
+                let upCount = 0
+                let restPath = importPath
+                while (restPath.startsWith('../')) {
+                  upCount++
+                  restPath = restPath.slice(3)
+                }
+                resolvedPath = [...dirParts.slice(0, -upCount), restPath].join('/')
+              }
+
+              // 확장자 없으면 추가 시도
+              const extensions = ['', '.js', '.ts', '.jsx', '.tsx', '.json']
+              for (const ext of extensions) {
+                const targetId = filePathToId.get(resolvedPath + ext) || filePathToId.get(resolvedPath.split('/').pop() + ext)
+                if (targetId && targetId !== `node-${file.id}`) {
+                  dependencyEdges.push({
+                    id: `dep-${file.id}-imports-${targetId}`,
+                    source: `node-${file.id}`,
+                    target: targetId,
+                    type: 'imports' as const,
+                    strength: 7,
+                  })
+                  break
+                }
+              }
+            })
+          })
+
+          console.log('[FileTree] Created graph:', {
+            folders: folderNodes.length,
+            files: fileNodes.length,
+            structureEdges: structureEdges.length,
+            dependencyEdges: dependencyEdges.length,
+          })
+
+          useNeuralMapStore.getState().setGraph({
+            ...graph,
+            nodes: [updatedSelfNode, ...folderNodes, ...fileNodes] as any,
+            edges: [...structureEdges, ...dependencyEdges] as any,
+          })
+
+          // 모든 폴더 노드를 expanded로 초기화
+          const allExpandedIds = [
+            updatedSelfNode.id,
+            ...folderNodes.map(f => f.id)
+          ]
+          useNeuralMapStore.getState().setExpandedNodes(allExpandedIds)
         }
-
-        if (result) lastResult = result
+      } else {
+        // 기존 파일에 추가
+        const existingPaths = new Set(files.map(f => f.path))
+        const newFiles = localFiles.filter(f => !existingPaths.has(f.path))
+        setFiles([...files, ...newFiles])
       }
+    } else {
+      setFiles(localFiles)
+      // 새 파일 노드 생성 - SELF 주변에 원형으로 배치
+      const initialSelfNode = graph?.nodes.find(n => n.type === 'self')
+      if (initialSelfNode && graph) {
+        const selfX = (initialSelfNode as any).x || 500
+        const selfY = (initialSelfNode as any).y || 400
+        const radius = 200
+        const fileNodes = localFiles.map((file, index) => {
+          const angle = (2 * Math.PI * index) / localFiles.length
+          return {
+            id: `node-${file.id}`,
+            type: file.type === 'image' || file.type === 'video' ? 'memory' as const : 'doc' as const,
+            title: file.name,
+            summary: `${file.type} 파일`,
+            x: selfX + radius * Math.cos(angle),
+            y: selfY + radius * Math.sin(angle),
+            importance: 5,
+            tags: [file.type],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            expanded: false,
+            pinned: false,
+          }
+        })
 
-      if (lastResult) {
-        setSelectedFileId(lastResult.id)
-      }
+        // 파일 노드를 SELF에 연결하는 엣지 생성
+        const selfNode = graph.nodes.find(n => n.type === 'self')
+        const newEdges = selfNode ? fileNodes.map(node => ({
+          id: `edge-${node.id}-to-self`,
+          source: selfNode.id,
+          target: node.id,
+          type: 'contains' as const,
+          strength: 5,
+        })) : []
 
-      console.log(`폴더 업로드 완료: ${sortedFolders.length}개 폴더, ${validFiles.length}개 파일`)
-    } catch (error) {
-      console.error('Folder upload error:', error)
-    } finally {
-      setIsUploading(false)
-      setUploadingCount(0)
-      if (folderInputRef.current) {
-        folderInputRef.current.value = ''
+        useNeuralMapStore.getState().setGraph({
+          ...graph,
+          nodes: [...graph.nodes, ...fileNodes] as any,
+          edges: [...graph.edges, ...newEdges] as any,
+        })
       }
+    }
+
+    console.log(`✅ ${localFiles.length}개 파일 로드 완료!`)
+
+    // 입력 초기화
+    if (folderInputRef.current) {
+      folderInputRef.current.value = ''
     }
   }
 
   return (
     <div className={cn('h-full flex flex-col text-[13px]', isDark ? 'bg-[#1e1e1e]' : 'bg-[#f3f3f3]')}>
+      {/* 상위 메뉴 (VS Code 상단 메뉴 스타일) */}
+      <div
+        className={cn(
+          'h-[36px] flex items-center justify-between px-3 border-b text-[12px] font-semibold uppercase tracking-wide',
+          isDark ? 'bg-[#181818] border-[#2c2c2c] text-[#cfcfcf]' : 'bg-white border-[#e5e5e5] text-[#4a4a4a]'
+        )}
+      >
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!mapId}
+          className={cn(
+            'px-2 py-1 rounded-md transition-colors flex items-center gap-1',
+            isDark ? 'hover:bg-[#2c2c2c]' : 'hover:bg-[#f4f4f4]',
+            !mapId && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          <span>+ New</span>
+        </button>
+        <button
+          onClick={() => folderInputRef.current?.click()}
+          disabled={!mapId}
+          className={cn(
+            'px-2 py-1 rounded-md transition-colors flex items-center gap-1',
+            isDark ? 'hover:bg-[#2c2c2c]' : 'hover:bg-[#f4f4f4]',
+            !mapId && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          <span>오픈폴더</span>
+        </button>
+      </div>
+
       {/* Obsidian 스타일 상단 툴바 */}
       <div className={cn(
         'h-[40px] flex items-center justify-center gap-1 px-2 border-b select-none',
@@ -964,7 +1291,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         type="file"
         multiple
         onChange={handleFileUpload}
-        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.mp4,.webm,.mov,.avi,.md,.markdown,.txt"
+        accept="*/*"
         className="hidden"
       />
       {/* 숨겨진 폴더 입력 */}
@@ -976,6 +1303,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         directory=""
         multiple
         onChange={handleFolderUpload}
+        accept="*/*"
         className="hidden"
       />
     </div>

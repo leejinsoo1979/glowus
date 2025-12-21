@@ -67,212 +67,110 @@ function getExtension(fileName: string): string {
 }
 
 // 세련된 파일 타입 아이콘 (얇은 선, 조화로운 색상)
-function drawFileTypeIcon(ctx: CanvasRenderingContext2D, ext: string, x: number, y: number, size: number) {
-  ctx.save()
-  ctx.translate(x, y)
-  const s = size / 12 // 스케일 팩터
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
+import { renderToStaticMarkup } from 'react-dom/server'
+import {
+  BsFiletypePdf,
+  BsFiletypeJs,
+  BsFiletypeTsx,
+  BsFiletypeJsx,
+  BsFiletypeHtml,
+  BsFiletypeCss,
+  BsFiletypeJson,
+  BsFiletypeMd,
+  BsFiletypePy,
+  BsFiletypeJava,
+  BsFiletypeRb,
+  BsFiletypeSh,
+  BsFiletypeYml,
+  BsFiletypeXml,
+  BsFiletypePng,
+  BsFiletypeJpg,
+  BsFiletypeGif,
+  BsFiletypeSvg,
+  BsFileEarmarkText,
+  BsFileEarmarkCode,
+  BsFolder,
+  BsFolderFill
+} from 'react-icons/bs'
 
-  // 통일된 색상 팔레트 (회색 계열 기반)
-  const colors = {
-    react: '#8eb8e5',    // 부드러운 파란색
-    ts: '#7ba7d4',       // 차분한 파란색
-    js: '#d4c87b',       // 부드러운 노란색
-    css: '#b794c7',      // 연한 보라색
-    html: '#c98a8a',     // 연한 빨간색
-    json: '#9ca3af',     // 회색
-    md: '#8bc49a',       // 연한 초록색
-    image: '#7bc4b8',    // 청록색
-    pdf: '#c98a8a',      // 연한 빨간색
-    config: '#c4a87b',   // 연한 황갈색
-    default: '#9ca3af',  // 회색
-  }
+// 아이콘 이미지 캐시
+const iconImageCache: Record<string, HTMLImageElement> = {}
 
-  switch (ext) {
-    case 'tsx':
-    case 'jsx':
-      // React - 얇은 원자 궤도
-      ctx.strokeStyle = colors.react
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.ellipse(0, 0, 5 * s, 2 * s, 0, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.ellipse(0, 0, 5 * s, 2 * s, Math.PI / 3, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.ellipse(0, 0, 5 * s, 2 * s, -Math.PI / 3, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.arc(0, 0, 1.2 * s, 0, Math.PI * 2)
-      ctx.fillStyle = colors.react
-      ctx.fill()
-      break
-    case 'ts':
-      // TypeScript - 깔끔한 T
-      ctx.strokeStyle = colors.ts
-      ctx.lineWidth = 1 * s
-      ctx.beginPath()
-      ctx.moveTo(-4 * s, -4 * s)
-      ctx.lineTo(4 * s, -4 * s)
-      ctx.moveTo(0, -4 * s)
-      ctx.lineTo(0, 5 * s)
-      ctx.stroke()
-      break
-    case 'js':
-      // JavaScript - 깔끔한 J
-      ctx.strokeStyle = colors.js
-      ctx.lineWidth = 1 * s
-      ctx.beginPath()
-      ctx.moveTo(2 * s, -4 * s)
-      ctx.lineTo(2 * s, 3 * s)
-      ctx.quadraticCurveTo(2 * s, 5 * s, -2 * s, 5 * s)
-      ctx.stroke()
-      break
-    case 'css':
-    case 'scss':
-      // CSS - 물결 (스타일)
-      ctx.strokeStyle = colors.css
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-5 * s, -2 * s)
-      ctx.quadraticCurveTo(-2 * s, -5 * s, 0, -2 * s)
-      ctx.quadraticCurveTo(2 * s, 1 * s, 5 * s, -2 * s)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(-5 * s, 2 * s)
-      ctx.quadraticCurveTo(-2 * s, -1 * s, 0, 2 * s)
-      ctx.quadraticCurveTo(2 * s, 5 * s, 5 * s, 2 * s)
-      ctx.stroke()
-      break
-    case 'html':
-      // HTML - 얇은 꺽쇠
-      ctx.strokeStyle = colors.html
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-2 * s, -4 * s)
-      ctx.lineTo(-5 * s, 0)
-      ctx.lineTo(-2 * s, 4 * s)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(2 * s, -4 * s)
-      ctx.lineTo(5 * s, 0)
-      ctx.lineTo(2 * s, 4 * s)
-      ctx.stroke()
-      break
-    case 'json':
-      // JSON - 얇은 중괄호
-      ctx.strokeStyle = colors.json
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-1 * s, -5 * s)
-      ctx.quadraticCurveTo(-4 * s, -5 * s, -4 * s, -2 * s)
-      ctx.lineTo(-4 * s, -1 * s)
-      ctx.quadraticCurveTo(-4 * s, 0, -5 * s, 0)
-      ctx.quadraticCurveTo(-4 * s, 0, -4 * s, 1 * s)
-      ctx.lineTo(-4 * s, 2 * s)
-      ctx.quadraticCurveTo(-4 * s, 5 * s, -1 * s, 5 * s)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(1 * s, -5 * s)
-      ctx.quadraticCurveTo(4 * s, -5 * s, 4 * s, -2 * s)
-      ctx.lineTo(4 * s, -1 * s)
-      ctx.quadraticCurveTo(4 * s, 0, 5 * s, 0)
-      ctx.quadraticCurveTo(4 * s, 0, 4 * s, 1 * s)
-      ctx.lineTo(4 * s, 2 * s)
-      ctx.quadraticCurveTo(4 * s, 5 * s, 1 * s, 5 * s)
-      ctx.stroke()
-      break
-    case 'md':
-    case 'markdown':
-      // Markdown - 깔끔한 M
-      ctx.strokeStyle = colors.md
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-5 * s, 4 * s)
-      ctx.lineTo(-5 * s, -4 * s)
-      ctx.lineTo(0, 1 * s)
-      ctx.lineTo(5 * s, -4 * s)
-      ctx.lineTo(5 * s, 4 * s)
-      ctx.stroke()
-      break
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'webp':
-    case 'svg':
-      // 이미지 - 심플한 산
-      ctx.strokeStyle = colors.image
-      ctx.lineWidth = 0.8 * s
-      ctx.strokeRect(-5 * s, -4 * s, 10 * s, 8 * s)
-      ctx.beginPath()
-      ctx.moveTo(-4 * s, 3 * s)
-      ctx.lineTo(-1 * s, -1 * s)
-      ctx.lineTo(1 * s, 1 * s)
-      ctx.lineTo(4 * s, -2 * s)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.arc(3 * s, -2 * s, 1 * s, 0, Math.PI * 2)
-      ctx.stroke()
-      break
-    case 'pdf':
-      // PDF - 문서 아이콘
-      ctx.strokeStyle = colors.pdf
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-3 * s, -5 * s)
-      ctx.lineTo(2 * s, -5 * s)
-      ctx.lineTo(4 * s, -3 * s)
-      ctx.lineTo(4 * s, 5 * s)
-      ctx.lineTo(-3 * s, 5 * s)
-      ctx.closePath()
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(2 * s, -5 * s)
-      ctx.lineTo(2 * s, -3 * s)
-      ctx.lineTo(4 * s, -3 * s)
-      ctx.stroke()
-      break
-    case 'yaml':
-    case 'yml':
-    case 'env':
-      // 설정 - 심플한 슬라이더
-      ctx.strokeStyle = colors.config
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-5 * s, -3 * s); ctx.lineTo(5 * s, -3 * s)
-      ctx.moveTo(-5 * s, 0); ctx.lineTo(5 * s, 0)
-      ctx.moveTo(-5 * s, 3 * s); ctx.lineTo(5 * s, 3 * s)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.arc(-2 * s, -3 * s, 1.5 * s, 0, Math.PI * 2)
-      ctx.arc(2 * s, 0, 1.5 * s, 0, Math.PI * 2)
-      ctx.arc(-1 * s, 3 * s, 1.5 * s, 0, Math.PI * 2)
-      ctx.fillStyle = colors.config
-      ctx.fill()
-      break
-    default:
-      // 기본 - 심플한 문서
-      ctx.strokeStyle = colors.default
-      ctx.lineWidth = 0.8 * s
-      ctx.beginPath()
-      ctx.moveTo(-3 * s, -5 * s)
-      ctx.lineTo(2 * s, -5 * s)
-      ctx.lineTo(4 * s, -3 * s)
-      ctx.lineTo(4 * s, 5 * s)
-      ctx.lineTo(-3 * s, 5 * s)
-      ctx.closePath()
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(2 * s, -5 * s)
-      ctx.lineTo(2 * s, -3 * s)
-      ctx.lineTo(4 * s, -3 * s)
-      ctx.stroke()
-      break
+// 아이콘 컴포넌트 매핑
+const getIconComponent = (ext: string) => {
+  const lower = ext.toLowerCase()
+  switch (lower) {
+    case 'pdf': return BsFiletypePdf
+    case 'js': return BsFiletypeJs
+    case 'mjs': return BsFiletypeJs
+    case 'jsx': return BsFiletypeJsx
+    case 'ts': return BsFiletypeTsx // Use TSX icon for TS
+    case 'tsx': return BsFiletypeTsx
+    case 'html': return BsFiletypeHtml
+    case 'css': return BsFiletypeCss
+    case 'scss': return BsFiletypeCss
+    case 'sass': return BsFiletypeCss
+    case 'json': return BsFiletypeJson
+    case 'md': return BsFiletypeMd
+    case 'markdown': return BsFiletypeMd
+    case 'py': return BsFiletypePy
+    case 'java': return BsFiletypeJava
+    case 'rb': return BsFiletypeRb
+    case 'sh': return BsFiletypeSh
+    case 'yml': return BsFiletypeYml
+    case 'yaml': return BsFiletypeYml
+    case 'xml': return BsFiletypeXml
+    case 'png': return BsFiletypePng
+    case 'jpg': return BsFiletypeJpg
+    case 'jpeg': return BsFiletypeJpg
+    case 'gif': return BsFiletypeGif
+    case 'svg': return BsFiletypeSvg
+    default: return BsFileEarmarkCode
   }
-  ctx.restore()
+}
+
+// 아이콘 이미지 로드/생성 Helper
+const getIconImage = (ext: string, color: string) => {
+  const cacheKey = `${ext}-${color}`
+  if (iconImageCache[cacheKey]) return iconImageCache[cacheKey]
+
+  const IconComp = getIconComponent(ext)
+  try {
+    const svgString = renderToStaticMarkup(
+      <IconComp size={64} color={color} style={{ display: 'block' }} />
+    )
+    const encoded = encodeURIComponent(svgString)
+    const img = new Image()
+    img.src = `data:image/svg+xml;charset=utf-8,${encoded}`
+    iconImageCache[cacheKey] = img
+    return img
+  } catch (e) {
+    console.error('Icon load failed:', e)
+    return null
+  }
+}
+
+function drawFileTypeIcon(ctx: CanvasRenderingContext2D, ext: string, x: number, y: number, size: number, color: string) {
+  const img = getIconImage(ext, color)
+
+  if (img && img.complete && img.naturalWidth > 0) {
+    // 이미지 그리기 (중앙 정렬)
+    // 원 안에 꽉 채우기 위해 margin 고려 (radius * 1.1)
+    // size가 지름이라면 0.6배, 반지름이라면 1.2배
+    // 여기서 size는 radius(actualSize)로 넘어옴 (아래 호출부 확인)
+    const iconSize = size * 1.1
+    ctx.drawImage(img, x - iconSize / 2, y - iconSize / 2, iconSize, iconSize)
+  } else {
+    // 로딩 중이거나 실패 시 기본 텍스트 처리
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.fillStyle = color
+    ctx.font = `bold ${size / 2}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(ext.slice(0, 3).toUpperCase(), 0, 0)
+    ctx.restore()
+  }
 }
 
 // 파일 크기 → 노드 크기 변환 (6~12 범위, 균일하게)
@@ -323,6 +221,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const selectedNodeIds = useNeuralMapStore((s) => s.selectedNodeIds)
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const openModal = useNeuralMapStore((s) => s.openModal)
+  const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
   const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
@@ -404,6 +303,9 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     const visibleNodes = graph.nodes.filter(node => isVisible(node.id))
     const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
 
+    console.log('[Graph2DView] Total nodes:', graph.nodes.length, 'Visible:', visibleNodes.length)
+    console.log('[Graph2DView] Node types:', graph.nodes.map(n => ({ id: n.id, type: n.type, parentId: (n as any).parentId })))
+
     const nodes: GraphNode[] = visibleNodes.map((node) => {
       // 노드 제목으로 파일 매칭
       const matchedFile = fileMap.get(node.title) || fileMap.get(node.id)
@@ -415,14 +317,12 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       if (hasFileExt) {
         nodeColor = FILE_TYPE_COLORS[ext]
       }
-      if (selectedNodeIds.includes(node.id)) {
-        nodeColor = SELECTED_COLOR
-      }
+      // 선택 상태는 렌더링 시점에 nodeCanvasObject에서 처리하므로 여기서 변경하지 않음 (리렌더링 방지)
 
       // 크기 결정 - 더 작게!
       let nodeSize = 4 // 기본 크기 (작게)
       if (node.type === 'self') {
-        nodeSize = 16 // Self 노드 - 적당한 크기
+        nodeSize = 10 // Self 노드 크기 축소 (사용자 요청)
       } else if (node.type === 'folder') {
         nodeSize = 5 // 폴더는 약간 크게
       } else if (matchedFile?.size) {
@@ -465,14 +365,35 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       }))
 
     return { nodes, links }
-  }, [graph, files, fileMap, fileSizeRange, selectedNodeIds, expandedNodeIds, radialDistance])
+  }, [graph, files, fileMap, fileSizeRange, expandedNodeIds, radialDistance])
 
-  // 노드 클릭 핸들러
+  // 디버그: graphData 내용 출력
+  console.log('[Graph2DView] graphData nodes:', graphData.nodes.map(n => ({ id: n.id, name: n.name, x: n.x, y: n.y, type: n.type })))
+
+  // 노드 클릭 핸들러 - 선택 + 코드 미리보기
   const handleNodeClick = useCallback((node: any) => {
     if (node?.id) {
       setSelectedNodes([node.id])
+
+      // 1. Try direct ID match
+      let targetFile = files.find(f => f.id === node.id)
+
+      // 2. Try sourceRef if available (from neural node data)
+      if (!targetFile && node.sourceRef?.fileId) {
+        targetFile = files.find(f => f.id === node.sourceRef.fileId)
+      }
+
+      // 3. Legacy support: 'node-' prefix
+      if (!targetFile && (node.id as string).startsWith('node-')) {
+        const fileId = (node.id as string).replace('node-', '')
+        targetFile = files.find(f => f.id === fileId)
+      }
+
+      if (targetFile) {
+        openCodePreview(targetFile)
+      }
     }
-  }, [setSelectedNodes])
+  }, [setSelectedNodes, files, openCodePreview])
 
   // 노드 더블클릭 - 편집 모달
   const handleNodeDoubleClick = useCallback((node: any) => {
@@ -508,8 +429,14 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     // 색상 결정
     let fillColor = node.color || '#6b7280'
+    // 파일 타입이 있으면 해당 색상 사용 (배경)
+    if (node.fileType) {
+      fillColor = FILE_TYPE_COLORS[node.fileType.toLowerCase()] || '#6b7280'
+    }
+
     if (isSelected || isHovered) {
-      fillColor = SELECTED_COLOR
+      // 선택 시 테두리로 강조하되, 배경색은 유지하거나 약간 밝게
+      // 여기서는 원래 색상 유지하고 테두리 그림자 추가
     }
 
     // 그림자/글로우 효과
@@ -591,9 +518,10 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
       ctx.restore()
     } else if (node.fileType) {
-      // 파일 타입 아이콘
-      const iconSize = Math.max(actualSize * 1.2, 8)
-      drawFileTypeIcon(ctx, node.fileType, node.x, node.y, iconSize)
+      // 파일 타입 아이콘 (흰색)
+      // actualSize는 반지름. 원 안에 안전하게 넣으려면 actualSize * 1.2 정도 (지름의 60%)
+      const iconSize = actualSize * 1.2
+      drawFileTypeIcon(ctx, node.fileType, node.x, node.y, iconSize, '#FFFFFF')
     }
 
     // 라벨 그리기
@@ -627,9 +555,19 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
     ctx.lineTo(end.x, end.y)
-    ctx.strokeStyle = isDark ? 'rgba(107, 114, 128, 0.3)' : 'rgba(156, 163, 175, 0.4)'
-    ctx.lineWidth = 1 / globalScale
+
+    // 엣지 타입별 색상
+    if (link.type === 'imports') {
+      ctx.strokeStyle = '#f59e0b'  // 앰버 - import 관계
+      ctx.lineWidth = 2 / globalScale
+      ctx.setLineDash([5 / globalScale, 3 / globalScale])
+    } else {
+      ctx.strokeStyle = isDark ? 'rgba(147, 197, 253, 0.7)' : 'rgba(59, 130, 246, 0.7)'  // 파란색 - 구조
+      ctx.lineWidth = 1.5 / globalScale
+      ctx.setLineDash([])
+    }
     ctx.stroke()
+    ctx.setLineDash([])
   }, [isDark])
 
   // 그래프 로드 후 자동 줌 맞춤 (SELF 노드 중심)
@@ -662,11 +600,13 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       }}
     >
       <ForceGraph2D
+        key={`graph-${graphData.nodes.length}`}
         ref={graphRef}
         graphData={graphData}
         width={dimensions.width}
         height={dimensions.height}
         backgroundColor="transparent"
+
         // 노드 설정
         nodeCanvasObject={nodeCanvasObject}
         nodePointerAreaPaint={(node: any, color, ctx) => {
@@ -684,26 +624,33 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         // 링크 설정
         linkCanvasObject={linkCanvasObject}
         linkDirectionalParticles={0}
-        // 물리 엔진 설정 (Force-directed)
+        // 물리 엔진 설정 - 빠르게 안정화
         dagMode={undefined}
-        d3VelocityDecay={0.4}
-        d3AlphaDecay={0.01}
-        cooldownTicks={300}
-        warmupTicks={200}
+        d3VelocityDecay={0.6}
+        d3AlphaDecay={0.1}
+        cooldownTicks={50}
+        warmupTicks={50}
         // 노드 간 거리 (방사거리와 연동) - 강한 척력으로 퍼뜨림
         // @ts-ignore - d3Force is a valid prop but not in type definitions
         d3Force={(forceName: string, force: any) => {
-          const effectiveDistance = radialDistance * 1.2
-          const effectiveStrength = -radialDistance * 4 // 훨씬 강한 척력
+          const effectiveDistance = radialDistance * 1.5
+          const effectiveStrength = -radialDistance * 8 // 매우 강한 척력으로 노드 분리
 
           if (forceName === 'charge') {
-            force.strength(effectiveStrength).distanceMax(radialDistance * 5)
+            // 강한 척력 + 넓은 영향 범위로 노드들이 서로 밀어냄
+            force.strength(effectiveStrength).distanceMax(radialDistance * 8)
           }
           if (forceName === 'link') {
-            force.distance(effectiveDistance).strength(0.15)
+            // 약한 링크 강도로 노드들이 독립적으로 움직임
+            force.distance(effectiveDistance).strength(0.05)
           }
           if (forceName === 'center') {
-            force.strength(0.02)
+            // 약한 중심력
+            force.strength(0.01)
+          }
+          // collision force 추가로 노드 겹침 방지
+          if (forceName === 'collide') {
+            force.radius(20).strength(0.8)
           }
         }}
         // 상호작용

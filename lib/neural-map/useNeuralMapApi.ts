@@ -191,6 +191,8 @@ export function useNeuralMapApi(mapId: string | null) {
         formData.append('path', path)
       }
 
+      console.log('[uploadFile] Sending request for:', file.name, 'size:', file.size, 'path:', path)
+
       const res = await fetch(`/api/neural-map/${mapId}/files`, {
         method: 'POST',
         body: formData,
@@ -198,14 +200,16 @@ export function useNeuralMapApi(mapId: string | null) {
 
       if (!res.ok) {
         const error = await res.json()
+        console.error('[uploadFile] Server error for', file.name, ':', error)
         throw new Error(error.error || 'Failed to upload file')
       }
 
       const uploadedFile = await res.json()
+      console.log('[uploadFile] Success:', file.name, uploadedFile)
       addFile(uploadedFile)
       return uploadedFile
     } catch (err) {
-      console.error('Upload file error:', err)
+      console.error('[uploadFile] Upload failed for', file.name, ':', err)
       return null
     } finally {
       setIsSubmitting(false)

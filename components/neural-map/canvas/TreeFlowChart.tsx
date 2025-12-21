@@ -18,6 +18,14 @@ import {
   ArrowDown,
   ArrowRight,
 } from 'lucide-react'
+import {
+  BsFiletypePdf, BsFiletypeJsx, BsFiletypeTsx, BsFiletypeJs,
+  BsFiletypeHtml, BsFiletypeCss, BsFiletypeScss, BsFiletypeJson, BsFiletypeMd,
+  BsFiletypePy, BsFiletypeJava, BsFiletypeRb, BsFiletypePhp,
+  BsFiletypeXml, BsFiletypeYml, BsFiletypeSql,
+  BsFileEarmarkCode, BsFileEarmarkText, BsFileEarmarkImage, BsFileEarmarkPlay,
+  BsFileEarmarkZip, BsFileEarmark
+} from 'react-icons/bs'
 
 // Layout direction type
 type LayoutDirection = 'top-down' | 'left-right'
@@ -26,6 +34,7 @@ interface TreeNode {
   id: string
   node: NeuralNode
   children: TreeNode[]
+  totalChildrenCount: number // 로컬에서 접힌 것과 상관없이 실제 자식 수
   depth: number
   x: number
   y: number
@@ -45,15 +54,43 @@ const VERTICAL_GAP = 70
 
 // Get icon for node type
 function getNodeIcon(node: NeuralNode) {
-  const type = node.type as string
+  const type = node.type
   const title = node.title?.toLowerCase() || ''
 
   if (type === 'folder') return Folder
   if (type === 'self') return GitBranch
-  if (type === 'code' || title.endsWith('.tsx') || title.endsWith('.ts') || title.endsWith('.jsx') || title.endsWith('.js')) return FileCode
-  if (type === 'config' || title.endsWith('.json') || title.endsWith('.yaml') || title.endsWith('.yml')) return Settings
-  if (type === 'doc' || title.endsWith('.md')) return FileText
-  return File
+
+  const ext = title.split('.').pop() || ''
+
+  switch (ext) {
+    case 'pdf': return BsFiletypePdf
+    case 'tsx': return BsFiletypeTsx
+    case 'ts': return BsFileEarmarkCode
+    case 'jsx': return BsFiletypeJsx
+    case 'js': return BsFiletypeJs
+    case 'html': return BsFiletypeHtml
+    case 'css': return BsFiletypeCss
+    case 'scss': return BsFiletypeScss
+    case 'json': return BsFiletypeJson
+    case 'md': return BsFiletypeMd
+    case 'py': return BsFiletypePy
+    case 'java': return BsFiletypeJava
+    case 'go': return BsFileEarmarkCode
+    case 'rb': return BsFiletypeRb
+    case 'php': return BsFiletypePhp
+    case 'xml': return BsFiletypeXml
+    case 'yaml': case 'yml': return BsFiletypeYml
+    case 'sql': return BsFiletypeSql
+    case 'zip': case 'rar': case '7z': return BsFileEarmarkZip
+    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': case 'webp': return BsFileEarmarkImage
+    case 'mp4': case 'webm': case 'mov': return BsFileEarmarkPlay
+    case 'txt': return BsFileEarmarkText
+    default:
+      if (type === 'memory') return BsFileEarmarkImage
+      if ((type as string) === 'config') return BsFiletypeJson
+      if (type === 'doc') return BsFileEarmarkText
+      return BsFileEarmarkCode
+  }
 }
 
 // Get color for node type
@@ -100,7 +137,8 @@ function buildTree(nodes: NeuralNode[], edges: NeuralEdge[]): TreeNode | null {
 
   const childrenMap = new Map<string, string[]>()
   edges.forEach(edge => {
-    if (edge.type === 'parent_child') {
+    // parent_child 또는 contains 타입 엣지 모두 처리
+    if (edge.type === 'parent_child' || (edge.type as string) === 'contains') {
       const children = childrenMap.get(edge.source) || []
       children.push(edge.target)
       childrenMap.set(edge.source, children)
@@ -120,6 +158,7 @@ function buildTree(nodes: NeuralNode[], edges: NeuralEdge[]): TreeNode | null {
       id: nodeId,
       node,
       children,
+      totalChildrenCount: children.length,
       depth,
       x: 0,
       y: 0,
@@ -213,31 +252,66 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
   const graph = useNeuralMapStore((s) => s.graph)
   const selectedNodeIds = useNeuralMapStore((s) => s.selectedNodeIds)
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
+  const files = useNeuralMapStore((s) => s.files)
+  const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
   const [isPanning, setIsPanning] = useState(false)
   const [lastMouse, setLastMouse] = useState({ x: 0, y: 0 })
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('top-down')
+  // Collapsed state
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+
+  const toggleCollapse = useCallback((nodeId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setCollapsedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      } else {
+        next.add(nodeId)
+      }
+      return next
+    })
+  }, [])
 
   // Build tree from graph
   const { tree, dimensions, nodePositions } = useMemo(() => {
     if (!graph) return { tree: null, dimensions: { width: 0, height: 0 }, nodePositions: new Map() }
 
-    const tree = buildTree(graph.nodes, graph.edges)
-    if (!tree) return { tree: null, dimensions: { width: 0, height: 0 }, nodePositions: new Map() }
+    // 1. Build full tree
+    const fullTree = buildTree(graph.nodes, graph.edges)
+    if (!fullTree) return { tree: null, dimensions: { width: 0, height: 0 }, nodePositions: new Map() }
 
-    const dimensions = calculateLayout(tree, layoutDirection)
+    // 2. Prune tree based on collapsed state
+    function pruneTree(node: TreeNode): TreeNode {
+      // If this node is collapsed, return it with empty children
+      if (collapsedIds.has(node.id)) {
+        return { ...node, children: [] }
+      }
+      // Otherwise, prune children recursively
+      return {
+        ...node,
+        children: node.children
+          .map(child => pruneTree(child))
+      }
+    }
+
+    const prunedTree = pruneTree(fullTree)
+
+    // 3. Calculate layout on pruned tree
+    const dimensions = calculateLayout(prunedTree, layoutDirection)
 
     const nodePositions = new Map<string, { x: number; y: number }>()
     function collectPositions(node: TreeNode) {
       nodePositions.set(node.id, { x: node.x + NODE_WIDTH / 2, y: node.y + NODE_HEIGHT / 2 })
       node.children.forEach(collectPositions)
     }
-    collectPositions(tree)
+    collectPositions(prunedTree)
 
-    return { tree, dimensions, nodePositions }
-  }, [graph, layoutDirection])
+    return { tree: prunedTree, dimensions, nodePositions }
+  }, [graph, layoutDirection, collapsedIds])
 
   // Import edges
   const importEdges = useMemo(() => {
@@ -445,7 +519,22 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
         {/* Node container */}
         <g
           transform={`translate(${x}, ${y})`}
-          onClick={() => setSelectedNodes([node.id])}
+          onClick={(e) => {
+            e.stopPropagation()
+            setSelectedNodes([node.id])
+
+            // 파일이면 코드 프리뷰 열기
+            if (node.type !== 'folder' && node.type !== 'self') {
+              let fileId = node.id
+              // node- 접두사 제거 시도
+              if (fileId.startsWith('node-')) fileId = fileId.replace('node-', '')
+
+              const file = files.find(f => f.id === fileId)
+              if (file) {
+                openCodePreview(file)
+              }
+            }
+          }}
           style={{ cursor: 'pointer' }}
         >
           {/* Shadow */}
@@ -505,24 +594,29 @@ export function TreeFlowChart({ className }: TreeFlowChartProps) {
               : node.title}
           </text>
 
-          {/* Children count badge */}
-          {children.length > 0 && (
-            <g transform={`translate(${NODE_WIDTH - 28}, ${(NODE_HEIGHT - 20) / 2})`}>
+          {/* Children count badge or toggle button */}
+          {treeNode.totalChildrenCount > 0 && (
+            <g
+              transform={`translate(${NODE_WIDTH - 28}, ${(NODE_HEIGHT - 20) / 2})`}
+              onClick={(e) => toggleCollapse(node.id, e)}
+              style={{ cursor: 'pointer' }}
+            >
               <rect
                 width={20}
                 height={20}
-                rx={10}
+                rx={4}
                 fill={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}
+                className="hover:fill-blue-500/20 transition-colors"
               />
               <text
                 x={10}
                 y={14}
                 fill={colors.text}
-                fontSize={11}
-                fontWeight={500}
+                fontSize={12}
+                fontWeight={600}
                 textAnchor="middle"
               >
-                {children.length}
+                {collapsedIds.has(node.id) ? '+' : '-'}
               </text>
             </g>
           )}

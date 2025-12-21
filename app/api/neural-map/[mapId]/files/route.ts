@@ -14,6 +14,20 @@ import { NextResponse } from 'next/server'
 const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
+// 파일 확장자 분류 (VS Code 스타일 폴더 업로드 지원)
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp'])
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv'])
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx'])
+const CODE_EXTENSIONS = new Set([
+  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'cson', 'css', 'scss', 'sass', 'less',
+  'html', 'htm', 'xhtml', 'xml', 'yml', 'yaml', 'toml', 'ini', 'cfg', 'conf', 'env', 'sh', 'bash', 'zsh',
+  'py', 'rb', 'php', 'java', 'kt', 'swift', 'go', 'rs', 'c', 'cc', 'cpp', 'h', 'hpp', 'cs', 'sql',
+  'dart', 'scala', 'r', 'lua', 'pl', 'tsv', 'csv', 'ps1', 'dockerfile', 'gradle', 'makefile'
+])
+const TEXT_EXTENSIONS = new Set([
+  'md', 'markdown', 'txt', 'log', 'rtf', 'csv', 'tsv', 'rst', 'tex', 'jsonl', 'ndjson', 'yaml', 'yml'
+])
+
 interface RouteParams {
   params: Promise<{ mapId: string }>
 }
@@ -124,34 +138,61 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // 파일 타입 검증
-    const fileExtension = file.name.split('.').pop()?.toLowerCase()
-    let fileType: 'pdf' | 'image' | 'video' | 'markdown'
+    // 파일 타입 분류 (VS Code처럼 대부분 파일 허용)
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || ''
+    let fileType: 'pdf' | 'image' | 'video' | 'markdown' | 'code' | 'text' | 'binary'
 
     if (fileExtension === 'pdf') {
       fileType = 'pdf'
-    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(fileExtension || '')) {
+    } else if (IMAGE_EXTENSIONS.has(fileExtension)) {
       fileType = 'image'
-    } else if (['mp4', 'webm', 'mov', 'avi'].includes(fileExtension || '')) {
+    } else if (VIDEO_EXTENSIONS.has(fileExtension)) {
       fileType = 'video'
-    } else if (['md', 'markdown', 'txt'].includes(fileExtension || '')) {
+    } else if (MARKDOWN_EXTENSIONS.has(fileExtension)) {
       fileType = 'markdown'
+    } else if (CODE_EXTENSIONS.has(fileExtension)) {
+      fileType = 'code'
+    } else if (TEXT_EXTENSIONS.has(fileExtension)) {
+      fileType = 'text'
     } else {
-      return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
+      fileType = 'binary'
     }
 
     // Storage에 파일 업로드 (adminSupabase for storage operations)
     const fileName = `${userId}/${mapId}/${Date.now()}-${file.name}`
+
+    // MIME 타입 결정 - 코드 파일도 정상 업로드되도록
+    let contentType = file.type || 'application/octet-stream'
+    if (!contentType || contentType === 'application/octet-stream') {
+      // 확장자 기반으로 MIME 타입 설정
+      const mimeTypes: Record<string, string> = {
+        'ts': 'text/typescript',
+        'tsx': 'text/typescript',
+        'js': 'text/javascript',
+        'jsx': 'text/javascript',
+        'json': 'application/json',
+        'css': 'text/css',
+        'html': 'text/html',
+        'md': 'text/markdown',
+        'py': 'text/x-python',
+        'txt': 'text/plain',
+      }
+      contentType = mimeTypes[fileExtension] || 'application/octet-stream'
+    }
+
+    console.log('[Storage Upload] File:', file.name, 'Type:', contentType, 'Size:', file.size)
+
     const { data: uploadData, error: uploadError } = await adminSupabase.storage
       .from('neural-files')
       .upload(fileName, file, {
         cacheControl: '3600',
         upsert: false,
+        contentType,
       })
 
     if (uploadError) {
-      console.error('Storage upload error:', uploadError)
-      return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 })
+      console.error('Storage upload error:', uploadError, 'File:', file.name)
+      return NextResponse.json({ error: 'Failed to upload file: ' + uploadError.message }, { status: 500 })
     }
 
     // 공개 URL 가져오기
@@ -172,11 +213,30 @@ export async function POST(request: Request, { params }: RouteParams) {
       insertData.path = path
     }
 
-    const { data, error } = await adminSupabase
+    let { data, error } = await adminSupabase
       .from('neural_files')
       .insert(insertData as never)
       .select()
       .single()
+
+    // path 컬럼 관련 에러시 path 없이 재시도
+    if (error && error.message.includes('path')) {
+      console.warn('Path column error, retrying without path:', error.message)
+      const insertDataWithoutPath: Record<string, unknown> = {
+        map_id: mapId,
+        name: file.name,
+        type: fileType,
+        url: urlData.publicUrl,
+        size: file.size,
+      }
+      const retryResult = await adminSupabase
+        .from('neural_files')
+        .insert(insertDataWithoutPath as never)
+        .select()
+        .single()
+      data = retryResult.data
+      error = retryResult.error
+    }
 
     if (error) {
       console.error('Failed to save file metadata:', error)

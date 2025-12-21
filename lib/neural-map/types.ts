@@ -23,7 +23,7 @@ export type NodeType =
 
 export interface SourceRef {
   fileId: string
-  kind: 'pdf' | 'image' | 'video' | 'markdown'
+  kind: 'pdf' | 'image' | 'video' | 'markdown' | 'code' | 'text' | 'binary'
   page?: number               // PDF 페이지
   timestamp?: number          // 비디오 초
   anchor?: string             // 마크다운 헤딩
@@ -132,7 +132,7 @@ export interface NeuralCluster {
 // Graph Container
 // ============================================
 
-export type ViewTab = 'radial' | 'graph2d' | 'cosmic' | 'tree' | 'schema' | 'clusters' | 'pathfinder' | 'roadmap' | 'insights'
+export type ViewTab = 'map' | 'life-stream' | 'data' | 'logic' | 'test'
 
 export interface CameraState {
   position: NodePosition
@@ -174,7 +174,7 @@ export interface NeuralGraph {
 // File Types
 // ============================================
 
-export type NeuralFileType = 'pdf' | 'image' | 'video' | 'markdown'
+export type NeuralFileType = 'pdf' | 'image' | 'video' | 'markdown' | 'code' | 'text' | 'binary'
 
 export interface NeuralFile {
   id: string
@@ -184,6 +184,7 @@ export interface NeuralFile {
   type: NeuralFileType
   url: string
   size: number
+  content?: string  // 파일 내용 캐시 (편집용)
   linkedNodeCount?: number
   createdAt: string
 }

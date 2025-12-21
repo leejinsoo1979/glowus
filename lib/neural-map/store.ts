@@ -30,6 +30,17 @@ import {
   CAMERA_SETTINGS,
 } from './constants'
 
+const normalizeFilePath = (path?: string) =>
+  path && typeof path === 'string'
+    ? path.replace(/\\+/g, '/').replace(/^\/+/, '') || undefined
+    : undefined
+
+const normalizeFiles = (files: NeuralFile[]) =>
+  files.map((file) => ({
+    ...file,
+    path: normalizeFilePath(file.path),
+  }))
+
 // ============================================
 // Store State Interface
 // ============================================
@@ -104,6 +115,8 @@ interface NeuralMapState {
   // Code Preview
   codePreviewFile: NeuralFile | null
   codePreviewOpen: boolean
+  codePreviewEditMode: boolean
+  codePreviewDirty: boolean
 
   // Graph Settings
   radialDistance: number // 방사 거리 (50~300)
@@ -208,6 +221,9 @@ interface NeuralMapActions {
   // Code Preview
   openCodePreview: (file: NeuralFile) => void
   closeCodePreview: () => void
+  setCodePreviewEditMode: (editMode: boolean) => void
+  setCodePreviewDirty: (dirty: boolean) => void
+  updateFileContent: (fileId: string, content: string) => void
 
   // Graph Settings
   setRadialDistance: (distance: number) => void
@@ -234,7 +250,7 @@ const initialState: NeuralMapState = {
   selectedNodeIds: [],
   hoveredNodeId: null,
 
-  activeTab: 'graph2d',
+  activeTab: 'map',
   rightPanelTab: 'inspector',
 
   leftPanelWidth: PANEL_SIZES.left.default,
@@ -277,10 +293,12 @@ const initialState: NeuralMapState = {
   // Code Preview
   codePreviewFile: null,
   codePreviewOpen: false,
+  codePreviewEditMode: false,
+  codePreviewDirty: false,
 
   // Graph Settings
   radialDistance: 150, // 기본 방사 거리
-  graphExpanded: false, // 기본 접힘 상태 (첫 클릭에 펼침)
+  graphExpanded: true, // 기본 펼침 상태
 }
 
 // ============================================
@@ -645,12 +663,15 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         // ========== Files ==========
         setFiles: (files) =>
           set((state) => {
-            state.files = files
+            state.files = normalizeFiles(files)
           }),
 
         addFile: (file) =>
           set((state) => {
-            state.files.push(file)
+            state.files.push({
+              ...file,
+              path: normalizeFilePath(file.path),
+            })
           }),
 
         removeFile: (id) =>
@@ -726,11 +747,36 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           set((state) => {
             state.codePreviewFile = file
             state.codePreviewOpen = true
+            state.codePreviewEditMode = false
+            state.codePreviewDirty = false
           }),
         closeCodePreview: () =>
           set((state) => {
             state.codePreviewOpen = false
             state.codePreviewFile = null
+            state.codePreviewEditMode = false
+            state.codePreviewDirty = false
+          }),
+        setCodePreviewEditMode: (editMode: boolean) =>
+          set((state) => {
+            state.codePreviewEditMode = editMode
+          }),
+        setCodePreviewDirty: (dirty: boolean) =>
+          set((state) => {
+            state.codePreviewDirty = dirty
+          }),
+        updateFileContent: (fileId: string, content: string) =>
+          set((state) => {
+            // Update file content in files array
+            const fileIndex = state.files.findIndex(f => f.id === fileId)
+            if (fileIndex !== -1) {
+              state.files[fileIndex].content = content
+            }
+            // Update current preview file if it matches
+            if (state.codePreviewFile?.id === fileId) {
+              state.codePreviewFile.content = content
+            }
+            state.codePreviewDirty = false
           }),
 
         // ========== Graph Settings ==========
@@ -1025,7 +1071,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               } as any
             }
 
-            state.files = files
+            state.files = normalizeFiles(files)
             state.expandedNodeIds = new Set([rootNode.id])
           }),
 
@@ -1274,7 +1320,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 rootNodeId: rootNode.id,
                 title: projectName,
                 viewState: {
-                  activeTab: 'graph2d',
+                  activeTab: 'map',
                   expandedNodeIds: [rootNode.id],
                   pinnedNodeIds: [],
                   selectedNodeIds: [],

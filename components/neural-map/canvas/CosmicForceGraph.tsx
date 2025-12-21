@@ -95,6 +95,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
+  const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
 
   // UI Store - 사이드바 상태와 그래프 연동
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
@@ -158,7 +159,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
     // Build all nodes first
     graph.nodes.forEach((node, index) => {
       const depth = node.type === 'self' ? 0 :
-                    node.parentId ? 2 : 1
+        node.parentId ? 2 : 1
 
       // 파일 매칭
       const matchedFile = fileMap.get(node.title) || fileMap.get(node.id)
@@ -322,7 +323,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
           const isSelected = selectedNodeIds.includes(n.id)
           // 파일 크기 기반 노드 크기 사용
           const baseSize = n.nodeSize || (n.type === 'self' ? 16 :
-                          n.depth === 1 ? 9 : 6)
+            n.depth === 1 ? 9 : 6)
 
           // Create sphere
           const geom = new THREE.SphereGeometry(baseSize, 24, 24)
@@ -648,6 +649,18 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
           setSelectedId(node.id)
           setSelectedNodes([node.id])
 
+          // Trigger Preview
+          let targetFile = files.find(f => f.id === node.id) || files.find(f => f.name === node.label)
+
+          // Try sourceRef if available (__node property from convertToGraphData)
+          if (!targetFile && node.__node?.sourceRef?.fileId) {
+            targetFile = files.find(f => f.id === node.__node.sourceRef.fileId)
+          }
+
+          if (targetFile) {
+            openCodePreview(targetFile)
+          }
+
           // Animate camera to node
           Graph.cameraPosition(
             {
@@ -746,8 +759,8 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
       // Wait for initial simulation to settle, then center
       setTimeout(centerCamera, 1500)
 
-      // Store interval for cleanup
-      ;(Graph as any).__animationInterval = animationInterval
+        // Store interval for cleanup
+        ; (Graph as any).__animationInterval = animationInterval
 
       graphRef.current = Graph
 

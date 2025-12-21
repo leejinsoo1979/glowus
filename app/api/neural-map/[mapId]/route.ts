@@ -124,6 +124,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       id: file.id,
       mapId: file.map_id,
       name: file.name,
+      path: file.path || undefined,
       type: file.type,
       url: file.url,
       size: file.size,

@@ -6,26 +6,19 @@ import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { ViewTab } from '@/lib/neural-map/types'
 import {
-  Circle,
-  Layers,
-  Route,
-  Map,
-  Lightbulb,
-  Network,
-  Sparkles,
-  GitBranch,
-  Database,
+  Network, // Map
+  Activity, // Life Stream
+  Database, // Data
+  GitBranch, // Logic
+  FlaskConical, // Test
 } from 'lucide-react'
 
-const viewTabs: { id: ViewTab; label: string; icon: typeof Circle; description: string }[] = [
-  { id: 'graph2d', label: 'Graph', icon: Network, description: '2D 그래프 (Obsidian 스타일)' },
-  { id: 'cosmic', label: 'Cosmic', icon: Sparkles, description: '우주 스타일 3D' },
-  { id: 'tree', label: 'Tree', icon: GitBranch, description: '탑다운 트리 플로우차트' },
-  { id: 'schema', label: 'Schema', icon: Database, description: '데이터베이스 스키마 ERD' },
-  { id: 'clusters', label: 'Clusters', icon: Layers, description: '주제 군집' },
-  { id: 'pathfinder', label: 'Pathfinder', icon: Route, description: '경로 탐색' },
-  { id: 'roadmap', label: 'Roadmap', icon: Map, description: '로드뷰' },
-  { id: 'insights', label: 'Insights', icon: Lightbulb, description: '분석 리포트' },
+const viewTabs: { id: ViewTab; label: string; icon: typeof Network; description: string }[] = [
+  { id: 'map', label: 'Map', icon: Network, description: '전체 노드 탐색 (2D/3D)' },
+  { id: 'life-stream', label: 'Life Stream', icon: Activity, description: '전체 개발 현황 및 순서 (Blueprint)' },
+  { id: 'data', label: 'Data', icon: Database, description: '데이터 구조 및 스키마' },
+  { id: 'logic', label: 'Logic', icon: GitBranch, description: '로직 흐름 및 파일 구조' },
+  { id: 'test', label: 'Test', icon: FlaskConical, description: '품질 검증 및 테스트' },
 ]
 
 export function ViewTabs() {
@@ -60,8 +53,8 @@ export function ViewTabs() {
                   ? 'text-zinc-100'
                   : 'text-zinc-900'
                 : isDark
-                ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
-                : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100/50'
+                  ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                  : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100/50'
             )}
             title={tab.description}
           >
