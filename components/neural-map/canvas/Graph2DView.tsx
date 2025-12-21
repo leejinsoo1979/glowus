@@ -225,6 +225,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
+  const currentTheme = useNeuralMapStore((s) => s.currentTheme)
 
   // 컨테이너 크기 감지
   useEffect(() => {
@@ -552,19 +553,23 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     if (!start || !end || typeof start.x !== 'number') return
 
-    // 엣지 타입별 스타일 설정
     const isImport = link.type === 'imports'
     const isSemantic = link.type === 'semantic'
+    const accentColor = currentTheme.ui.accentColor
 
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
     ctx.lineTo(end.x, end.y)
 
     if (isImport) {
-      // 의존성 라인: 오렌지색, 굵게, 점선
-      ctx.strokeStyle = '#fbbf24' // Amber-400
+      // 의존성 라인: 테마 색상, 굵게, 점선, 빛나는 효과
+      ctx.strokeStyle = accentColor
       ctx.lineWidth = 3.5 / globalScale
       ctx.setLineDash([6 / globalScale, 4 / globalScale])
+
+      // 빛나는 효과 추가
+      ctx.shadowBlur = 10 / globalScale
+      ctx.shadowColor = accentColor
     } else if (isSemantic) {
       // 기능적 라인: 회색, 얇게, 점선 (ID/Class 연결)
       ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.4)' : 'rgba(148, 163, 184, 0.6)'
@@ -597,14 +602,17 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       ctx.fillRect(-textWidth / 2 - padding, -6 / globalScale, textWidth + padding * 2, 12 / globalScale)
 
       // 라벨 텍스트
-      ctx.fillStyle = '#fbbf24'
+      ctx.fillStyle = accentColor
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillText(link.label, 0, 0)
 
       ctx.restore()
     }
-  }, [isDark])
+
+    // 그림자 효과 초기화 (다른 요소에 영향 주지 않도록)
+    ctx.shadowBlur = 0
+  }, [isDark, currentTheme])
 
   // 그래프 로드 후 자동 줌 맞춤 (SELF 노드 중심)
   useEffect(() => {
@@ -662,10 +670,10 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         linkDirectionalParticles={(link: any) => link.type === 'imports' ? 4 : 0}
         linkDirectionalParticleWidth={(link: any) => {
           const zoom = graphRef.current?.zoom() || 1
-          return 3 / (zoom || 1)
+          return 4 / (zoom || 1) // 약간 더 크게
         }}
-        linkDirectionalParticleSpeed={0.01}
-        linkDirectionalParticleColor={() => '#fbbf24'}
+        linkDirectionalParticleSpeed={0.015} // 조금 더 빠르게
+        linkDirectionalParticleColor={() => currentTheme.ui.accentColor}
         // 물리 엔진 설정 - 충분한 시간 제공
         dagMode={undefined}
         d3VelocityDecay={0.4}
