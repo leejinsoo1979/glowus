@@ -565,24 +565,26 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     ctx.lineTo(end.x, end.y)
 
     if (isImport) {
-      // 의존성 라인: 테마 색상, 굵게, 점선, 빛나는 효과
+      // 의존성 라인: 테마 색상, 얇고 세련되게, 점선, 강한 발광
       ctx.strokeStyle = accentColor
-      ctx.lineWidth = 3.5 / globalScale
-      ctx.setLineDash([6 / globalScale, 4 / globalScale])
+      ctx.lineWidth = 1.5 / globalScale // 3.5 -> 1.5
+      ctx.setLineDash([4 / globalScale, 4 / globalScale]) // 점선 간격 조정
 
-      // 빛나는 효과 추가
-      ctx.shadowBlur = 10 / globalScale
+      // 빛나는 효과 (Glow) 강화
+      ctx.shadowBlur = 15 // 발광 강도 증가
       ctx.shadowColor = accentColor
     } else if (isSemantic) {
-      // 기능적 라인: 회색, 얇게, 점선 (ID/Class 연결)
-      ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.4)' : 'rgba(148, 163, 184, 0.6)'
+      // 기능적 라인
+      ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.4)' : 'rgba(100, 116, 139, 0.5)'
       ctx.lineWidth = 1.0 / globalScale
       ctx.setLineDash([2 / globalScale, 2 / globalScale])
+      ctx.shadowBlur = 0
     } else {
-      // 구조 라인(폴더-파일): 투명도를 높여서 가독성 확보
-      ctx.strokeStyle = isDark ? 'rgba(147, 197, 253, 0.3)' : 'rgba(59, 130, 246, 0.4)'
+      // 구조 라인(폴더-파일): 라이트 모드 가독성 확보
+      ctx.strokeStyle = isDark ? 'rgba(59, 130, 246, 0.3)' : 'rgba(71, 85, 105, 0.4)'
       ctx.lineWidth = 1.0 / globalScale
       ctx.setLineDash([])
+      ctx.shadowBlur = 0
     }
 
     ctx.stroke()
@@ -601,8 +603,32 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       const textWidth = ctx.measureText(link.label).width
       const padding = 4 / globalScale
 
-      ctx.fillStyle = isDark ? 'rgba(30, 30, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)'
-      ctx.fillRect(-textWidth / 2 - padding, -6 / globalScale, textWidth + padding * 2, 12 / globalScale)
+      ctx.fillStyle = isDark ? 'rgba(24, 24, 27, 0.9)' : 'rgba(255, 255, 255, 0.9)'
+
+      // 라운딩된 사각형 그리기
+      const r = 4 / globalScale
+      const w = textWidth + padding * 2
+      const h = 14 / globalScale
+      const x = -w / 2
+      const y = -h / 2
+
+      ctx.beginPath()
+      ctx.moveTo(x + r, y)
+      ctx.lineTo(x + w - r, y)
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+      ctx.lineTo(x + w, y + h - r)
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+      ctx.lineTo(x + r, y + h)
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+      ctx.lineTo(x, y + r)
+      ctx.quadraticCurveTo(x, y, x + r, y)
+      ctx.closePath()
+      ctx.fill()
+
+      // 테두리
+      ctx.strokeStyle = accentColor
+      ctx.lineWidth = 1 / globalScale
+      ctx.stroke()
 
       // 라벨 텍스트
       ctx.fillStyle = accentColor
@@ -613,8 +639,9 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       ctx.restore()
     }
 
-    // 그림자 효과 초기화 (다른 요소에 영향 주지 않도록)
+    // 그림자 효과 초기화
     ctx.shadowBlur = 0
+    ctx.shadowColor = 'transparent'
   }, [isDark, currentTheme])
 
   // 그래프 로드 후 자동 줌 맞춤 (SELF 노드 중심)
@@ -736,9 +763,9 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         linkDirectionalParticles={(link: any) => link.type === 'imports' ? 4 : 0}
         linkDirectionalParticleWidth={(link: any) => {
           const zoom = graphRef.current?.zoom() || 1
-          return 4 / (zoom || 1) // 약간 더 크게
+          return 3 / (zoom || 1) // 4 -> 3 로 줄여서 더 날렵하게
         }}
-        linkDirectionalParticleSpeed={0.015} // 조금 더 빠르게
+        linkDirectionalParticleSpeed={0.01} // 너무 빠르지 않게 조정
         linkDirectionalParticleColor={() => currentTheme.ui.accentColor}
         // 물리 엔진 설정 - 충분한 시간 제공
         dagMode={undefined}
