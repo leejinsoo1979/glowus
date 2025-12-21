@@ -122,6 +122,8 @@ export default function NeuralMapPage() {
     toggleEditorCollapse,
     selectedNodeIds,
     setSelectedNodes,
+    layoutMode,
+    setLayoutMode,
   } = useNeuralMapStore()
 
   const isDark = mounted ? resolvedTheme === 'dark' : true
@@ -309,10 +311,10 @@ export default function NeuralMapPage() {
                     {/* Reset Layout / Sort Button */}
                     {/* Layout Mode Toggle */}
                     <button
-                      onClick={() => useNeuralMapStore.getState().setLayoutMode('organic')}
+                      onClick={() => setLayoutMode('organic')}
                       className={cn(
                         "px-3 py-1.5 rounded text-xs font-medium transition-colors",
-                        useNeuralMapStore((s) => s.layoutMode) === 'organic'
+                        layoutMode === 'organic'
                           ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400"
                           : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
                       )}
@@ -320,10 +322,10 @@ export default function NeuralMapPage() {
                       Organic
                     </button>
                     <button
-                      onClick={() => useNeuralMapStore.getState().setLayoutMode('radial')}
+                      onClick={() => setLayoutMode('radial')}
                       className={cn(
                         "px-3 py-1.5 rounded text-xs font-medium transition-colors",
-                        useNeuralMapStore((s) => s.layoutMode) === 'radial'
+                        layoutMode === 'radial'
                           ? "bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400"
                           : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
                       )}
@@ -331,10 +333,10 @@ export default function NeuralMapPage() {
                       Radial
                     </button>
                     <button
-                      onClick={() => useNeuralMapStore.getState().setLayoutMode('structural')}
+                      onClick={() => setLayoutMode('structural')}
                       className={cn(
                         "px-3 py-1.5 rounded text-xs font-medium transition-colors",
-                        useNeuralMapStore((s) => s.layoutMode) === 'structural'
+                        layoutMode === 'structural'
                           ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
                           : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
                       )}
