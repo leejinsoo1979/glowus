@@ -714,7 +714,7 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
   const effectiveDistance = graphExpanded ? radialDistance : radialDistance * 0.2
   const effectiveStrength = graphExpanded ? -radialDistance * 1.5 : -30
 
-  // Update force settings when radialDistance or graphExpanded changes
+  // Update force settings when layoutMode, radialDistance or graphExpanded changes
   useEffect(() => {
     if (!graphRef.current || !graph?.nodes?.length) return
 
@@ -733,6 +733,9 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
           if (layoutMode === 'radial') {
             return l.kind === 'parent' ? 40 : 100
           }
+          if (layoutMode === 'structural') {
+            return l.kind === 'parent' ? 50 : 150
+          }
           return l.kind === 'parent' ? effectiveDistance * 0.5 : effectiveDistance
         })
       }
@@ -745,16 +748,31 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
             if (n.type === 'folder') return 120
             return 240
           }, 0, 0, 0).strength(0.8))
+          graphInstance.d3Force('y', null)
         })
-      } else {
+      }
+      // 'structural' 모드
+      else if (layoutMode === 'structural') {
+        import('d3-force-3d').then(d3 => {
+          graphInstance.d3Force('radial', null)
+          // Simple hierarchy simulation: folders on top, files below
+          graphInstance.d3Force('y', d3.forceY((n: any) => {
+            if (n.type === 'self') return -200
+            if (n.type === 'folder') return -100
+            return 100
+          }).strength(0.5))
+        })
+      }
+      else {
         graphInstance.d3Force('radial', null)
+        graphInstance.d3Force('y', null)
       }
 
       graphInstance.d3ReheatSimulation()
     }, 100)
 
     return () => clearTimeout(timer)
-  }, [radialDistance, graphExpanded, effectiveDistance, effectiveStrength, graph?.nodes?.length])
+  }, [layoutMode, radialDistance, graphExpanded, effectiveDistance, effectiveStrength, graph?.nodes?.length])
 
   if (!isClient) {
     return (

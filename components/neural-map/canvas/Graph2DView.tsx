@@ -636,6 +636,62 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     }
   }, [radialDistance])
 
+  // Layout Mode Change Effect
+  useEffect(() => {
+    if (!graphRef.current) return
+
+    const fg = graphRef.current
+    const effectiveDistance = radialDistance || 150
+
+    // Force: Charge (Repulsion)
+    fg.d3Force('charge')?.strength(layoutMode === 'radial' ? -100 : -400)
+
+    // Force: Link (Distance)
+    fg.d3Force('link')?.distance((link: any) => {
+      if (layoutMode === 'radial') {
+        return link.type === 'parent_child' ? 30 : 100
+      }
+      if (layoutMode === 'structural') {
+        return link.type === 'parent_child' ? 50 : 150
+      }
+      return link.type === 'imports' ? effectiveDistance * 0.8 : effectiveDistance * 1.5
+    })
+
+    // Force: Radial (Circular Layout)
+    if (layoutMode === 'radial') {
+      import('d3-force').then(d3 => {
+        fg.d3Force('radial', d3.forceRadial((n: any) => {
+          if (n.type === 'self') return 0
+          if (n.type === 'folder') return 180
+          if (n.depth === 1) return 180
+          return 380
+        }, 0, 0).strength(0.8))
+        fg.d3ReheatSimulation()
+      })
+    }
+    // Force: Structural (Dag/Tree Layout is hard with just forces, simulating via Y-positioning or similar)
+    else if (layoutMode === 'structural') {
+      // Structural mode: turn off radial, maybe add Y-force for tree-like structure
+      fg.d3Force('radial', null)
+      import('d3-force').then(d3 => {
+        // Simple hierarchy simulation: folders on top, files below
+        fg.d3Force('y', d3.forceY((n: any) => {
+          if (n.type === 'self') return -200
+          if (n.type === 'folder') return -100
+          return 100
+        }).strength(0.5))
+        fg.d3ReheatSimulation()
+      })
+    }
+    // Force: Organic (Default)
+    else {
+      fg.d3Force('radial', null)
+      fg.d3Force('y', null)
+      fg.d3ReheatSimulation()
+    }
+
+  }, [layoutMode, radialDistance])
+
   return (
     <div
       ref={containerRef}
@@ -683,41 +739,17 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         d3AlphaDecay={0.01}
         cooldownTicks={200}
         warmupTicks={200}
-        // 노드 간 거리 및 척력 설정
-        // @ts-ignore - d3Force is a valid prop but not in type definitions
+        // 노드 간 거리 및 척력 설정 (초기값)
+        // @ts-ignore
         d3Force={(forceName: string, force: any) => {
-          const effectiveDistance = radialDistance || 150
-
           if (forceName === 'charge') {
-            // 원형 모드에서는 척력을 줄여서 수렴 도모
-            force.strength(layoutMode === 'radial' ? -100 : -400).distanceMax(1000)
+            force.strength(-400).distanceMax(1000)
           }
           if (forceName === 'link') {
-            // 로직 관계는 가깝게, 구조 관계는 멀게
-            force.distance((link: any) => {
-              if (layoutMode === 'radial') {
-                return link.type === 'parent_child' ? 30 : 100
-              }
-              return link.type === 'imports' ? effectiveDistance * 0.8 : effectiveDistance * 1.5
-            })
-              .strength((link: any) => link.type === 'imports' ? 0.4 : 0.1)
-          }
-          if (forceName === 'center') {
-            force.strength(0.01)
+            force.distance(100)
           }
           if (forceName === 'collide') {
             force.radius(30).strength(0.7)
-          }
-
-          // Radial force가 초기화된 후에 별도로 주입 (side-effect로 처리하거나 useEffect 권장)
-          if (graphRef.current && layoutMode === 'radial' && !graphRef.current.d3Simulation().force('radial')) {
-            graphRef.current.d3Simulation().force('radial', forceRadial((n: any) => {
-              if (n.type === 'self') return 0
-              if (n.type === 'folder' || n.depth === 1) return 180
-              return 380
-            }, 0, 0).strength(0.8))
-          } else if (graphRef.current && layoutMode !== 'radial') {
-            graphRef.current.d3Simulation().force('radial', null)
           }
         }}
         // 상호작용
