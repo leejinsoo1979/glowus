@@ -1227,75 +1227,128 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               })
             })
 
-            // 코드 파일 간 import 관계 추론 (같은 폴더/인접 폴더 기반 휴리스틱)
-            const codeFiles = currentFiles.filter(f => {
-              const ext = f.name.split('.').pop()?.toLowerCase() || ''
-              return ['tsx', 'ts', 'js', 'jsx'].includes(ext)
-            })
+            // ========== 파일 내용 분석 (정확한 종속성 연결) ==========
+            // 1. 경로 해결 헬퍼 - 상대 경로를 전체 경로로 변환
+            const resolvePath = (fromPath: string, toPath: string) => {
+              if (toPath.startsWith('http') || toPath.startsWith('//')) return null; // 외부 파일
 
-            // 간단한 휴리스틱: 같은 상위 폴더 내 파일들은 서로 import 가능성 있음
-            const folderFiles = new Map<string, string[]>()
-            codeFiles.forEach(file => {
-              const filePath = file.path || file.name
-              const parentPath = filePath.includes('/')
-                ? filePath.substring(0, filePath.lastIndexOf('/'))
-                : ''
-              const existing = folderFiles.get(parentPath) || []
-              existing.push(filePath)
-              folderFiles.set(parentPath, existing)
-            })
+              // 상대 경로 처리 (./, ../)
+              if (toPath.startsWith('.')) {
+                const parts = fromPath.split('/');
+                parts.pop(); // 현재 파일 제외
+                const relativeParts = toPath.split('/');
 
-            // 공통 유틸리티 패턴 감지 (lib, utils, hooks, components 폴더)
-            const utilityPatterns = ['lib', 'utils', 'hooks', 'helpers', 'shared', 'common']
-            const componentPatterns = ['components', 'ui', 'elements']
-
-            codeFiles.forEach(file => {
-              const filePath = file.path || file.name
-              const sourceId = fileNodeMap.get(filePath)
-              if (!sourceId) return
-
-              const fileName = file.name.replace(/\.(tsx?|jsx?)$/, '')
-
-              // 유틸리티 파일 찾아서 연결
-              currentFiles.forEach(targetFile => {
-                const targetPath = targetFile.path || targetFile.name
-                if (targetPath === filePath) return
-
-                const targetId = fileNodeMap.get(targetPath)
-                if (!targetId) return
-
-                // 유틸리티 폴더의 파일들은 많은 곳에서 import됨
-                const isUtilityTarget = utilityPatterns.some(p => targetPath.includes(`/${p}/`) || targetPath.startsWith(`${p}/`))
-                const isComponentTarget = componentPatterns.some(p => targetPath.includes(`/${p}/`) || targetPath.startsWith(`${p}/`))
-
-                // 현재 파일이 페이지/레이아웃이고 타겟이 컴포넌트면 연결
-                const isPageOrLayout = fileName.includes('page') || fileName.includes('layout') || fileName.includes('route')
-
-                if (isPageOrLayout && isComponentTarget) {
-                  edges.push({
-                    id: generateId(),
-                    source: sourceId,
-                    target: targetId,
-                    type: 'imports',
-                    label: `import ${targetFile.name.replace(/\.(tsx?|jsx?)$/, '')}`,
-                    weight: 0.5,
-                    bidirectional: false,
-                    createdAt: new Date().toISOString(),
-                  })
-                } else if (isUtilityTarget && !isPageOrLayout) {
-                  // 일반 파일이 유틸리티 import
-                  edges.push({
-                    id: generateId(),
-                    source: sourceId,
-                    target: targetId,
-                    type: 'imports',
-                    label: `import ${targetFile.name.replace(/\.(tsx?|jsx?)$/, '')}`,
-                    weight: 0.4,
-                    bidirectional: false,
-                    createdAt: new Date().toISOString(),
-                  })
+                for (const part of relativeParts) {
+                  if (part === '.') continue;
+                  if (part === '..') {
+                    parts.pop();
+                  } else {
+                    parts.push(part);
+                  }
                 }
-              })
+                return parts.join('/')
+              }
+
+              // 절대 경로 느낌의 상대 경로 (예: "components/Button.tsx")
+              // 파일 노드 맵에 있는 것과 대조해봄
+              if (fileNodeMap.has(toPath)) return toPath;
+
+              // 그 외는 같은 폴더 내 파일로 간주해봄
+              const fromParts = fromPath.split('/');
+              fromParts.pop();
+              const joined = fromParts.length > 0 ? `${fromParts.join('/')}/${toPath}` : toPath;
+              return joined;
+            }
+
+            // 2. 파일별 내용 분석 루프
+            currentFiles.forEach(file => {
+              const content = (file as any).content;
+              if (!content || typeof content !== 'string') return;
+
+              const filePath = file.path || file.name;
+              const sourceId = fileNodeMap.get(filePath);
+              if (!sourceId) return;
+
+              const ext = file.name.split('.').pop()?.toLowerCase() || '';
+              const detectedDeps: { path: string; label: string }[] = [];
+
+              // (1) HTML 파일 분석 (link, script, img)
+              if (ext === 'html' || ext === 'htm') {
+                const linkRegex = /<link.+?href=["'](.+?)["']/g;
+                const scriptRegex = /<script.+?src=["'](.+?)["']/g;
+                let match;
+                while ((match = linkRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: 'link' });
+                }
+                while ((match = scriptRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: 'script' });
+                }
+              }
+
+              // (2) JS/TS 파일 분석 (import, require)
+              if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
+                const importRegex = /import\s+?(?:(?:(?:[\w*\s{},]*)\s+from\s+)|(?:["']))["'](.+?)["']/g;
+                const requireRegex = /require\(["'](.+?)["']\)/g;
+                const dynamicImportRegex = /import\(["'](.+?)["']\)/g;
+                let match;
+                while ((match = importRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: 'import' });
+                }
+                while ((match = requireRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: 'require' });
+                }
+                while ((match = dynamicImportRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: 'import()' });
+                }
+              }
+
+              // (3) CSS 파일 분석 (@import)
+              if (['css', 'scss', 'less'].includes(ext)) {
+                const cssImportRegex = /@import\s+["'](.+?)["']/g;
+                const cssUrlRegex = /url\(["']?(.+?)["']?\)/g;
+                let match;
+                while ((match = cssImportRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: '@import' });
+                }
+                while ((match = cssUrlRegex.exec(content)) !== null) {
+                  detectedDeps.push({ path: match[1], label: 'url' });
+                }
+              }
+
+              // 엣지 생성 (매칭된 파일이 있을 경우)
+              detectedDeps.forEach(dep => {
+                const resolved = resolvePath(filePath, dep.path);
+                if (!resolved) return;
+
+                // 맵에서 후보 경로들 시도
+                const potentialPaths = [
+                  resolved,
+                  resolved + '.ts',
+                  resolved + '.tsx',
+                  resolved + '.js',
+                  resolved + '.jsx',
+                  resolved + '/index.ts',
+                  resolved + '/index.tsx',
+                  resolved + '/index.js',
+                ];
+
+                for (const p of potentialPaths) {
+                  const targetId = fileNodeMap.get(p);
+                  if (targetId && targetId !== sourceId) {
+                    edges.push({
+                      id: generateId(),
+                      source: sourceId,
+                      target: targetId,
+                      type: 'imports',
+                      label: dep.label,
+                      weight: 0.5,
+                      bidirectional: false,
+                      createdAt: new Date().toISOString(),
+                    });
+                    break; // 하나 찾으면 중단
+                  }
+                }
+              });
             })
 
             // 그래프 설정
