@@ -304,6 +304,44 @@ export default function NeuralMapPage() {
                       Cosmic
                     </button>
 
+                    <div className={cn("w-px h-4 my-auto mx-1", isDark ? "bg-zinc-700" : "bg-zinc-200")} />
+
+                    {/* Reset Layout / Sort Button */}
+                    {/* Layout Mode Toggle */}
+                    <button
+                      onClick={() => useNeuralMapStore.getState().setLayoutMode('organic')}
+                      className={cn(
+                        "px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                        useNeuralMapStore((s) => s.layoutMode) === 'organic'
+                          ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
+                      )}
+                    >
+                      Organic
+                    </button>
+                    <button
+                      onClick={() => useNeuralMapStore.getState().setLayoutMode('radial')}
+                      className={cn(
+                        "px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                        useNeuralMapStore((s) => s.layoutMode) === 'radial'
+                          ? "bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
+                      )}
+                    >
+                      Radial
+                    </button>
+                    <button
+                      onClick={() => useNeuralMapStore.getState().setLayoutMode('structural')}
+                      className={cn(
+                        "px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                        useNeuralMapStore((s) => s.layoutMode) === 'structural'
+                          ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
+                      )}
+                    >
+                      Structural
+                    </button>
+
                     {/* Group Action Button */}
                     {(() => {
                       if (!graph) return false
@@ -313,46 +351,46 @@ export default function NeuralMapPage() {
                       if (selectedNodes.some((node) => !!node.parentId)) return false
                       return true
                     })() && (
-                      <button
-                        onClick={() => {
-                          if (!graph) return
-                          const nodesToGroup = graph.nodes.filter((n) => selectedNodeIds.includes(n.id) && !n.parentId)
-                          if (nodesToGroup.length < 2) {
-                            return
-                          }
-                          const newGroupId = `group-${Date.now()}`
-                          const newGroupNode: NeuralNode = {
-                            id: newGroupId,
-                            title: 'New Group',
-                            type: 'folder',
-                            tags: [],
-                            importance: 5,
-                            expanded: true,
-                            pinned: false,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString(),
-                            position: { x: 0, y: 0, z: 0 }
-                          }
+                        <button
+                          onClick={() => {
+                            if (!graph) return
+                            const nodesToGroup = graph.nodes.filter((n) => selectedNodeIds.includes(n.id) && !n.parentId)
+                            if (nodesToGroup.length < 2) {
+                              return
+                            }
+                            const newGroupId = `group-${Date.now()}`
+                            const newGroupNode: NeuralNode = {
+                              id: newGroupId,
+                              title: 'New Group',
+                              type: 'folder',
+                              tags: [],
+                              importance: 5,
+                              expanded: true,
+                              pinned: false,
+                              createdAt: new Date().toISOString(),
+                              updatedAt: new Date().toISOString(),
+                              position: { x: 0, y: 0, z: 0 }
+                            }
 
-                          // Add new group node
-                          useNeuralMapStore.getState().addNode(newGroupNode)
+                            // Add new group node
+                            useNeuralMapStore.getState().addNode(newGroupNode)
 
-                          // Update selected nodes to have this parent
-                          nodesToGroup.forEach(node => {
-                            useNeuralMapStore.getState().updateNode(node.id, { parentId: newGroupId })
-                          })
+                            // Update selected nodes to have this parent
+                            nodesToGroup.forEach(node => {
+                              useNeuralMapStore.getState().updateNode(node.id, { parentId: newGroupId })
+                            })
 
-                          // Select the new group
-                          useNeuralMapStore.getState().setSelectedNodes([newGroupId])
-                        }}
-                        className={cn(
-                          "px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1",
-                          "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
-                        )}
-                      >
-                        Group ({selectedNodeIds.length})
-                      </button>
-                    )}
+                            // Select the new group
+                            useNeuralMapStore.getState().setSelectedNodes([newGroupId])
+                          }}
+                          className={cn(
+                            "px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1",
+                            "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
+                          )}
+                        >
+                          Group ({selectedNodeIds.length})
+                        </button>
+                      )}
                   </div>
                 </div>
               </div>
@@ -440,12 +478,16 @@ export default function NeuralMapPage() {
       <StatusBar />
 
       {/* Modals */}
-      {modalType === 'nodeEditor' && (
-        <NodeEditorModal mapId={mapId} onClose={closeModal} />
-      )}
-      {modalType === 'export' && (
-        <EdgeEditorModal mapId={mapId} onClose={closeModal} />
-      )}
-    </div>
+      {
+        modalType === 'nodeEditor' && (
+          <NodeEditorModal mapId={mapId} onClose={closeModal} />
+        )
+      }
+      {
+        modalType === 'export' && (
+          <EdgeEditorModal mapId={mapId} onClose={closeModal} />
+        )
+      }
+    </div >
   )
 }

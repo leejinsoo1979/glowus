@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useTheme } from 'next-themes'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralNode, NeuralEdge, NeuralFile } from '@/lib/neural-map/types'
+import { forceRadial } from 'd3-force'
 
 // Dynamic import for SSR compatibility
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -212,7 +213,9 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const isDark = resolvedTheme === 'dark'
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<any>(null)
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
+  const layoutMode = useNeuralMapStore((s) => s.layoutMode)
+
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
 
   // Store
@@ -686,12 +689,17 @@ export function Graph2DView({ className }: Graph2DViewProps) {
           const effectiveDistance = radialDistance || 150
 
           if (forceName === 'charge') {
-            // 충분한 척력 확보 (-400 이상)
-            force.strength(-400).distanceMax(1000)
+            // 원형 모드에서는 척력을 줄여서 수렴 도모
+            force.strength(layoutMode === 'radial' ? -100 : -400).distanceMax(1000)
           }
           if (forceName === 'link') {
             // 로직 관계는 가깝게, 구조 관계는 멀게
-            force.distance((link: any) => link.type === 'imports' ? effectiveDistance * 0.8 : effectiveDistance * 1.5)
+            force.distance((link: any) => {
+              if (layoutMode === 'radial') {
+                return link.type === 'parent_child' ? 30 : 100
+              }
+              return link.type === 'imports' ? effectiveDistance * 0.8 : effectiveDistance * 1.5
+            })
               .strength((link: any) => link.type === 'imports' ? 0.4 : 0.1)
           }
           if (forceName === 'center') {
@@ -699,6 +707,17 @@ export function Graph2DView({ className }: Graph2DViewProps) {
           }
           if (forceName === 'collide') {
             force.radius(30).strength(0.7)
+          }
+
+          // Radial force가 초기화된 후에 별도로 주입 (side-effect로 처리하거나 useEffect 권장)
+          if (graphRef.current && layoutMode === 'radial' && !graphRef.current.d3Simulation().force('radial')) {
+            graphRef.current.d3Simulation().force('radial', forceRadial((n: any) => {
+              if (n.type === 'self') return 0
+              if (n.type === 'folder' || n.depth === 1) return 180
+              return 380
+            }, 0, 0).strength(0.8))
+          } else if (graphRef.current && layoutMode !== 'radial') {
+            graphRef.current.d3Simulation().force('radial', null)
           }
         }}
         // 상호작용

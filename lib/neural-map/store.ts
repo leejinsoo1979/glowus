@@ -21,6 +21,7 @@ import type {
   HistoryAction,
   NodePosition,
   NeuralMapTheme,
+  LayoutMode,
 } from './types'
 import {
   DEFAULT_THEME_ID,
@@ -121,6 +122,7 @@ interface NeuralMapState {
   // Graph Settings
   radialDistance: number // 방사 거리 (50~300)
   graphExpanded: boolean // 그래프 펼침 상태 (트리 접힘과 연동)
+  layoutMode: LayoutMode // 레이아웃 모드 (원형/유기적)
 }
 
 // ============================================
@@ -228,12 +230,13 @@ interface NeuralMapActions {
   // Graph Settings
   setRadialDistance: (distance: number) => void
   setGraphExpanded: (expanded: boolean) => void
-
-  // Demo
-  loadMockProjectData: () => void
+  setLayoutMode: (mode: LayoutMode) => void
 
   // Build graph from real files
   buildGraphFromFiles: () => void
+
+  // Reset layout
+  resetLayout: () => void
 }
 
 // ============================================
@@ -299,6 +302,7 @@ const initialState: NeuralMapState = {
   // Graph Settings
   radialDistance: 150, // 기본 방사 거리
   graphExpanded: true, // 기본 펼침 상태
+  layoutMode: 'organic',
 }
 
 // ============================================
@@ -780,303 +784,26 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           }),
 
         // ========== Graph Settings ==========
-        setRadialDistance: (distance) =>
+        setRadialDistance: (distance: number) =>
           set((state) => {
-            state.radialDistance = Math.max(50, Math.min(300, distance))
+            state.radialDistance = distance
           }),
-        setGraphExpanded: (expanded) =>
+        setGraphExpanded: (expanded: boolean) =>
           set((state) => {
             state.graphExpanded = expanded
           }),
-
-        // ========== Demo ==========
-        loadMockProjectData: () =>
+        setLayoutMode: (mode: LayoutMode) =>
           set((state) => {
-            // 샘플 Next.js 프로젝트 구조
-            const mockProject = {
-              name: 'my-nextjs-app',
-              folders: [
-                { path: 'app', children: ['page.tsx', 'layout.tsx', 'globals.css'] },
-                { path: 'app/api', children: ['route.ts'] },
-                { path: 'app/api/users', children: ['route.ts'] },
-                { path: 'app/dashboard', children: ['page.tsx', 'loading.tsx'] },
-                { path: 'components', children: ['Header.tsx', 'Footer.tsx', 'Sidebar.tsx'] },
-                { path: 'components/ui', children: ['Button.tsx', 'Input.tsx', 'Modal.tsx', 'Card.tsx'] },
-                { path: 'lib', children: ['utils.ts', 'db.ts'] },
-                { path: 'hooks', children: ['useAuth.ts', 'useTheme.ts'] },
-                { path: 'stores', children: ['authStore.ts', 'uiStore.ts'] },
-                { path: 'types', children: ['index.ts', 'api.ts'] },
-                { path: 'public', children: ['favicon.ico', 'logo.svg'] },
-              ],
-              rootFiles: ['package.json', 'tsconfig.json', 'next.config.js', 'README.md', '.env.local']
-            }
-
-            // 노드 ID 생성 헬퍼
-            const generateId = () => `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-            // 루트 노드 (프로젝트)
-            const rootNode: NeuralNode = {
-              id: generateId(),
-              type: 'self',
-              title: mockProject.name,
-              summary: 'Next.js 14 프로젝트',
-              tags: ['project', 'nextjs'],
-              importance: 10,
-              expanded: true,
-              pinned: false,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
-
-            const nodes: NeuralNode[] = [rootNode]
-            const edges: NeuralEdge[] = []
-            const files: NeuralFile[] = []
-
-            // 폴더 노드 맵 (path -> nodeId)
-            const folderMap = new Map<string, string>()
-            folderMap.set('', rootNode.id) // 루트
-
-            // 폴더 노드 생성
-            mockProject.folders.forEach(folder => {
-              const folderId = generateId()
-              const folderName = folder.path.split('/').pop() || folder.path
-              const parentPath = folder.path.includes('/')
-                ? folder.path.substring(0, folder.path.lastIndexOf('/'))
-                : ''
-
-              const folderNode: NeuralNode = {
-                id: folderId,
-                type: 'folder',
-                title: folderName,
-                summary: `폴더: ${folder.path}`,
-                tags: ['folder'],
-                importance: 7,
-                parentId: folderMap.get(parentPath) || rootNode.id,
-                expanded: false,
-                pinned: false,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              }
-
-              nodes.push(folderNode)
-              folderMap.set(folder.path, folderId)
-
-              // 부모와 연결
-              edges.push({
-                id: generateId(),
-                source: folderMap.get(parentPath) || rootNode.id,
-                target: folderId,
-                type: 'parent_child',
-                weight: 0.8,
-                bidirectional: false,
-                createdAt: new Date().toISOString(),
-              })
-
-              // 해당 폴더의 파일들 생성
-              folder.children.forEach(fileName => {
-                const fileId = generateId()
-                const ext = fileName.split('.').pop() || ''
-                const fileType = ['tsx', 'ts', 'js', 'jsx'].includes(ext) ? 'code' :
-                  ext === 'css' ? 'style' :
-                    ext === 'json' ? 'config' :
-                      ext === 'md' ? 'doc' : 'file'
-
-                const fileNode: NeuralNode = {
-                  id: fileId,
-                  type: fileType as any,
-                  title: fileName,
-                  summary: `${folder.path}/${fileName}`,
-                  tags: [ext, fileType],
-                  importance: 5,
-                  parentId: folderId,
-                  expanded: false,
-                  pinned: false,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                }
-
-                nodes.push(fileNode)
-
-                // 폴더와 연결
-                edges.push({
-                  id: generateId(),
-                  source: folderId,
-                  target: fileId,
-                  type: 'parent_child',
-                  weight: 0.6,
-                  bidirectional: false,
-                  createdAt: new Date().toISOString(),
-                })
-
-                // 파일 목록에 추가
-                files.push({
-                  id: fileId,
-                  mapId: 'mock-graph',
-                  name: fileName,
-                  type: ext === 'md' ? 'markdown' : 'image' as any,
-                  url: `mock://${folder.path}/${fileName}`,
-                  size: Math.floor(Math.random() * 10000) + 500,
-                  path: `${folder.path}/${fileName}`,
-                  createdAt: new Date().toISOString(),
-                })
-              })
-            })
-
-            // 파일 경로 -> nodeId 맵 (import 종속성 연결용)
-            const fileNodeMap = new Map<string, string>()
-
-            // 루트 파일들 생성
-            mockProject.rootFiles.forEach(fileName => {
-              const fileId = generateId()
-              const ext = fileName.split('.').pop() || ''
-
-              const fileNode: NeuralNode = {
-                id: fileId,
-                type: 'config' as any,
-                title: fileName,
-                summary: `루트 파일: ${fileName}`,
-                tags: [ext, 'root'],
-                importance: 6,
-                parentId: rootNode.id,
-                expanded: false,
-                pinned: false,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              }
-
-              nodes.push(fileNode)
-              fileNodeMap.set(fileName, fileId)
-
-              // 루트와 연결
-              edges.push({
-                id: generateId(),
-                source: rootNode.id,
-                target: fileId,
-                type: 'parent_child',
-                weight: 0.7,
-                bidirectional: false,
-                createdAt: new Date().toISOString(),
-              })
-
-              files.push({
-                id: fileId,
-                mapId: 'mock-graph',
-                name: fileName,
-                type: ext === 'md' ? 'markdown' : 'image' as any,
-                url: `mock://${fileName}`,
-                size: Math.floor(Math.random() * 5000) + 200,
-                path: fileName,
-                createdAt: new Date().toISOString(),
-              })
-            })
-
-            // 이전에 생성된 폴더 내 파일들도 fileNodeMap에 추가
-            mockProject.folders.forEach(folder => {
-              folder.children.forEach(fileName => {
-                const filePath = `${folder.path}/${fileName}`
-                const existingNode = nodes.find(n => n.summary === filePath)
-                if (existingNode) {
-                  fileNodeMap.set(filePath, existingNode.id)
-                }
-              })
-            })
-
-            // ========== Import 종속성 (Dependency) 엣지 생성 ==========
-            const importDependencies = [
-              // app/page.tsx imports
-              { from: 'app/page.tsx', to: 'components/Header.tsx', label: 'import Header' },
-              { from: 'app/page.tsx', to: 'components/Footer.tsx', label: 'import Footer' },
-              { from: 'app/page.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
-
-              // app/layout.tsx imports
-              { from: 'app/layout.tsx', to: 'components/Sidebar.tsx', label: 'import Sidebar' },
-              { from: 'app/layout.tsx', to: 'app/globals.css', label: 'import styles' },
-              { from: 'app/layout.tsx', to: 'lib/utils.ts', label: 'import utils' },
-
-              // app/dashboard/page.tsx imports
-              { from: 'app/dashboard/page.tsx', to: 'components/Header.tsx', label: 'import Header' },
-              { from: 'app/dashboard/page.tsx', to: 'components/ui/Card.tsx', label: 'import Card' },
-              { from: 'app/dashboard/page.tsx', to: 'hooks/useAuth.ts', label: 'import useAuth' },
-              { from: 'app/dashboard/page.tsx', to: 'stores/uiStore.ts', label: 'import uiStore' },
-
-              // components imports
-              { from: 'components/Header.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
-              { from: 'components/Header.tsx', to: 'hooks/useAuth.ts', label: 'import useAuth' },
-              { from: 'components/Header.tsx', to: 'hooks/useTheme.ts', label: 'import useTheme' },
-              { from: 'components/Sidebar.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
-              { from: 'components/Sidebar.tsx', to: 'stores/uiStore.ts', label: 'import uiStore' },
-              { from: 'components/Footer.tsx', to: 'lib/utils.ts', label: 'import utils' },
-
-              // components/ui imports
-              { from: 'components/ui/Modal.tsx', to: 'components/ui/Button.tsx', label: 'import Button' },
-              { from: 'components/ui/Card.tsx', to: 'lib/utils.ts', label: 'import cn' },
-              { from: 'components/ui/Button.tsx', to: 'lib/utils.ts', label: 'import cn' },
-              { from: 'components/ui/Input.tsx', to: 'lib/utils.ts', label: 'import cn' },
-
-              // hooks imports
-              { from: 'hooks/useAuth.ts', to: 'stores/authStore.ts', label: 'import authStore' },
-              { from: 'hooks/useAuth.ts', to: 'lib/db.ts', label: 'import db' },
-              { from: 'hooks/useTheme.ts', to: 'stores/uiStore.ts', label: 'import uiStore' },
-
-              // stores imports
-              { from: 'stores/authStore.ts', to: 'types/index.ts', label: 'import types' },
-              { from: 'stores/uiStore.ts', to: 'types/index.ts', label: 'import types' },
-
-              // lib imports
-              { from: 'lib/db.ts', to: 'types/api.ts', label: 'import API types' },
-
-              // api routes imports
-              { from: 'app/api/route.ts', to: 'lib/db.ts', label: 'import db' },
-              { from: 'app/api/users/route.ts', to: 'lib/db.ts', label: 'import db' },
-              { from: 'app/api/users/route.ts', to: 'types/api.ts', label: 'import types' },
-            ]
-
-            // Import 종속성 엣지 추가
-            importDependencies.forEach(dep => {
-              const sourceId = fileNodeMap.get(dep.from)
-              const targetId = fileNodeMap.get(dep.to)
-
-              if (sourceId && targetId) {
-                edges.push({
-                  id: generateId(),
-                  source: sourceId,
-                  target: targetId,
-                  type: 'imports',
-                  label: dep.label,
-                  weight: 0.5,
-                  bidirectional: false,
-                  createdAt: new Date().toISOString(),
-                })
-              }
-            })
-
-            // 그래프 설정
-            const graphData = {
-              nodes,
-              edges,
-              clusters: [],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
-
-            if (state.graph) {
-              state.graph.nodes = graphData.nodes
-              state.graph.edges = graphData.edges
-              state.graph.clusters = graphData.clusters
-              state.graph.updatedAt = graphData.updatedAt
-            } else {
-              state.graph = {
-                ...graphData,
-                title: mockProject.name,
-              } as any
-            }
-
-            state.files = normalizeFiles(files)
-            state.expandedNodeIds = new Set([rootNode.id])
+            state.layoutMode = mode
+            // 레이아웃 변경 시 시뮬레이션 재가열
+            state.isSimulationRunning = true
+            state.simulationAlpha = 1
           }),
 
+        // ========== Build logic ==========
+
         buildGraphFromFiles: () =>
-          set((state: any) => {
+          set((state) => {
             const currentFiles = state.files
             if (!currentFiles || currentFiles.length === 0) {
               state.graph = null
@@ -1138,8 +865,10 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               updatedAt: new Date().toISOString(),
             }
 
-            const nodes: NeuralNode[] = [rootNode]; const edges: NeuralEdge[] = []
-            const folderMap = new Map<string, string>(); folderMap.set('', rootNode.id)
+            const nodes: NeuralNode[] = [rootNode];
+            const edges: NeuralEdge[] = []
+            const folderMap = new Map<string, string>();
+            folderMap.set('', rootNode.id)
             const fileNodeMap = new Map<string, string>()
 
             const allFolderPaths = new Set<string>()
@@ -1151,7 +880,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
 
             Array.from(allFolderPaths).sort((a, b) => a.split('/').length - b.split('/').length).forEach(folderPath => {
               if (folderPath === projectName) { folderMap.set(folderPath, rootNode.id); return; }
-              const folderId = generateId(); const folderName = folderPath.split('/').pop() || folderPath
+              const folderId = generateId();
+              const folderName = folderPath.split('/').pop() || folderPath
               const parentPath = folderPath.includes('/') ? folderPath.substring(0, folderPath.lastIndexOf('/')) : ''
               nodes.push({
                 id: folderId, type: 'folder', title: folderName, summary: `폴더: ${folderPath}`,
@@ -1166,7 +896,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             })
 
             currentFiles.forEach((file: any) => {
-              const fileId = generateId(); const filePath = file.path || file.name
+              const fileId = generateId();
+              const filePath = file.path || file.name
               const ext = file.name.split('.').pop()?.toLowerCase() || ''
               const fileType = ['tsx', 'ts', 'js', 'jsx'].includes(ext) ? 'code' :
                 ext === 'css' || ext === 'scss' ? 'style' : ext === 'json' || ext === 'env' ? 'config' : ext === 'md' ? 'doc' : 'file'
@@ -1185,29 +916,41 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               }, edges)
             })
 
-            const htmlSelectors = new Map<string, Set<string>>(); const cssSelectors = new Map<string, Set<string>>()
+            const htmlSelectors = new Map<string, Set<string>>();
+            const cssSelectors = new Map<string, Set<string>>()
             currentFiles.forEach((file: any) => {
-              const content = file.content || ''; if (!content) return
+              const content = file.content || '';
+              if (!content) return
               const ext = file.name.split('.').pop()?.toLowerCase() || ''
               if (ext === 'html' || ext === 'htm') {
-                const idRegex = /id=["']([^"']+)["']/gi; const classRegex = /class=["']([^"']+)["']/gi; const sels = new Set<string>()
-                let m; while ((m = idRegex.exec(content))) sels.add(m[1])
+                const idRegex = /id=["']([^"']+)["']/gi;
+                const classRegex = /class=["']([^"']+)["']/gi;
+                const sels = new Set<string>()
+                let m;
+                while ((m = idRegex.exec(content))) sels.add(m[1])
                 while ((m = classRegex.exec(content))) m[1].split(/\s+/).forEach((c: any) => c && sels.add(c))
                 if (sels.size > 0) htmlSelectors.set(file.path || file.name, sels)
               } else if (ext === 'css' || ext === 'scss') {
-                const classRegex = /\.([a-zA-Z0-9_-]+)/g; const idRegex = /#([a-zA-Z0-9_-]+)/g; const sels = new Set<string>()
-                let m; while ((m = classRegex.exec(content))) sels.add(m[1])
+                const classRegex = /\.([a-zA-Z0-9_-]+)/g;
+                const idRegex = /#([a-zA-Z0-9_-]+)/g;
+                const sels = new Set<string>()
+                let m;
+                while ((m = classRegex.exec(content))) sels.add(m[1])
                 while ((m = idRegex.exec(content))) sels.add(m[1])
                 if (sels.size > 0) cssSelectors.set(file.path || file.name, sels)
               }
             })
 
             currentFiles.forEach((file: any) => {
-              const content = file.content || ''; if (!content) return
-              const filePath = file.path || file.name; const sourceId = fileNodeMap.get(filePath); if (!sourceId) return
+              const content = file.content || '';
+              if (!content) return
+              const filePath = file.path || file.name;
+              const sourceId = fileNodeMap.get(filePath);
+              if (!sourceId) return
               const ext = file.name.split('.').pop()?.toLowerCase() || ''
               if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
-                const jsImportRegex = /(?:import|from|require)\s*\(?\s*['"]([^'"]+)['"]\s*\)?/g; let m
+                const jsImportRegex = /(?:import|from|require)\s*\(?\s*['"]([^'"]+)['"]\s*\)?/g;
+                let m
                 while ((m = jsImportRegex.exec(content))) {
                   const targetPath = resolvePath(filePath, m[1], fileNodeMap)
                   if (targetPath && fileNodeMap.has(targetPath)) {
@@ -1218,41 +961,81 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                   }
                 }
                 htmlSelectors.forEach((sels, hPath) => {
-                  const tId = fileNodeMap.get(hPath); if (!tId || tId === sourceId) return
+                  const tId = fileNodeMap.get(hPath);
+                  if (!tId || tId === sourceId) return
                   for (const s of Array.from(sels)) if (content.includes(s)) {
                     addUniqueEdge({
                       id: generateId(), source: sourceId, target: tId, type: 'semantic', label: 'functional',
                       weight: 0.3, bidirectional: true, createdAt: new Date().toISOString()
-                    }, edges); break
+                    }, edges);
+                    break
                   }
                 })
               }
               if (ext === 'html' || ext === 'htm') {
                 cssSelectors.forEach((sels, cPath) => {
-                  const tId = fileNodeMap.get(cPath); if (!tId || tId === sourceId) return
-                  const htmlSels = htmlSelectors.get(filePath); if (!htmlSels) return
+                  const tId = fileNodeMap.get(cPath);
+                  if (!tId || tId === sourceId) return
+                  const htmlSels = htmlSelectors.get(filePath);
+                  if (!htmlSels) return
                   for (const s of Array.from(sels)) if (htmlSels.has(s)) {
                     addUniqueEdge({
                       id: generateId(), source: sourceId, target: tId, type: 'semantic', label: 'style',
                       weight: 0.5, bidirectional: true, createdAt: new Date().toISOString()
-                    }, edges); break
+                    }, edges);
+                    break
                   }
                 })
               }
             })
 
             const graphData: NeuralGraph = {
-              version: '2.0', userId: '', rootNodeId: rootNode.id, title: projectName,
-              nodes, edges, clusters: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+              version: '2.0',
+              userId: '',
+              rootNodeId: rootNode.id,
+              title: projectName,
+              nodes,
+              edges,
+              clusters: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
               viewState: {
-                activeTab: 'map', expandedNodeIds: [rootNode.id], pinnedNodeIds: [], selectedNodeIds: [],
-                cameraPosition: { x: 0, y: 0, z: 0 }, cameraTarget: { x: 0, y: 0, z: 0 },
-              }, themeId: state.themeId || 'cosmic-dark',
+                activeTab: 'map',
+                expandedNodeIds: [rootNode.id],
+                pinnedNodeIds: [],
+                selectedNodeIds: [],
+                cameraPosition: { x: 0, y: 0, z: 0 },
+                cameraTarget: { x: 0, y: 0, z: 0 },
+              },
+              themeId: state.themeId || 'cosmic-dark',
             }
+
             if (state.graph) {
-              state.graph.nodes = nodes; state.graph.edges = edges; state.graph.updatedAt = graphData.updatedAt
-            } else { state.graph = graphData }
-            state.expandedNodeIds = new Set(nodes.map(n => n.id))
+              state.graph.nodes = nodes
+              state.graph.edges = edges
+              state.graph.updatedAt = graphData.updatedAt
+            } else {
+              state.graph = graphData
+            }
+            state.expandedNodeIds = new Set(nodes.map((n) => n.id))
+          }),
+
+        resetLayout: () =>
+          set((state) => {
+            if (!state.graph) return
+            // 모든 노드의 고정 위치 해제 및 초기화
+            state.graph.nodes.forEach((node) => {
+              node.position = undefined
+              // @ts-ignore
+              delete node.fx
+              // @ts-ignore
+              delete node.fy
+              // @ts-ignore
+              delete node.fz
+            })
+            // 시뮬레이션 재가열을 위해 alpha 값 리셋 (NeuralMapCanvas/CosmicForceGraph에서 감지)
+            state.isSimulationRunning = true
+            state.simulationAlpha = 1
           }),
       })),
       {

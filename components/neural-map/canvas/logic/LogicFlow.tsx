@@ -16,6 +16,7 @@ import ReactFlow, {
     ReactFlowProvider,
     useReactFlow,
     OnSelectionChangeParams,
+    MiniMap,
 } from 'reactflow'
 import dagre from 'dagre'
 import 'reactflow/dist/style.css'
@@ -490,6 +491,26 @@ function LogicFlowContent({ className }: { className?: string }) {
             >
                 <Background color={isDark ? '#333' : '#ddd'} gap={20} />
                 <Controls />
+                <MiniMap
+                    pannable
+                    zoomable
+                    nodeStrokeColor={(n) => {
+                        if (n.type === 'group') return '#8b5cf6'
+                        return isDark ? '#333' : '#eee'
+                    }}
+                    nodeColor={(n) => {
+                        if (n.type === 'group') return 'transparent'
+                        return isDark ? '#27272a' : '#fff'
+                    }}
+                    maskColor={isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)'}
+                    className={cn(
+                        "!bg-transparent border rounded-lg overflow-hidden",
+                        isDark ? "border-zinc-800" : "border-zinc-200"
+                    )}
+                    style={{
+                        backgroundColor: isDark ? '#09090b' : '#fff',
+                    }}
+                />
 
                 <Panel position="top-left" className="flex gap-2">
                     <div className={cn("flex rounded-lg shadow-lg border p-1 gap-1", isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200")}>

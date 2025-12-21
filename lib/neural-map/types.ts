@@ -134,6 +134,7 @@ export interface NeuralCluster {
 // ============================================
 
 export type ViewTab = 'map' | 'life-stream' | 'data' | 'logic' | 'test'
+export type LayoutMode = 'organic' | 'radial'
 
 export interface CameraState {
   position: NodePosition
