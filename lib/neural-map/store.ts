@@ -1075,24 +1075,58 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             state.expandedNodeIds = new Set([rootNode.id])
           }),
 
-        // ========== Build Graph from Real Files ==========
         buildGraphFromFiles: () =>
-          set((state) => {
+          set((state: any) => {
             const currentFiles = state.files
             if (!currentFiles || currentFiles.length === 0) {
-              return // No files to visualize
+              state.graph = null
+              return
             }
 
-            // ID 생성 헬퍼
             const generateId = () => `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-            // 프로젝트 이름 추출 (첫 번째 폴더 또는 "My Project")
+            const edgeTracker = new Set<string>()
             const firstPath = currentFiles[0]?.path || currentFiles[0]?.name
             const projectName = firstPath?.split('/')[0] || 'My Project'
 
-            // 루트 노드 (프로젝트)
+            const addUniqueEdge = (edge: NeuralEdge, edges: NeuralEdge[]) => {
+              const pairId = [edge.source, edge.target].sort().join('-')
+              if (edge.type === 'parent_child' || !edgeTracker.has(pairId)) {
+                edges.push(edge)
+                if (edge.type !== 'parent_child') edgeTracker.add(pairId)
+                return true
+              }
+              return false
+            }
+
+            const resolvePath = (fromPath: string, importPath: string, fileNodeMap: Map<string, string>): string | null => {
+              if (!importPath) return null;
+              if (importPath.startsWith('.')) {
+                const fromDir = fromPath.includes('/') ? fromPath.substring(0, fromPath.lastIndexOf('/')) : '';
+                const parts = fromDir ? fromDir.split('/') : [];
+                const importParts = importPath.split('/');
+                for (const part of importParts) {
+                  if (part === '.') continue;
+                  if (part === '..') parts.pop();
+                  else parts.push(part);
+                }
+                const resolved = parts.join('/');
+                const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '.py'];
+                for (const ext of extensions) {
+                  if (fileNodeMap.has(resolved + ext)) return resolved + ext;
+                  if (fileNodeMap.has(resolved + '/index' + ext)) return resolved + '/index' + ext;
+                }
+              } else {
+                const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '.py'];
+                for (const ext of extensions) {
+                  if (fileNodeMap.has(importPath + ext)) return importPath + ext;
+                  if (fileNodeMap.has(projectName + '/' + importPath + ext)) return projectName + '/' + importPath + ext;
+                }
+              }
+              return null;
+            };
+
             const rootNode: NeuralNode = {
-              id: generateId(),
+              id: 'node-root',
               type: 'self',
               title: projectName,
               summary: `${currentFiles.length}개 파일`,
@@ -1104,376 +1138,126 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               updatedAt: new Date().toISOString(),
             }
 
-            const nodes: NeuralNode[] = [rootNode]
-            const edges: NeuralEdge[] = []
-
-            // 폴더 노드 맵 (path -> nodeId)
-            const folderMap = new Map<string, string>()
-            folderMap.set('', rootNode.id) // 루트
-
-            // 파일 노드 맵 (filePath -> nodeId) - import 분석용
+            const nodes: NeuralNode[] = [rootNode]; const edges: NeuralEdge[] = []
+            const folderMap = new Map<string, string>(); folderMap.set('', rootNode.id)
             const fileNodeMap = new Map<string, string>()
 
-            // 모든 폴더 경로 수집 및 생성
             const allFolderPaths = new Set<string>()
-            currentFiles.forEach(file => {
+            currentFiles.forEach((file: any) => {
               const filePath = file.path || file.name
               const parts = filePath.split('/')
-              // 마지막은 파일명이므로 제외
-              for (let i = 1; i < parts.length; i++) {
-                allFolderPaths.add(parts.slice(0, i).join('/'))
-              }
+              for (let i = 1; i < parts.length; i++) allFolderPaths.add(parts.slice(0, i).join('/'))
             })
 
-            // 폴더 정렬 (부모 먼저 생성되도록)
-            const sortedFolders = Array.from(allFolderPaths).sort((a, b) => {
-              const depthA = a.split('/').length
-              const depthB = b.split('/').length
-              return depthA - depthB
-            })
-
-            // 중복 노드 방지: 최상위 폴더가 맵 이름과 같으면 루트 노드에 병합
-            if (sortedFolders.length > 0) {
-              const firstFolder = sortedFolders[0]
-              if (firstFolder === projectName || sortedFolders.length === 1) {
-                folderMap.set(firstFolder, rootNode.id)
-              }
-            }
-
-            // 폴더 노드 생성
-            sortedFolders.forEach(folderPath => {
-              if (folderMap.has(folderPath)) return // 이미 루트에 병합되었거나 존재
-
-              const folderId = generateId()
-              const folderName = folderPath.split('/').pop() || folderPath
-              const parentPath = folderPath.includes('/')
-                ? folderPath.substring(0, folderPath.lastIndexOf('/'))
-                : ''
-
-              const folderNode: NeuralNode = {
-                id: folderId,
-                type: 'folder',
-                title: folderName,
-                summary: `폴더: ${folderPath}`,
-                tags: ['folder'],
-                importance: 7,
-                parentId: folderMap.get(parentPath) || rootNode.id,
-                expanded: true,
-                pinned: false,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              }
-
-              nodes.push(folderNode)
+            Array.from(allFolderPaths).sort((a, b) => a.split('/').length - b.split('/').length).forEach(folderPath => {
+              if (folderPath === projectName) { folderMap.set(folderPath, rootNode.id); return; }
+              const folderId = generateId(); const folderName = folderPath.split('/').pop() || folderPath
+              const parentPath = folderPath.includes('/') ? folderPath.substring(0, folderPath.lastIndexOf('/')) : ''
+              nodes.push({
+                id: folderId, type: 'folder', title: folderName, summary: `폴더: ${folderPath}`,
+                tags: ['folder'], importance: 7, parentId: folderMap.get(parentPath) || rootNode.id,
+                expanded: true, pinned: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+              })
               folderMap.set(folderPath, folderId)
-
-              // 부모와 연결
-              edges.push({
-                id: generateId(),
-                source: folderMap.get(parentPath) || rootNode.id,
-                target: folderId,
-                type: 'parent_child',
-                weight: 0.1, // 구조선은 아주 연하게
-                bidirectional: false,
-                createdAt: new Date().toISOString(),
-              })
+              addUniqueEdge({
+                id: generateId(), source: folderMap.get(parentPath) || rootNode.id, target: folderId,
+                type: 'parent_child', weight: 0.1, bidirectional: false, createdAt: new Date().toISOString(),
+              }, edges)
             })
 
-            // 파일 노드 생성
-            currentFiles.forEach(file => {
-              const fileId = generateId()
-              const filePath = file.path || file.name
-              const fileName = file.name
-              const ext = fileName.split('.').pop()?.toLowerCase() || ''
-
-              // 파일 타입 결정
-              const fileType = ['tsx', 'ts', 'js', 'jsx', 'py', 'java', 'go', 'rs'].includes(ext) ? 'code' :
-                ['css', 'scss', 'less', 'sass'].includes(ext) ? 'style' :
-                  ['json', 'yaml', 'yml', 'toml', 'xml', 'env'].includes(ext) ? 'config' :
-                    ['md', 'mdx', 'txt', 'rst'].includes(ext) ? 'doc' :
-                      ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico'].includes(ext) ? 'image' :
-                        ['mp4', 'webm', 'mov', 'avi'].includes(ext) ? 'video' :
-                          ['pdf'].includes(ext) ? 'pdf' : 'file'
-
-              // 부모 폴더 찾기
-              const parentPath = filePath.includes('/')
-                ? filePath.substring(0, filePath.lastIndexOf('/'))
-                : ''
+            currentFiles.forEach((file: any) => {
+              const fileId = generateId(); const filePath = file.path || file.name
+              const ext = file.name.split('.').pop()?.toLowerCase() || ''
+              const fileType = ['tsx', 'ts', 'js', 'jsx'].includes(ext) ? 'code' :
+                ext === 'css' || ext === 'scss' ? 'style' : ext === 'json' || ext === 'env' ? 'config' : ext === 'md' ? 'doc' : 'file'
+              const parentPath = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : ''
               const parentId = folderMap.get(parentPath) || rootNode.id
-
-              const fileNode: NeuralNode = {
-                id: fileId,
-                type: fileType as any,
-                title: fileName,
-                summary: filePath,
-                tags: [ext, fileType],
-                importance: 5,
-                parentId: parentId,
-                expanded: true,
-                pinned: false,
-                createdAt: file.createdAt || new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                // 실제 파일 참조
-                sourceRef: {
-                  fileId: file.id,
-                  kind: file.type as any,
-                },
-              }
-
-              nodes.push(fileNode)
-              fileNodeMap.set(filePath, fileId)
-
-              // 부모와 연결
-              edges.push({
-                id: generateId(),
-                source: parentId,
-                target: fileId,
-                type: 'parent_child',
-                weight: 0.1, // 구조선은 아주 연하게
-                bidirectional: false,
-                createdAt: new Date().toISOString(),
+              nodes.push({
+                id: fileId, type: fileType as any, title: file.name, summary: filePath,
+                tags: [ext, fileType], importance: 5, parentId, expanded: true, pinned: false,
+                createdAt: file.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
+                sourceRef: { fileId: file.id, kind: file.type as any }
               })
+              fileNodeMap.set(filePath, fileId)
+              addUniqueEdge({
+                id: generateId(), source: parentId, target: fileId, type: 'parent_child',
+                weight: 0.1, bidirectional: false, createdAt: new Date().toISOString(),
+              }, edges)
             })
 
-            // ========== 파일 내용 분석 (정확한 종속성 연결) ==========
-            // 1. 경로 해결 헬퍼
-            const resolvePath = (fromPath: string, toPath: string) => {
-              if (!toPath || toPath.startsWith('http') || toPath.startsWith('//') || toPath.startsWith('data:')) return null;
-
-              const cleanToPath = toPath.split(/[?#]/)[0];
-
-              // 상대 경로 처리
-              if (cleanToPath.startsWith('.')) {
-                const parts = fromPath.split('/');
-                parts.pop();
-                const relativeParts = cleanToPath.split('/');
-
-                for (const part of relativeParts) {
-                  if (part === '.' || part === '') continue;
-                  if (part === '..') {
-                    parts.pop();
-                  } else {
-                    parts.push(part);
-                  }
-                }
-                return parts.join('/')
-              }
-
-              const fromParts = fromPath.split('/');
-              const rootFolder = fromParts[0] || '';
-
-              // 후보군: 원본, 루트 폴더 포함, 루트 폴더 제외
-              const candidates = [
-                cleanToPath,
-                rootFolder ? `${rootFolder}/${cleanToPath}` : cleanToPath,
-                cleanToPath.includes('/') ? cleanToPath.split('/').slice(1).join('/') : cleanToPath
-              ];
-
-              for (const cand of candidates) {
-                if (fileNodeMap.has(cand)) return cand;
-              }
-
-              // 마지막 수단: 같은 폴더 내 파일로 간주
-              fromParts.pop();
-              return fromParts.length > 0 ? `${fromParts.join('/')}/${cleanToPath}` : cleanToPath;
-            }
-
-            let dependencyCount = 0;
-
-            // 2. 내용 분석 및 엣지 생성
-            currentFiles.forEach(file => {
-              const content = (file as any).content;
-              if (!content || typeof content !== 'string') return;
-
-              const filePath = file.path || file.name;
-              const sourceId = fileNodeMap.get(filePath);
-              if (!sourceId) return;
-
-              const ext = file.name.split('.').pop()?.toLowerCase() || '';
-              const detectedDeps: { path: string; label: string }[] = [];
-
+            const htmlSelectors = new Map<string, Set<string>>(); const cssSelectors = new Map<string, Set<string>>()
+            currentFiles.forEach((file: any) => {
+              const content = file.content || ''; if (!content) return
+              const ext = file.name.split('.').pop()?.toLowerCase() || ''
               if (ext === 'html' || ext === 'htm') {
-                // 더 유연한 HTML 레겍스
-                const linkRegex = /<link[^>]+href=["']([^"']+)["'][^>]*>/gi;
-                const scriptRegex = /<script[^>]+src=["']([^"']+)["'][^>]*>/gi;
-                let match;
-                while ((match = linkRegex.exec(content)) !== null) detectedDeps.push({ path: match[1], label: 'link' });
-                while ((match = scriptRegex.exec(content)) !== null) detectedDeps.push({ path: match[1], label: 'script' });
+                const idRegex = /id=["']([^"']+)["']/gi; const classRegex = /class=["']([^"']+)["']/gi; const sels = new Set<string>()
+                let m; while ((m = idRegex.exec(content))) sels.add(m[1])
+                while ((m = classRegex.exec(content))) m[1].split(/\s+/).forEach((c: any) => c && sels.add(c))
+                if (sels.size > 0) htmlSelectors.set(file.path || file.name, sels)
+              } else if (ext === 'css' || ext === 'scss') {
+                const classRegex = /\.([a-zA-Z0-9_-]+)/g; const idRegex = /#([a-zA-Z0-9_-]+)/g; const sels = new Set<string>()
+                let m; while ((m = classRegex.exec(content))) sels.add(m[1])
+                while ((m = idRegex.exec(content))) sels.add(m[1])
+                if (sels.size > 0) cssSelectors.set(file.path || file.name, sels)
               }
+            })
 
+            currentFiles.forEach((file: any) => {
+              const content = file.content || ''; if (!content) return
+              const filePath = file.path || file.name; const sourceId = fileNodeMap.get(filePath); if (!sourceId) return
+              const ext = file.name.split('.').pop()?.toLowerCase() || ''
               if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) {
-                const importRegex = /import\s+?(?:(?:(?:[\w*\s{},]*)\s+from\s+)|(?:["']))["'](.+?)["']/g;
-                const requireRegex = /require\(["'](.+?)["']\)/g;
-                const dynamicImportRegex = /import\(["'](.+?)["']\)/g;
-                let match;
-                while ((match = importRegex.exec(content)) !== null) detectedDeps.push({ path: match[1], label: 'import' });
-                while ((match = requireRegex.exec(content)) !== null) detectedDeps.push({ path: match[1], label: 'require' });
-                while ((match = dynamicImportRegex.exec(content)) !== null) {
-                  detectedDeps.push({ path: match[1], label: 'import()' });
-                }
-              }
-
-              if (['css', 'scss', 'less'].includes(ext)) {
-                const cssImportRegex = /@import\s+["'](.+?)["']/g;
-                const cssUrlRegex = /url\(["']?(.+?)["']?\)/g;
-                let match;
-                while ((match = cssImportRegex.exec(content)) !== null) detectedDeps.push({ path: match[1], label: '@import' });
-                while ((match = cssUrlRegex.exec(content)) !== null) detectedDeps.push({ path: match[1], label: 'url' });
-              }
-
-              detectedDeps.forEach(dep => {
-                const resolved = resolvePath(filePath, dep.path);
-                if (!resolved) return;
-
-                const potentialPaths = [
-                  resolved,
-                  resolved + '.ts',
-                  resolved + '.tsx',
-                  resolved + '.js',
-                  resolved + '.jsx',
-                  resolved + '.css',
-                  resolved + '/index.ts',
-                  resolved + '/index.tsx',
-                  resolved + '/index.js',
-                ];
-
-                for (const p of potentialPaths) {
-                  const targetId = fileNodeMap.get(p);
-                  if (targetId && targetId !== sourceId) {
-                    edges.push({
-                      id: generateId(),
-                      source: sourceId,
-                      target: targetId,
-                      type: 'imports',
-                      label: dep.label,
-                      weight: 1.5, // 로직 관계는 매우 강하게 결합하여 덩어리를 형성
-                      bidirectional: false,
-                      createdAt: new Date().toISOString(),
-                    });
-                    dependencyCount++;
-                    break;
+                const jsImportRegex = /(?:import|from|require)\s*\(?\s*['"]([^'"]+)['"]\s*\)?/g; let m
+                while ((m = jsImportRegex.exec(content))) {
+                  const targetPath = resolvePath(filePath, m[1], fileNodeMap)
+                  if (targetPath && fileNodeMap.has(targetPath)) {
+                    addUniqueEdge({
+                      id: generateId(), source: sourceId, target: fileNodeMap.get(targetPath)!,
+                      type: 'imports', label: 'import', weight: 0.8, bidirectional: false, createdAt: new Date().toISOString()
+                    }, edges)
                   }
                 }
-              });
-            });
-
-            // ========== 시맨틱 링크 분석 (ID/Class 기반 기능적 연결) ==========
-            // 1. HTML에서 모든 ID와 Class 추출
-            const htmlSelectors = new Map<string, Set<string>>(); // filePath -> Set of selectors
-            currentFiles.forEach(file => {
-              const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                htmlSelectors.forEach((sels, hPath) => {
+                  const tId = fileNodeMap.get(hPath); if (!tId || tId === sourceId) return
+                  for (const s of Array.from(sels)) if (content.includes(s)) {
+                    addUniqueEdge({
+                      id: generateId(), source: sourceId, target: tId, type: 'semantic', label: 'functional',
+                      weight: 0.3, bidirectional: true, createdAt: new Date().toISOString()
+                    }, edges); break
+                  }
+                })
+              }
               if (ext === 'html' || ext === 'htm') {
-                const content = (file as any).content || '';
-                const selectors = new Set<string>();
-
-                // id="my-id", class="btn primary" 등 추출
-                const idRegex = /id=["']([^"']+)["']/gi;
-                const classRegex = /class=["']([^"']+)["']/gi;
-
-                let match;
-                while ((match = idRegex.exec(content)) !== null) selectors.add(match[1]);
-                while ((match = classRegex.exec(content)) !== null) {
-                  // 클래스는 공백으로 구분된 여러 개일 수 있음
-                  match[1].split(/\s+/).filter(Boolean).forEach(cls => selectors.add(cls));
-                }
-
-                if (selectors.size > 0) {
-                  htmlSelectors.set(file.path || file.name, selectors);
-                }
-              }
-            });
-
-            // 2. JS/CSS에서 해당 셀렉터 사용 여부 확인 및 엣지 생성
-            if (htmlSelectors.size > 0) {
-              currentFiles.forEach(file => {
-                const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                if (!['js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'less'].includes(ext)) return;
-
-                const content = (file as any).content || '';
-                const sourcePath = file.path || file.name;
-                const sourceId = fileNodeMap.get(sourcePath);
-                if (!sourceId) return;
-
-                htmlSelectors.forEach((selectors, htmlPath) => {
-                  const targetId = fileNodeMap.get(htmlPath);
-                  if (!targetId || targetId === sourceId) return;
-
-                  // 이미 직접 로드(imports) 연결이 있는지 확인
-                  const hasDirectLink = edges.some(e =>
-                    (e.source === sourceId && e.target === targetId) ||
-                    (e.source === targetId && e.target === sourceId)
-                  );
-                  if (hasDirectLink) return;
-
-                  // 셀렉터 중 하나라도 포함되어 있는지 확인 (단순 문자열 포함으로 1차 판단)
-                  for (const selector of selectors) {
-                    if (content.includes(selector)) {
-                      edges.push({
-                        id: generateId(),
-                        source: sourceId,
-                        target: targetId,
-                        type: 'semantic',
-                        label: 'functional',
-                        weight: 0.3, // 기능적 연결은 구조적 배치에 큰 영향을 주지 않도록 낮게 설정
-                        bidirectional: true,
-                        createdAt: new Date().toISOString(),
-                      });
-                      dependencyCount++;
-                      break; // 하나라도 찾으면 해당 파일과의 연결 생성 후 중단
-                    }
+                cssSelectors.forEach((sels, cPath) => {
+                  const tId = fileNodeMap.get(cPath); if (!tId || tId === sourceId) return
+                  const htmlSels = htmlSelectors.get(filePath); if (!htmlSels) return
+                  for (const s of Array.from(sels)) if (htmlSels.has(s)) {
+                    addUniqueEdge({
+                      id: generateId(), source: sourceId, target: tId, type: 'semantic', label: 'style',
+                      weight: 0.5, bidirectional: true, createdAt: new Date().toISOString()
+                    }, edges); break
                   }
-                });
-              });
-            }
-
-            // 기존 parent_child 엣지들의 가중치를 대폭 낮춤 (배경 구조 역할만 수행)
-            edges.forEach(edge => {
-              if (edge.type === 'parent_child') {
-                edge.weight = 0.1;
+                })
               }
-            });
+            })
 
-            console.log(`[Store] Logic Graph Rebuilt: ${dependencyCount} functional/semantic dependencies found.`);
-
-            // 그래프 설정
-            const graphData = {
-              nodes,
-              edges,
-              clusters: [],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+            const graphData: NeuralGraph = {
+              version: '2.0', userId: '', rootNodeId: rootNode.id, title: projectName,
+              nodes, edges, clusters: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+              viewState: {
+                activeTab: 'map', expandedNodeIds: [rootNode.id], pinnedNodeIds: [], selectedNodeIds: [],
+                cameraPosition: { x: 0, y: 0, z: 0 }, cameraTarget: { x: 0, y: 0, z: 0 },
+              }, themeId: state.themeId || 'cosmic-dark',
             }
-
             if (state.graph) {
-              state.graph.nodes = graphData.nodes
-              state.graph.edges = graphData.edges
-              state.graph.clusters = graphData.clusters
-              state.graph.updatedAt = graphData.updatedAt
-            } else {
-              state.graph = {
-                ...graphData,
-                version: '2.0',
-                userId: '',
-                rootNodeId: rootNode.id,
-                title: projectName,
-                viewState: {
-                  activeTab: 'map',
-                  expandedNodeIds: [rootNode.id],
-                  pinnedNodeIds: [],
-                  selectedNodeIds: [],
-                  cameraPosition: { x: 0, y: 0, z: 0 },
-                  cameraTarget: { x: 0, y: 0, z: 0 },
-                },
-                themeId: 'cosmic-dark',
-              } as NeuralGraph
-            }
-
+              state.graph.nodes = nodes; state.graph.edges = edges; state.graph.updatedAt = graphData.updatedAt
+            } else { state.graph = graphData }
             state.expandedNodeIds = new Set(nodes.map(n => n.id))
           }),
       })),
       {
         name: 'neural-map-storage',
-        partialize: (state) => ({
+        partialize: (state: any) => ({
           themeId: state.themeId,
           leftPanelWidth: state.leftPanelWidth,
           rightPanelWidth: state.rightPanelWidth,
