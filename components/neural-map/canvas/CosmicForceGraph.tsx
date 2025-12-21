@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralNode, NeuralEdge, NeuralFile } from '@/lib/neural-map/types'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { forceRadial, forceY } from 'd3-force-3d'
 import {
   BsFiletypePdf,
   BsFiletypeJs,
@@ -720,6 +721,9 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
     const graphInstance = graphRef.current
 
+    // Debug log
+    console.log('3D Layout Mode Changed:', layoutMode)
+
     // 약간의 딜레이 후 force 설정 (그래프 초기화 완료 대기)
     const timer = setTimeout(() => {
       const chargeForce = graphInstance.d3Force('charge')
@@ -742,26 +746,22 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
       // 'radial' 모드일 때 중심으로부터의 거리 강제
       if (layoutMode === 'radial') {
-        import('d3-force-3d').then(d3 => {
-          graphInstance.d3Force('radial', d3.forceRadial((n: any) => {
-            if (n.type === 'self') return 0
-            if (n.type === 'folder') return 120
-            return 240
-          }, 0, 0, 0).strength(0.8))
-          graphInstance.d3Force('y', null)
-        })
+        graphInstance.d3Force('radial', forceRadial((n: any) => {
+          if (n.type === 'self') return 0
+          if (n.type === 'folder') return 120
+          return 240
+        }, 0, 0, 0).strength(0.8))
+        graphInstance.d3Force('y', null)
       }
       // 'structural' 모드
       else if (layoutMode === 'structural') {
-        import('d3-force-3d').then(d3 => {
-          graphInstance.d3Force('radial', null)
-          // Simple hierarchy simulation: folders on top, files below
-          graphInstance.d3Force('y', d3.forceY((n: any) => {
-            if (n.type === 'self') return -200
-            if (n.type === 'folder') return -100
-            return 100
-          }).strength(0.5))
-        })
+        graphInstance.d3Force('radial', null)
+        // Simple hierarchy simulation: folders on top, files below
+        graphInstance.d3Force('y', forceY((n: any) => {
+          if (n.type === 'self') return -200
+          if (n.type === 'folder') return -100
+          return 100
+        }).strength(0.5))
       }
       else {
         graphInstance.d3Force('radial', null)

@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useTheme } from 'next-themes'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralNode, NeuralEdge, NeuralFile } from '@/lib/neural-map/types'
-import { forceRadial } from 'd3-force'
+import { forceRadial, forceY } from 'd3-force'
 
 // Dynamic import for SSR compatibility
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -642,6 +642,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     const fg = graphRef.current
     const effectiveDistance = radialDistance || 150
+    console.log('Layout Mode Changed:', layoutMode) // Debug log
 
     // Force: Charge (Repulsion)
     fg.d3Force('charge')?.strength(layoutMode === 'radial' ? -100 : -400)
@@ -659,36 +660,33 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     // Force: Radial (Circular Layout)
     if (layoutMode === 'radial') {
-      import('d3-force').then(d3 => {
-        fg.d3Force('radial', d3.forceRadial((n: any) => {
-          if (n.type === 'self') return 0
-          if (n.type === 'folder') return 180
-          if (n.depth === 1) return 180
-          return 380
-        }, 0, 0).strength(0.8))
-        fg.d3ReheatSimulation()
-      })
+      fg.d3Force('radial', forceRadial((n: any) => {
+        if (n.type === 'self') return 0
+        if (n.type === 'folder' || n.depth === 1) return 180
+        return 380
+      }, 0, 0).strength(0.8))
+
+      fg.d3Force('y', null) // Disable Y force
     }
-    // Force: Structural (Dag/Tree Layout is hard with just forces, simulating via Y-positioning or similar)
+    // Force: Structural (Tree-like Layout)
     else if (layoutMode === 'structural') {
-      // Structural mode: turn off radial, maybe add Y-force for tree-like structure
-      fg.d3Force('radial', null)
-      import('d3-force').then(d3 => {
-        // Simple hierarchy simulation: folders on top, files below
-        fg.d3Force('y', d3.forceY((n: any) => {
-          if (n.type === 'self') return -200
-          if (n.type === 'folder') return -100
-          return 100
-        }).strength(0.5))
-        fg.d3ReheatSimulation()
-      })
+      fg.d3Force('radial', null) // Disable Radial force
+
+      // Simple hierarchy simulation: folders on top, files below
+      fg.d3Force('y', forceY((n: any) => {
+        if (n.type === 'self') return -200
+        if (n.type === 'folder') return -100
+        return 100
+      }).strength(0.5))
     }
     // Force: Organic (Default)
     else {
       fg.d3Force('radial', null)
       fg.d3Force('y', null)
-      fg.d3ReheatSimulation()
     }
+
+    // Always reheat simulation
+    fg.d3ReheatSimulation()
 
   }, [layoutMode, radialDistance])
 
