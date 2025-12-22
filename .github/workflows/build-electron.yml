@@ -35,14 +35,20 @@ jobs:
 
       - name: Build & Publish Electron
         run: |
-          # Same as npm run electron:pack but with publish flag
-          cp -R public .next/standalone/public
-          cp -R .next/static .next/standalone/.next/static
+          # 파일 구조 확인 (디버깅용)
+          echo "Checking directory structure..."
+          ls -R .next/standalone || echo "Standalone directory not found!"
+          
+          # Standalone 출력물에 필요한 정적 파일들 복사
+          mkdir -p .next/standalone/.next
+          cp -R public .next/standalone/ || echo "Public folder copy failed"
+          cp -R .next/static .next/standalone/.next/ || echo "Static folder copy failed"
+          
+          # Electron 컴파일 및 배포
           npm run electron:compile
           npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Skip code signing to avoid 'Identity not found' errors
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

@@ -54,7 +54,7 @@
     "electron:compile": "tsc electron/main.ts electron/preload.ts --outDir electron/dist --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck",
     "electron:start": "wait-on tcp:3000 && electron .",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:compile && npm run electron:start\"",
-    "electron:pack": "npm run build && cp -R public .next/standalone/public && cp -R .next/static .next/standalone/.next/static && npm run electron:compile && electron-builder"
+    "electron:pack": "npm run build && mkdir -p .next/standalone/.next && cp -R public .next/standalone/ && cp -R .next/static .next/standalone/.next/ && npm run electron:compile && electron-builder"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.45",
