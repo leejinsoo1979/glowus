@@ -109,7 +109,7 @@ body {
     color: rgb(var(--foreground));
   }
 
-  body.electron-app {
+  .electron-app {
     --title-bar-height: 32px;
   }
 
