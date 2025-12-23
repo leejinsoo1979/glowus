@@ -36,24 +36,6 @@ import {
   AlertCircle,
 } from 'lucide-react'
 
-// Electron IPC type declaration
-declare global {
-  interface Window {
-    electron?: {
-      fs: {
-        fileStats: (dirPath: string) => Promise<FileStats[]>
-        scanApiRoutes: (dirPath: string) => Promise<{ path: string; method: string; file: string }[]>
-        scanTypes: (dirPath: string, options?: { extensions?: string[] }) => Promise<TypeInfo[]>
-        scanSchema: (dirPath: string) => Promise<TableInfo[]>
-      }
-      git: {
-        log: (dirPath: string, options?: { maxCommits?: number }) => Promise<string>
-        branches: (dirPath: string) => Promise<string>
-      }
-    }
-  }
-}
-
 // Default diagram templates for manual mode
 const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, string> = {
   flowchart: `flowchart TD

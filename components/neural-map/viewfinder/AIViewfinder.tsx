@@ -7,13 +7,13 @@ import {
   Eye,
   Pause,
   Play,
-  Maximize2,
   Minimize2,
   X,
   Loader2,
   Scan,
-  ZoomIn,
-  Move
+  Move,
+  Share2,
+  MessageSquare
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -32,12 +32,16 @@ export interface ViewfinderCaptureResult {
 }
 
 export interface AIViewfinderProps {
+  /** Webview의 webContentsId (Electron 캡처용) */
+  webContentsId?: number
   /** 부모 컨테이너 ref (bounds 제한용) */
   containerRef?: React.RefObject<HTMLElement>
   /** 캡처 결과 콜백 */
   onCapture?: (result: ViewfinderCaptureResult) => void
   /** 실시간 분석 결과 콜백 */
   onAnalysis?: (analysis: string, isStreaming: boolean) => void
+  /** AI 컨텍스트 공유 콜백 (챗봇에 이미지 전달) */
+  onShareToAI?: (imageDataUrl: string, timestamp: number) => void
   /** 분석 모드: 수동 / 자동 (interval) */
   mode?: 'manual' | 'auto'
   /** 자동 모드 간격 (ms) */
@@ -50,21 +54,23 @@ export interface AIViewfinderProps {
   isActive?: boolean
   /** 닫기 콜백 */
   onClose?: () => void
-  /** 캡처 대상 element selector */
-  captureTarget?: string
+  /** AI 컨텍스트 공유 활성화 여부 */
+  aiContextEnabled?: boolean
 }
 
 export function AIViewfinder({
+  webContentsId,
   containerRef,
   onCapture,
   onAnalysis,
+  onShareToAI,
   mode = 'manual',
   autoInterval = 3000,
   initialBounds,
   minSize = { width: 200, height: 150 },
   isActive = true,
   onClose,
-  captureTarget
+  aiContextEnabled = true
 }: AIViewfinderProps) {
   // 상태
   const [bounds, setBounds] = useState<ViewfinderBounds>({
@@ -79,66 +85,82 @@ export function AIViewfinder({
   const [lastCapture, setLastCapture] = useState<ViewfinderCaptureResult | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [shareCount, setShareCount] = useState(0)
 
   const viewfinderRef = useRef<HTMLDivElement>(null)
   const autoIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const shareIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // 캡처 함수
+  // Electron capturePage API를 사용한 캡처
   const captureViewfinder = useCallback(async () => {
-    if (isCapturing || !isActive) return
+    if (isCapturing || !isActive) return null
 
     setIsCapturing(true)
 
     try {
-      // html2canvas 동적 import
-      const html2canvas = (await import('html2canvas')).default
+      // Electron API 확인
+      if (!window.electron?.viewfinder) {
+        console.warn('Electron viewfinder API not available, falling back to html2canvas')
+        // Fallback: html2canvas 사용 (웹 환경용)
+        const html2canvas = (await import('html2canvas')).default
+        const targetElement = containerRef?.current || document.body
 
-      // 캡처 대상 결정
-      let targetElement: HTMLElement | null = null
+        const canvas = await html2canvas(targetElement, {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+          scale: Math.min(window.devicePixelRatio || 1, 2) // 최대 2x로 제한
+        })
 
-      if (captureTarget) {
-        targetElement = document.querySelector(captureTarget) as HTMLElement
-      } else if (containerRef?.current) {
-        targetElement = containerRef.current
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8) // JPEG으로 압축
+
+        const result: ViewfinderCaptureResult = {
+          imageDataUrl,
+          bounds: { ...bounds },
+          timestamp: Date.now()
+        }
+
+        setLastCapture(result)
+        onCapture?.(result)
+        return result
+      }
+
+      // Electron API 사용
+      let captureResult
+
+      if (webContentsId && window.electron?.viewfinder?.captureWebview) {
+        // Webview 캡처 (영역 지정)
+        captureResult = await window.electron.viewfinder.captureWebview(webContentsId, {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height
+        })
+      } else if (window.electron?.viewfinder?.captureWindow) {
+        // 메인 윈도우 캡처
+        captureResult = await window.electron.viewfinder.captureWindow({
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height
+        })
       } else {
-        targetElement = document.body
+        throw new Error('Electron capture API not available')
       }
 
-      if (!targetElement) {
-        throw new Error('Capture target not found')
-      }
-
-      // 전체 영역 캡처 후 크롭
-      const canvas = await html2canvas(targetElement, {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: null,
-        scale: window.devicePixelRatio || 1
-      })
-
-      const imageDataUrl = canvas.toDataURL('image/png')
-
-      // 텍스트 추출 (Tesseract.js 사용)
-      let extractedText = ''
-      try {
-        const Tesseract = await import('tesseract.js')
-        const worker = await Tesseract.createWorker('eng+kor')
-        const { data } = await worker.recognize(imageDataUrl)
-        extractedText = data.text
-        await worker.terminate()
-      } catch (ocrError) {
-        console.warn('OCR failed, continuing without text extraction:', ocrError)
+      if (!captureResult.success) {
+        throw new Error(captureResult.error || 'Capture failed')
       }
 
       const result: ViewfinderCaptureResult = {
-        imageDataUrl,
-        extractedText,
+        imageDataUrl: captureResult.dataUrl!,
         bounds: { ...bounds },
-        timestamp: Date.now()
+        timestamp: captureResult.timestamp || Date.now()
       }
 
       setLastCapture(result)
@@ -151,7 +173,17 @@ export function AIViewfinder({
     } finally {
       setIsCapturing(false)
     }
-  }, [isCapturing, isActive, bounds, captureTarget, containerRef, onCapture])
+  }, [isCapturing, isActive, bounds, webContentsId, containerRef, onCapture])
+
+  // AI에게 화면 공유 (실시간 스트리밍)
+  const shareToAI = useCallback(async () => {
+    const result = await captureViewfinder()
+    if (result && onShareToAI) {
+      onShareToAI(result.imageDataUrl, result.timestamp)
+      setShareCount(prev => prev + 1)
+    }
+    return result
+  }, [captureViewfinder, onShareToAI])
 
   // AI 분석 함수
   const analyzeCapture = useCallback(async (capture?: ViewfinderCaptureResult) => {
@@ -168,7 +200,6 @@ export function AIViewfinder({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageDataUrl: targetCapture.imageDataUrl,
-          extractedText: targetCapture.extractedText,
           prompt: '이 화면에서 보이는 내용을 자세히 분석해주세요. 텍스트, 이미지, UI 요소 등을 식별하고 설명해주세요.'
         })
       })
@@ -210,6 +241,28 @@ export function AIViewfinder({
     }
   }, [captureViewfinder, analyzeCapture])
 
+  // 실시간 AI 공유 토글
+  const toggleSharing = useCallback(() => {
+    if (isSharing) {
+      // 공유 중지
+      if (shareIntervalRef.current) {
+        clearInterval(shareIntervalRef.current)
+        shareIntervalRef.current = null
+      }
+      setIsSharing(false)
+    } else {
+      // 공유 시작
+      setIsSharing(true)
+      setShareCount(0)
+      // 즉시 첫 캡처 실행
+      shareToAI()
+      // 주기적 캡처 시작
+      shareIntervalRef.current = setInterval(() => {
+        shareToAI()
+      }, autoInterval)
+    }
+  }, [isSharing, shareToAI, autoInterval])
+
   // 자동 모드 관리
   useEffect(() => {
     if (isAutoMode && !isPaused && isActive) {
@@ -226,13 +279,28 @@ export function AIViewfinder({
     }
   }, [isAutoMode, isPaused, isActive, autoInterval, captureAndAnalyze])
 
-  // 비활성화 시 자동 모드 중지
+  // 비활성화 시 정리
   useEffect(() => {
-    if (!isActive && autoIntervalRef.current) {
-      clearInterval(autoIntervalRef.current)
-      autoIntervalRef.current = null
+    if (!isActive) {
+      if (autoIntervalRef.current) {
+        clearInterval(autoIntervalRef.current)
+        autoIntervalRef.current = null
+      }
+      if (shareIntervalRef.current) {
+        clearInterval(shareIntervalRef.current)
+        shareIntervalRef.current = null
+      }
+      setIsSharing(false)
     }
   }, [isActive])
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (autoIntervalRef.current) clearInterval(autoIntervalRef.current)
+      if (shareIntervalRef.current) clearInterval(shareIntervalRef.current)
+    }
+  }, [])
 
   if (!isActive) return null
 
@@ -244,8 +312,13 @@ export function AIViewfinder({
         onClick={() => setIsMinimized(false)}
       >
         <Eye className="w-6 h-6 text-white" />
-        {isAutoMode && !isPaused && (
-          <span className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+        {isSharing && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-pulse flex items-center justify-center">
+            <span className="text-[8px] text-white font-bold">{shareCount}</span>
+          </span>
+        )}
+        {isAutoMode && !isPaused && !isSharing && (
+          <span className="absolute top-0 right-0 w-3 h-3 bg-yellow-500 rounded-full animate-pulse" />
         )}
       </div>
     )
@@ -277,18 +350,31 @@ export function AIViewfinder({
         className={cn(
           "w-full h-full rounded-lg overflow-hidden",
           "border-2 border-dashed",
-          isCapturing || isAnalyzing
-            ? "border-yellow-500 bg-yellow-500/10"
-            : "border-blue-500/70 bg-blue-500/5",
+          isSharing
+            ? "border-green-500 bg-green-500/10"
+            : isCapturing || isAnalyzing
+              ? "border-yellow-500 bg-yellow-500/10"
+              : "border-blue-500/70 bg-blue-500/5",
           "shadow-2xl backdrop-blur-sm"
         )}
       >
         {/* 헤더 (드래그 핸들) */}
-        <div className="viewfinder-drag-handle flex items-center justify-between px-3 py-2 bg-gradient-to-r from-blue-600/90 to-purple-600/90 backdrop-blur cursor-move">
+        <div className={cn(
+          "viewfinder-drag-handle flex items-center justify-between px-3 py-2 backdrop-blur cursor-move",
+          isSharing
+            ? "bg-gradient-to-r from-green-600/90 to-emerald-600/90"
+            : "bg-gradient-to-r from-blue-600/90 to-purple-600/90"
+        )}>
           <div className="flex items-center gap-2 text-white">
             <Eye className="w-4 h-4" />
             <span className="text-xs font-medium">AI Viewfinder</span>
-            {isAutoMode && (
+            {isSharing && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/40 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-green-300 rounded-full animate-pulse" />
+                LIVE ({shareCount})
+              </span>
+            )}
+            {isAutoMode && !isSharing && (
               <span className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded-full",
                 isPaused ? "bg-yellow-500/30" : "bg-green-500/30"
@@ -322,21 +408,46 @@ export function AIViewfinder({
         {/* 뷰파인더 영역 (투명) */}
         <div className="flex-1 relative" style={{ height: 'calc(100% - 80px)' }}>
           {/* 코너 가이드 */}
-          <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-white/50" />
-          <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-white/50" />
-          <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-white/50" />
-          <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-white/50" />
+          <div className={cn(
+            "absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2",
+            isSharing ? "border-green-400/50" : "border-white/50"
+          )} />
+          <div className={cn(
+            "absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2",
+            isSharing ? "border-green-400/50" : "border-white/50"
+          )} />
+          <div className={cn(
+            "absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2",
+            isSharing ? "border-green-400/50" : "border-white/50"
+          )} />
+          <div className={cn(
+            "absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2",
+            isSharing ? "border-green-400/50" : "border-white/50"
+          )} />
 
           {/* 중앙 십자선 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-8 h-px bg-white/30" />
-            <div className="absolute w-px h-8 bg-white/30" />
+            <div className={cn(
+              "w-8 h-px",
+              isSharing ? "bg-green-400/30" : "bg-white/30"
+            )} />
+            <div className={cn(
+              "absolute w-px h-8",
+              isSharing ? "bg-green-400/30" : "bg-white/30"
+            )} />
           </div>
 
           {/* 스캔 애니메이션 */}
           {(isCapturing || isAnalyzing) && (
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
               <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-scan" />
+            </div>
+          )}
+
+          {/* 실시간 공유 시 펄스 효과 */}
+          {isSharing && (
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute inset-0 border-2 border-green-400/30 rounded animate-pulse" />
             </div>
           )}
 
@@ -363,6 +474,33 @@ export function AIViewfinder({
         {/* 컨트롤 바 */}
         <div className="flex items-center justify-between px-3 py-2 bg-black/60 backdrop-blur">
           <div className="flex items-center gap-1">
+            {/* 실시간 AI 공유 토글 (핵심 기능) */}
+            {aiContextEnabled && onShareToAI && (
+              <button
+                onClick={toggleSharing}
+                disabled={isCapturing || isAnalyzing}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors",
+                  isSharing
+                    ? "bg-green-500/40 text-green-300 hover:bg-green-500/50"
+                    : "text-white/80 hover:text-white hover:bg-white/10",
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
+                title={isSharing ? "AI 화면 공유 중지" : "AI에게 화면 공유 시작"}
+              >
+                {isSharing ? (
+                  <Share2 className="w-4 h-4" />
+                ) : (
+                  <MessageSquare className="w-4 h-4" />
+                )}
+              </button>
+            )}
+
+            {/* 구분선 */}
+            {aiContextEnabled && onShareToAI && (
+              <div className="w-px h-4 bg-white/20 mx-1" />
+            )}
+
             {/* 수동 캡처 */}
             <button
               onClick={captureViewfinder}
@@ -395,7 +533,7 @@ export function AIViewfinder({
               className={cn(
                 "p-1.5 rounded-md transition-colors",
                 isAutoMode
-                  ? "bg-green-500/30 text-green-400"
+                  ? "bg-blue-500/30 text-blue-400"
                   : "text-white/80 hover:text-white hover:bg-white/10"
               )}
               title={isAutoMode ? "자동 모드 끄기" : "자동 모드 켜기"}
@@ -427,7 +565,7 @@ export function AIViewfinder({
           {/* 크기 정보 */}
           <div className="flex items-center gap-2 text-white/60 text-xs">
             <Move className="w-3 h-3" />
-            <span>{bounds.width} × {bounds.height}</span>
+            <span>{bounds.width} x {bounds.height}</span>
           </div>
         </div>
       </div>

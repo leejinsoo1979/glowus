@@ -31,13 +31,6 @@ const defaultOptions: PDFParseOptions = {
   ocrLang: 'kor+eng'
 }
 
-// Global type declaration for pdf.js loaded via CDN
-declare global {
-  interface Window {
-    pdfjsLib?: any
-  }
-}
-
 // PDF.js CDN version
 const PDFJS_VERSION = '2.6.347'
 const PDFJS_CDN_BASE = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`
