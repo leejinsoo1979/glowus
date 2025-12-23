@@ -99,6 +99,7 @@ function SceneContent() {
   const setSimulationRunning = useNeuralMapStore((s) => s.setSimulationRunning)
   const setSimulationAlpha = useNeuralMapStore((s) => s.setSimulationAlpha)
   const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
+  const radialDistance = useNeuralMapStore((s) => s.radialDistance)
 
   // Simulation state
   const simulationRef = useRef<NeuralMapSimulation | null>(null)

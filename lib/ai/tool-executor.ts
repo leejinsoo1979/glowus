@@ -4,6 +4,7 @@
  */
 
 import type { ToolCall, ToolResult } from './tools'
+import type { AgentAction } from './agent-actions'
 
 interface NeuralFile {
   id: string
@@ -27,6 +28,11 @@ interface TerminalResult {
   stdout: string
   stderr: string
   exitCode: number
+}
+
+// 확장된 Tool 결과 - 액션 포함
+export interface ToolResultWithAction extends ToolResult {
+  pendingAction?: AgentAction
 }
 
 interface ExecutorContext {
@@ -62,7 +68,7 @@ export class ToolExecutor {
     this.onTerminalCmd = context.onTerminalCmd
   }
 
-  async execute(toolCall: ToolCall): Promise<ToolResult> {
+  async execute(toolCall: ToolCall): Promise<ToolResultWithAction> {
     const { name, arguments: args } = toolCall
 
     try {
@@ -388,7 +394,7 @@ export class ToolExecutor {
   // ============================================
   // 핵심 에이전트 도구: 파일 수정
   // ============================================
-  private editFile(path: string, oldContent: string, newContent: string): ToolResult {
+  private editFile(path: string, oldContent: string, newContent: string): ToolResultWithAction {
     // 파일 찾기
     const file = this.files.find(f =>
       f.path === path ||
@@ -433,16 +439,22 @@ export class ToolExecutor {
       }
     }
 
+    // 새 내용 생성
+    const updatedContent = file.content.replace(oldContent, newContent)
+    const fullPath = this.projectPath
+      ? `${this.projectPath}/${file.path || file.name}`
+      : file.path || file.name
+
     // 수정 이력 저장
     this.modifications.push({
       path: file.path || file.name,
       oldContent: file.content,
-      newContent: file.content.replace(oldContent, newContent),
+      newContent: updatedContent,
       timestamp: Date.now()
     })
 
-    // 파일 내용 업데이트
-    file.content = file.content.replace(oldContent, newContent)
+    // 메모리상 파일 내용 업데이트
+    file.content = updatedContent
 
     // 콜백 호출 (있는 경우)
     if (this.onFileChange) {
@@ -453,9 +465,16 @@ export class ToolExecutor {
       success: true,
       result: {
         path: file.path || file.name,
-        message: '파일이 성공적으로 수정되었습니다',
+        message: '파일 수정 준비 완료 - 실행 대기 중',
         linesChanged: newContent.split('\n').length - oldContent.split('\n').length,
         preview: newContent.slice(0, 200) + (newContent.length > 200 ? '...' : '')
+      },
+      // 실제 디스크 쓰기를 위한 액션
+      pendingAction: {
+        type: 'write_file',
+        path: fullPath,
+        content: updatedContent,
+        originalContent: file.content
       }
     }
   }
@@ -463,7 +482,7 @@ export class ToolExecutor {
   // ============================================
   // 핵심 에이전트 도구: 파일 생성
   // ============================================
-  private createFile(path: string, content: string): ToolResult {
+  private createFile(path: string, content: string): ToolResultWithAction {
     // 이미 존재하는지 확인
     const existingFile = this.files.find(f =>
       f.path === path ||
@@ -477,7 +496,11 @@ export class ToolExecutor {
       }
     }
 
-    // 새 파일 생성
+    const fullPath = this.projectPath
+      ? `${this.projectPath}/${path}`
+      : path
+
+    // 새 파일 생성 (메모리)
     const newFile: NeuralFile = {
       id: `new-${Date.now()}`,
       name: path.split('/').pop() || path,
@@ -498,9 +521,14 @@ export class ToolExecutor {
       success: true,
       result: {
         path: path,
-        message: '파일이 성공적으로 생성되었습니다',
+        message: '파일 생성 준비 완료 - 실행 대기 중',
         lines: content.split('\n').length,
         size: content.length
+      },
+      pendingAction: {
+        type: 'create_file',
+        path: fullPath,
+        content: content
       }
     }
   }
@@ -525,7 +553,7 @@ export class ToolExecutor {
   // ============================================
   // 핵심 에이전트 도구: 터미널 명령 실행
   // ============================================
-  private async runTerminalCmd(command: string, cwd?: string): Promise<ToolResult> {
+  private async runTerminalCmd(command: string, cwd?: string): Promise<ToolResultWithAction> {
     // 위험한 명령어 필터링
     const dangerousPatterns = [
       /rm\s+-rf\s+[\/~]/i,
@@ -546,35 +574,20 @@ export class ToolExecutor {
       }
     }
 
-    // 터미널 콜백이 있으면 사용
-    if (this.onTerminalCmd) {
-      try {
-        const result = await this.onTerminalCmd(command, cwd || this.projectPath || undefined)
-        return {
-          success: result.exitCode === 0,
-          result: {
-            command,
-            stdout: result.stdout.slice(0, 5000),
-            stderr: result.stderr.slice(0, 1000),
-            exitCode: result.exitCode
-          }
-        }
-      } catch (error: any) {
-        return {
-          success: false,
-          error: `명령 실행 실패: ${error.message}`
-        }
-      }
-    }
+    const workingDir = cwd || this.projectPath || undefined
 
-    // 콜백이 없으면 시뮬레이션 모드 (안전)
     return {
       success: true,
       result: {
         command,
-        mode: 'simulation',
-        message: '터미널 연결이 없어 시뮬레이션 모드로 실행됩니다. 실제 실행을 위해 터미널을 연결하세요.',
-        suggestedOutput: this.simulateCommand(command)
+        cwd: workingDir,
+        message: '터미널 명령 실행 준비 완료 - 실행 대기 중'
+      },
+      pendingAction: {
+        type: 'terminal_cmd',
+        command: command,
+        cwd: workingDir,
+        waitForOutput: true
       }
     }
   }
@@ -596,27 +609,16 @@ export class ToolExecutor {
   // ============================================
   // 핵심 에이전트 도구: 웹 검색
   // ============================================
-  private async webSearch(query: string): Promise<ToolResult> {
-    try {
-      // 내부 API 또는 외부 검색 API 호출
-      // 현재는 시뮬레이션으로 구현
-      return {
-        success: true,
-        result: {
-          query,
-          message: '웹 검색 기능은 API 키 설정 후 사용 가능합니다',
-          suggestion: `"${query}"에 대한 검색을 위해 다음 리소스를 확인하세요:`,
-          resources: [
-            'https://developer.mozilla.org',
-            'https://stackoverflow.com',
-            'https://github.com'
-          ]
-        }
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        error: `웹 검색 실패: ${error.message}`
+  private async webSearch(query: string): Promise<ToolResultWithAction> {
+    return {
+      success: true,
+      result: {
+        query,
+        message: '웹 검색 실행 준비 완료 - 실행 대기 중'
+      },
+      pendingAction: {
+        type: 'web_search',
+        query: query
       }
     }
   }

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { getModelConfig, getApiModelId, SYSTEM_PROMPTS } from '@/lib/ai/models'
 import { getToolsForProvider, AGENT_TOOLS } from '@/lib/ai/tools'
-import { ToolExecutor } from '@/lib/ai/tool-executor'
+import { ToolExecutor, ToolResultWithAction } from '@/lib/ai/tool-executor'
+import type { AgentAction } from '@/lib/ai/agent-actions'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -52,9 +53,10 @@ async function runOpenAIAgent(
   executor: ToolExecutor,
   apiKey: string,
   baseURL?: string
-): Promise<{ content: string; toolCalls: string[] }> {
+): Promise<{ content: string; toolCalls: string[]; pendingActions: AgentAction[] }> {
   const client = new OpenAI({ apiKey, baseURL })
   const toolCallLog: string[] = []
+  const pendingActions: AgentAction[] = []
   let currentMessages = [...messages]
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -72,27 +74,39 @@ async function runOpenAIAgent(
     if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
       return {
         content: assistantMessage.content || '',
-        toolCalls: toolCallLog
+        toolCalls: toolCallLog,
+        pendingActions
       }
     }
 
     // 도구 호출 처리
+    const toolCalls = assistantMessage.tool_calls as Array<{
+      id: string
+      type: 'function'
+      function: { name: string; arguments: string }
+    }>
+
     currentMessages.push({
       role: 'assistant',
       content: assistantMessage.content || '',
-      tool_calls: assistantMessage.tool_calls
+      tool_calls: assistantMessage.tool_calls as any
     })
 
     // 병렬 도구 호출 (Cursor 스타일 - Promise.all)
     const toolResults = await Promise.all(
-      assistantMessage.tool_calls.map(async (toolCall) => {
+      toolCalls.map(async (toolCall) => {
         const args = JSON.parse(toolCall.function.arguments)
         toolCallLog.push(`${toolCall.function.name}(${JSON.stringify(args)})`)
 
-        const result = await executor.execute({
+        const result: ToolResultWithAction = await executor.execute({
           name: toolCall.function.name,
           arguments: args
         })
+
+        // 액션이 있으면 수집
+        if (result.pendingAction) {
+          pendingActions.push(result.pendingAction)
+        }
 
         return {
           role: 'tool' as const,
@@ -106,7 +120,7 @@ async function runOpenAIAgent(
     currentMessages.push(...toolResults)
   }
 
-  return { content: '최대 반복 횟수에 도달했습니다.', toolCalls: toolCallLog }
+  return { content: '최대 반복 횟수에 도달했습니다.', toolCalls: toolCallLog, pendingActions }
 }
 
 async function runAnthropicAgent(
@@ -115,8 +129,9 @@ async function runAnthropicAgent(
   tools: any[],
   executor: ToolExecutor,
   apiKey: string
-): Promise<{ content: string; toolCalls: string[] }> {
+): Promise<{ content: string; toolCalls: string[]; pendingActions: AgentAction[] }> {
   const toolCallLog: string[] = []
+  const pendingActions: AgentAction[] = []
 
   // 시스템 메시지 분리
   const systemMessages = messages.filter(m => m.role === 'system')
@@ -159,7 +174,8 @@ async function runAnthropicAgent(
     if (toolUses.length === 0) {
       return {
         content: textParts.map((c: any) => c.text).join('\n'),
-        toolCalls: toolCallLog
+        toolCalls: toolCallLog,
+        pendingActions
       }
     }
 
@@ -170,10 +186,15 @@ async function runAnthropicAgent(
       toolUses.map(async (toolUse: any) => {
         toolCallLog.push(`${toolUse.name}(${JSON.stringify(toolUse.input)})`)
 
-        const result = await executor.execute({
+        const result: ToolResultWithAction = await executor.execute({
           name: toolUse.name,
           arguments: toolUse.input
         })
+
+        // 액션이 있으면 수집
+        if (result.pendingAction) {
+          pendingActions.push(result.pendingAction)
+        }
 
         return {
           role: 'tool' as const,
@@ -186,7 +207,7 @@ async function runAnthropicAgent(
     currentMessages.push(...toolResults)
   }
 
-  return { content: '최대 반복 횟수에 도달했습니다.', toolCalls: toolCallLog }
+  return { content: '최대 반복 횟수에 도달했습니다.', toolCalls: toolCallLog, pendingActions }
 }
 
 async function runGoogleAgent(
@@ -195,8 +216,9 @@ async function runGoogleAgent(
   tools: any[],
   executor: ToolExecutor,
   apiKey: string
-): Promise<{ content: string; toolCalls: string[] }> {
+): Promise<{ content: string; toolCalls: string[]; pendingActions: AgentAction[] }> {
   const toolCallLog: string[] = []
+  const pendingActions: AgentAction[] = []
 
   // 시스템 + 대화 분리
   const systemMessages = messages.filter(m => m.role === 'system')
@@ -238,7 +260,8 @@ async function runGoogleAgent(
     if (functionCalls.length === 0) {
       return {
         content: textParts.map((p: any) => p.text).join('\n'),
-        toolCalls: toolCallLog
+        toolCalls: toolCallLog,
+        pendingActions
       }
     }
 
@@ -253,7 +276,12 @@ async function runGoogleAgent(
         const { name, args } = fc.functionCall
         toolCallLog.push(`${name}(${JSON.stringify(args)})`)
 
-        const result = await executor.execute({ name, arguments: args })
+        const result: ToolResultWithAction = await executor.execute({ name, arguments: args })
+
+        // 액션이 있으면 수집
+        if (result.pendingAction) {
+          pendingActions.push(result.pendingAction)
+        }
 
         return {
           role: 'user' as const,
@@ -265,7 +293,7 @@ async function runGoogleAgent(
     chatMessages.push(...functionResults)
   }
 
-  return { content: '최대 반복 횟수에 도달했습니다.', toolCalls: toolCallLog }
+  return { content: '최대 반복 횟수에 도달했습니다.', toolCalls: toolCallLog, pendingActions }
 }
 
 // ============================================
@@ -302,15 +330,27 @@ export async function POST(request: NextRequest) {
     // 도구 정의
     const tools = getToolsForProvider(provider)
 
-    // 시스템 프롬프트 + 에이전트 지시
+    // 시스템 프롬프트 + 에이전트 지시 (Cursor 수준)
     const agentSystemPrompt = `${SYSTEM_PROMPTS.coding}
 
-당신은 코드를 분석하고 질문에 답하는 AI 에이전트입니다.
-사용 가능한 도구:
-${AGENT_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n')}
+당신은 전문 코딩 에이전트입니다. Cursor나 GitHub Copilot처럼 코드를 직접 수정하고 실행할 수 있습니다.
 
-사용자가 파일이나 코드에 대해 질문하면, 도구를 사용해 정확한 정보를 찾아 답변하세요.
-추측하지 말고, 도구를 사용해서 실제 데이터를 확인하세요.`
+## 사용 가능한 도구
+${AGENT_TOOLS.map(t => `- **${t.name}**: ${t.description}`).join('\n')}
+
+## 작업 원칙
+1. **읽기 우선**: 코드 수정 전에 항상 read_file로 현재 상태를 확인하세요
+2. **정확한 수정**: edit_file 사용 시 old_content는 파일에 존재하는 정확한 코드여야 합니다
+3. **병렬 실행**: 독립적인 작업은 동시에 여러 도구를 호출하세요
+4. **검증**: 수정 후 관련 파일을 다시 읽어 결과를 확인하세요
+5. **추측 금지**: 도구를 사용해 실제 데이터를 확인하세요
+
+## 작업 흐름 예시
+- 버그 수정: search_files → read_file → edit_file → read_file (검증)
+- 새 기능: get_file_structure → read_file (참고 파일) → create_file 또는 edit_file
+- 리팩토링: find_references → read_file (모든 관련 파일) → edit_file (순차)
+
+도구 호출 없이 코드 수정을 제안하지 마세요. 항상 도구를 사용하여 실제로 수행하세요.`
 
     // 메시지 구성
     const systemMessages = messages.filter(m => m.role === 'system')
@@ -322,7 +362,7 @@ ${AGENT_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n')}
     ]
 
     // Provider별 에이전트 실행
-    let result: { content: string; toolCalls: string[] }
+    let result: { content: string; toolCalls: string[]; pendingActions: AgentAction[] }
 
     switch (provider) {
       case 'xai':
@@ -373,6 +413,7 @@ ${AGENT_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n')}
     return NextResponse.json({
       content: result.content,
       toolCalls: result.toolCalls,
+      pendingActions: result.pendingActions,
       model: apiModel
     })
 

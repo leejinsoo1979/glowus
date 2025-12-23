@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         color: body.color || '#8B5CF6',
         owner_id: user.id,
         progress: 0,
+        folder_path: body.folder_path || null,  // 로컬 폴더 경로
       })
       .select()
       .single()

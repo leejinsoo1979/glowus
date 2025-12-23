@@ -134,7 +134,7 @@ export interface NeuralCluster {
 // ============================================
 
 export type ViewTab = 'map' | 'life-stream' | 'data' | 'logic' | 'test' | 'browser' | 'mermaid'
-export type MermaidDiagramType = 'flowchart' | 'sequence' | 'class' | 'er' | 'pie' | 'state' | 'gitgraph'
+export type MermaidDiagramType = 'flowchart' | 'sequence' | 'class' | 'er' | 'pie' | 'state' | 'gitgraph' | 'gantt'
 export type LayoutMode = 'organic' | 'radial' | 'structural'
 
 export interface CameraState {

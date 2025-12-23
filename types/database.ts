@@ -240,6 +240,7 @@ export interface Project {
   tags: string[]
   color: string
   owner_id: string | null
+  folder_path: string | null  // Local file system path for the project workspace
   created_at: string
   updated_at: string
 }
@@ -676,10 +677,12 @@ export interface CreateProjectInput {
   budget?: number
   tags?: string[]
   color?: string
+  folder_path?: string  // Local file system path for the project workspace
 }
 
 export interface UpdateProjectInput extends Partial<Omit<CreateProjectInput, 'team_id'>> {
   progress?: number
+  folder_path?: string  // Local file system path for the project workspace
 }
 
 export interface AddProjectMemberInput {

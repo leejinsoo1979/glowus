@@ -75,7 +75,7 @@ export function ViewTabs() {
   return (
     <div
       className={cn(
-        'flex items-center justify-center gap-1 h-full px-4 border-b electron-drag',
+        'flex items-center justify-start gap-1 h-full px-4 border-b electron-drag overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide',
         isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white/80 border-zinc-200'
       )}
     >
@@ -83,7 +83,7 @@ export function ViewTabs() {
       <button
         onClick={() => setActiveTab('map')}
         className={cn(
-          'relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors electron-no-drag',
+          'relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors electron-no-drag flex-shrink-0',
           activeTab === 'map'
             ? isDark ? 'text-zinc-100' : 'text-zinc-900'
             : isDark
@@ -104,7 +104,7 @@ export function ViewTabs() {
       </button>
 
       {/* Mermaid Dropdown */}
-      <div ref={dropdownRef} className="relative electron-no-drag">
+      <div ref={dropdownRef} className="relative electron-no-drag flex-shrink-0">
         <button
           onClick={() => {
             if (isMermaidActive) {
@@ -198,7 +198,7 @@ export function ViewTabs() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors electron-no-drag',
+              'relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors electron-no-drag flex-shrink-0',
               isActive
                 ? isDark ? 'text-zinc-100' : 'text-zinc-900'
                 : isDark

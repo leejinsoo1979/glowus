@@ -10,6 +10,7 @@ import '@xterm/xterm/css/xterm.css'
 interface XTermWrapperProps {
   onExecute?: (command: string) => Promise<string>
   tabId: string
+  projectPath?: string // 프로젝트 폴더 경로
 }
 
 const darkTheme = {
@@ -65,7 +66,7 @@ function isElectron(): boolean {
   return typeof window !== 'undefined' && !!(window as any).electron?.terminal
 }
 
-export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
+export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWrapperProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -74,7 +75,51 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
   const cleanupFnsRef = useRef<(() => void)[]>([])
   const isInitializedRef = useRef(false)
   const isMountedRef = useRef(false)
+  const wsRef = useRef<WebSocket | null>(null) // WebSocket 참조 저장
+  const lastSentCwdRef = useRef<string | null>(null) // 마지막으로 전송한 cwd
   const { resolvedTheme } = useTheme()
+
+  // projectPath가 변경되면 터미널에 새 경로 전송
+  useEffect(() => {
+    if (!projectPath) return
+
+    // 이미 같은 경로를 전송한 경우 스킵
+    if (lastSentCwdRef.current === projectPath) {
+      return
+    }
+
+    const sendCwd = () => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('[Terminal] projectPath changed, sending set-cwd:', projectPath)
+        wsRef.current.send(JSON.stringify({ type: 'set-cwd', cwd: projectPath }))
+        lastSentCwdRef.current = projectPath
+        return true
+      }
+      return false
+    }
+
+    // 즉시 전송 시도
+    if (sendCwd()) return
+
+    // WebSocket이 아직 연결 중이면 대기 후 재시도
+    console.log('[Terminal] WebSocket not ready, waiting to send set-cwd:', projectPath)
+    const intervalId = setInterval(() => {
+      if (sendCwd()) {
+        clearInterval(intervalId)
+      }
+    }, 500)
+
+    // 10초 후 포기
+    const timeoutId = setTimeout(() => {
+      clearInterval(intervalId)
+      console.warn('[Terminal] Gave up waiting to send set-cwd')
+    }, 10000)
+
+    return () => {
+      clearInterval(intervalId)
+      clearTimeout(timeoutId)
+    }
+  }, [projectPath])
 
   // 테마 변경 시 xterm 테마 업데이트
   useEffect(() => {
@@ -86,32 +131,56 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
 
   useEffect(() => {
     isMountedRef.current = true
+    console.log(`[XTerm] useEffect triggered for tab: ${tabId}, isInitialized: ${isInitializedRef.current}`)
 
-    // 이미 초기화된 경우 스킵
-    if (isInitializedRef.current) return
+    // Debug: Test if we can reach the terminal server
+    fetch('http://localhost:3001')
+      .then(r => console.log('[XTerm] Terminal server reachable:', r.status))
+      .catch(e => console.error('[XTerm] Terminal server NOT reachable:', e.message))
 
-    // 초기화 지연 - DOM이 완전히 렌더링될 때까지 대기
-    const timeoutId = setTimeout(() => {
-      if (!terminalRef.current || isInitializedRef.current || !isMountedRef.current) return
+    let intervalId: NodeJS.Timeout | null = null
+
+    // 초기화 함수 - 컨테이너 크기가 생길 때까지 재시도 (무한)
+    const tryInitialize = () => {
+      if (!terminalRef.current || !isMountedRef.current) {
+        return
+      }
+
+      // 이미 초기화된 경우 체크
+      if (isInitializedRef.current) {
+        if (intervalId) clearInterval(intervalId)
+        return
+      }
 
       const container = terminalRef.current
 
       // 컨테이너에 크기가 있는지 확인
       if (container.offsetWidth === 0 || container.offsetHeight === 0) {
-        console.log('Container has no size, waiting...')
+        // 패널이 hidden일 때는 크기가 0 - 계속 재시도 (무한)
         return
       }
+
+      // 크기가 생김 - 초기화 진행
+      console.log(`[XTerm] Container has size: ${container.offsetWidth}x${container.offsetHeight}`)
+      if (intervalId) clearInterval(intervalId)
 
       // 기존 내용 클리어
       container.innerHTML = ''
 
       isInitializedRef.current = true
+      setIsLoading(false)
       initializeTerminal(container)
-    }, 100)
+    }
+
+    // 200ms마다 재시도 (패널이 열릴 때까지 무한 대기)
+    intervalId = setInterval(tryInitialize, 200)
+    // 즉시 한 번 시도
+    tryInitialize()
 
     return () => {
+      console.log(`[XTerm] Cleanup for tab: ${tabId}`)
       isMountedRef.current = false
-      clearTimeout(timeoutId)
+      if (intervalId) clearInterval(intervalId)
       cleanup()
     }
   }, [tabId])
@@ -188,14 +257,30 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
   async function connectElectronTerminal(terminal: Terminal) {
     if (!isMountedRef.current) return
 
-    const electronApi = (window as any).electron.terminal
+    console.log('[Terminal] connectElectronTerminal called, tabId:', tabId)
+
+    const electronApi = (window as any).electron?.terminal
+    if (!electronApi) {
+      console.error('[Terminal] No electron terminal API found, falling back to WebSocket')
+      connectWebSocketTerminal(terminal)
+      return
+    }
 
     try {
       // 터미널 생성
+      console.log('[Terminal] Calling electronApi.create...')
       const result = await electronApi.create(tabId)
+      console.log('[Terminal] electronApi.create result:', result)
 
       if (!result.success) {
         terminal.write(`\x1b[31m[Error] ${result.error}\x1b[0m\r\n`)
+        return
+      }
+
+      // WebSocket 모드로 리다이렉트
+      if (result.useWebSocket) {
+        console.log(`[Terminal] Using WebSocket: ${result.wsUrl}`)
+        connectWebSocketTerminalReal(terminal, result.wsUrl || 'ws://localhost:3001')
         return
       }
 
@@ -255,19 +340,111 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
   function connectWebSocketTerminal(terminal: Terminal) {
     if (!isMountedRef.current) return
 
-    // 브라우저 환경에서는 안내 메시지 표시
-    terminal.write('\x1b[36m┌─────────────────────────────────────────────────────┐\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m  \x1b[33mTerminal requires Electron environment\x1b[0m          \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m  Desktop 앱에서 터미널이 작동합니다.               \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m  브라우저에서는 지원되지 않습니다.                 \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m  \x1b[32mOption 1:\x1b[0m Electron 앱으로 실행                  \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m│\x1b[0m  \x1b[32mOption 2:\x1b[0m node server/terminal-server.js       \x1b[36m│\x1b[0m\r\n')
-    terminal.write('\x1b[36m└─────────────────────────────────────────────────────┘\x1b[0m\r\n')
+    // 브라우저 환경에서도 WebSocket 터미널 서버에 연결
+    const wsUrl = 'ws://localhost:3001'
+    terminal.write('\x1b[36m[Connecting to terminal server...]\x1b[0m\r\n')
+    connectWebSocketTerminalReal(terminal, wsUrl)
+  }
+
+  // 실제 WebSocket 터미널 연결 (Electron에서 PTY 대신 사용)
+  function connectWebSocketTerminalReal(terminal: Terminal, wsUrl: string, retryCount = 0) {
+    if (!isMountedRef.current) return
+
+    const maxRetries = 10
+    const retryDelay = Math.min(1000 * Math.pow(1.5, retryCount), 10000) // 최대 10초
+
+    console.log('[Terminal] Connecting to WebSocket:', wsUrl, retryCount > 0 ? `(retry ${retryCount})` : '')
+
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(wsUrl)
+      wsRef.current = ws // WebSocket 참조 저장
+    } catch (err) {
+      console.error('[Terminal] WebSocket creation failed:', err)
+      if (retryCount < maxRetries && isMountedRef.current) {
+        terminal.write(`\x1b[33m[Retrying in ${Math.round(retryDelay/1000)}s...]\x1b[0m\r\n`)
+        setTimeout(() => connectWebSocketTerminalReal(terminal, wsUrl, retryCount + 1), retryDelay)
+      }
+      return
+    }
+
+    ws.onopen = () => {
+      console.log('[Terminal] WebSocket connected to', wsUrl)
+      if (retryCount > 0) {
+        terminal.write('\x1b[32m[Reconnected]\x1b[0m\r\n')
+      }
+      // 터미널 크기와 프로젝트 경로 전송
+      const { cols, rows } = terminal
+      ws.send(JSON.stringify({ type: 'resize', cols, rows }))
+      // 프로젝트 경로가 있으면 전송 (터미널 시작 디렉토리 설정)
+      if (projectPath) {
+        console.log('[Terminal] Setting initial cwd to:', projectPath)
+        ws.send(JSON.stringify({ type: 'set-cwd', cwd: projectPath }))
+        lastSentCwdRef.current = projectPath
+      }
+    }
+
+    ws.onmessage = (event) => {
+      if (!isMountedRef.current) return
+      try {
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'output') {
+          terminal.write(msg.data)
+        } else if (msg.type === 'shell-info') {
+          window.dispatchEvent(new CustomEvent('terminal-shell-info', {
+            detail: { id: tabId, shell: msg.shell, cwd: msg.cwd, pid: msg.pid }
+          }))
+        }
+      } catch {
+        // 일반 텍스트인 경우 그대로 출력
+        terminal.write(event.data)
+      }
+    }
+
+    ws.onerror = (err) => {
+      console.error('[Terminal] WebSocket error:', err, 'URL:', wsUrl)
+    }
+
+    ws.onclose = (event) => {
+      wsRef.current = null // WebSocket 참조 제거
+      if (isMountedRef.current) {
+        terminal.write('\r\n\x1b[33m[Connection closed]\x1b[0m\r\n')
+        // 비정상 종료 시 자동 재연결
+        if (!event.wasClean && retryCount < maxRetries) {
+          terminal.write(`\x1b[36m[Reconnecting in ${Math.round(retryDelay/1000)}s...]\x1b[0m\r\n`)
+          setTimeout(() => connectWebSocketTerminalReal(terminal, wsUrl, retryCount + 1), retryDelay)
+        }
+      }
+    }
+
+    // 터미널 입력 → WebSocket
+    const dataHandler = terminal.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', data }))
+      }
+    })
+
+    // 리사이즈
+    const resizeHandler = terminal.onResize(({ cols, rows }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }))
+      }
+    })
+
+    // 클린업
+    cleanupFnsRef.current.push(() => {
+      dataHandler.dispose()
+      resizeHandler.dispose()
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
+    })
   }
 
   function cleanup() {
+    // 초기화 상태 리셋 (다음 마운트에서 다시 초기화할 수 있도록)
+    isInitializedRef.current = false
+
     // Electron 터미널 종료
     if (isElectron()) {
       ;(window as any).electron.terminal.kill(tabId).catch(() => {})
@@ -299,16 +476,30 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
     isInitializedRef.current = false
   }
 
+  const [isLoading, setIsLoading] = useState(true)
+
   return (
     <div
       ref={terminalRef}
-      className="h-full w-full bg-white dark:bg-black"
+      className="w-full bg-white dark:bg-black"
       style={{
-        minHeight: '100px',
+        height: '100%',
+        minHeight: '150px',
         minWidth: '200px',
         padding: '4px',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
       }}
       onKeyDown={(e) => e.stopPropagation()}
-    />
+    >
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center text-zinc-500 dark:text-zinc-400 text-sm z-10">
+          터미널 연결 대기 중... (tabId: {tabId})
+        </div>
+      )}
+    </div>
   )
 }

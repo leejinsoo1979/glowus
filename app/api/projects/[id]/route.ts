@@ -99,6 +99,7 @@ export async function PATCH(
       'budget',
       'tags',
       'color',
+      'folder_path',  // 로컬 폴더 경로
     ]
 
     const updates: Record<string, unknown> = {}

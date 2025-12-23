@@ -44,32 +44,12 @@ const renderActiveShape = (props: any) => {
   )
 }
 
-export default function PieChartView({ projectPath: projectPathProp, className }: PieChartViewProps) {
+export default function PieChartView({ projectPath, className }: PieChartViewProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const [data, setData] = useState<Array<{ name: string; value: number }>>([])
   const [isLoading, setIsLoading] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
-  const [localProjectPath, setLocalProjectPath] = useState<string | null>(null)
-
-  const projectPath = projectPathProp || localProjectPath
-
-  // Auto-get projectPath from Electron cwd
-  useEffect(() => {
-    if (projectPathProp || localProjectPath) return
-
-    const getCwd = async () => {
-      if (typeof window !== 'undefined' && window.electron?.fs?.getCwd) {
-        try {
-          const cwd = await window.electron.fs.getCwd()
-          if (cwd) setLocalProjectPath(cwd)
-        } catch (err) {
-          console.error('[PieChartView] Failed to get cwd:', err)
-        }
-      }
-    }
-    getCwd()
-  }, [projectPathProp, localProjectPath])
 
   const loadStats = useCallback(async () => {
     if (!projectPath) return
@@ -168,8 +148,8 @@ export default function PieChartView({ projectPath: projectPathProp, className }
           </div>
         ) : data.length === 0 ? (
           <div className={cn('text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            <p className="text-sm">No project loaded</p>
-            <p className="text-xs mt-2">Select a project folder to see file distribution</p>
+            <p className="text-sm font-medium">프로젝트 폴더를 먼저 선택하세요</p>
+            <p className="text-xs mt-2">File → Open Folder (Cmd+O)</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

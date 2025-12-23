@@ -205,7 +205,7 @@ export default function StateDiagramView({ projectPath, className }: StateDiagra
             State Diagram
           </span>
           {isLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
-          {!isLoading && (
+          {!isLoading && projectPath && (
             <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
               Zustand stores from your project
             </span>
@@ -213,20 +213,29 @@ export default function StateDiagramView({ projectPath, className }: StateDiagra
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleZoomIn}>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} disabled={!projectPath}>
             <ZoomIn className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleZoomOut}>
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} disabled={!projectPath}>
             <ZoomOut className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleFit}>
+          <Button variant="ghost" size="sm" onClick={handleFit} disabled={!projectPath}>
             <Maximize className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {/* Canvas */}
-      <div ref={containerRef} className="flex-1" />
+      {/* Canvas or Empty State */}
+      {!projectPath ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className={cn('text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            <p className="text-sm font-medium">프로젝트 폴더를 먼저 선택하세요</p>
+            <p className="text-xs mt-2">File → Open Folder (Cmd+O)</p>
+          </div>
+        </div>
+      ) : (
+        <div ref={containerRef} className="flex-1" />
+      )}
     </div>
   )
 }

@@ -45,6 +45,13 @@ import {
   Share2,
   Cpu,
   Pin,
+  Scissors,
+  Copy,
+  Clipboard,
+  Terminal,
+  FolderOpen,
+  Link,
+  Plus,
 } from 'lucide-react'
 
 // react-icons - VS Code 스타일 파일 아이콘
@@ -68,17 +75,6 @@ import {
   SiGit,
 } from 'react-icons/si'
 
-// 정렬 옵션 타입
-type SortOption = 'name-asc' | 'name-desc' | 'modified-new' | 'modified-old' | 'created-new' | 'created-old'
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'name-asc', label: 'File name (A to Z)' },
-  { value: 'name-desc', label: 'File name (Z to A)' },
-  { value: 'modified-new', label: 'Modified time (new to old)' },
-  { value: 'modified-old', label: 'Modified time (old to new)' },
-  { value: 'created-new', label: 'Created time (new to old)' },
-  { value: 'created-old', label: 'Created time (old to new)' },
-]
 
 // VS Code 스타일 파일 아이콘 - react-icons 사용
 function FileIcon({ type, name }: { type: string; name?: string }) {
@@ -143,6 +139,16 @@ interface TreeNode {
   type: 'folder' | 'file'
   file?: NeuralFile
   children: TreeNode[]
+}
+
+// 컨텍스트 메뉴 상태 타입
+interface ContextMenuState {
+  isOpen: boolean
+  x: number
+  y: number
+  targetType: 'file' | 'folder' | null
+  targetFile?: NeuralFile
+  targetPath?: string  // 폴더의 경우 경로
 }
 
 import { FileSystemManager } from '@/lib/neural-map/file-system'
@@ -241,12 +247,9 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadingCount, setUploadingCount] = useState(0)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-  const [sortOption, setSortOption] = useState<SortOption>('name-asc')
-  const [showSortMenu, setShowSortMenu] = useState(false)
   const [showHiddenFiles, setShowHiddenFiles] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
-  const sortMenuRef = useRef<HTMLDivElement>(null)
 
   // Store
   const files = useNeuralMapStore((s) => s.files)
@@ -266,22 +269,674 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const setExpandedNodes = useNeuralMapStore((s) => s.setExpandedNodes)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
   const setProjectPath = useNeuralMapStore((s) => s.setProjectPath)
+  const projectPath = useNeuralMapStore((s) => s.projectPath)
+  const linkedProjectName = useNeuralMapStore((s) => s.linkedProjectName)
+  const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
 
   // API
   const { uploadFile, deleteFile, createNode, createEdge, analyzeFile, removeNode } = useNeuralMapApi(mapId)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
 
+  // 새 파일/폴더 생성 상태
+  const [isCreatingNew, setIsCreatingNew] = useState<'file' | 'folder' | null>(null)
+  const [newItemName, setNewItemName] = useState('')
+  const newItemInputRef = useRef<HTMLInputElement>(null)
+
+  // 컨텍스트 메뉴 상태
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    targetType: null,
+  })
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+
+  // 클립보드 상태 (Cut/Copy/Paste용)
+  const [clipboard, setClipboard] = useState<{
+    operation: 'cut' | 'copy' | null
+    file?: NeuralFile
+    path?: string  // 전체 경로
+  }>({ operation: null })
+
+  // 프로젝트 생성 모달 상태
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [isCreatingProjectLoading, setIsCreatingProjectLoading] = useState(false)
+  const projectNameInputRef = useRef<HTMLInputElement>(null)
+
+  // 이름 변경 상태
+  const [renamingItem, setRenamingItem] = useState<{
+    type: 'file' | 'folder'
+    file?: NeuralFile
+    path?: string
+    name: string
+  } | null>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
   // 사용자 테마
   const { accentColor: userAccentColor } = useThemeStore()
   const currentAccent = accentColors.find((c) => c.id === userAccentColor) || accentColors[0]
 
-  const mapTitle = graph?.title || 'Untitled Map'
+  // 폴더 이름 추출: projectPath에서 마지막 폴더명 가져오기
+  const getFolderName = (path: string | null): string => {
+    if (!path) return ''
+    // Windows와 Unix 경로 모두 지원
+    const parts = path.replace(/\\/g, '/').split('/')
+    return parts[parts.length - 1] || parts[parts.length - 2] || ''
+  }
+
+  // 맵 제목 우선순위: linkedProjectName > graph.title > projectPath 폴더명 > 'Untitled Map'
+  const folderName = getFolderName(projectPath)
+  const mapTitle = linkedProjectName || graph?.title || folderName || 'Untitled Map'
+
+  // 파일 확장자로 타입 결정 (VS Code 스타일)
+  const getFileTypeFromExt = useCallback((fileName: string): NeuralFile['type'] => {
+    const ext = fileName.split('.').pop()?.toLowerCase() || ''
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp']
+    const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv']
+    const mdExts = ['md', 'markdown', 'mdx']
+    const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'scss', 'html', 'xml', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'php', 'rb', 'swift', 'kt', 'yaml', 'yml', 'toml', 'ini', 'sh', 'bash', 'sql']
+
+    if (ext === 'pdf') return 'pdf'
+    if (imageExts.includes(ext)) return 'image'
+    if (videoExts.includes(ext)) return 'video'
+    if (mdExts.includes(ext)) return 'markdown'
+    if (codeExts.includes(ext)) return 'code'
+    return 'text'
+  }, [])
+
+  // 파일 확장자에 따른 기본 템플릿
+  const getDefaultContent = useCallback((fileName: string): string => {
+    const ext = fileName.split('.').pop()?.toLowerCase() || ''
+    const baseName = fileName.replace(/\.[^.]+$/, '')
+
+    switch (ext) {
+      case 'md':
+      case 'markdown':
+        return `# ${baseName}\n\n`
+      case 'html':
+        return `<!DOCTYPE html>\n<html lang="ko">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>${baseName}</title>\n</head>\n<body>\n  \n</body>\n</html>\n`
+      case 'css':
+        return `/* ${fileName} */\n\n`
+      case 'js':
+        return `// ${fileName}\n\n`
+      case 'ts':
+        return `// ${fileName}\n\n`
+      case 'tsx':
+      case 'jsx':
+        const componentName = baseName.replace(/[^a-zA-Z0-9]/g, '') || 'Component'
+        return `export function ${componentName}() {\n  return (\n    <div>\n      \n    </div>\n  )\n}\n`
+      case 'json':
+        return `{\n  \n}\n`
+      case 'py':
+        return `# ${fileName}\n\n`
+      case 'yaml':
+      case 'yml':
+        return `# ${fileName}\n\n`
+      default:
+        return ''
+    }
+  }, [])
+
+  // 새 파일 생성 핸들러
+  const handleCreateNewFile = useCallback(async () => {
+    const trimmedName = newItemName.trim()
+    if (!trimmedName) {
+      setIsCreatingNew(null)
+      setNewItemName('')
+      return
+    }
+
+    // VS Code 스타일: 사용자가 입력한 파일명 그대로 사용
+    const fileName = trimmedName
+    const fileContent = getDefaultContent(fileName)
+    const fileType = getFileTypeFromExt(fileName)
+
+    // 로컬 폴더가 있으면 파일 시스템에 저장
+    if (projectPath && window.electron?.fs?.writeFile) {
+      try {
+        const filePath = `${projectPath}/${fileName}`
+        await window.electron.fs.writeFile(filePath, fileContent)
+        console.log('[FileTree] Created new file:', filePath)
+      } catch (err) {
+        console.error('[FileTree] Failed to create file:', err)
+      }
+    }
+
+    // 파일 목록에 추가만 함
+    // 그래프 노드는 useEffect의 auto-rebuild가 자동 생성 (files.length 변경 감지)
+    const newFile: NeuralFile = {
+      id: `local-${Date.now()}`,
+      name: fileName,
+      path: fileName,
+      type: fileType,
+      content: fileContent,
+      size: fileContent.length,
+      createdAt: new Date().toISOString(),
+      mapId: mapId || '',
+      url: '',
+    }
+    addFile(newFile)
+
+    setIsCreatingNew(null)
+    setNewItemName('')
+  }, [newItemName, projectPath, mapId, addFile, getDefaultContent, getFileTypeFromExt])
+
+  // 새 폴더 생성 핸들러
+  const handleCreateNewFolder = useCallback(async () => {
+    if (!newItemName.trim()) {
+      setIsCreatingNew(null)
+      setNewItemName('')
+      return
+    }
+
+    const newFolderName = newItemName.trim()
+
+    // 로컬 폴더가 있으면 파일 시스템에 폴더 생성
+    if (projectPath && window.electron?.fs) {
+      try {
+        const folderPath = `${projectPath}/${newFolderName}`
+        // fs.mkdir 사용 (타입 단언)
+        const fs = window.electron.fs as any
+        if (fs.mkdir) {
+          await fs.mkdir(folderPath)
+          console.log('[FileTree] Created new folder:', folderPath)
+        }
+      } catch (err) {
+        console.error('[FileTree] Failed to create folder:', err)
+      }
+    }
+
+    // 폴더는 파일 목록에 추가하지 않음 (파일만 추적)
+    // 새로고침하면 폴더가 나타남
+
+    setIsCreatingNew(null)
+    setNewItemName('')
+  }, [newItemName, projectPath])
+
+  // 새로고침 핸들러
+  const handleRefresh = useCallback(async () => {
+    if (projectPath && window.electron?.fs) {
+      console.log('[FileTree] Refreshing...')
+      try {
+        // readDirectory 사용 (기존 API)
+        const fs = window.electron.fs
+        if (fs.readDirectory) {
+          await fs.readDirectory(projectPath, {})
+        }
+        // 파일 필터링 및 처리는 loadLocalFolder에서 처리됨
+        window.dispatchEvent(new CustomEvent('folder-refresh', { detail: { path: projectPath } }))
+      } catch (err) {
+        console.error('[FileTree] Refresh failed:', err)
+      }
+    }
+  }, [projectPath])
+
+  // 모두 접기 핸들러
+  const handleCollapseAll = useCallback(() => {
+    setExpandedFolders(new Set())
+    setIsExpanded(false)
+    // 그래프 노드들도 모두 접기
+    setExpandedNodes([])
+  }, [setExpandedNodes])
+
+  // 사이드바에서 프로젝트 생성 핸들러
+  const handleCreateProjectFromSidebar = useCallback(async () => {
+    const trimmedName = newProjectName.trim()
+    if (!trimmedName) return
+
+    setIsCreatingProjectLoading(true)
+    try {
+      // 1. Electron으로 로컬 워크스페이스 폴더 생성
+      let folderPath: string | undefined
+      const electronProject = window.electron?.project as any
+      if (typeof window !== 'undefined' && electronProject?.createWorkspace) {
+        const result = await electronProject.createWorkspace(trimmedName)
+        if (result.success && result.path) {
+          folderPath = result.path
+          console.log('[FileTree] Local workspace created:', folderPath)
+        } else {
+          console.error('[FileTree] Failed to create workspace:', result.error)
+          alert('로컬 폴더 생성에 실패했습니다: ' + (result.error || 'Unknown error'))
+          return
+        }
+      }
+
+      // 2. Supabase에 프로젝트 메타데이터 저장
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmedName,
+          description: '',
+          status: 'active',
+          folder_path: folderPath || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create project')
+      }
+
+      const newProject = await response.json()
+      console.log('[FileTree] Project created in cloud:', newProject)
+
+      // 3. 프로젝트 경로로 이동 및 Neural Map에 연결
+      if (folderPath) {
+        setProjectPath(folderPath)
+      }
+      if (newProject.id) {
+        setLinkedProject(newProject.id, trimmedName)
+      }
+
+      // 4. 모달 닫기
+      setIsCreatingProject(false)
+      setNewProjectName('')
+
+      console.log('[FileTree] Project linked to Neural Map:', {
+        id: newProject.id,
+        name: trimmedName,
+        folderPath,
+      })
+    } catch (err) {
+      console.error('[FileTree] Error creating project:', err)
+      alert('프로젝트 생성 중 오류가 발생했습니다.')
+    } finally {
+      setIsCreatingProjectLoading(false)
+    }
+  }, [newProjectName, setProjectPath, setLinkedProject])
+
+  // 컨텍스트 메뉴 열기
+  const handleContextMenu = useCallback((
+    e: React.MouseEvent,
+    type: 'file' | 'folder',
+    file?: NeuralFile,
+    path?: string
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      targetType: type,
+      targetFile: file,
+      targetPath: path,
+    })
+  }, [])
+
+  // 컨텍스트 메뉴 닫기
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(prev => ({ ...prev, isOpen: false }))
+  }, [])
+
+  // 컨텍스트 메뉴 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        closeContextMenu()
+      }
+    }
+    if (contextMenu.isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [contextMenu.isOpen, closeContextMenu])
+
+  // Reveal in Finder (macOS) / Show in Explorer (Windows)
+  const handleRevealInFinder = useCallback(async () => {
+    closeContextMenu()
+    if (!projectPath) return
+
+    let targetPath = projectPath
+    if (contextMenu.targetFile?.path) {
+      targetPath = `${projectPath}/${contextMenu.targetFile.path}`
+    } else if (contextMenu.targetPath) {
+      targetPath = `${projectPath}/${contextMenu.targetPath}`
+    }
+
+    // Electron API로 Finder에서 열기
+    const electronApi = window.electron as any
+    if (electronApi?.shell?.showItemInFolder) {
+      await electronApi.shell.showItemInFolder(targetPath)
+    } else {
+      // 웹 환경에서는 경로를 클립보드에 복사
+      await navigator.clipboard.writeText(targetPath)
+      console.log('[FileTree] Path copied (no Finder available):', targetPath)
+    }
+  }, [contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // Open in Integrated Terminal
+  const handleOpenInTerminal = useCallback(() => {
+    closeContextMenu()
+    if (!projectPath) return
+
+    let targetPath = projectPath
+    if (contextMenu.targetPath) {
+      targetPath = `${projectPath}/${contextMenu.targetPath}`
+    } else if (contextMenu.targetFile?.path) {
+      // 파일의 경우 부모 디렉토리
+      const filePath = contextMenu.targetFile.path
+      const parentPath = filePath.includes('/')
+        ? filePath.substring(0, filePath.lastIndexOf('/'))
+        : ''
+      targetPath = parentPath ? `${projectPath}/${parentPath}` : projectPath
+    }
+
+    // 터미널 이벤트 발송 (cd 명령 실행)
+    window.dispatchEvent(new CustomEvent('terminal-execute', {
+      detail: { command: `cd "${targetPath}"` }
+    }))
+    // 터미널 패널 열기
+    useNeuralMapStore.getState().setTerminalOpen(true)
+  }, [contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // Cut
+  const handleCut = useCallback(() => {
+    closeContextMenu()
+    if (contextMenu.targetFile) {
+      const fullPath = contextMenu.targetFile.path
+        ? `${projectPath}/${contextMenu.targetFile.path}`
+        : undefined
+      setClipboard({
+        operation: 'cut',
+        file: contextMenu.targetFile,
+        path: fullPath,
+      })
+    } else if (contextMenu.targetPath) {
+      setClipboard({
+        operation: 'cut',
+        path: `${projectPath}/${contextMenu.targetPath}`,
+      })
+    }
+  }, [contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // Copy
+  const handleCopy = useCallback(() => {
+    closeContextMenu()
+    if (contextMenu.targetFile) {
+      const fullPath = contextMenu.targetFile.path
+        ? `${projectPath}/${contextMenu.targetFile.path}`
+        : undefined
+      setClipboard({
+        operation: 'copy',
+        file: contextMenu.targetFile,
+        path: fullPath,
+      })
+    } else if (contextMenu.targetPath) {
+      setClipboard({
+        operation: 'copy',
+        path: `${projectPath}/${contextMenu.targetPath}`,
+      })
+    }
+  }, [contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // Paste
+  const handlePaste = useCallback(async () => {
+    closeContextMenu()
+    if (!clipboard.operation || !clipboard.path || !projectPath) return
+
+    // 대상 디렉토리 결정
+    let targetDir = projectPath
+    if (contextMenu.targetPath) {
+      targetDir = `${projectPath}/${contextMenu.targetPath}`
+    } else if (contextMenu.targetFile?.path) {
+      const filePath = contextMenu.targetFile.path
+      const parentPath = filePath.includes('/')
+        ? filePath.substring(0, filePath.lastIndexOf('/'))
+        : ''
+      targetDir = parentPath ? `${projectPath}/${parentPath}` : projectPath
+    }
+
+    const sourcePath = clipboard.path
+    const fileName = sourcePath.split('/').pop() || ''
+    const destPath = `${targetDir}/${fileName}`
+
+    // Electron API로 파일 복사/이동
+    const electronFs = window.electron?.fs as any
+    if (electronFs) {
+      try {
+        if (clipboard.operation === 'copy') {
+          await electronFs.copyFile?.(sourcePath, destPath)
+          console.log('[FileTree] File copied:', sourcePath, '->', destPath)
+        } else {
+          // cut: 복사 후 원본 삭제
+          await electronFs.copyFile?.(sourcePath, destPath)
+          await electronFs.deleteFile?.(sourcePath)
+          console.log('[FileTree] File moved:', sourcePath, '->', destPath)
+        }
+        // 새로고침
+        if (loadFolderFromPathRef.current) {
+          await loadFolderFromPathRef.current(projectPath)
+        }
+      } catch (err) {
+        console.error('[FileTree] Paste failed:', err)
+      }
+    }
+
+    // 클립보드 초기화 (cut의 경우)
+    if (clipboard.operation === 'cut') {
+      setClipboard({ operation: null })
+    }
+  }, [clipboard, contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // Copy Path (절대 경로)
+  const handleCopyPath = useCallback(async () => {
+    closeContextMenu()
+    if (!projectPath) return
+
+    let targetPath = projectPath
+    if (contextMenu.targetFile?.path) {
+      targetPath = `${projectPath}/${contextMenu.targetFile.path}`
+    } else if (contextMenu.targetPath) {
+      targetPath = `${projectPath}/${contextMenu.targetPath}`
+    }
+
+    await navigator.clipboard.writeText(targetPath)
+    console.log('[FileTree] Path copied:', targetPath)
+  }, [contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // Copy Relative Path
+  const handleCopyRelativePath = useCallback(async () => {
+    closeContextMenu()
+
+    let relativePath = ''
+    if (contextMenu.targetFile?.path) {
+      relativePath = contextMenu.targetFile.path
+    } else if (contextMenu.targetPath) {
+      relativePath = contextMenu.targetPath
+    }
+
+    await navigator.clipboard.writeText(relativePath)
+    console.log('[FileTree] Relative path copied:', relativePath)
+  }, [contextMenu.targetFile, contextMenu.targetPath, closeContextMenu])
+
+  // Rename 시작
+  const handleStartRename = useCallback(() => {
+    closeContextMenu()
+    if (contextMenu.targetFile) {
+      setRenamingItem({
+        type: 'file',
+        file: contextMenu.targetFile,
+        name: contextMenu.targetFile.name,
+      })
+    } else if (contextMenu.targetPath) {
+      const name = contextMenu.targetPath.split('/').pop() || ''
+      setRenamingItem({
+        type: 'folder',
+        path: contextMenu.targetPath,
+        name,
+      })
+    }
+    // 포커스
+    setTimeout(() => renameInputRef.current?.select(), 50)
+  }, [contextMenu.targetFile, contextMenu.targetPath, closeContextMenu])
+
+  // Rename 완료
+  const handleRename = useCallback(async () => {
+    if (!renamingItem || !renamingItem.name.trim() || !projectPath) {
+      setRenamingItem(null)
+      return
+    }
+
+    const newName = renamingItem.name.trim()
+    const electronFs = window.electron?.fs as any
+
+    if (renamingItem.type === 'file' && renamingItem.file?.path) {
+      const filePath = renamingItem.file.path
+      const oldPath = `${projectPath}/${filePath}`
+      const dir = filePath.includes('/')
+        ? filePath.substring(0, filePath.lastIndexOf('/'))
+        : ''
+      const newPath = dir ? `${projectPath}/${dir}/${newName}` : `${projectPath}/${newName}`
+
+      if (electronFs?.rename) {
+        try {
+          await electronFs.rename(oldPath, newPath)
+          console.log('[FileTree] File renamed:', oldPath, '->', newPath)
+          // 새로고침
+          if (loadFolderFromPathRef.current) {
+            await loadFolderFromPathRef.current(projectPath)
+          }
+        } catch (err) {
+          console.error('[FileTree] Rename failed:', err)
+        }
+      }
+    } else if (renamingItem.type === 'folder' && renamingItem.path) {
+      const oldPath = `${projectPath}/${renamingItem.path}`
+      const parentDir = renamingItem.path.includes('/')
+        ? renamingItem.path.substring(0, renamingItem.path.lastIndexOf('/'))
+        : ''
+      const newPath = parentDir ? `${projectPath}/${parentDir}/${newName}` : `${projectPath}/${newName}`
+
+      if (electronFs?.rename) {
+        try {
+          await electronFs.rename(oldPath, newPath)
+          console.log('[FileTree] Folder renamed:', oldPath, '->', newPath)
+          // 새로고침
+          if (loadFolderFromPathRef.current) {
+            await loadFolderFromPathRef.current(projectPath)
+          }
+        } catch (err) {
+          console.error('[FileTree] Rename failed:', err)
+        }
+      }
+    }
+
+    setRenamingItem(null)
+  }, [renamingItem, projectPath])
+
+  // Delete
+  const handleDelete = useCallback(async () => {
+    closeContextMenu()
+    if (!projectPath) return
+
+    let targetPath = ''
+    let targetName = ''
+
+    if (contextMenu.targetFile) {
+      targetPath = `${projectPath}/${contextMenu.targetFile.path}`
+      targetName = contextMenu.targetFile.name
+    } else if (contextMenu.targetPath) {
+      targetPath = `${projectPath}/${contextMenu.targetPath}`
+      targetName = contextMenu.targetPath.split('/').pop() || ''
+    }
+
+    if (!targetPath) return
+
+    // 확인 다이얼로그
+    const confirmed = window.confirm(`"${targetName}"을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)
+    if (!confirmed) return
+
+    const electronApi = window.electron as any
+    if (electronApi?.fs) {
+      try {
+        // 휴지통으로 이동 시도 (Electron API)
+        if (electronApi.shell?.trashItem) {
+          await electronApi.shell.trashItem(targetPath)
+          console.log('[FileTree] Moved to trash:', targetPath)
+        } else {
+          // 휴지통 API가 없으면 직접 삭제
+          await electronApi.fs.deleteFile?.(targetPath)
+          console.log('[FileTree] Deleted:', targetPath)
+        }
+        // 새로고침
+        if (loadFolderFromPathRef.current) {
+          await loadFolderFromPathRef.current(projectPath)
+        }
+      } catch (err) {
+        console.error('[FileTree] Delete failed:', err)
+      }
+    }
+  }, [contextMenu.targetFile, contextMenu.targetPath, projectPath, closeContextMenu])
+
+  // New File in Folder
+  const handleNewFileInFolder = useCallback(() => {
+    closeContextMenu()
+    setIsCreatingNew('file')
+    setNewItemName('')
+    // 대상 폴더 열기
+    if (contextMenu.targetPath) {
+      setExpandedFolders(prev => new Set([...prev, contextMenu.targetPath!]))
+    }
+  }, [contextMenu.targetPath, closeContextMenu])
+
+  // New Folder in Folder
+  const handleNewFolderInFolder = useCallback(() => {
+    closeContextMenu()
+    setIsCreatingNew('folder')
+    setNewItemName('')
+    // 대상 폴더 열기
+    if (contextMenu.targetPath) {
+      setExpandedFolders(prev => new Set([...prev, contextMenu.targetPath!]))
+    }
+  }, [contextMenu.targetPath, closeContextMenu])
+
+  // 새 파일/폴더 생성 시 자동 포커스
+  useEffect(() => {
+    if (isCreatingNew && newItemInputRef.current) {
+      newItemInputRef.current.focus()
+    }
+  }, [isCreatingNew])
 
   // 파일 트리 구조 생성 - useMemo로 메모이제이션하여 무한 루프 방지
   const fileTree = useMemo(() => {
     console.log('[FileTree] Building tree from files:', files.length, files)
     return buildFileTree(files)
   }, [files])
+
+  // 파일이 변경되면 자동으로 그래프 리빌드 (최초 로드 또는 파일 추가 시)
+  const prevFilesLengthRef = useRef(-1) // -1로 초기화해서 첫 렌더링에서 무조건 체크
+  const isRebuildingRef = useRef(false) // 무한 루프 방지 플래그
+  useEffect(() => {
+    // 이미 리빌드 중이면 스킵
+    if (isRebuildingRef.current) return
+
+    // 파일이 있고 (1) 개수가 변경되었거나 (2) 그래프가 없으면 리빌드
+    const filesChanged = files.length !== prevFilesLengthRef.current
+    const needsGraph = !graph || (graph?.nodes?.length || 0) === 0
+    // 프로젝트가 연결되어 있으면 파일이 없어도 그래프 빌드 (빈 프로젝트 노드 표시)
+    const hasLinkedProject = !!linkedProjectName || !!projectPath
+
+    if ((files.length > 0 && (filesChanged || needsGraph)) || (hasLinkedProject && needsGraph)) {
+      console.log('[FileTree] Auto-rebuild graph:', {
+        prev: prevFilesLengthRef.current,
+        current: files.length,
+        hasGraph: !!graph,
+        nodeCount: graph?.nodes?.length || 0,
+        filesChanged,
+        needsGraph,
+        linkedProjectName,
+        projectPath
+      })
+      prevFilesLengthRef.current = files.length
+      isRebuildingRef.current = true
+      buildGraphFromFilesAsync().finally(() => {
+        isRebuildingRef.current = false
+      })
+    }
+  }, [files.length, graph, buildGraphFromFilesAsync, linkedProjectName, projectPath])
 
   // 폴더 경로로 노드 ID 찾기 (그래프 동기화용)
   const findNodeIdByPath = (folderPath: string): string | undefined => {
@@ -395,33 +1050,6 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     setIsExpanded(graphExpanded);
 
   }, [expandedNodeIds, graph?.nodes, graphExpanded, fileTree]);
-
-  // 모든 폴더 접기
-  const collapseAll = () => {
-    setExpandedFolders(new Set())
-    setIsExpanded(false)
-  }
-
-  // 정렬 메뉴 외부 클릭 감지
-  const handleClickOutside = (e: MouseEvent) => {
-    if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
-      setShowSortMenu(false)
-    }
-  }
-
-  // 외부 클릭 이벤트 등록
-  // useEffect로 처리 - showSortMenu 변경 시 이벤트 등록/해제
-  if (typeof window !== 'undefined' && showSortMenu) {
-    setTimeout(() => {
-      const handler = (e: Event) => {
-        if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
-          setShowSortMenu(false)
-        }
-      }
-      document.addEventListener('mousedown', handler)
-      return () => document.removeEventListener('mousedown', handler)
-    }, 0)
-  }
 
   // 파일에 해당하는 노드 찾기
   const findNodeByFileName = (fileName: string) => {
@@ -730,6 +1358,97 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     }
   }
 
+  // 공통 폴더 로드 함수 (Electron 환경)
+  const loadFolderFromPath = useCallback(async (dirPath: string) => {
+    const electron = (window as any).electron
+    if (!electron?.fs?.scanTree) return
+
+    try {
+      setIsUploading(true)
+      setIsExpanded(true)
+      setProjectPath(dirPath)
+      console.log('[FileTree] ✅ Set projectPath:', dirPath)
+
+      // 🔄 Start file system watcher for external changes (Claude Code, etc.)
+      if (electron?.fs?.watchStart) {
+        electron.fs.watchStart(dirPath).then((result: { success: boolean; path: string }) => {
+          if (result.success) {
+            console.log('[FileTree] 👁️ File watcher started for:', result.path)
+          }
+        }).catch((err: Error) => {
+          console.warn('[FileTree] File watcher failed:', err)
+        })
+      }
+
+      // 🚀 Batch Scan: Single IPC call for entire tree (includes file content)
+      console.time('Batch Scan Tree')
+
+      const scanResult = await electron.fs.scanTree(dirPath, {
+        includeSystemFiles: showHiddenFiles,
+        includeContent: true,
+        contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs']
+      })
+
+      console.timeEnd('Batch Scan Tree')
+      console.log(`[Batch Scan] ${scanResult.stats.fileCount} files, ${scanResult.stats.dirCount} dirs in ${scanResult.stats.elapsed}ms`)
+
+      const timestamp = Date.now()
+      const neuralFiles: NeuralFile[] = []
+
+      const getFileType = (ext: string) => {
+        const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+        const mdExts = ['md', 'markdown', 'mdx']
+        const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go']
+        if (imageExts.includes(ext)) return 'image'
+        if (mdExts.includes(ext)) return 'markdown'
+        if (codeExts.includes(ext)) return 'code'
+        return 'text'
+      }
+
+      const flattenTree = (node: any) => {
+        if (node.kind === 'file') {
+          const ext = node.name.split('.').pop()?.toLowerCase() || ''
+          const type = getFileType(ext)
+
+          neuralFiles.push({
+            id: `local-${timestamp}-${neuralFiles.length}`,
+            name: node.name,
+            path: node.relativePath,
+            type: type as any,
+            content: node.content || '',
+            size: node.size || 0,
+            createdAt: new Date().toISOString(),
+            mapId: mapId || '',
+            url: '',
+          })
+        }
+
+        if (node.children) {
+          for (const child of node.children) {
+            flattenTree(child)
+          }
+        }
+      }
+
+      flattenTree(scanResult.tree)
+
+      console.log(`[Batch Scan] Processed ${neuralFiles.length} files for Neural Map`)
+
+      setFiles(neuralFiles)
+      buildGraphFromFilesAsync()
+      setIsUploading(false)
+
+    } catch (err) {
+      console.error('Failed to load folder:', err)
+      alert('폴더 로딩 실패: ' + (err as Error).message)
+      setIsUploading(false)
+    }
+  }, [showHiddenFiles, mapId, setProjectPath, setFiles, buildGraphFromFilesAsync])
+
+  // ref로 최신 함수 참조 유지 (useEffect에서 사용)
+  const loadFolderFromPathRef = useRef(loadFolderFromPath)
+  loadFolderFromPathRef.current = loadFolderFromPath
+
   // 폴더 업로드 - File System Access API (Real Sync)
   const handleNativeFolderUpload = async () => {
     try {
@@ -739,20 +1458,8 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         const result = await electronFs.selectDirectory()
         if (!result) return
 
-        setIsExpanded(true)
-
-        // Electron에서는 실제 파일 경로를 바로 사용 가능
-        const electronPath = result.path
-        console.log('[FileTree] Selected directory (Electron):', {
-          name: result.name,
-          path: electronPath,
-        })
-
-        setProjectPath(electronPath)
-        console.log('[FileTree] ✅ Set projectPath in store (Electron):', electronPath)
-
-        // Electron 환경에서는 파일 스캔을 별도로 처리해야 함
-        // 여기서는 projectPath만 설정하고, 실제 파일 스캔은 CytoscapeView에서 수행
+        // 공통 함수 호출
+        await loadFolderFromPath(result.path)
         return
       }
 
@@ -786,7 +1493,9 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       console.log(`Found ${scannedFiles.length} files`)
 
       if (scannedFiles.length === 0) {
-        alert('업로드 가능한 파일이 없습니다.')
+        // 빈 폴더여도 정상 처리 - 파일 트리에 폴더 이름만 표시
+        console.log('[FileTree] Empty folder selected:', dirHandle.name)
+        setFiles([])
         return
       }
 
@@ -917,82 +1626,11 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     const electron = (window as any).electron
     if (!electron?.onMenuEvent) return
 
-    // 폴더 선택 완료 이벤트 - Electron main에서 직접 다이얼로그 열고 결과 전송
-    // 폴더 선택 완료 이벤트 - Electron main에서 직접 다이얼로그 열고 결과 전송
+    // 폴더 선택 완료 이벤트 - ref로 최신 함수 참조
     const unsubFolderSelected = electron.onMenuEvent('menu:folder-selected', async (_event: any, dirInfo: { name: string, path: string }) => {
       console.log('[Menu] Folder selected:', dirInfo)
-
       if (!dirInfo?.path) return
-
-      try {
-        setIsUploading(true)
-        setIsExpanded(true)
-
-        // 🚀 Batch Scan: Single IPC call for entire tree (includes file content)
-        console.time('Batch Scan Tree')
-
-        const scanResult = await electron.fs.scanTree(dirInfo.path, {
-          includeSystemFiles: showHiddenFiles,
-          includeContent: true,  // 파일 내용도 함께 로드
-          contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs']
-        })
-
-        console.timeEnd('Batch Scan Tree')
-        console.log(`[Batch Scan] ${scanResult.stats.fileCount} files, ${scanResult.stats.dirCount} dirs in ${scanResult.stats.elapsed}ms`)
-
-        const timestamp = Date.now()
-        const neuralFiles: NeuralFile[] = []
-
-        // Flatten tree to file list
-        const getFileType = (ext: string) => {
-          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
-          const mdExts = ['md', 'markdown', 'mdx']
-          const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go']
-          if (imageExts.includes(ext)) return 'image'
-          if (mdExts.includes(ext)) return 'markdown'
-          if (codeExts.includes(ext)) return 'code'
-          return 'text'
-        }
-
-        const flattenTree = (node: any) => {
-          if (node.kind === 'file') {
-            const ext = node.name.split('.').pop()?.toLowerCase() || ''
-            const type = getFileType(ext)
-
-            neuralFiles.push({
-              id: `local-${timestamp}-${neuralFiles.length}`,
-              name: node.name,
-              path: node.relativePath,
-              type: type as any,
-              content: node.content || '',
-              size: node.size || 0,
-              createdAt: new Date().toISOString(),
-              mapId: mapId || '',
-              url: '',
-            })
-          }
-
-          if (node.children) {
-            for (const child of node.children) {
-              flattenTree(child)
-            }
-          }
-        }
-
-        flattenTree(scanResult.tree)
-
-        console.log(`[Batch Scan] Processed ${neuralFiles.length} files for Neural Map`)
-
-        // 즉시 파일 설정 및 그래프 빌드
-        setFiles(neuralFiles)
-        buildGraphFromFilesAsync()
-        setIsUploading(false)
-
-      } catch (err) {
-        console.error('Failed to load folder:', err)
-        alert('폴더 로딩 실패: ' + (err as Error).message)
-        setIsUploading(false)
-      }
+      await loadFolderFromPathRef.current(dirInfo.path)
     })
 
     const unsubNewNote = electron.onMenuEvent('menu:new-note', () => {
@@ -1005,10 +1643,24 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       fileInputRef.current?.click()
     })
 
+    // Listen for file system changes (Agent actions)
+    const unsubFsChanged = electron.fs?.onChanged?.(async (data: { path: string }) => {
+      console.log('[FileTree] File changed by Agent:', data.path)
+      // Get latest project path from store directly to avoid dependency issues
+      const currentProjectPath = useNeuralMapStore.getState().projectPath
+      if (currentProjectPath) {
+        // Debounce reload slightly to prevent flashing if multiple files change
+        await loadFolderFromPathRef.current(currentProjectPath)
+      }
+    })
+
     return () => {
       unsubFolderSelected?.()
       unsubNewNote?.()
       unsubNewFile?.()
+      unsubFsChanged?.()
+      // Stop file system watcher
+      electron.fs?.watchStop?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1017,11 +1669,11 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
 
   return (
-    <div className={cn('h-full flex flex-col text-[13px]', isDark ? 'bg-zinc-900' : 'bg-[#f3f3f3]')}>
+    <div className={cn('h-full flex flex-col text-[13px] overflow-hidden min-w-0', isDark ? 'bg-zinc-900' : 'bg-[#f3f3f3]')}>
       {/* File 드롭다운 메뉴 바 */}
       <div
         className={cn(
-          'h-[36px] flex items-center px-2 border-b',
+          'h-[36px] flex items-center px-2 border-b shrink-0 min-w-0',
           isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#e5e5e5]'
         )}
       >
@@ -1038,7 +1690,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
             File
           </button>
 
-          {/* File 드롭다운 메뉴 */}
+          {/* File 드롭다운 메뉴 - 네이티브 메뉴와 동일 */}
           <AnimatePresence>
             {showFileMenu && (
               <motion.div
@@ -1054,29 +1706,25 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                 {/* New Note */}
                 <button
                   onClick={() => { openEditor(); setShowFileMenu(false) }}
-                  disabled={!mapId}
                   className={cn(
                     'w-full px-4 py-2 text-left flex items-center justify-between',
-                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700',
-                    !mapId && 'opacity-50 cursor-not-allowed'
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
                   )}
                 >
                   <span>New Note</span>
-                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘ N</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘N</span>
                 </button>
 
                 {/* New File */}
                 <button
                   onClick={() => { fileInputRef.current?.click(); setShowFileMenu(false) }}
-                  disabled={!mapId}
                   className={cn(
                     'w-full px-4 py-2 text-left flex items-center justify-between',
-                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700',
-                    !mapId && 'opacity-50 cursor-not-allowed'
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
                   )}
                 >
                   <span>New File...</span>
-                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌥ ⌘ N</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌥⌘N</span>
                 </button>
 
                 {/* 구분선 */}
@@ -1093,97 +1741,69 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                     }
                     setShowFileMenu(false)
                   }}
-                  disabled={!mapId}
                   className={cn(
                     'w-full px-4 py-2 text-left flex items-center justify-between',
-                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700',
-                    !mapId && 'opacity-50 cursor-not-allowed'
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
                   )}
                 >
                   <span>Open Folder...</span>
-                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘ O</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘O</span>
                 </button>
 
                 {/* 구분선 */}
                 <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />
 
-                {/* Visualize */}
+                {/* Save */}
                 <button
-                  onClick={() => { buildGraphFromFilesAsync(); setShowFileMenu(false) }}
-                  disabled={files.length === 0}
+                  onClick={() => {
+                    // menu:save 이벤트 트리거 (에디터에서 처리)
+                    window.dispatchEvent(new CustomEvent('menu:save'))
+                    setShowFileMenu(false)
+                  }}
                   className={cn(
                     'w-full px-4 py-2 text-left flex items-center justify-between',
-                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700',
-                    files.length === 0 && 'opacity-50 cursor-not-allowed'
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
                   )}
                 >
-                  <span>Visualize Files</span>
-                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘ V</span>
+                  <span>Save</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘S</span>
+                </button>
+
+                {/* Save As */}
+                <button
+                  onClick={() => {
+                    // menu:save-as 이벤트 트리거
+                    window.dispatchEvent(new CustomEvent('menu:save-as'))
+                    setShowFileMenu(false)
+                  }}
+                  className={cn(
+                    'w-full px-4 py-2 text-left flex items-center justify-between',
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
+                  )}
+                >
+                  <span>Save As...</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⇧⌘S</span>
                 </button>
 
                 {/* 구분선 */}
                 <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />
 
-                {/* Sort submenu */}
-                <div className="relative group">
-                  <button
-                    className={cn(
-                      'w-full px-4 py-2 text-left flex items-center justify-between',
-                      isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
-                    )}
-                  >
-                    <span>Sort By</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  {/* Sort submenu */}
-                  <div className={cn(
-                    'absolute left-full top-0 ml-1 py-1 rounded-md shadow-xl min-w-[200px] hidden group-hover:block',
-                    isDark ? 'bg-[#252526] border border-[#454545]' : 'bg-white border border-[#d4d4d4]'
-                  )}>
-                    {SORT_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() => { setSortOption(option.value); setShowFileMenu(false) }}
-                        className={cn(
-                          'w-full px-4 py-2 text-left flex items-center gap-2',
-                          isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
-                        )}
-                      >
-                        {sortOption === option.value ? (
-                          <Check className="w-4 h-4" />
-                        ) : (
-                          <span className="w-4" />
-                        )}
-                        <span>{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Collapse All */}
+                {/* Close */}
                 <button
-                  onClick={() => { collapseAll(); setShowFileMenu(false) }}
+                  onClick={() => {
+                    // 현재 탭/창 닫기
+                    if (isElectron()) {
+                      window.close()
+                    }
+                    setShowFileMenu(false)
+                  }}
                   className={cn(
-                    'w-full px-4 py-2 text-left',
+                    'w-full px-4 py-2 text-left flex items-center justify-between',
                     isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
                   )}
                 >
-                  <span>Collapse All</span>
-                </button>
-
-                {/* 구분선 */}
-                <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />
-
-                {/* Show Hidden Files */}
-                <button
-                  onClick={() => { setShowHiddenFiles(!showHiddenFiles); setShowFileMenu(false) }}
-                  className={cn(
-                    'w-full px-4 py-2 text-left flex items-center gap-2',
-                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
-                  )}
-                >
-                  {showHiddenFiles ? <Check className="w-4 h-4" /> : <span className="w-4" />}
-                  <span>Show Hidden Files</span>
+                  <span>Close</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘W</span>
                 </button>
               </motion.div>
             )}
@@ -1210,48 +1830,186 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
       {/* 파일 트리 영역 */}
       <div className="flex-1 overflow-y-auto">
-        {/* 루트 폴더 (맵 이름) */}
+        {/* 루트 폴더 (맵 이름) + VS Code 스타일 액션 아이콘 */}
         <div
-          onClick={() => {
-            const newExpanded = !isExpanded
-            setIsExpanded(newExpanded)
-
-            // Sync with graph: Toggle self node
-            if (graph?.nodes) {
-              const selfNode = graph.nodes.find(n => n.type === 'self')
-              if (selfNode) {
-                // To match UI state (if UI expands, Graph expands)
-                // We use setExpandedNodes to force sync or just toggle if states are aligned.
-                // Simpler: Just toggle it. Or better: Ensure state matches `newExpanded`
-                if (newExpanded) {
-                  // If opening, ensure self is in expandedNodeIds
-                  if (!expandedNodeIds.has(selfNode.id)) {
-                    toggleNodeExpansion(selfNode.id)
-                  }
-                } else {
-                  // If closing, ensure self is removed
-                  if (expandedNodeIds.has(selfNode.id)) {
-                    toggleNodeExpansion(selfNode.id)
-                  }
-                }
-              }
-            }
-          }}
           className={cn(
-            'flex items-center gap-1 py-[3px] px-2 cursor-pointer select-none',
+            'group flex items-center justify-between py-[3px] px-2 cursor-pointer select-none',
             isDark
               ? 'hover:bg-[#2a2d2e] text-[#cccccc]'
               : 'hover:bg-[#e8e8e8] text-[#3b3b3b]',
             'font-semibold text-[11px] uppercase tracking-wide'
           )}
         >
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 flex-shrink-0" />
-          ) : (
-            <ChevronRight className="w-4 h-4 flex-shrink-0" />
-          )}
-          <span className="truncate">{mapTitle}</span>
+          {/* 좌측: 폴더 토글 + 이름 */}
+          <div
+            className="flex items-center gap-1 flex-1 min-w-0"
+            onClick={() => {
+              const newExpanded = !isExpanded
+              setIsExpanded(newExpanded)
+
+              // Sync with graph: Toggle self node
+              if (graph?.nodes) {
+                const selfNode = graph.nodes.find(n => n.type === 'self')
+                if (selfNode) {
+                  if (newExpanded) {
+                    if (!expandedNodeIds.has(selfNode.id)) {
+                      toggleNodeExpansion(selfNode.id)
+                    }
+                  } else {
+                    if (expandedNodeIds.has(selfNode.id)) {
+                      toggleNodeExpansion(selfNode.id)
+                    }
+                  }
+                }
+              }
+            }}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 flex-shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 flex-shrink-0" />
+            )}
+            <span className="truncate">{mapTitle}</span>
+          </div>
+
+          {/* 우측: 액션 아이콘 (호버 시 표시) */}
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* 프로젝트 미연결 시: 새 프로젝트 생성 버튼 */}
+            {!projectPath && !linkedProjectName && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsCreatingProject(true)
+                  setNewProjectName('')
+                  setTimeout(() => projectNameInputRef.current?.focus(), 100)
+                }}
+                className={cn(
+                  'p-1 rounded transition-colors',
+                  isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#d4d4d4]'
+                )}
+                style={{ color: currentAccent.color }}
+                title="새 프로젝트 생성"
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+            )}
+            {/* 새 파일 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsCreatingNew('file')
+                setNewItemName('')
+                setIsExpanded(true)
+              }}
+              className={cn(
+                'p-1 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#d4d4d4]'
+              )}
+              title="새 파일"
+            >
+              <FilePlus className="w-4 h-4" />
+            </button>
+            {/* 새 폴더 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsCreatingNew('folder')
+                setNewItemName('')
+                setIsExpanded(true)
+              }}
+              className={cn(
+                'p-1 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#d4d4d4]'
+              )}
+              title="새 폴더"
+            >
+              <FolderPlus className="w-4 h-4" />
+            </button>
+            {/* 새로고침 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleRefresh()
+              }}
+              className={cn(
+                'p-1 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#d4d4d4]'
+              )}
+              title="새로고침"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            {/* 모두 접기 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCollapseAll()
+              }}
+              className={cn(
+                'p-1 rounded transition-colors',
+                isDark ? 'hover:bg-[#3c3c3c]' : 'hover:bg-[#d4d4d4]'
+              )}
+              title="모두 접기"
+            >
+              <ChevronsDownUp className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* 새 파일/폴더 입력창 - VS Code 스타일 */}
+        {isCreatingNew && (
+          <div
+            className="flex items-center gap-1.5 py-[2px] pr-2"
+            style={{ paddingLeft: 20 }}
+          >
+            {isCreatingNew === 'file' ? (
+              <VscFile className="w-4 h-4 flex-shrink-0 text-zinc-400" />
+            ) : (
+              <VscFolder className="w-4 h-4 flex-shrink-0 text-zinc-400" />
+            )}
+            <input
+              ref={newItemInputRef}
+              type="text"
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (isCreatingNew === 'file') {
+                    handleCreateNewFile()
+                  } else {
+                    handleCreateNewFolder()
+                  }
+                } else if (e.key === 'Escape') {
+                  setIsCreatingNew(null)
+                  setNewItemName('')
+                }
+              }}
+              onBlur={() => {
+                // 약간의 딜레이 후 처리 (클릭 이벤트 처리를 위해)
+                setTimeout(() => {
+                  if (newItemName.trim()) {
+                    if (isCreatingNew === 'file') {
+                      handleCreateNewFile()
+                    } else {
+                      handleCreateNewFolder()
+                    }
+                  } else {
+                    setIsCreatingNew(null)
+                    setNewItemName('')
+                  }
+                }, 100)
+              }}
+              placeholder={isCreatingNew === 'file' ? 'filename.ext' : 'folder name'}
+              className={cn(
+                'flex-1 px-1.5 py-[2px] text-[13px] border-0 outline-none focus:outline-none focus:ring-0',
+                isDark
+                  ? 'bg-[#3c3c3c] text-[#cccccc] placeholder:text-zinc-600 caret-white'
+                  : 'bg-white text-zinc-900 placeholder:text-zinc-400'
+              )}
+              style={{ boxShadow: 'none' }}
+            />
+          </div>
+        )}
 
         {/* 파일 트리 목록 */}
         <AnimatePresence>
@@ -1265,10 +2023,33 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
             >
               {fileTree.length === 0 ? (
                 <div className={cn(
-                  'py-4 px-6 text-center',
-                  isDark ? 'text-zinc-500' : 'text-zinc-400'
+                  'py-4 px-4 text-xs',
+                  isDark ? 'text-zinc-600' : 'text-zinc-400'
                 )}>
-                  <p className="text-xs">파일이 없습니다</p>
+                  {projectPath ? (
+                    <span>빈 폴더입니다. 파일을 추가하세요.</span>
+                  ) : linkedProjectName ? (
+                    <span>프로젝트를 로드 중입니다...</span>
+                  ) : (
+                    <div className="py-3 px-2">
+                      <button
+                        onClick={() => {
+                          setIsCreatingProject(true)
+                          setNewProjectName('')
+                          setTimeout(() => projectNameInputRef.current?.focus(), 100)
+                        }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] transition-colors',
+                          isDark
+                            ? 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                            : 'text-zinc-400 hover:text-zinc-600 hover:bg-black/5'
+                        )}
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>새 프로젝트</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <TreeNodeList
@@ -1285,6 +2066,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                   onToggleFolder={toggleFolder}
                   findNodeByFileName={findNodeByFileName}
                   onOpenCodePreview={openCodePreview}
+                  onContextMenu={handleContextMenu}
                 />
               )}
             </motion.div>
@@ -1309,6 +2091,127 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         </CollapsibleSection>
       </div>
 
+      {/* 컨텍스트 메뉴 (VS Code 스타일) */}
+      <AnimatePresence>
+        {contextMenu.isOpen && (
+          <motion.div
+            ref={contextMenuRef}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.1 }}
+            className={cn(
+              'fixed z-[9999] py-1 rounded-md shadow-xl min-w-[220px] text-[13px]',
+              isDark
+                ? 'bg-[#252526] border border-[#454545]'
+                : 'bg-white border border-[#c8c8c8]'
+            )}
+            style={{
+              left: Math.min(contextMenu.x, window.innerWidth - 240),
+              top: Math.min(contextMenu.y, window.innerHeight - 400),
+            }}
+          >
+            {/* New File / New Folder - 폴더에서만 표시 */}
+            {contextMenu.targetType === 'folder' && (
+              <>
+                <ContextMenuItem
+                  icon={<FilePlus className="w-4 h-4" />}
+                  label="New File..."
+                  onClick={handleNewFileInFolder}
+                  isDark={isDark}
+                />
+                <ContextMenuItem
+                  icon={<FolderPlus className="w-4 h-4" />}
+                  label="New Folder..."
+                  onClick={handleNewFolderInFolder}
+                  isDark={isDark}
+                />
+                <ContextMenuDivider isDark={isDark} />
+              </>
+            )}
+
+            {/* Reveal in Finder */}
+            <ContextMenuItem
+              icon={<FolderOpen className="w-4 h-4" />}
+              label="Reveal in Finder"
+              shortcut="⌘⇧R"
+              onClick={handleRevealInFinder}
+              isDark={isDark}
+            />
+
+            {/* Open in Integrated Terminal */}
+            <ContextMenuItem
+              icon={<Terminal className="w-4 h-4" />}
+              label="Open in Integrated Terminal"
+              onClick={handleOpenInTerminal}
+              isDark={isDark}
+            />
+
+            <ContextMenuDivider isDark={isDark} />
+
+            {/* Cut / Copy / Paste */}
+            <ContextMenuItem
+              icon={<Scissors className="w-4 h-4" />}
+              label="Cut"
+              shortcut="⌘X"
+              onClick={handleCut}
+              isDark={isDark}
+            />
+            <ContextMenuItem
+              icon={<Copy className="w-4 h-4" />}
+              label="Copy"
+              shortcut="⌘C"
+              onClick={handleCopy}
+              isDark={isDark}
+            />
+            <ContextMenuItem
+              icon={<Clipboard className="w-4 h-4" />}
+              label="Paste"
+              shortcut="⌘V"
+              onClick={handlePaste}
+              disabled={!clipboard.operation}
+              isDark={isDark}
+            />
+
+            <ContextMenuDivider isDark={isDark} />
+
+            {/* Copy Path / Copy Relative Path */}
+            <ContextMenuItem
+              icon={<Link className="w-4 h-4" />}
+              label="Copy Path"
+              shortcut="⌥⌘C"
+              onClick={handleCopyPath}
+              isDark={isDark}
+            />
+            <ContextMenuItem
+              icon={<Link className="w-4 h-4" />}
+              label="Copy Relative Path"
+              shortcut="⌥⇧C"
+              onClick={handleCopyRelativePath}
+              isDark={isDark}
+            />
+
+            <ContextMenuDivider isDark={isDark} />
+
+            {/* Rename / Delete */}
+            <ContextMenuItem
+              icon={<PenLine className="w-4 h-4" />}
+              label="Rename..."
+              onClick={handleStartRename}
+              isDark={isDark}
+            />
+            <ContextMenuItem
+              icon={<Trash2 className="w-4 h-4" />}
+              label="Delete"
+              shortcut="⌘⌫"
+              onClick={handleDelete}
+              isDark={isDark}
+              danger
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 숨겨진 파일 입력 */}
       <input
         ref={fileInputRef}
@@ -1330,6 +2233,99 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         accept="*/*"
         className="hidden"
       />
+
+      {/* 프로젝트 생성 모달 */}
+      <AnimatePresence>
+        {isCreatingProject && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
+            onClick={() => setIsCreatingProject(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                'w-[400px] rounded-xl shadow-2xl p-6',
+                isDark ? 'bg-[#1e1e1e] border border-[#3c3c3c]' : 'bg-white border border-zinc-200'
+              )}
+            >
+              <h3 className={cn(
+                'text-lg font-semibold mb-4',
+                isDark ? 'text-white' : 'text-zinc-900'
+              )}>
+                새 프로젝트 생성
+              </h3>
+              <p className={cn(
+                'text-sm mb-4',
+                isDark ? 'text-zinc-400' : 'text-zinc-600'
+              )}>
+                새로운 프로젝트 폴더가 로컬 워크스페이스에 생성되고, 클라우드에 메타데이터가 저장됩니다.
+              </p>
+              <input
+                ref={projectNameInputRef}
+                type="text"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newProjectName.trim()) {
+                    handleCreateProjectFromSidebar()
+                  } else if (e.key === 'Escape') {
+                    setIsCreatingProject(false)
+                  }
+                }}
+                placeholder="프로젝트 이름"
+                className={cn(
+                  'w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-colors border-2',
+                  isDark
+                    ? 'bg-[#2d2d2d] border-[#3c3c3c] text-white placeholder:text-zinc-500'
+                    : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-400'
+                )}
+                style={{
+                  borderColor: newProjectName.trim() ? currentAccent.color : undefined
+                }}
+              />
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setIsCreatingProject(false)}
+                  className={cn(
+                    'flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                    isDark
+                      ? 'bg-[#2d2d2d] hover:bg-[#3d3d3d] text-zinc-300'
+                      : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                  )}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleCreateProjectFromSidebar}
+                  disabled={!newProjectName.trim() || isCreatingProjectLoading}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 text-white disabled:opacity-50 hover:brightness-110"
+                  style={{
+                    backgroundColor: currentAccent.color
+                  }}
+                >
+                  {isCreatingProjectLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      생성
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -1349,6 +2345,7 @@ interface TreeNodeListProps {
   onToggleFolder: (path: string) => void
   findNodeByFileName: (name: string) => unknown
   onOpenCodePreview: (file: NeuralFile) => void
+  onContextMenu: (e: React.MouseEvent, type: 'file' | 'folder', file?: NeuralFile, path?: string) => void
 }
 
 function TreeNodeList({
@@ -1364,7 +2361,8 @@ function TreeNodeList({
   onDeleteFile,
   onToggleFolder,
   findNodeByFileName,
-  onOpenCodePreview
+  onOpenCodePreview,
+  onContextMenu,
 }: TreeNodeListProps) {
   return (
     <>
@@ -1379,6 +2377,7 @@ function TreeNodeList({
             <div key={`folder-${nodePath}-${index}`}>
               <div
                 onClick={() => onToggleFolder(nodePath)}
+                onContextMenu={(e) => onContextMenu(e, 'folder', undefined, nodePath)}
                 className={cn(
                   'flex items-center gap-1 py-[3px] pr-2 cursor-pointer select-none',
                   isDark
@@ -1417,6 +2416,7 @@ function TreeNodeList({
                       onToggleFolder={onToggleFolder}
                       findNodeByFileName={findNodeByFileName}
                       onOpenCodePreview={onOpenCodePreview}
+                      onContextMenu={onContextMenu}
                     />
                   </motion.div>
                 )}
@@ -1435,6 +2435,7 @@ function TreeNodeList({
             key={file.id}
             onClick={() => onFileClick(file)}
             onDoubleClick={() => onFileDoubleClick(file)}
+            onContextMenu={(e) => onContextMenu(e, 'file', file, undefined)}
             className={cn(
               'group flex items-center gap-1.5 py-[3px] pr-2 cursor-pointer select-none',
               isSelected
@@ -1547,5 +2548,66 @@ function CollapsibleSection({
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+// 컨텍스트 메뉴 아이템 컴포넌트
+function ContextMenuItem({
+  icon,
+  label,
+  shortcut,
+  onClick,
+  disabled,
+  danger,
+  isDark,
+}: {
+  icon?: React.ReactNode
+  label: string
+  shortcut?: string
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+  isDark: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'w-full px-3 py-1.5 flex items-center gap-3 text-left transition-colors',
+        disabled
+          ? isDark
+            ? 'text-[#6e6e6e] cursor-not-allowed'
+            : 'text-zinc-400 cursor-not-allowed'
+          : danger
+            ? isDark
+              ? 'text-red-400 hover:bg-[#094771] hover:text-white'
+              : 'text-red-600 hover:bg-blue-50'
+            : isDark
+              ? 'text-[#cccccc] hover:bg-[#094771]'
+              : 'text-zinc-700 hover:bg-blue-50'
+      )}
+    >
+      {icon && <span className="flex-shrink-0 opacity-80">{icon}</span>}
+      <span className="flex-1">{label}</span>
+      {shortcut && (
+        <span className={cn(
+          'text-[11px]',
+          isDark ? 'text-[#6e6e6e]' : 'text-zinc-400'
+        )}>
+          {shortcut}
+        </span>
+      )}
+    </button>
+  )
+}
+
+// 컨텍스트 메뉴 구분선
+function ContextMenuDivider({ isDark }: { isDark: boolean }) {
+  return (
+    <div className={cn(
+      'my-1 h-px',
+      isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]'
+    )} />
   )
 }

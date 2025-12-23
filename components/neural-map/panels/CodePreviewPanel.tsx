@@ -30,7 +30,11 @@ import {
   Eye,
   Save,
   AlertCircle,
+  Link2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
+import { BacklinksPanel } from './BacklinksPanel'
 
 // Monaco Editor 동적 import
 const MonacoCodeEditor = dynamic(
@@ -160,6 +164,7 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
+  const [showBacklinks, setShowBacklinks] = useState(true) // 백링크 패널 토글
 
   // Resizing State
   const [panelWidth, setPanelWidth] = useState(480)
@@ -734,10 +739,10 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
                   </button>
                 )}
               </div>
-            ) : displayMode === 'code' && displayContent ? (
+            ) : displayMode === 'code' ? (
               <div className="flex-1 h-full min-h-0" key={codePreviewFile?.id}>
                 <MonacoCodeEditor
-                  value={displayContent}
+                  value={displayContent || ''}
                   onChange={handleContentChange}
                   language={language}
                   height="calc(100vh - 200px)"
@@ -746,13 +751,60 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
                   lineNumbers={true}
                 />
               </div>
-            ) : displayMode === 'markdown' && displayContent ? (
-              <div className="h-full">
+            ) : displayMode === 'markdown' ? (
+              <div className="flex flex-col h-full" key={`md-${codePreviewFile?.id}`}>
+                {/* 에디터 영역 */}
+                <div className={cn(
+                  'flex-1 min-h-0',
+                  showBacklinks ? 'h-[60%]' : 'h-full'
+                )}>
+                  <MonacoCodeEditor
+                    value={displayContent || ''}
+                    onChange={handleContentChange}
+                    language="markdown"
+                    height={showBacklinks ? 'calc(60vh - 150px)' : 'calc(100vh - 200px)'}
+                    readOnly={false}
+                    minimap={false}
+                    lineNumbers={true}
+                  />
+                </div>
+
+                {/* 백링크 패널 토글 버튼 */}
+                <button
+                  onClick={() => setShowBacklinks(!showBacklinks)}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium transition-colors border-t border-b',
+                    isDark
+                      ? 'bg-zinc-800/50 hover:bg-zinc-700/50 border-zinc-700 text-zinc-400'
+                      : 'bg-zinc-50 hover:bg-zinc-100 border-zinc-200 text-zinc-600'
+                  )}
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>연결된 노트</span>
+                  {showBacklinks ? (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  )}
+                </button>
+
+                {/* 백링크 패널 */}
+                {showBacklinks && codePreviewFile && (
+                  <div className={cn(
+                    'h-[35%] overflow-y-auto p-2',
+                    isDark ? 'bg-zinc-900/50' : 'bg-zinc-50/50'
+                  )}>
+                    <BacklinksPanel fileName={codePreviewFile.name} />
+                  </div>
+                )}
+              </div>
+            ) : displayMode === 'text' ? (
+              <div className="flex-1 h-full min-h-0" key={`txt-${codePreviewFile?.id}`}>
                 <MonacoCodeEditor
                   value={displayContent || ''}
                   onChange={handleContentChange}
-                  language="markdown"
-                  height="100%"
+                  language="plaintext"
+                  height="calc(100vh - 200px)"
                   readOnly={false}
                   minimap={false}
                   lineNumbers={true}

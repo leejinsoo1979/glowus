@@ -186,6 +186,25 @@ Changes:
 - All window.electron properties now defined in single location
 ```
 
+## 📚 Documentation
+
+### 📖 Mermaid 문법 가이드
+**상세한 한글 문법 레퍼런스**: [mermaid-syntax-guide.md](./mermaid-syntax-guide.md)
+
+7개 다이어그램 타입의 모든 문법을 실전 예제와 함께 정리:
+- Flowchart: 노드 모양, 연결선, 서브그래프, 스타일링
+- Sequence: 참여자, 메시지 타입, 활성화 박스, 제어 구조
+- Class: 멤버 선언, 관계, 접근 제어자, 제네릭
+- ER: 엔티티, 카디널리티, 속성, 관계 타입
+- Pie: 데이터 입력, 제목, 옵션
+- State: 상태 정의, 전환, 복합 상태, 병렬 처리
+- Git Graph: 커밋, 브랜치, 머지, 체리픽, 태그
+
+### 🔗 External Resources
+- **Mermaid Live Editor**: https://mermaid.live (실시간 테스트)
+- **공식 문서**: https://mermaid.js.org/intro/
+- **GitHub 저장소**: https://github.com/mermaid-js/mermaid
+
 ---
 
 **Last Updated:** 2025-12-23

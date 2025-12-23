@@ -202,6 +202,14 @@ export function MermaidView({ className }: MermaidViewProps) {
   const generateFromProject = useCallback(async () => {
     if (!autoMode || !mounted) return
 
+    // projectPath 없으면 아무것도 생성하지 않음
+    if (!projectPath) {
+      console.log('[Mermaid] No project path - skipping generation')
+      setCode('')
+      setDataSource('')
+      return
+    }
+
     console.log('[Mermaid] Generating diagram:', {
       type: mermaidDiagramType,
       projectPath,
@@ -225,83 +233,56 @@ export function MermaidView({ className }: MermaidViewProps) {
           if (currentGraph?.nodes?.length) {
             generatedCode = generateFlowchartFromNodes(currentGraph.nodes, currentGraph.edges || [])
             source = `Neural Map (${currentGraph.nodes.length} nodes)`
-          } else {
-            generatedCode = DIAGRAM_TEMPLATES.flowchart
-            source = 'Template (no nodes)'
           }
           break
 
         case 'gitgraph':
           // Fetch git log from Electron IPC
-          if (projectPath && window.electron?.git?.log) {
+          if (window.electron?.git?.log) {
             const gitLog = await window.electron.git.log!(projectPath, { maxCommits: 30 })
             if (gitLog) {
               generatedCode = generateGitGraph(parseGitLog(gitLog))
-              source = `Git History (${projectPath})`
-            } else {
-              generatedCode = DIAGRAM_TEMPLATES.gitgraph
-              source = 'Template (no git data)'
+              source = `Git History (${projectPath.split('/').pop()})`
             }
-          } else {
-            generatedCode = DIAGRAM_TEMPLATES.gitgraph
-            source = 'Template (no project path)'
           }
           break
 
         case 'pie':
           // Fetch file statistics
-          if (projectPath && window.electron?.fs?.fileStats) {
+          if (window.electron?.fs?.fileStats) {
             const stats = await window.electron.fs.fileStats!(projectPath)
             if (stats?.length) {
               generatedCode = generatePieChart(stats, { title: 'Codebase File Distribution', showData: true })
-              source = `File Stats (${stats.reduce((a, b) => a + b.count, 0)} files)`
-            } else {
-              generatedCode = DIAGRAM_TEMPLATES.pie
-              source = 'Template (no stats)'
+              source = `File Stats (${stats.reduce((a: number, b: any) => a + b.count, 0)} files)`
             }
-          } else {
-            generatedCode = DIAGRAM_TEMPLATES.pie
-            source = 'Template (no project path)'
           }
           break
 
         case 'class':
           // Scan TypeScript types
-          if (projectPath && window.electron?.fs?.scanTypes) {
+          if (window.electron?.fs?.scanTypes) {
             const types = await window.electron.fs.scanTypes!(projectPath)
             if (types?.length) {
               generatedCode = generateClassDiagram(types.slice(0, 20)) // Limit for readability
               source = `TypeScript (${types.length} types)`
-            } else {
-              generatedCode = DIAGRAM_TEMPLATES.class
-              source = 'Template (no types found)'
             }
-          } else {
-            generatedCode = DIAGRAM_TEMPLATES.class
-            source = 'Template (no project path)'
           }
           break
 
         case 'er':
           // Scan database schema
-          if (projectPath && window.electron?.fs?.scanSchema) {
+          if (window.electron?.fs?.scanSchema) {
             const tables = await window.electron.fs.scanSchema!(projectPath)
             if (tables?.length) {
               generatedCode = generateERDiagram(tables)
               source = `Database Schema (${tables.length} tables)`
-            } else {
-              generatedCode = DIAGRAM_TEMPLATES.er
-              source = 'Template (no schema found)'
             }
-          } else {
-            generatedCode = DIAGRAM_TEMPLATES.er
-            source = 'Template (no project path)'
           }
           break
 
         case 'sequence':
           // Scan API routes
-          if (projectPath && window.electron?.fs?.scanApiRoutes) {
+          if (window.electron?.fs?.scanApiRoutes) {
             const routes = await window.electron.fs.scanApiRoutes!(projectPath)
             if (routes?.length) {
               const apiRoutes: APIRoute[] = routes.map(r => ({
@@ -311,42 +292,64 @@ export function MermaidView({ className }: MermaidViewProps) {
               }))
               generatedCode = generateSequenceDiagram(apiRoutes)
               source = `API Routes (${routes.length} endpoints)`
-            } else {
-              generatedCode = DIAGRAM_TEMPLATES.sequence
-              source = 'Template (no API routes)'
             }
-          } else {
-            generatedCode = DIAGRAM_TEMPLATES.sequence
-            source = 'Template (no project path)'
           }
           break
 
         case 'state':
-          // Parse Zustand stores (simplified - would need AST for full implementation)
-          generatedCode = generateStateDiagram({
-            name: 'App Store',
-            states: ['idle', 'loading', 'success', 'error'],
-            actions: [
-              { name: 'fetch', from: 'idle', to: 'loading' },
-              { name: 'success', from: 'loading', to: 'success' },
-              { name: 'failure', from: 'loading', to: 'error' },
-              { name: 'reset', from: 'success', to: 'idle' },
-              { name: 'retry', from: 'error', to: 'loading' },
-            ],
-            initialState: 'idle'
-          })
-          source = 'State Pattern Template'
+          // Scan Zustand stores
+          if (window.electron?.fs?.scanTree) {
+            const files = await window.electron.fs.scanTree!(projectPath)
+            const storeFiles = Array.isArray(files) ? files.filter((f: any) =>
+              (f.path?.includes('/store') || f.path?.includes('/stores')) &&
+              (f.path?.endsWith('.ts') || f.path?.endsWith('.tsx'))
+            ) : []
+            if (storeFiles.length > 0) {
+              const storeNames = storeFiles.map((f: any) =>
+                f.path.split('/').pop()?.replace(/\.(ts|tsx)$/, '') || 'store'
+              )
+              generatedCode = generateStateDiagram({
+                name: 'App Stores',
+                states: ['idle', ...storeNames.slice(0, 5), 'active'],
+                actions: storeNames.slice(0, 5).map((name: string) => ({
+                  name: `use${name}`,
+                  from: 'idle',
+                  to: name
+                })),
+                initialState: 'idle'
+              })
+              source = `Zustand Stores (${storeFiles.length} files)`
+            }
+          }
           break
 
         case 'gantt':
-          // Could integrate with task management
-          generatedCode = DIAGRAM_TEMPLATES.gantt
-          source = 'Template'
+          // Git commits as timeline
+          if (window.electron?.git?.log) {
+            const gitLog = await window.electron.git.log!(projectPath, { maxCommits: 10 })
+            if (gitLog) {
+              const commits = parseGitLog(gitLog)
+              if (commits.length) {
+                // Convert commits to TaskInfo format
+                const tasks = commits.slice(0, 10).map((c, i) => ({
+                  id: `t${i}`,
+                  title: c.message.slice(0, 30),
+                  status: 'done' as const,
+                  startDate: c.date?.split('T')[0] || new Date().toISOString().split('T')[0],
+                  duration: 1,
+                  section: 'Commits'
+                }))
+                generatedCode = generateGanttChart(tasks, {
+                  title: 'Recent Development Activity'
+                })
+                source = `Git Commits (${commits.length})`
+              }
+            }
+          }
           break
 
         default:
-          generatedCode = DIAGRAM_TEMPLATES[mermaidDiagramType] || ''
-          source = 'Template'
+          break
       }
 
       setCode(generatedCode)
@@ -354,8 +357,8 @@ export function MermaidView({ className }: MermaidViewProps) {
     } catch (err: any) {
       console.error('Auto-generate error:', err)
       setError(err.message)
-      setCode(DIAGRAM_TEMPLATES[mermaidDiagramType])
-      setDataSource('Template (error)')
+      setCode('')
+      setDataSource('')
     } finally {
       setIsLoading(false)
     }
@@ -604,22 +607,19 @@ export function MermaidView({ className }: MermaidViewProps) {
         </div>
       </div>
 
-      {/* No Project Warning */}
+      {/* No Project - Full Screen Message */}
       {autoMode && !projectPath && (
-        <div
-          className={cn(
-            'flex items-center gap-2 px-4 py-2 text-xs border-b',
-            isDark
-              ? 'bg-amber-950/30 border-amber-900/50 text-amber-400'
-              : 'bg-amber-50 border-amber-200 text-amber-700'
-          )}
-        >
-          <FolderOpen className="w-4 h-4" />
-          <span>Open a project folder to enable live diagram generation</span>
+        <div className="flex-1 flex items-center justify-center">
+          <div className={cn('text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            <FolderOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p className="text-sm font-medium">프로젝트 폴더를 먼저 선택하세요</p>
+            <p className="text-xs mt-2">File → Open Folder (Cmd+O)</p>
+          </div>
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Main Content - Only show if projectPath exists or manual mode */}
+      {(projectPath || !autoMode) && (
       <div className="flex-1 flex overflow-hidden">
         {/* Code Editor */}
         {showCode && (
@@ -718,6 +718,7 @@ export function MermaidView({ className }: MermaidViewProps) {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

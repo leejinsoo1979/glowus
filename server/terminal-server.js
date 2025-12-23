@@ -187,6 +187,16 @@ wss.on('connection', (ws) => {
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong' }));
         break;
+      case 'set-cwd':
+        // 프로젝트 경로로 cd 명령어 실행
+        if (msg.cwd) {
+          const targetCwd = msg.cwd;
+          console.log(`[Terminal] Changing directory to: ${targetCwd}`);
+          // cd 명령어 전송
+          ptyProcess.write(`cd "${targetCwd}" && clear\r`);
+          ws.send(JSON.stringify({ type: 'cwd-update', cwd: targetCwd }));
+        }
+        break;
       case 'get-cwd':
         if (os.platform() !== 'win32') {
           const { execSync } = require('child_process');

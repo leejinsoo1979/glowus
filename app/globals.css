@@ -113,6 +113,27 @@ body {
     --title-bar-height: 48px;
   }
 
+  /* Electron 창 드래그 영역 */
+  .electron-drag {
+    -webkit-app-region: drag;
+  }
+
+  .electron-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Electron 헤더 드래그 가능 영역 */
+  .electron-app header {
+    -webkit-app-region: drag;
+  }
+
+  .electron-app header button,
+  .electron-app header input,
+  .electron-app header a,
+  .electron-app header [role="button"] {
+    -webkit-app-region: no-drag;
+  }
+
   /* Smooth focus rings */
   *:focus-visible {
     @apply outline-none ring-2 ring-offset-2 ring-offset-zinc-950;

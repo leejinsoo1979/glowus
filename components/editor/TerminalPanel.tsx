@@ -52,6 +52,7 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
   const terminals = useNeuralMapStore(s => s.terminals)
   const activeTerminalId = useNeuralMapStore(s => s.activeTerminalId)
   const activeGroupId = useNeuralMapStore(s => s.activeGroupId)
+  const projectPath = useNeuralMapStore(s => s.projectPath)
 
   const addTerminalAction = useNeuralMapStore(s => s.addTerminal)
   const removeTerminalAction = useNeuralMapStore(s => s.removeTerminal)
@@ -65,17 +66,28 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
 
   // Initialize defaults if empty (runs once)
   useEffect(() => {
+    console.log('[TerminalPanel] Init effect:', {
+      isInitialized: isInitializedRef.current,
+      terminalsLength: terminals.length,
+      activeGroupId,
+      isOpen
+    })
     if (isInitializedRef.current) return
     if (terminals.length === 0) {
       const initialId = '1'
       const initialGroupId = '1'
-      setTerminals([
-        { id: initialId, name: 'Terminal', shell: getDefaultShell(), cwd: '', groupId: initialGroupId },
-      ])
-      setActiveTerminal(initialId)
+      console.log('[TerminalPanel] Creating initial terminal')
+      // addTerminal은 activeGroupId도 함께 설정함
+      addTerminalAction({
+        id: initialId,
+        name: 'Terminal',
+        shell: getDefaultShell(),
+        cwd: '',
+        groupId: initialGroupId,
+      })
     }
     isInitializedRef.current = true
-  }, [terminals.length, setTerminals, setActiveTerminal])
+  }, [terminals.length, addTerminalAction, activeGroupId, isOpen])
 
   // Local derived state aliases for compatibility
   const activeTerminal = activeTerminalId || (terminals[0]?.id ?? '1')
@@ -98,6 +110,16 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
 
   // 현재 활성 그룹의 터미널들 (분할된 터미널들)
   const splitTerminals = terminals.filter(t => t.groupId === activeGroupId)
+
+  // Debug log
+  console.log('[TerminalPanel] Render:', {
+    terminalsCount: terminals.length,
+    splitTerminalsCount: splitTerminals.length,
+    activeGroupId,
+    terminals: terminals.map(t => ({ id: t.id, groupId: t.groupId })),
+    isOpen,
+    projectPath // 프로젝트 경로 디버깅
+  })
   // 컨텍스트 메뉴 상태
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; terminalId: string } | null>(null)
   // 이름 변경 모달
@@ -614,17 +636,17 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
         </div>
       </div>
 
-      {/* 메인 컨텐츠 영역 */}
-      <div className="flex-1 flex overflow-hidden" style={{ transition: 'none', animation: 'none' }}>
+      {/* 메인 컨텐츠 영역 - min-h-0 필수 (flex child shrink 허용) */}
+      <div className="flex-1 flex overflow-hidden min-h-0" style={{ transition: 'none', animation: 'none' }}>
         {/* 분할된 터미널들 (같은 그룹은 나란히 표시) */}
-        <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
+        <div ref={splitContainerRef} className="flex-1 flex overflow-hidden min-h-0">
           {splitTerminals.map((terminal, index) => {
             const widthPercent = splitWidths[terminal.id] ?? (100 / splitTerminals.length)
             return (
               <div
                 key={terminal.id}
-                className={`relative h-full min-w-[100px] ${activeTerminal === terminal.id ? 'ring-1 ring-accent/30 ring-inset' : ''}`}
-                style={{ width: `${widthPercent}%`, flex: 'none' }}
+                className={`relative min-w-[100px] ${activeTerminal === terminal.id ? 'ring-1 ring-accent/30 ring-inset' : ''}`}
+                style={{ width: `${widthPercent}%`, flex: 'none', height: '100%' }}
                 onClick={() => setActiveTerminal(terminal.id)}
                 onKeyDown={(e) => e.stopPropagation()}
               >
@@ -640,6 +662,7 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
                 <XTermComponent
                   onExecute={onExecute}
                   tabId={terminal.id}
+                  projectPath={projectPath || undefined}
                 />
               </div>
             )

@@ -1,21 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
+import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react'
 import { useTheme } from 'next-themes'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralNode, NeuralEdge, NeuralFile } from '@/lib/neural-map/types'
 import { forceRadial, forceY } from 'd3-force'
 
-// Dynamic import for SSR compatibility
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center">
-      <div className="text-zinc-500 text-sm">Loading graph...</div>
-    </div>
-  ),
-})
+// ForceGraph2D를 React 외부에서 직접 관리
+let ForceGraph2DClass: any = null
+
+// DOM 패치는 page.tsx에서 수행됨
 
 // 파일 타입별 색상
 const FILE_TYPE_COLORS: Record<string, string> = {
@@ -216,7 +210,8 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const layoutMode = useNeuralMapStore((s) => s.layoutMode)
 
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const hoveredNodeRef = useRef<string | null>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   // Store
   const graph = useNeuralMapStore((s) => s.graph)
@@ -307,10 +302,25 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     const visibleNodes = graph.nodes.filter(node => isVisible(node.id))
     const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
 
-    console.log('[Graph2DView] Total nodes:', graph.nodes.length, 'Visible:', visibleNodes.length)
-    console.log('[Graph2DView] Node types:', graph.nodes.map(n => ({ id: n.id, type: n.type, parentId: (n as any).parentId })))
+    // 🔍 디버그: 폴더 노드 상세 정보
+    const folderNodes = graph.nodes.filter(n => n.type === 'folder')
+    const selfNode = graph.nodes.find(n => n.type === 'self')
+    console.log('[Graph2DView] 📊 Stats:', {
+      totalNodes: graph.nodes.length,
+      visibleNodes: visibleNodes.length,
+      folderNodes: folderNodes.length,
+      selfNode: selfNode?.id,
+      expandedNodeIds: Array.from(expandedNodeIds)
+    })
+    console.log('[Graph2DView] 📁 Folder details:', folderNodes.map(n => ({
+      id: n.id,
+      title: n.title,
+      parentId: (n as any).parentId,
+      parentInExpanded: expandedNodeIds.has((n as any).parentId),
+      isVisible: isVisible(n.id)
+    })))
 
-    const nodes: GraphNode[] = visibleNodes.map((node) => {
+    const nodes: GraphNode[] = visibleNodes.map((node, index) => {
       // 노드 제목으로 파일 매칭
       const matchedFile = fileMap.get(node.title) || fileMap.get(node.id)
       const ext = getExtension(node.title)
@@ -326,7 +336,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       // 크기 결정 - 더 작게!
       let nodeSize = 4 // 기본 크기 (작게)
       if (node.type === 'self') {
-        nodeSize = 10 // Self 노드 크기 축소 (사용자 요청)
+        nodeSize = 12 // Self 노드
       } else if (node.type === 'folder') {
         nodeSize = 5 // 폴더는 약간 크게
       } else if (matchedFile?.size) {
@@ -337,12 +347,18 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         nodeSize = 4 + Math.min((node.importance || 0), 2) * 0.5
       }
 
-      // SELF 노드 위치 고정
+      // SELF 노드 위치 고정, 나머지는 원형으로 균등 배치
       const isSelf = node.type === 'self'
-      const angle = Math.random() * Math.PI * 2
-      // 초기 배치 거리를 radialDistance에 비례하게 설정
-      const initDist = radialDistance ? radialDistance * 1.5 : 300
-      const distance = initDist + Math.random() * (radialDistance * 0.5)
+
+      // 균등한 각도로 배치 (겹침 방지)
+      const totalNonSelfNodes = visibleNodes.filter(n => n.type !== 'self').length
+      const nonSelfIndex = visibleNodes.filter((n, i) => n.type !== 'self' && i < index).length
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5)) // 황금각 ~137.5도
+      const angle = nonSelfIndex * goldenAngle // 황금각으로 배치하면 균등하게 퍼짐
+
+      // 거리는 노드 수에 따라 동적 조절 (노드가 많을수록 넓게)
+      const baseDistance = Math.max(200, radialDistance || 200)
+      const distance = baseDistance + (nonSelfIndex * 30) // 각 노드마다 거리 증가
 
       return {
         id: node.id,
@@ -412,10 +428,21 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     setSelectedNodes([])
   }, [setSelectedNodes])
 
-  // 노드 호버
+  // 노드 호버 (DOM 직접 조작으로 React 리렌더 방지)
   const handleNodeHover = useCallback((node: any) => {
-    setHoveredNode(node?.id || null)
-  }, [])
+    hoveredNodeRef.current = node?.id || null
+
+    // 툴팁 DOM 직접 업데이트
+    if (tooltipRef.current) {
+      if (node?.id) {
+        const nodeData = graph?.nodes.find(n => n.id === node.id)
+        tooltipRef.current.textContent = nodeData?.title || node.name || ''
+        tooltipRef.current.style.display = 'block'
+      } else {
+        tooltipRef.current.style.display = 'none'
+      }
+    }
+  }, [graph?.nodes])
 
   // 노드 캔버스 렌더링 (파일 타입 아이콘 포함)
   const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -425,7 +452,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     const label = node.name
     const fontSize = 11 / globalScale
     const isSelected = selectedNodeIds.includes(node.id)
-    const isHovered = hoveredNode === node.id
+    const isHovered = hoveredNodeRef.current === node.id
 
     // 노드 크기 (고정 크기, 줌에 따라 자연스럽게 스케일)
     const baseSize = node.val || 4
@@ -533,26 +560,44 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       drawFileTypeIcon(ctx, node.fileType, node.x, node.y, iconSize, iconColor)
     }
 
-    // 라벨 그리기
-    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'top'
-    ctx.fillStyle = isDark ? '#d4d4d4' : '#525252'
+    // 라벨 그리기 - 줌 레벨에 따라 표시/숨김 (Obsidian 스타일)
+    // globalScale < 0.5: 라벨 숨김
+    // globalScale 0.5~1.0: 페이드 인
+    // globalScale > 1.0: 완전 표시
+    const labelOpacity = globalScale < 0.5
+      ? 0
+      : globalScale < 1.0
+        ? (globalScale - 0.5) * 2 // 0.5~1.0 사이에서 0~1로 페이드
+        : 1
 
-    // 긴 이름 줄임
-    const maxLabelWidth = 100 / globalScale
-    let displayLabel = label
-    const labelWidth = ctx.measureText(label).width
-    if (labelWidth > maxLabelWidth) {
-      const ext = getExtension(label)
-      const baseName = label.replace(/\.\w+$/, '')
-      if (baseName.length > 15) {
-        displayLabel = baseName.slice(0, 12) + '...' + (ext ? '.' + ext : '')
+    // 선택되거나 호버된 노드는 항상 라벨 표시
+    const shouldShowLabel = labelOpacity > 0 || isSelected || isHovered
+
+    if (shouldShowLabel) {
+      ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+
+      // 선택/호버 노드는 완전 불투명, 아니면 줌 레벨에 따라 투명도 조절
+      const finalOpacity = (isSelected || isHovered) ? 1 : labelOpacity
+      const baseColor = isDark ? '212, 212, 212' : '82, 82, 82'
+      ctx.fillStyle = `rgba(${baseColor}, ${finalOpacity})`
+
+      // 긴 이름 줄임
+      const maxLabelWidth = 100 / globalScale
+      let displayLabel = label
+      const labelWidth = ctx.measureText(label).width
+      if (labelWidth > maxLabelWidth) {
+        const ext = getExtension(label)
+        const baseName = label.replace(/\.\w+$/, '')
+        if (baseName.length > 15) {
+          displayLabel = baseName.slice(0, 12) + '...' + (ext ? '.' + ext : '')
+        }
       }
-    }
 
-    ctx.fillText(displayLabel, node.x, node.y + actualSize + 4)
-  }, [selectedNodeIds, hoveredNode, isDark])
+      ctx.fillText(displayLabel, node.x, node.y + actualSize + 4)
+    }
+  }, [selectedNodeIds, isDark])
 
   // 링크 캔버스 렌더링
   const linkCanvasObject = useCallback((link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -656,11 +701,10 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   // 그래프 로드 후 자동 줌 맞춤 (SELF 노드 중심)
   useEffect(() => {
     if (graphRef.current && graphData.nodes.length > 0) {
-      setTimeout(() => {
-        // SELF 노드(0,0)를 중심으로 적절한 줌 레벨 설정
-        graphRef.current?.centerAt(0, 0, 300)
-        graphRef.current?.zoom(1.5, 300)
-      }, 500)
+      // 노드가 1개면 많이 줌 아웃, 여러개면 적당히
+      const targetZoom = graphData.nodes.length === 1 ? 0.3 : 1.0
+      graphRef.current?.centerAt(0, 0, 300)
+      graphRef.current?.zoom(targetZoom, 300)
     }
   }, [graphData.nodes.length])
 
@@ -735,6 +779,171 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     return () => clearTimeout(timer)
   }, [layoutMode, radialDistance, graphData.nodes.length])
 
+  // Imperative ForceGraph2D 마운트 (완전히 React 외부에서 관리)
+  const graphContainerRef = useRef<HTMLDivElement>(null)
+  const graphWrapperRef = useRef<HTMLDivElement | null>(null)
+  const graphInstanceRef = useRef<any>(null)
+  const isGraphReadyRef = useRef(false)
+
+  // 콜백 함수들을 ref로 저장 (재생성 방지)
+  const callbacksRef = useRef({
+    nodeCanvasObject,
+    linkCanvasObject,
+    handleNodeClick,
+    handleNodeHover,
+    handleBackgroundClick,
+  })
+
+  // 콜백 업데이트
+  useEffect(() => {
+    callbacksRef.current = {
+      nodeCanvasObject,
+      linkCanvasObject,
+      handleNodeClick,
+      handleNodeHover,
+      handleBackgroundClick,
+    }
+  }, [nodeCanvasObject, linkCanvasObject, handleNodeClick, handleNodeHover, handleBackgroundClick])
+
+  // ForceGraph2D 초기화 (한 번만 실행)
+  useEffect(() => {
+    if (!graphContainerRef.current || typeof window === 'undefined') return
+    if (isGraphReadyRef.current) return // 이미 초기화됨
+
+    let mounted = true
+
+    const initGraph = async () => {
+      try {
+        // force-graph 라이브러리 동적 로드
+        if (!ForceGraph2DClass) {
+          const module = await import('force-graph')
+          ForceGraph2DClass = module.default
+        }
+
+        if (!mounted || !graphContainerRef.current) return
+
+        // React 외부에서 wrapper div 생성
+        const wrapper = document.createElement('div')
+        wrapper.style.cssText = 'width: 100%; height: 100%; position: absolute; top: 0; left: 0;'
+        graphContainerRef.current.appendChild(wrapper)
+        graphWrapperRef.current = wrapper
+
+        // 새 인스턴스 생성
+        const graph = ForceGraph2DClass()(wrapper)
+          .backgroundColor('transparent')
+          .width(graphContainerRef.current.clientWidth || 800)
+          .height(graphContainerRef.current.clientHeight || 600)
+          .nodeCanvasObject((node: any, ctx: any, globalScale: number) =>
+            callbacksRef.current.nodeCanvasObject(node, ctx, globalScale))
+          .nodePointerAreaPaint((node: any, color: string, ctx: CanvasRenderingContext2D) => {
+            ctx.beginPath()
+            ctx.arc(node.x, node.y, node.val || 4, 0, 2 * Math.PI)
+            ctx.fillStyle = color
+            ctx.fill()
+          })
+          .onNodeClick((node: any) => callbacksRef.current.handleNodeClick(node))
+          .onNodeHover((node: any) => callbacksRef.current.handleNodeHover(node))
+          .onNodeDragEnd((node: any) => {
+            node.fx = node.x
+            node.fy = node.y
+          })
+          .linkCanvasObject((link: any, ctx: any, globalScale: number) =>
+            callbacksRef.current.linkCanvasObject(link, ctx, globalScale))
+          .linkDirectionalParticles((link: any) => link.type === 'imports' ? 4 : 0)
+          .linkDirectionalParticleWidth(3)
+          .linkDirectionalParticleSpeed(0.01)
+          .linkDirectionalParticleColor(() => currentTheme.ui.accentColor)
+          .d3VelocityDecay(0.4)
+          .d3AlphaDecay(0.01)
+          .cooldownTicks(200)
+          .warmupTicks(200)
+          .enableNodeDrag(true)
+          .enableZoomPanInteraction(true)
+          .minZoom(0.1)
+          .maxZoom(15)
+          .onBackgroundClick(() => callbacksRef.current.handleBackgroundClick())
+
+        // Force 설정
+        graph.d3Force('collide')?.radius(60).strength(1.0).iterations(3)
+        graph.d3Force('center')?.strength(0.03)
+        graph.d3Force('charge')?.strength(-800).distanceMax(500).distanceMin(50)
+        graph.d3Force('link')?.distance(120).strength(0.5)
+
+        graphInstanceRef.current = graph
+        graphRef.current = graph
+        isGraphReadyRef.current = true
+
+        console.log('[Graph2DView] Graph initialized successfully')
+      } catch (error) {
+        console.error('[Graph2DView] Failed to initialize graph:', error)
+      }
+    }
+
+    initGraph()
+
+    return () => {
+      mounted = false
+      if (graphInstanceRef.current) {
+        graphInstanceRef.current._destructor?.()
+        graphInstanceRef.current = null
+      }
+      if (graphWrapperRef.current && graphContainerRef.current) {
+        try {
+          graphContainerRef.current.removeChild(graphWrapperRef.current)
+        } catch (e) {
+          // DOM이 이미 정리된 경우 무시
+        }
+        graphWrapperRef.current = null
+      }
+      isGraphReadyRef.current = false
+    }
+  }, []) // 빈 의존성 - 한 번만 마운트
+
+  // graphData 변경 시 업데이트 (imperative)
+  useEffect(() => {
+    console.log('[Graph2DView] 🔄 graphData useEffect triggered:', {
+      graphReady: isGraphReadyRef.current,
+      hasInstance: !!graphInstanceRef.current,
+      nodeCount: graphData.nodes.length,
+      linkCount: graphData.links.length,
+      folderNodes: graphData.nodes.filter((n: any) => n.type === 'folder').length
+    })
+
+    if (!graphInstanceRef.current || !isGraphReadyRef.current) {
+      console.log('[Graph2DView] ⏳ Graph not ready yet, skipping update')
+      return
+    }
+    if (!graphData.nodes.length) {
+      console.log('[Graph2DView] ⚠️ No nodes to render')
+      return
+    }
+
+    try {
+      console.log('[Graph2DView] ✅ Updating graph with:', graphData.nodes.length, 'nodes')
+      graphInstanceRef.current.graphData(graphData)
+
+      // 첫 데이터 로드 시 줌 조정
+      setTimeout(() => {
+        if (graphInstanceRef.current) {
+          graphInstanceRef.current.centerAt(0, 0, 300)
+          graphInstanceRef.current.zoom(graphData.nodes.length === 1 ? 0.3 : 1.0, 300)
+        }
+      }, 100)
+    } catch (error) {
+      console.warn('[Graph2DView] Graph data update failed:', error)
+    }
+  }, [graphData])
+
+  // 크기 변경 시 업데이트
+  useEffect(() => {
+    if (!graphInstanceRef.current || !isGraphReadyRef.current) return
+    if (dimensions.width > 0 && dimensions.height > 0) {
+      graphInstanceRef.current
+        .width(dimensions.width)
+        .height(dimensions.height)
+    }
+  }, [dimensions])
+
   return (
     <div
       ref={containerRef}
@@ -745,73 +954,18 @@ export function Graph2DView({ className }: Graph2DViewProps) {
           : 'linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%)'
       }}
     >
-      <ForceGraph2D
-        key={`graph-${graphData.nodes.length}`}
-        ref={graphRef}
-        graphData={graphData}
-        width={dimensions.width}
-        height={dimensions.height}
-        backgroundColor="transparent"
-
-        // 노드 설정
-        nodeCanvasObject={nodeCanvasObject}
-        nodePointerAreaPaint={(node: any, color, ctx) => {
-          ctx.beginPath()
-          ctx.arc(node.x, node.y, node.val || 4, 0, 2 * Math.PI)
-          ctx.fillStyle = color
-          ctx.fill()
-        }}
-        onNodeClick={handleNodeClick}
-        onNodeHover={handleNodeHover}
-        onNodeDragEnd={(node: any) => {
-          node.fx = node.x
-          node.fy = node.y
-        }}
-        // 링크 설정
-        linkCanvasObject={linkCanvasObject}
-        linkDirectionalParticles={(link: any) => link.type === 'imports' ? 4 : 0}
-        linkDirectionalParticleWidth={(link: any) => {
-          const zoom = graphRef.current?.zoom() || 1
-          return 3 / (zoom || 1) // 4 -> 3 로 줄여서 더 날렵하게
-        }}
-        linkDirectionalParticleSpeed={0.01} // 너무 빠르지 않게 조정
-        linkDirectionalParticleColor={() => currentTheme.ui.accentColor}
-        // 물리 엔진 설정 - 충분한 시간 제공
-        dagMode={undefined}
-        d3VelocityDecay={0.4}
-        d3AlphaDecay={0.01}
-        cooldownTicks={200}
-        warmupTicks={200}
-        // 노드 간 거리 및 척력 설정 (초기값)
-        // @ts-ignore
-        d3Force={(forceName: string, force: any) => {
-          // Initialize essential static forces only
-          if (forceName === 'collide') {
-            force.radius(30).strength(0.7)
-          }
-          if (forceName === 'center') {
-            force.strength(0.05)
-          }
-          // Reset others to allow manual control
-          if (forceName === 'charge') {
-            force.strength(-400).distanceMax(1000)
-          }
-        }}
-        // 상호작용
-        onBackgroundClick={handleBackgroundClick}
-        enableNodeDrag={true}
-        enableZoomInteraction={true}
-        enablePanInteraction={true}
-        minZoom={0.1}
-        maxZoom={15}
+      {/* ForceGraph2D가 마운트될 컨테이너 - React가 관리하지 않음 */}
+      <div
+        ref={graphContainerRef}
+        style={{ width: '100%', height: '100%', position: 'relative' }}
       />
 
-      {/* 노드 정보 툴팁 */}
-      {hoveredNode && (
-        <div className="absolute bottom-4 left-4 px-3 py-2 rounded-lg text-sm bg-zinc-900/90 text-zinc-200 border border-zinc-700">
-          {graph?.nodes.find(n => n.id === hoveredNode)?.title}
-        </div>
-      )}
+      {/* 노드 정보 툴팁 - DOM 직접 조작으로 업데이트 */}
+      <div
+        ref={tooltipRef}
+        className="absolute bottom-4 left-4 px-3 py-2 rounded-lg text-sm bg-zinc-900/90 text-zinc-200 border border-zinc-700"
+        style={{ display: 'none' }}
+      />
     </div>
   )
 }

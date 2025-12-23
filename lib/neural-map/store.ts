@@ -135,6 +135,10 @@ interface NeuralMapState {
 
   // Project Path (for Mermaid auto-generation)
   projectPath: string | null
+
+  // Linked Database Project (연결된 워크스페이스 프로젝트)
+  linkedProjectId: string | null
+  linkedProjectName: string | null
 }
 
 // ============================================
@@ -247,6 +251,7 @@ interface NeuralMapActions {
 
   // Terminal
   toggleTerminal: () => void
+  setTerminalOpen: (open: boolean) => void
   setTerminalHeight: (height: number) => void
   addTerminal: (terminal: import('./types').TerminalInstance) => void
   removeTerminal: (id: string) => void
@@ -264,6 +269,10 @@ interface NeuralMapActions {
 
   // Project Path
   setProjectPath: (path: string | null) => void
+
+  // Linked Database Project
+  setLinkedProject: (projectId: string | null, projectName?: string | null) => void
+  clearLinkedProject: () => void
 }
 
 // ============================================
@@ -333,13 +342,17 @@ const initialState: NeuralMapState = {
   layoutMode: 'organic',
 
   // Terminal
-  terminalOpen: false,
+  terminalOpen: true, // DEBUG: 기본으로 열어서 테스트
   terminalHeight: 250,
   terminals: [],
   activeTerminalId: null,
-  activeGroupId: null,
+  activeGroupId: '1', // 기본값 설정
 
   projectPath: null,
+
+  // Linked Database Project
+  linkedProjectId: null,
+  linkedProjectName: null,
 }
 
 // ============================================
@@ -854,15 +867,61 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         buildGraphFromFiles: () =>
           set((state) => {
             const currentFiles = state.files
-            if (!currentFiles || currentFiles.length === 0) {
-              state.graph = null
-              return
-            }
 
             const generateId = () => `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
             const edgeTracker = new Set<string>()
-            const firstPath = currentFiles[0]?.path || currentFiles[0]?.name
-            const projectName = firstPath?.split('/')[0] || 'My Project'
+
+            // 프로젝트명 우선순위: linkedProjectName > projectPath 폴더명 > 'My Project'
+            const getProjectName = (): string => {
+              if (state.linkedProjectName) return state.linkedProjectName
+              if (state.projectPath) {
+                const parts = state.projectPath.replace(/\\/g, '/').split('/')
+                return parts[parts.length - 1] || parts[parts.length - 2] || 'My Project'
+              }
+              return 'My Project'
+            }
+            const projectName = getProjectName()
+
+            // 파일이 없어도 프로젝트 루트 노드는 생성
+            if (!currentFiles || currentFiles.length === 0) {
+              const rootNode: NeuralNode = {
+                id: 'node-root',
+                type: 'self',
+                title: projectName,
+                summary: '빈 프로젝트',
+                tags: ['project'],
+                importance: 10,
+                expanded: true,
+                pinned: false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+
+              const emptyGraph: NeuralGraph = {
+                version: '2.0',
+                userId: '',
+                rootNodeId: rootNode.id,
+                title: projectName,
+                nodes: [rootNode],
+                edges: [],
+                clusters: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                viewState: {
+                  activeTab: 'map',
+                  expandedNodeIds: [rootNode.id],
+                  pinnedNodeIds: [],
+                  selectedNodeIds: [],
+                  cameraPosition: { x: 0, y: 0, z: 0 },
+                  cameraTarget: { x: 0, y: 0, z: 0 },
+                },
+                themeId: state.themeId || 'cosmic-dark',
+              }
+
+              state.graph = emptyGraph
+              state.expandedNodeIds = new Set([rootNode.id])
+              return
+            }
 
             const addUniqueEdge = (edge: NeuralEdge, edges: NeuralEdge[]) => {
               const pairId = [edge.source, edge.target].sort().join('-')
@@ -1079,9 +1138,69 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         buildGraphFromFilesAsync: async () => {
           const state = get()
           const currentFiles = state.files
+          console.log('[buildGraphFromFilesAsync] Called:', {
+            filesCount: currentFiles?.length || 0,
+            linkedProjectName: state.linkedProjectName,
+            projectPath: state.projectPath,
+            hasGraph: !!state.graph,
+            graphNodes: state.graph?.nodes?.length || 0
+          })
+
+          // 파일이 없어도 프로젝트 루트 노드는 생성
           if (!currentFiles || currentFiles.length === 0) {
+            console.log('[buildGraphFromFilesAsync] Creating empty project graph for:', state.linkedProjectName || state.projectPath || 'My Project')
+            // 프로젝트명 우선순위: linkedProjectName > projectPath 폴더명 > 'My Project'
+            const getProjectName = (): string => {
+              if (state.linkedProjectName) return state.linkedProjectName
+              if (state.projectPath) {
+                const parts = state.projectPath.replace(/\\/g, '/').split('/')
+                return parts[parts.length - 1] || parts[parts.length - 2] || 'My Project'
+              }
+              return 'My Project'
+            }
+            const projectName = getProjectName()
+
+            const rootNode: NeuralNode = {
+              id: 'node-root',
+              type: 'self',
+              title: projectName,
+              summary: '빈 프로젝트',
+              tags: ['project'],
+              importance: 10,
+              expanded: true,
+              pinned: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+
+            const emptyGraph: NeuralGraph = {
+              version: '2.0',
+              userId: '',
+              rootNodeId: rootNode.id,
+              title: projectName,
+              nodes: [rootNode],
+              edges: [],
+              clusters: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              viewState: {
+                activeTab: 'map',
+                expandedNodeIds: [rootNode.id],
+                pinnedNodeIds: [],
+                selectedNodeIds: [],
+                cameraPosition: { x: 0, y: 0, z: 0 },
+                cameraTarget: { x: 0, y: 0, z: 0 },
+              },
+              themeId: state.themeId || 'cosmic-dark',
+            }
+
             set((s) => {
-              s.graph = null
+              s.graph = emptyGraph
+              s.expandedNodeIds = new Set([rootNode.id])
+            })
+            console.log('[buildGraphFromFilesAsync] ✅ Empty project graph created:', {
+              title: projectName,
+              nodes: 1
             })
             return
           }
@@ -1093,9 +1212,19 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           try {
             // Dynamic import to avoid SSR issues
             const { buildGraphAsync } = await import('./workers/useGraphWorker')
-            const result = await buildGraphAsync(currentFiles, state.themeId)
+            const result = await buildGraphAsync(currentFiles, state.themeId, state.projectPath, state.linkedProjectName)
 
             console.log(`[Worker] Graph built: ${result.stats.nodeCount} nodes, ${result.stats.edgeCount} edges in ${result.stats.elapsed}ms`)
+
+            // 📁 폴더 노드 상세 로그
+            const folderNodes = result.graph.nodes.filter((n) => n.type === 'folder')
+            const rootNode = result.graph.nodes.find((n) => n.type === 'self')
+            console.log('[buildGraphFromFilesAsync] 📁 Folder nodes created:', folderNodes.map((n) => ({
+              id: n.id,
+              title: n.title,
+              parentId: (n as any).parentId,
+              isFirstLevel: (n as any).parentId === rootNode?.id
+            })))
 
             set((s) => {
               if (s.graph) {
@@ -1106,18 +1235,23 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
                 s.graph = result.graph
               }
               // PERFORMANCE: Only expand root and first-level folders by default
-              const rootNode = result.graph.nodes.find((n) => n.type === 'self')
               const firstLevelFolders = result.graph.nodes.filter((n) => n.type === 'folder' && n.parentId === rootNode?.id)
-              s.expandedNodeIds = new Set([
+              const expandedIds = [
                 rootNode?.id,
                 ...firstLevelFolders.map((n) => n.id)
-              ].filter(Boolean) as string[])
+              ].filter(Boolean) as string[]
+
+              s.expandedNodeIds = new Set(expandedIds)
+              console.log('[buildGraphFromFilesAsync] ✅ expandedNodeIds set:', expandedIds)
               s.isLoading = false
             })
           } catch (error) {
             console.error('[Worker] Graph building failed:', error)
+            console.log('[buildGraphFromFilesAsync] Falling back to sync version')
             // Fallback to sync version
             get().buildGraphFromFiles()
+            const syncState = get()
+            console.log('[buildGraphFromFilesAsync] After sync fallback, graph nodes:', syncState.graph?.nodes?.length || 0)
             set((s) => {
               s.isLoading = false
             })
@@ -1128,6 +1262,11 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         toggleTerminal: () =>
           set((state) => {
             state.terminalOpen = !state.terminalOpen
+          }),
+
+        setTerminalOpen: (open) =>
+          set((state) => {
+            state.terminalOpen = open
           }),
 
         setTerminalHeight: (height) =>
@@ -1220,6 +1359,47 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         setProjectPath: (path) =>
           set((state) => {
             state.projectPath = path
+            // 프로젝트가 연결되어 있으면 폴더 경로 매핑 저장
+            if (path && state.linkedProjectId && typeof window !== 'undefined') {
+              try {
+                const mappings = JSON.parse(localStorage.getItem('project-folder-mappings') || '{}')
+                mappings[state.linkedProjectId] = path
+                localStorage.setItem('project-folder-mappings', JSON.stringify(mappings))
+                console.log('[NeuralMap Store] Saved folder path for project:', state.linkedProjectId, '->', path)
+              } catch (e) {
+                console.error('[NeuralMap Store] Failed to save folder mapping:', e)
+              }
+            }
+          }),
+
+        // Linked Database Project
+        setLinkedProject: (projectId, projectName = null) =>
+          set((state) => {
+            state.linkedProjectId = projectId
+            state.linkedProjectName = projectName ?? null
+            // 저장된 프로젝트-폴더 매핑 로드
+            if (projectId && typeof window !== 'undefined') {
+              try {
+                const mappings = JSON.parse(localStorage.getItem('project-folder-mappings') || '{}')
+                const savedPath = mappings[projectId]
+                if (savedPath) {
+                  state.projectPath = savedPath
+                  console.log('[NeuralMap Store] Loaded saved folder path for project:', savedPath)
+                }
+              } catch (e) {
+                console.error('[NeuralMap Store] Failed to load folder mapping:', e)
+              }
+            }
+          }),
+
+        clearLinkedProject: () =>
+          set((state) => {
+            state.linkedProjectId = null
+            state.linkedProjectName = null
+            state.projectPath = null
+            state.graph = null
+            state.files = []
+            console.log('[NeuralMap Store] Cleared linked project and graph')
           }),
       })),
       {
@@ -1231,8 +1411,7 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           leftPanelCollapsed: state.leftPanelCollapsed,
           rightPanelCollapsed: state.rightPanelCollapsed,
           radialDistance: state.radialDistance,
-          // 프로젝트 경로 persist - 앱 재시작 시 복원
-          projectPath: state.projectPath,
+          // projectPath, linkedProject는 persist하지 않음 - 매번 새로 선택하도록
         }),
       }
     ),

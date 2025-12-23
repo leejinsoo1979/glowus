@@ -41,28 +41,59 @@ function getWorker(): Worker | null {
 
       function buildGraph(input) {
         const startTime = performance.now();
-        const { files, themeId } = input;
+        const { files, themeId, projectPath, linkedProjectName } = input;
+
+        // 프로젝트명 결정: linkedProjectName > projectPath 폴더명 > 'My Project'
+        const getProjectName = () => {
+          if (linkedProjectName) return linkedProjectName;
+          if (projectPath) {
+            const parts = projectPath.replace(/\\\\/g, '/').split('/');
+            return parts[parts.length - 1] || parts[parts.length - 2] || 'My Project';
+          }
+          return 'My Project';
+        };
 
         if (!files || files.length === 0) {
+          const projectName = getProjectName();
+          const rootNode = {
+            id: 'node-root',
+            type: 'self',
+            title: projectName,
+            summary: '빈 프로젝트',
+            tags: ['project'],
+            importance: 10,
+            expanded: true,
+            pinned: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
           return {
             graph: {
               version: '2.0',
               userId: '',
-              rootNodeId: '',
-              title: 'Empty Project',
-              nodes: [],
+              rootNodeId: rootNode.id,
+              title: projectName,
+              nodes: [rootNode],
               edges: [],
               clusters: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+              viewState: {
+                activeTab: 'map',
+                expandedNodeIds: [rootNode.id],
+                pinnedNodeIds: [],
+                selectedNodeIds: [],
+                cameraPosition: { x: 0, y: 0, z: 0 },
+                cameraTarget: { x: 0, y: 0, z: 0 },
+              },
+              themeId: themeId || 'cosmic-dark',
             },
-            stats: { nodeCount: 0, edgeCount: 0, elapsed: 0 }
+            stats: { nodeCount: 1, edgeCount: 0, elapsed: Math.round(performance.now() - startTime) }
           };
         }
 
         const edgeTracker = new Set();
-        const firstPath = files[0]?.path || files[0]?.name;
-        const projectName = firstPath?.split('/')[0] || 'My Project';
+        const projectName = getProjectName();
 
         const addUniqueEdge = (edge, edges) => {
           const pairId = [edge.source, edge.target].sort().join('-');
@@ -300,7 +331,9 @@ function getWorker(): Worker | null {
 
 export function buildGraphAsync(
   files: NeuralFile[],
-  themeId?: string
+  themeId?: string,
+  projectPath?: string | null,
+  linkedProjectName?: string | null
 ): Promise<GraphWorkerResult> {
   return new Promise((resolve, reject) => {
     const worker = getWorker()
@@ -335,7 +368,7 @@ export function buildGraphAsync(
       content: (f as any).content,
     }))
 
-    worker.postMessage({ files: transferableFiles, themeId })
+    worker.postMessage({ files: transferableFiles, themeId, projectPath, linkedProjectName })
   })
 }
 

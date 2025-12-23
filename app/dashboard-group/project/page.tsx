@@ -19,11 +19,13 @@ import {
   ArrowUpRight,
   Users,
   Sparkles,
+  Pencil,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/Button"
 import { ProjectCreateModal, ProjectFormData } from "@/components/project/ProjectCreateModal"
 import type { ProjectWithRelations, User } from "@/types/database"
+import { useNeuralMapStore } from "@/lib/neural-map/store"
 
 const statusStyles: Record<string, { bg: string; text: string; dot: string; gradient: string; icon: string }> = {
   planning: {
@@ -138,6 +140,8 @@ export default function ProjectsPage() {
     }
   }, [])
 
+  const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
+
   const handleCreateProject = async (
     formData: ProjectFormData,
     selectedMembers: string[]
@@ -150,10 +154,32 @@ export default function ProjectsPage() {
 
     setCreating(true)
     try {
+      // Electron 환경에서 로컬 프로젝트 폴더 자동 생성
+      let folderPath: string | undefined
+      const electronProject = window.electron?.project as any
+      if (typeof window !== 'undefined' && electronProject?.createWorkspace) {
+        try {
+          console.log('[Project] Creating local workspace for:', formData.name)
+          const result = await electronProject.createWorkspace(formData.name)
+          if (result.success && result.path) {
+            folderPath = result.path
+            console.log('[Project] Local workspace created at:', folderPath)
+          } else {
+            console.warn('[Project] Failed to create workspace:', result.error)
+          }
+        } catch (e) {
+          console.warn('[Project] Electron workspace creation failed:', e)
+          // 웹 환경에서는 무시하고 진행
+        }
+      }
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          folder_path: folderPath,  // 로컬 폴더 경로 저장
+        }),
       })
 
       if (!res.ok) throw new Error("프로젝트 생성 실패")
@@ -168,7 +194,15 @@ export default function ProjectsPage() {
       }
 
       setIsCreateModalOpen(false)
-      fetchProjects()
+
+      // 마이뉴런(Neural Map)에 프로젝트 연결 후 이동
+      // folder_path가 있으면 함께 설정
+      setLinkedProject(project.id, project.name)
+      if (folderPath) {
+        // projectPath도 함께 설정 (터미널, 챗봇에서 사용)
+        useNeuralMapStore.getState().setProjectPath(folderPath)
+      }
+      router.push("/dashboard-group/neural-map")
     } catch (error) {
       console.error("Create project error:", error)
       alert("프로젝트 생성에 실패했습니다")
@@ -404,7 +438,8 @@ export default function ProjectsPage() {
               <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">상태</div>
               <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">진행률</div>
               <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">팀</div>
-              <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">수정일</div>
+              <div className="col-span-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">수정일</div>
+              <div className="col-span-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-center">작업</div>
             </div>
 
             {/* Rows */}
@@ -503,9 +538,28 @@ export default function ProjectsPage() {
                   </div>
 
                   {/* Date */}
-                  <div className="col-span-2 flex items-center gap-1.5 text-xs text-zinc-500">
+                  <div className="col-span-1 flex items-center gap-1.5 text-xs text-zinc-500">
                     <Clock className="w-3.5 h-3.5" />
                     <span>{formatRelativeDate(project.updated_at || project.created_at)}</span>
+                  </div>
+
+                  {/* Edit Button */}
+                  <div className="col-span-1 flex items-center justify-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setLinkedProject(project.id, project.name)
+                        // folder_path가 있으면 projectPath도 설정
+                        if ((project as any).folder_path) {
+                          useNeuralMapStore.getState().setProjectPath((project as any).folder_path)
+                        }
+                        router.push("/dashboard-group/neural-map")
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 dark:hover:bg-violet-900/50 rounded-lg transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
                   </div>
                 </motion.div>
               )
@@ -535,11 +589,23 @@ export default function ProjectsPage() {
                   {/* 상단 그라데이션 악센트 */}
                   <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${style.gradient} ${style.dot}`} />
 
-                  {/* 호버시 화살표 */}
+                  {/* 호버시 Edit 버튼 */}
                   <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                      <ArrowUpRight className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setLinkedProject(project.id, project.name)
+                        // folder_path가 있으면 projectPath도 설정
+                        if ((project as any).folder_path) {
+                          useNeuralMapStore.getState().setProjectPath((project as any).folder_path)
+                        }
+                        router.push("/dashboard-group/neural-map")
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors shadow-lg"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
                   </div>
 
                   <div className="p-5">

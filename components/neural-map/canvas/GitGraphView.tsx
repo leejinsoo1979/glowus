@@ -8,32 +8,17 @@ import { Button } from '@/components/ui/Button'
 import { ZoomIn, ZoomOut, Maximize, Loader2, RefreshCw } from 'lucide-react'
 
 interface GitGraphViewProps {
+  projectPath?: string
   className?: string
 }
 
-export default function GitGraphView({ className }: GitGraphViewProps) {
+export default function GitGraphView({ projectPath, className }: GitGraphViewProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const svgRef = useRef<SVGSVGElement>(null)
   const [commits, setCommits] = useState<any[]>([])
   const [links, setLinks] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [projectPath, setProjectPath] = useState<string | null>(null)
-
-  // Get projectPath from Electron
-  useEffect(() => {
-    const getCwd = async () => {
-      if (typeof window !== 'undefined' && window.electron?.fs?.getCwd) {
-        try {
-          const cwd = await window.electron.fs.getCwd()
-          if (cwd) setProjectPath(cwd)
-        } catch (err) {
-          console.error('[GitGraphView] Failed to get cwd:', err)
-        }
-      }
-    }
-    getCwd()
-  }, [])
 
   // Load git history
   useEffect(() => {
@@ -194,7 +179,7 @@ export default function GitGraphView({ className }: GitGraphViewProps) {
           <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
             Git Graph
           </span>
-          {projectPath && (
+          {projectPath && commits.length > 0 && (
             <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
               {commits.length} commits from {projectPath.split('/').pop()}
             </span>
@@ -203,22 +188,29 @@ export default function GitGraphView({ className }: GitGraphViewProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isLoading}>
+          <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isLoading || !projectPath}>
             <RefreshCw className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleZoomIn}>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} disabled={!projectPath}>
             <ZoomIn className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleZoomOut}>
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} disabled={!projectPath}>
             <ZoomOut className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleReset}>
+          <Button variant="ghost" size="sm" onClick={handleReset} disabled={!projectPath}>
             <Maximize className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {isLoading ? (
+      {!projectPath ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className={cn('text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            <p className="text-sm font-medium">프로젝트 폴더를 먼저 선택하세요</p>
+            <p className="text-xs mt-2">File → Open Folder (Cmd+O)</p>
+          </div>
+        </div>
+      ) : isLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
         </div>

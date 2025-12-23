@@ -1505,7 +1505,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               </div>
 
               {/* FileTreePanel */}
-              <div className="flex-1 overflow-hidden" style={{ width: level2Width }}>
+              <div className="flex-1 overflow-hidden min-w-0" style={{ width: level2Width }}>
                 <FileTreePanel mapId={neuralMapId} />
               </div>
 

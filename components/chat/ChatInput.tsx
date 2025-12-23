@@ -4,6 +4,7 @@ import React, { useRef, useEffect } from 'react'
 import { useChatStore } from '@/stores/chatStore'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { getModelList, type ChatModelId } from '@/lib/ai/models'
+import { executeActions, type AgentAction } from '@/lib/ai/agent-actions'
 import {
     Globe,
     Image as ImageIcon,
@@ -147,10 +148,6 @@ ${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
             setIsLoading(true)
 
             try {
-                // Agent 모드: 도구 사용 가능한 에이전트 API
-                // 일반 모드: 기본 챗 API
-                const apiEndpoint = isAgentMode ? '/api/agent' : '/api/chat'
-
                 // 프로젝트 컨텍스트
                 const projectContext = getProjectContext()
                 const chatMessages = useChatStore.getState().messages.map(m => ({
@@ -162,14 +159,12 @@ ${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
                     ? [{ role: 'system', content: projectContext }, ...chatMessages, { role: 'user', content: userInput }]
                     : [...chatMessages, { role: 'user', content: userInput }]
 
-                // Agent 모드일 때 파일 컨텍스트 전달
-                const body: Record<string, unknown> = {
-                    messages: messagesWithContext,
-                    model: selectedModel
-                }
+                let content = ''
+                let toolCalls: string[] = []
 
-                if (isAgentMode) {
-                    body.context = {
+                // Agent 모드 + Electron 환경: IPC로 직접 실행 (Cursor 스타일)
+                if (isAgentMode && typeof window !== 'undefined' && window.electron?.agent) {
+                    const agentContext = {
                         files: files.map(f => ({
                             id: f.id,
                             name: f.name,
@@ -177,36 +172,93 @@ ${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
                             content: f.content,
                             type: f.type
                         })),
-                        projectPath,
-                        graph: graph ? {
-                            title: graph.title,
-                            nodes: graph.nodes.map(n => ({
-                                id: n.id,
-                                type: n.type,
-                                title: n.title,
-                                sourceRef: n.sourceRef
-                            }))
-                        } : null
+                        projectPath: projectPath || undefined
                     }
-                }
 
-                const response = await fetch(apiEndpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                })
+                    const result = await window.electron.agent.execute({
+                        messages: messagesWithContext,
+                        model: selectedModel,
+                        context: agentContext
+                    })
 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}))
-                    throw new Error(errorData.error || `HTTP Error ${response.status}`)
-                }
+                    if (!result.success) {
+                        throw new Error(result.error || 'Agent 실행 실패')
+                    }
 
-                const data = await response.json()
+                    content = result.content || ''
+                    toolCalls = result.toolCalls || []
 
-                // Agent 모드면 도구 호출 내역 포함
-                let content = data.content
-                if (isAgentMode && data.toolCalls?.length > 0) {
-                    content = `${data.content}\n\n---\n사용된 도구: ${data.toolCalls.join(', ')}`
+                    // 도구 호출 내역 표시
+                    if (toolCalls.length > 0) {
+                        content = `${result.content}\n\n---\n**사용된 도구**: ${toolCalls.join(', ')}`
+                    }
+                } else {
+                    // 웹 환경 또는 일반 모드: API 호출
+                    const apiEndpoint = isAgentMode ? '/api/agent' : '/api/chat'
+
+                    const body: Record<string, unknown> = {
+                        messages: messagesWithContext,
+                        model: selectedModel
+                    }
+
+                    if (isAgentMode) {
+                        body.context = {
+                            files: files.map(f => ({
+                                id: f.id,
+                                name: f.name,
+                                path: f.path,
+                                content: f.content,
+                                type: f.type
+                            })),
+                            projectPath,
+                            graph: graph ? {
+                                title: graph.title,
+                                nodes: graph.nodes.map(n => ({
+                                    id: n.id,
+                                    type: n.type,
+                                    title: n.title,
+                                    sourceRef: n.sourceRef
+                                }))
+                            } : null
+                        }
+                    }
+
+                    const response = await fetch(apiEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    })
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}))
+                        throw new Error(errorData.error || `HTTP Error ${response.status}`)
+                    }
+
+                    const data = await response.json()
+                    content = data.content
+                    toolCalls = data.toolCalls || []
+
+                    // Agent 모드면 pendingActions 실행 (웹에서는 여전히 필요)
+                    if (isAgentMode && data.pendingActions?.length > 0) {
+                        try {
+                            const results = await executeActions(data.pendingActions as AgentAction[])
+                            const actionResults = results.map(r =>
+                                r.success
+                                    ? `[${r.action.type}] 완료`
+                                    : `[${r.action.type}] 실패: ${r.error}`
+                            )
+                            if (actionResults.length > 0) {
+                                content = `${content}\n**실행 결과**: ${actionResults.join(', ')}`
+                            }
+                        } catch (err) {
+                            console.error('Action execution error:', err)
+                        }
+                    }
+
+                    // 도구 호출 내역 표시
+                    if (toolCalls.length > 0) {
+                        content = `${content}\n\n---\n**사용된 도구**: ${toolCalls.join(', ')}`
+                    }
                 }
 
                 addMessage({
@@ -215,7 +267,7 @@ ${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
                     content,
                     timestamp: Date.now(),
                     model: selectedModel,
-                    metadata: data.toolCalls ? { toolCalls: data.toolCalls } : undefined
+                    metadata: toolCalls.length > 0 ? { toolCalls } : undefined
                 })
             } catch (error: any) {
                 console.error('Chat error:', error)

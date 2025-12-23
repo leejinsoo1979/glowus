@@ -243,20 +243,29 @@ export default function SequenceDiagramView({ projectPath, className }: Sequence
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleZoomIn}>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} disabled={!projectPath}>
             <ZoomIn className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleZoomOut}>
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} disabled={!projectPath}>
             <ZoomOut className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleReset}>
+          <Button variant="ghost" size="sm" onClick={handleReset} disabled={!projectPath}>
             <Maximize className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {/* Canvas */}
-      <svg ref={svgRef} className="flex-1 w-full h-full cursor-move" />
+      {/* Canvas or Empty State */}
+      {!projectPath ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className={cn('text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            <p className="text-sm font-medium">프로젝트 폴더를 먼저 선택하세요</p>
+            <p className="text-xs mt-2">File → Open Folder (Cmd+O)</p>
+          </div>
+        </div>
+      ) : (
+        <svg ref={svgRef} className="flex-1 w-full h-full cursor-move" />
+      )}
     </div>
   )
 }

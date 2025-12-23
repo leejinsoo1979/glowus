@@ -1,5 +1,31 @@
 'use client'
 
+// DOM 충돌 에러 전역 억제 (React와 force-graph 충돌 방지) - 최상단에서 실행
+if (typeof window !== 'undefined' && typeof Node !== 'undefined') {
+  const patchedSymbol = Symbol.for('__dom_patched__')
+  if (!(window as any)[patchedSymbol]) {
+    (window as any)[patchedSymbol] = true
+
+    const originalRemoveChild = Node.prototype.removeChild
+    Node.prototype.removeChild = function<T extends Node>(child: T): T {
+      if (child.parentNode !== this) {
+        // 충돌 무시 - child를 반환하여 React가 계속 진행하도록
+        return child
+      }
+      return originalRemoveChild.call(this, child) as T
+    }
+
+    const originalInsertBefore = Node.prototype.insertBefore
+    Node.prototype.insertBefore = function<T extends Node>(node: T, child: Node | null): T {
+      if (child && child.parentNode !== this) {
+        // 충돌 무시
+        return node
+      }
+      return originalInsertBefore.call(this, node, child) as T
+    }
+  }
+}
+
 import { useEffect, useState, Suspense, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -16,6 +42,7 @@ import { InspectorPanel } from '@/components/neural-map/panels/InspectorPanel'
 import { MarkdownEditorPanel } from '@/components/neural-map/panels/MarkdownEditorPanel'
 import { CodePreviewPanel } from '@/components/neural-map/panels/CodePreviewPanel'
 import { BrowserView } from '@/components/neural-map/panels/BrowserView'
+// FileTreePanel은 TwoLevelSidebar에서 렌더링됨 (layout.tsx)
 
 // Controls
 import { ViewTabs } from '@/components/neural-map/controls/ViewTabs'
@@ -184,9 +211,13 @@ export default function NeuralMapPage() {
     modalType,
     mapId,
     projectPath,
+    linkedProjectName,
+    linkedProjectId,
+    files,
     setLoading,
     setActiveTab,
     closeModal,
+    setFiles,
 
     toggleRightPanel,
     updateNode,
@@ -194,7 +225,8 @@ export default function NeuralMapPage() {
     toggleTerminal,
     terminalHeight,
     setTerminalHeight,
-    setTheme: setMapTheme
+    setTheme: setMapTheme,
+    buildGraphFromFilesAsync
   } = useNeuralMapStore()
 
   // Chat store for viewfinder → chat integration
@@ -244,32 +276,178 @@ export default function NeuralMapPage() {
   // Map Sub-View Mode (2D default)
   const [mapViewMode, setMapViewMode] = useState<'2d' | '3d'>('2d')
 
+  // 진입 시 이전 프로젝트 연결 초기화
+  const clearLinkedProject = useNeuralMapStore((s) => s.clearLinkedProject)
+
   useEffect(() => {
     setMounted(true)
+
+    // URL에서 projectId 확인
+    const urlParams = new URLSearchParams(window.location.search)
+    const projectIdFromUrl = urlParams.get('projectId')
+
+    // 스토어에 이미 linkedProjectId가 있으면 (project 페이지에서 설정한 경우) 유지
+    // URL에서 projectId가 오거나, 스토어에 이미 프로젝트가 설정되어 있으면 유지
+    const currentState = useNeuralMapStore.getState()
+    const hasLinkedProject = currentState.linkedProjectId || currentState.linkedProjectName
+
+    console.log('[NeuralMap] Init check:', {
+      projectIdFromUrl,
+      hasLinkedProject,
+      linkedProjectId: currentState.linkedProjectId,
+      linkedProjectName: currentState.linkedProjectName
+    })
+
+    // URL에 projectId가 없고, 스토어에도 프로젝트가 없는 경우에만 초기화
+    // (즉, 완전히 새로운 진입인 경우만)
+    if (!projectIdFromUrl && !hasLinkedProject) {
+      console.log('[NeuralMap] Fresh start - no project linked')
+    }
+
+    // 기존 localStorage의 projectPath 캐시만 제거 (linkedProject는 유지)
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('neural-map-storage')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          let changed = false
+          if (parsed.state?.projectPath) {
+            delete parsed.state.projectPath
+            changed = true
+          }
+          if (changed) {
+            localStorage.setItem('neural-map-storage', JSON.stringify(parsed))
+            console.log('[NeuralMap] Cleared cached projectPath from localStorage')
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   }, [])
 
-  // Auto-set projectPath from Electron cwd if not already set
+  // Expose store to window for debugging + keyboard shortcut
   useEffect(() => {
-    if (!mounted) return
-    if (projectPath) return // 이미 설정됨
+    if (typeof window !== 'undefined') {
+      // Expose store for debugging
+      (window as any).__neuralMapStore = useNeuralMapStore
 
-    // Electron 환경에서 cwd 가져오기
-    const initProjectPath = async () => {
-      if (typeof window !== 'undefined' && window.electron?.fs?.getCwd) {
-        try {
-          const cwd = await window.electron.fs.getCwd()
-          if (cwd) {
-            setProjectPath(cwd)
-            console.log('[NeuralMap] Auto-set projectPath from cwd:', cwd)
-          }
-        } catch (err) {
-          console.warn('[NeuralMap] Failed to get cwd:', err)
+      // Keyboard shortcut: Ctrl+` to toggle terminal
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.ctrlKey && e.key === '`') {
+          e.preventDefault()
+          toggleTerminal()
         }
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [toggleTerminal])
+
+  // 🔥 프로젝트 문서 로드 및 그래프 빌드 (linkedProjectId가 있을 때)
+  const documentsLoadedRef = useRef<string | null>(null) // 이미 로드한 프로젝트 ID 추적
+
+  useEffect(() => {
+    if (!mounted || !linkedProjectId) return
+    if (documentsLoadedRef.current === linkedProjectId) return // 이미 로드함
+
+    console.log('[NeuralMap] 📂 Loading documents for project:', linkedProjectId)
+    setLoading(true)
+    documentsLoadedRef.current = linkedProjectId
+
+    const loadAndBuildGraph = async () => {
+      try {
+        // 먼저 프로젝트 상세 정보 로드 (folder_path 포함)
+        try {
+          const projectRes = await fetch(`/api/projects/${linkedProjectId}`)
+          if (projectRes.ok) {
+            const projectData = await projectRes.json()
+            if (projectData.folder_path) {
+              console.log('[NeuralMap] 📁 Loading folder_path from project:', projectData.folder_path)
+              setProjectPath(projectData.folder_path)
+            }
+          }
+        } catch (e) {
+          console.warn('[NeuralMap] Failed to load project folder_path:', e)
+        }
+
+        const res = await fetch(`/api/projects/${linkedProjectId}/documents?limit=100`)
+        if (!res.ok) throw new Error('Failed to fetch documents')
+
+        const data = await res.json()
+        const documents = data.documents || []
+
+        console.log('[NeuralMap] 📄 Fetched documents:', documents.length)
+
+        // Convert documents to NeuralFile format
+        const neuralFiles = documents.map((doc: any) => ({
+          id: doc.id,
+          name: doc.title,
+          path: `${linkedProjectName || 'Project'}/${doc.doc_type}/${doc.title}`,
+          type: 'file' as const,
+          content: doc.content || '',
+          size: doc.content?.length || 0,
+          createdAt: doc.created_at,
+          updatedAt: doc.updated_at,
+        }))
+
+        // Set files first, then build graph
+        if (neuralFiles.length > 0) {
+          setFiles(neuralFiles)
+          console.log('[NeuralMap] ✅ Set files:', neuralFiles.length, neuralFiles.map((f: any) => f.path))
+
+          // Zustand state 업데이트 확인을 위한 대기
+          await new Promise(resolve => setTimeout(resolve, 100))
+
+          // 스토어에 파일이 제대로 설정되었는지 확인
+          const storeState = useNeuralMapStore.getState()
+          console.log('[NeuralMap] 📋 Store files after set:', storeState.files?.length || 0)
+        }
+
+        // 파일이 있든 없든 그래프 빌드 (빈 프로젝트도 루트 노드 표시)
+        console.log('[NeuralMap] 🚀 Building graph for project:', linkedProjectName || linkedProjectId)
+        await buildGraphFromFilesAsync()
+
+        // 그래프 빌드 후 상태 확인
+        const afterBuild = useNeuralMapStore.getState()
+        console.log('[NeuralMap] 📊 After build:', {
+          graphNodes: afterBuild.graph?.nodes?.length || 0,
+          folderNodes: afterBuild.graph?.nodes?.filter((n: any) => n.type === 'folder').length || 0,
+          expandedNodeIds: Array.from(afterBuild.expandedNodeIds || [])
+        })
+      } catch (error) {
+        console.error('[NeuralMap] ❌ Failed to load documents:', error)
+        // 에러가 나도 빈 그래프는 빌드
+        await buildGraphFromFilesAsync()
+      } finally {
+        setLoading(false)
       }
     }
 
-    initProjectPath()
-  }, [mounted, projectPath, setProjectPath])
+    loadAndBuildGraph()
+  }, [mounted, linkedProjectId, linkedProjectName, setFiles, setLoading, buildGraphFromFilesAsync])
+
+  // 로컬 프로젝트(projectPath)가 연결되어 있으면 그래프 빌드
+  useEffect(() => {
+    if (!mounted) return
+    if (linkedProjectId) return // linkedProjectId가 있으면 위 useEffect에서 처리
+
+    console.log('[NeuralMap] useEffect check (local path):', {
+      mounted,
+      projectPath,
+      filesCount: files?.length || 0,
+      hasGraph: !!graph,
+      graphNodes: graph?.nodes?.length || 0
+    })
+
+    const hasLocalProject = projectPath && !linkedProjectId
+    const needsGraph = !graph || (graph?.nodes?.length || 0) === 0
+
+    if (hasLocalProject && needsGraph) {
+      console.log('[NeuralMap] 🚀 Building graph for local project:', projectPath)
+      buildGraphFromFilesAsync()
+    }
+  }, [mounted, linkedProjectId, projectPath, files, graph, buildGraphFromFilesAsync])
 
   // Sync Global Theme to Neural Map
   useEffect(() => {
@@ -407,14 +585,19 @@ export default function NeuralMapPage() {
     <div className={cn("flex flex-col h-full w-full overflow-hidden", isDark ? "bg-[#09090b]" : "bg-white")}>
 
       <div className="flex-1 flex overflow-hidden">
+        {/* Left Panel - FileTreePanel은 TwoLevelSidebar에서 렌더링됨 (layout.tsx) */}
+        {/* 여기서 중복 렌더링하지 않음 */}
+
         {/* Main Content Area */}
         <div className={cn("flex-1 flex flex-col min-w-0 relative", isDark ? "bg-zinc-900" : "bg-white")}>
 
           {/* Top View Controls (Tabs, etc) */}
-          <div className={cn("h-10 border-b flex items-center justify-between px-3 select-none z-20", isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200")}>
-            <ViewTabs />
+          <div className={cn("h-10 border-b flex items-center justify-between px-3 select-none z-20 overflow-hidden", isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200")}>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <ViewTabs />
+            </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
 
 
               {/* Right Panel Toggle */}
@@ -509,7 +692,7 @@ export default function NeuralMapPage() {
               ) : mermaidDiagramType === 'state' ? (
                 <StateDiagramView projectPath={projectPath ?? undefined} className="absolute inset-0" />
               ) : mermaidDiagramType === 'gitgraph' ? (
-                <GitGraphView className="absolute inset-0" />
+                <GitGraphView projectPath={projectPath ?? undefined} className="absolute inset-0" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
                   <p>Unknown diagram type: {mermaidDiagramType}</p>
@@ -520,14 +703,13 @@ export default function NeuralMapPage() {
             )}
           </div>
 
-          {/* Terminal Panel - Always rendered for persistence, hidden via CSS */}
+          {/* Terminal Panel - Always rendered for persistence */}
           <div
             className={cn(
-              "shrink-0 border-t",
-              isDark ? "border-zinc-800" : "border-zinc-200",
-              !terminalOpen && "hidden"
+              "shrink-0 border-t overflow-hidden transition-all duration-200",
+              isDark ? "border-zinc-800" : "border-zinc-200"
             )}
-            style={{ height: terminalHeight }}
+            style={{ height: terminalOpen ? terminalHeight : 0 }}
           >
             <TerminalPanel
               isOpen={terminalOpen}
