@@ -23,6 +23,7 @@ import { NetworkRoadmap } from "./NetworkRoadmap"
 import { ActivityLogPanel } from "./ActivityLogPanel"
 import { InvestorPreviewWidget } from "./InvestorPreviewWidget"
 import { ProjectRunner } from "./ProjectRunner"
+import { useProjectFileSync } from "@/lib/hooks/useProjectFileSync"
 
 const stageConfig = {
   planning: { label: "기획", color: "#6B7280", icon: Target },
@@ -70,6 +71,15 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
     agentCount: project.agents?.length || 0,
   })
   const [loading, setLoading] = useState(true)
+
+  // 🔄 실시간 파일 동기화 - 프로젝트 폴더가 있으면 자동으로 파일 워처 시작
+  const { files, refresh: refreshFiles } = useProjectFileSync({
+    projectId,
+    folderPath: project.folderPath,
+    projectName: project.name,
+    enabled: !!project.folderPath,
+    debounceMs: 300, // 빠른 동기화를 위해 300ms
+  })
 
   useEffect(() => {
     fetchKPIData()

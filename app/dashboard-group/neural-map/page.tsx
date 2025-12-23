@@ -42,6 +42,7 @@ import { InspectorPanel } from '@/components/neural-map/panels/InspectorPanel'
 import { MarkdownEditorPanel } from '@/components/neural-map/panels/MarkdownEditorPanel'
 import { CodePreviewPanel } from '@/components/neural-map/panels/CodePreviewPanel'
 import { BrowserView } from '@/components/neural-map/panels/BrowserView'
+import GitPanel from '@/components/neural-map/panels/GitPanel'
 // FileTreePanel은 TwoLevelSidebar에서 렌더링됨 (layout.tsx)
 
 // Controls
@@ -358,19 +359,97 @@ export default function NeuralMapPage() {
     const loadAndBuildGraph = async () => {
       try {
         // 먼저 프로젝트 상세 정보 로드 (folder_path 포함)
+        let folderPath: string | null = null
         try {
           const projectRes = await fetch(`/api/projects/${linkedProjectId}`)
           if (projectRes.ok) {
             const projectData = await projectRes.json()
             if (projectData.folder_path) {
-              console.log('[NeuralMap] 📁 Loading folder_path from project:', projectData.folder_path)
-              setProjectPath(projectData.folder_path)
+              folderPath = projectData.folder_path
+              console.log('[NeuralMap] 📁 Loading folder_path from project:', folderPath)
+              setProjectPath(folderPath)
             }
           }
         } catch (e) {
           console.warn('[NeuralMap] Failed to load project folder_path:', e)
         }
 
+        // 🔥 Electron 환경이고 folder_path가 있으면 실제 파일 시스템에서 로드 + 워처 시작
+        const electron = typeof window !== 'undefined' ? (window as any).electron : null
+        if (folderPath && electron?.fs?.scanTree) {
+          console.log('[NeuralMap] 🚀 Loading files from folder:', folderPath)
+
+          try {
+            // 파일 워처 시작 (실시간 동기화)
+            if (electron.fs.watchStart) {
+              electron.fs.watchStart(folderPath).then((result: { success: boolean; path: string }) => {
+                if (result.success) {
+                  console.log('[NeuralMap] 👁️ File watcher started:', result.path)
+                }
+              }).catch((err: Error) => {
+                console.warn('[NeuralMap] File watcher failed:', err)
+              })
+            }
+
+            // 파일 시스템에서 실제 파일 스캔
+            const scanResult = await electron.fs.scanTree(folderPath, {
+              includeSystemFiles: false,
+              includeContent: true,
+              contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs']
+            })
+
+            if (scanResult?.tree) {
+              const neuralFiles: any[] = []
+              const timestamp = Date.now()
+
+              const getFileType = (ext: string) => {
+                const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+                const mdExts = ['md', 'markdown', 'mdx']
+                const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go']
+                if (imageExts.includes(ext)) return 'image'
+                if (mdExts.includes(ext)) return 'markdown'
+                if (codeExts.includes(ext)) return 'code'
+                return 'text'
+              }
+
+              const flattenTree = (node: any) => {
+                if (node.kind === 'file') {
+                  const ext = node.name.split('.').pop()?.toLowerCase() || ''
+                  neuralFiles.push({
+                    id: `local-${timestamp}-${neuralFiles.length}`,
+                    name: node.name,
+                    path: node.relativePath,
+                    type: getFileType(ext),
+                    content: node.content || '',
+                    size: node.size || 0,
+                    createdAt: new Date().toISOString(),
+                    mapId: mapId || '',
+                    url: '',
+                  })
+                }
+                if (node.children) {
+                  for (const child of node.children) {
+                    flattenTree(child)
+                  }
+                }
+              }
+
+              flattenTree(scanResult.tree)
+              console.log(`[NeuralMap] ✅ Scanned ${neuralFiles.length} files from folder`)
+
+              if (neuralFiles.length > 0) {
+                setFiles(neuralFiles)
+                await buildGraphFromFilesAsync()
+                setLoading(false)
+                return // 파일 시스템에서 로드 성공하면 DB 문서 로드 스킵
+              }
+            }
+          } catch (fsError) {
+            console.warn('[NeuralMap] File system scan failed, falling back to DB:', fsError)
+          }
+        }
+
+        // Fallback: DB에서 문서 로드 (Electron 아니거나 folder_path 없을 때)
         const res = await fetch(`/api/projects/${linkedProjectId}/documents?limit=100`)
         if (!res.ok) throw new Error('Failed to fetch documents')
 
@@ -448,6 +527,103 @@ export default function NeuralMapPage() {
       buildGraphFromFilesAsync()
     }
   }, [mounted, linkedProjectId, projectPath, files, graph, buildGraphFromFilesAsync])
+
+  // 🔄 파일 변경 이벤트 리스너 (실시간 동기화)
+  useEffect(() => {
+    if (!mounted) return
+    if (!projectPath) return
+
+    const electron = typeof window !== 'undefined' ? (window as any).electron : null
+    if (!electron?.fs?.onChanged) return
+
+    console.log('[NeuralMap] 🎧 Setting up file change listener for:', projectPath)
+
+    // Debounce 타이머
+    let debounceTimer: NodeJS.Timeout | null = null
+
+    const handleFileChange = async (data: { path: string; type: 'create' | 'change' | 'delete' }) => {
+      console.log('[NeuralMap] 📝 File changed:', data.type, data.path)
+
+      // Debounce: 300ms 내에 여러 변경이 있으면 마지막 것만 처리
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
+
+      debounceTimer = setTimeout(async () => {
+        const currentPath = useNeuralMapStore.getState().projectPath
+        if (!currentPath) return
+
+        console.log('[NeuralMap] 🔄 Reloading files after change...')
+
+        try {
+          // 파일 다시 스캔
+          const scanResult = await electron.fs.scanTree(currentPath, {
+            includeSystemFiles: false,
+            includeContent: true,
+            contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs']
+          })
+
+          if (scanResult?.tree) {
+            const neuralFiles: any[] = []
+            const timestamp = Date.now()
+
+            const getFileType = (ext: string) => {
+              const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+              const mdExts = ['md', 'markdown', 'mdx']
+              const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go']
+              if (imageExts.includes(ext)) return 'image'
+              if (mdExts.includes(ext)) return 'markdown'
+              if (codeExts.includes(ext)) return 'code'
+              return 'text'
+            }
+
+            const flattenTree = (node: any) => {
+              if (node.kind === 'file') {
+                const ext = node.name.split('.').pop()?.toLowerCase() || ''
+                neuralFiles.push({
+                  id: `local-${timestamp}-${neuralFiles.length}`,
+                  name: node.name,
+                  path: node.relativePath,
+                  type: getFileType(ext),
+                  content: node.content || '',
+                  size: node.size || 0,
+                  createdAt: new Date().toISOString(),
+                  mapId: mapId || '',
+                  url: '',
+                })
+              }
+              if (node.children) {
+                for (const child of node.children) {
+                  flattenTree(child)
+                }
+              }
+            }
+
+            flattenTree(scanResult.tree)
+            console.log(`[NeuralMap] ✅ Rescanned ${neuralFiles.length} files`)
+
+            // 파일 설정 및 그래프 재빌드
+            setFiles(neuralFiles)
+            await buildGraphFromFilesAsync()
+          }
+        } catch (error) {
+          console.error('[NeuralMap] Failed to reload files:', error)
+        }
+      }, 300)
+    }
+
+    // 이벤트 리스너 등록
+    const unsubscribe = electron.fs.onChanged(handleFileChange)
+
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
+      if (unsubscribe) {
+        unsubscribe()
+      }
+    }
+  }, [mounted, projectPath, mapId, setFiles, buildGraphFromFilesAsync])
 
   // Sync Global Theme to Neural Map
   useEffect(() => {
@@ -698,6 +874,8 @@ export default function NeuralMapPage() {
                   <p>Unknown diagram type: {mermaidDiagramType}</p>
                 </div>
               )
+            ) : activeTab === 'git' ? (
+              <GitPanel />
             ) : (
               <Graph2DView className="absolute inset-0" />
             )}
