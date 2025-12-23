@@ -294,10 +294,10 @@ export default function NeuralMapPage() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-zinc-900 relative">
+        <div className={cn("flex-1 flex flex-col min-w-0 relative", isDark ? "bg-zinc-900" : "bg-white")}>
 
           {/* Top View Controls (Tabs, etc) */}
-          <div className="h-10 border-b border-zinc-800 flex items-center justify-between px-3 bg-zinc-900 select-none z-20">
+          <div className={cn("h-10 border-b flex items-center justify-between px-3 select-none z-20", isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200")}>
             <ViewTabs />
 
             <div className="flex items-center gap-2">
@@ -306,7 +306,7 @@ export default function NeuralMapPage() {
               {/* Right Panel Toggle */}
               <button
                 onClick={toggleRightPanel}
-                className="p-1.5 hover:bg-white/5 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                className={cn("p-1.5 rounded-md transition-colors", isDark ? "hover:bg-white/5 text-zinc-400 hover:text-zinc-200" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700")}
               >
                 {rightPanelCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
               </button>
@@ -314,7 +314,7 @@ export default function NeuralMapPage() {
           </div>
 
           {/* Canvas / Visualization Area */}
-          <div className={cn("flex-1 relative overflow-hidden bg-zinc-950", isResizing && "pointer-events-none")}>
+          <div className={cn("flex-1 relative overflow-hidden", isDark ? "bg-zinc-950" : "bg-zinc-50", isResizing && "pointer-events-none")}>
             {isLoading ? (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
@@ -388,7 +388,8 @@ export default function NeuralMapPage() {
           {/* Terminal Panel - Always rendered for persistence, hidden via CSS */}
           <div
             className={cn(
-              "shrink-0 border-t border-zinc-800",
+              "shrink-0 border-t",
+              isDark ? "border-zinc-800" : "border-zinc-200",
               !terminalOpen && "hidden"
             )}
             style={{ height: terminalHeight }}
