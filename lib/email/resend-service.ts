@@ -50,7 +50,7 @@ export class ResendService {
             // Process attachments
             const attachments = options.attachments?.map(att => ({
                 filename: att.filename,
-                content: att.content instanceof Buffer ? att.content : Buffer.from(att.content),
+                content: att.content instanceof Buffer ? att.content : Buffer.from(att.content || ''),
                 contentType: att.contentType,
             }))
 
