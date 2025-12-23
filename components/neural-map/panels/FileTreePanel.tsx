@@ -306,7 +306,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const [isGitHubConnected, setIsGitHubConnected] = useState(false)
   const projectNameInputRef = useRef<HTMLInputElement>(null)
 
-  // GitHub 연결 상태 확인
+  // GitHub 연결 상태 확인 - 연결되어 있으면 자동으로 레포 생성 ON
   useEffect(() => {
     const checkGitHubConnection = async () => {
       try {
@@ -314,6 +314,10 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         if (res.ok) {
           const data = await res.json()
           setIsGitHubConnected(data.connected)
+          // GitHub 연결되어 있으면 자동으로 레포 생성 활성화
+          if (data.connected) {
+            setCreateGitHubRepo(true)
+          }
         }
       } catch (err) {
         console.error('Failed to check GitHub connection:', err)
@@ -521,7 +525,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         }
       }
 
-      // 2. GitHub 레포지토리 생성 (옵션)
+      // 2. GitHub 레포지토리 생성 (옵션) - auto_init: false로 빈 레포 생성
       let githubData: { owner: string; repo: string; clone_url: string; default_branch: string } | null = null
       if (createGitHubRepo && isGitHubConnected) {
         try {
@@ -533,7 +537,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
               name: repoName,
               description: `${trimmedName} - Created with GlowUS`,
               private: true,
-              auto_init: true,
+              auto_init: false,  // 빈 레포로 생성 → 로컬에서 initial commit
             }),
           })
 
@@ -543,7 +547,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
               owner: repoResult.repo.owner.login,
               repo: repoResult.repo.name,
               clone_url: repoResult.repo.clone_url,
-              default_branch: repoResult.repo.default_branch,
+              default_branch: repoResult.repo.default_branch || 'main',  // 빈 레포는 main 사용
             }
             console.log('[FileTree] GitHub repo created:', githubData)
           } else {
@@ -581,16 +585,49 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       const newProject = await response.json()
       console.log('[FileTree] Project created in cloud:', newProject)
 
-      // 4. Git 초기화 및 원격 연결 (GitHub 레포가 있는 경우)
-      if (folderPath && githubData && window.electron?.git) {
+      // 4. Git 초기화, README 생성, 커밋, 푸시 (GitHub 레포가 있는 경우)
+      if (folderPath && githubData && window.electron?.git && window.electron?.fs) {
         try {
           // Git 초기화
           await window.electron.git.init?.(folderPath)
+          console.log('[FileTree] Git initialized')
+
+          // README.md 생성
+          const readmeContent = `# ${trimmedName}\n\n> Created with [GlowUS](https://glowus.dev)\n`
+          await window.electron.fs.writeFile?.(`${folderPath}/README.md`, readmeContent)
+          console.log('[FileTree] README.md created')
+
+          // Git 사용자 설정 (GitHub 정보 사용)
+          const githubRes = await fetch('/api/github')
+          if (githubRes.ok) {
+            const githubUser = await githubRes.json()
+            if (githubUser.username) {
+              await window.electron.git.config?.(folderPath, 'user.name', githubUser.username)
+            }
+            if (githubUser.email) {
+              await window.electron.git.config?.(folderPath, 'user.email', githubUser.email)
+            }
+          }
+
           // 원격 저장소 연결
           await window.electron.git.remoteAdd?.(folderPath, 'origin', githubData.clone_url)
-          console.log('[FileTree] Git initialized and remote added')
+          console.log('[FileTree] Remote added:', githubData.clone_url)
+
+          // git add .
+          await window.electron.git.add?.(folderPath, '.')
+          console.log('[FileTree] Files staged')
+
+          // git commit
+          await window.electron.git.commit?.(folderPath, '🎉 Initial commit - Created with GlowUS')
+          console.log('[FileTree] Initial commit created')
+
+          // git push (main 브랜치로)
+          await window.electron.git.push?.(folderPath, 'origin', 'main')
+          console.log('[FileTree] Pushed to GitHub')
+
         } catch (gitErr) {
           console.warn('[FileTree] Git initialization error:', gitErr)
+          // Git 에러가 나도 프로젝트 생성은 성공
         }
       }
 

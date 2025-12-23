@@ -46,6 +46,8 @@ interface OverviewSectionProps {
     members?: any[]
     agents?: any[]
     folderPath?: string | null
+    githubRepo?: string | null
+    githubCloneUrl?: string | null
   }
   onEdit?: () => void
 }
@@ -238,6 +240,8 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
           projectId={projectId}
           folderPath={linkedFolderPath}
           projectName={project.name}
+          githubRepo={project.githubRepo}
+          githubCloneUrl={project.githubCloneUrl}
           onFolderLinked={(path) => setLinkedFolderPath(path)}
         />
 

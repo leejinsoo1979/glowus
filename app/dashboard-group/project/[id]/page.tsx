@@ -238,6 +238,8 @@ export default function ProjectDetailPage() {
               members: project.members,
               agents: project.agents,
               folderPath: (project as any).folder_path || null,
+              githubRepo: (project as any).github_repo || null,
+              githubCloneUrl: (project as any).github_clone_url || null,
             }}
             onEdit={() => setIsEditOpen(true)}
           />

@@ -23,6 +23,8 @@ interface ProjectRunnerProps {
   projectId: string
   folderPath?: string | null
   projectName: string
+  githubRepo?: string | null  // e.g., "owner/repo"
+  githubCloneUrl?: string | null
   onFolderLinked?: (path: string) => void
 }
 
@@ -36,7 +38,14 @@ interface ProjectConfig {
 
 type RunStatus = "idle" | "starting" | "running" | "stopping" | "error"
 
-export function ProjectRunner({ projectId, folderPath: initialFolderPath, projectName, onFolderLinked }: ProjectRunnerProps) {
+export function ProjectRunner({
+  projectId,
+  folderPath: initialFolderPath,
+  projectName,
+  githubRepo,
+  githubCloneUrl,
+  onFolderLinked
+}: ProjectRunnerProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [config, setConfig] = useState<ProjectConfig | null>(null)
   const [status, setStatus] = useState<RunStatus>("idle")
@@ -44,6 +53,7 @@ export function ProjectRunner({ projectId, folderPath: initialFolderPath, projec
   const [selectedScript, setSelectedScript] = useState<string>("dev")
   const [isElectron, setIsElectron] = useState(false)
   const [folderPath, setFolderPath] = useState<string | null | undefined>(initialFolderPath)
+  const [isCloning, setIsCloning] = useState(false)
   const [isLinking, setIsLinking] = useState(false)
   const runnerId = useRef<string>(`runner-${projectId}`)
   const outputRef = useRef<HTMLDivElement>(null)
@@ -53,6 +63,43 @@ export function ProjectRunner({ projectId, folderPath: initialFolderPath, projec
   useEffect(() => {
     setFolderPath(initialFolderPath)
   }, [initialFolderPath])
+
+  // Auto-clone GitHub repo if no local folder
+  const cloneAndSetup = useCallback(async () => {
+    if (!githubCloneUrl || !window.electron?.git?.clone) return
+
+    setIsCloning(true)
+    setOutput([`> GitHub 저장소 클론 중...`, `> ${githubCloneUrl}`, ""])
+
+    try {
+      // Clone to temp directory
+      const os = await import('os')
+      const tempDir = `/tmp/glowus-projects/${projectId}`
+
+      const result = await window.electron.git.clone(githubCloneUrl, tempDir)
+
+      if (result.success) {
+        setOutput(prev => [...prev, `> 클론 완료: ${tempDir}`, ""])
+        setFolderPath(tempDir)
+
+        // Save to database
+        await fetch(`/api/projects/${projectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_path: tempDir })
+        })
+
+        onFolderLinked?.(tempDir)
+      } else {
+        setOutput(prev => [...prev, `> 클론 실패: ${result.error || 'Unknown error'}`])
+      }
+    } catch (error) {
+      console.error('Clone failed:', error)
+      setOutput(prev => [...prev, `> 오류: ${error}`])
+    } finally {
+      setIsCloning(false)
+    }
+  }, [githubCloneUrl, projectId, onFolderLinked])
 
   // Check if running in Electron
   useEffect(() => {
@@ -255,36 +302,80 @@ export function ProjectRunner({ projectId, folderPath: initialFolderPath, projec
     return null
   }
 
-  // Show folder selection UI if no folder path
+  // Show source connection UI if no folder path
   if (!folderPath) {
     return (
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center">
-            <FolderOpen className="w-6 h-6 text-violet-400" />
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <Terminal className="w-6 h-6 text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-zinc-200 mb-1">프로젝트 폴더 연결</h3>
-            <p className="text-xs text-zinc-500">로컬 폴더를 연결하면 프로젝트를 실행할 수 있습니다</p>
+            <h3 className="text-sm font-medium text-zinc-200 mb-1">프로젝트 실행 준비</h3>
+            <p className="text-xs text-zinc-500">소스 코드를 연결하면 프로젝트를 실행할 수 있습니다</p>
           </div>
-          <Button
-            onClick={selectFolder}
-            disabled={isLinking}
-            className="bg-violet-600 hover:bg-violet-500 text-white"
-          >
-            {isLinking ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                연결 중...
-              </>
+
+          <div className="flex flex-col sm:flex-row gap-2 w-full max-w-md">
+            {/* GitHub Clone Option */}
+            {githubCloneUrl ? (
+              <Button
+                onClick={cloneAndSetup}
+                disabled={isCloning}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
+              >
+                {isCloning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    클론 중...
+                  </>
+                ) : (
+                  <>
+                    <Package className="w-4 h-4 mr-2" />
+                    GitHub에서 클론
+                  </>
+                )}
+              </Button>
             ) : (
-              <>
-                <Link2 className="w-4 h-4 mr-2" />
-                폴더 선택
-              </>
+              <Button
+                onClick={() => window.open('/settings/github', '_blank')}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+              >
+                <Package className="w-4 h-4 mr-2" />
+                GitHub 연동
+              </Button>
             )}
-          </Button>
+
+            {/* Local Folder Option */}
+            <Button
+              onClick={selectFolder}
+              disabled={isLinking}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              {isLinking ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  연결 중...
+                </>
+              ) : (
+                <>
+                  <FolderOpen className="w-4 h-4 mr-2" />
+                  로컬 폴더
+                </>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {/* Output area for clone progress */}
+        {output.length > 0 && (
+          <div className="mt-4 border-t border-zinc-800 pt-4">
+            <div className="bg-black/50 rounded-lg p-3 font-mono text-xs text-zinc-400 max-h-32 overflow-y-auto">
+              {output.map((line, idx) => (
+                <div key={idx}>{line || "\u00A0"}</div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }

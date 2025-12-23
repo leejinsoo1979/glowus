@@ -118,7 +118,6 @@ export async function POST(request: NextRequest) {
         color: body.color || '#8B5CF6',
         owner_id: user.id,
         progress: 0,
-        // folder_path는 DB 스키마에 없음 - 추후 마이그레이션 필요
       })
       .select()
       .single()
@@ -134,6 +133,29 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       role: 'lead',
     })
+
+    // 🆕 자동 워크스페이스 폴더 생성 (Supabase Storage)
+    // 폴더 생성을 위해 placeholder 파일 업로드
+    const workspacePath = `projects/${project.id}/.workspace`
+    const workspaceContent = JSON.stringify({
+      projectId: project.id,
+      projectName: project.name,
+      createdAt: new Date().toISOString(),
+      createdBy: user.id,
+    })
+
+    try {
+      await adminClient.storage
+        .from('neural-files')
+        .upload(workspacePath, workspaceContent, {
+          contentType: 'application/json',
+          upsert: true,
+        })
+      console.log(`[Project] Created workspace folder for project ${project.id}`)
+    } catch (storageError) {
+      // Storage 오류는 무시 (프로젝트 생성은 성공)
+      console.warn('Workspace folder creation warning:', storageError)
+    }
 
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
