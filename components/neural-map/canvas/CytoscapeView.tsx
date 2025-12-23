@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import cytoscape, { Core, NodeSingular } from 'cytoscape'
 import dagre from 'cytoscape-dagre'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/Button'
 import { Upload, FolderOpen, Loader2 } from 'lucide-react'
 import { buildDependencyGraph, DependencyGraph, planToGraph } from '@/lib/neural-map/code-analyzer'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
@@ -109,18 +109,23 @@ export default function CytoscapeView({ projectPath, mapId }: CytoscapeViewProps
       ],
       layout: {
         name: 'dagre',
-        rankDir: 'TB',
-        nodeSep: 50,
-        rankSep: 100,
       },
-    })
+    } as any) // Type assertion for dagre layout options
 
     cyRef.current = cy
 
     // Add interactivity
     cy.on('tap', 'node', (evt) => {
       const node = evt.target as NodeSingular
-      console.log('Node clicked:', node.data())
+      const msg = `[CytoscapeView] 🖱️ Node clicked: ${JSON.stringify(node.data())}`
+      console.log(msg)
+      if (typeof window !== 'undefined' && (window as any).electron?.fs?.appendFile) {
+        try {
+          (window as any).electron.fs.appendFile('/tmp/cytoscape_debug.log', msg + '\n')
+        } catch (e) {
+          // Ignore
+        }
+      }
     })
 
     return () => {
@@ -132,51 +137,80 @@ export default function CytoscapeView({ projectPath, mapId }: CytoscapeViewProps
   const handleScanProject = useCallback(async () => {
     if (!projectPath) {
       alert('프로젝트 경로가 설정되지 않았습니다.')
+      console.error('[CytoscapeView] ❌ No project path set!')
       return
     }
+
+    const log = (msg: string) => {
+      console.log(msg)
+      // Also write to file for debugging in packaged app
+      if (typeof window !== 'undefined' && (window as any).electron?.fs?.appendFile) {
+        try {
+          (window as any).electron.fs.appendFile('/tmp/cytoscape_debug.log', msg + '\n')
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+
+    log('[CytoscapeView] 🔍 Starting project scan...')
+    log('[CytoscapeView] 📂 Project path: ' + projectPath)
 
     setIsLoading(true)
     try {
       // Check if Electron API is available
-      if (!window.electron?.fs) {
+      const electronFs = window.electron?.fs
+      if (!electronFs?.scanTree) {
         throw new Error('Electron API not available')
       }
 
-      // Scan files using Electron IPC
-      const files = await window.electron.fs.fileStats(projectPath)
+      // Scan files using Electron IPC with content included
+      log('[CytoscapeView] 📋 Scanning project files...')
+      const result = await (electronFs as any).scanTree(projectPath, {
+        includeContent: true,
+        contentExtensions: ['.ts', '.tsx', '.js', '.jsx'],
+        includeSystemFiles: false,
+      })
 
-      // Filter TypeScript/JavaScript files
-      const codeFiles = files.filter((file: any) =>
-        /\.(ts|tsx|js|jsx)$/.test(file.path) &&
-        !file.path.includes('node_modules')
-      )
+      log(`[CytoscapeView] ✅ Scanned ${result.stats.fileCount} files, ${result.stats.dirCount} directories in ${result.stats.elapsed}ms`)
 
-      // Read file contents
-      const filesWithContent = await Promise.all(
-        codeFiles.slice(0, 50).map(async (file: any) => {
-          try {
-            const content = await window.electron.fs.readFile(file.path)
-            return {
-              path: file.path,
-              content,
-            }
-          } catch (error) {
-            console.error(`Failed to read ${file.path}:`, error)
-            return null
-          }
-        })
-      )
+      // Flatten tree structure to get all files with content
+      const flattenTree = (node: any): any[] => {
+        if (node.kind === 'file' && node.content) {
+          return [{
+            path: node.path,
+            content: node.content,
+          }]
+        }
+        if (node.kind === 'directory' && node.children) {
+          return node.children.flatMap(flattenTree)
+        }
+        return []
+      }
 
-      const validFiles = filesWithContent.filter(Boolean) as Array<{
-        path: string
-        content: string
-      }>
+      const validFiles = flattenTree(result.tree).slice(0, 100) // Limit to 100 files for performance
+      log(`[CytoscapeView] 📖 Found ${validFiles.length} code files with content`)
 
       // Build dependency graph
+      log('[CytoscapeView] 🔗 Building dependency graph...')
       const dependencyGraph = buildDependencyGraph(validFiles, projectPath)
+      log(`[CytoscapeView] 📊 Graph created: ${dependencyGraph.nodes.length} nodes, ${dependencyGraph.edges.length} edges`)
+
+      if (dependencyGraph.nodes.length === 0) {
+        alert(`⚠️ 분석 완료했지만 노드가 0개입니다.\n\n파일 ${validFiles.length}개를 읽었지만 파싱에 실패했거나 코드 파일이 없습니다.\n\n다음을 확인하세요:\n- TypeScript/JavaScript 파일이 있는지\n- node_modules가 아닌 프로젝트 폴더를 선택했는지`)
+      }
+
       setGraph(dependencyGraph)
     } catch (error) {
-      console.error('Failed to scan project:', error)
+      const errorMsg = `[CytoscapeView] ❌ Failed to scan project: ${(error as Error).message}`
+      console.error(errorMsg)
+      if (typeof window !== 'undefined' && (window as any).electron?.fs?.appendFile) {
+        try {
+          (window as any).electron.fs.appendFile('/tmp/cytoscape_debug.log', errorMsg + '\n')
+        } catch (e) {
+          // Ignore
+        }
+      }
       alert('프로젝트 스캔 실패: ' + (error as Error).message)
     } finally {
       setIsLoading(false)
@@ -186,7 +220,15 @@ export default function CytoscapeView({ projectPath, mapId }: CytoscapeViewProps
   // Auto-scan project when projectPath is set
   useEffect(() => {
     if (projectPath && !autoScanned && !isLoading && !graph) {
-      console.log('[CytoscapeView] Auto-scanning project:', projectPath)
+      const msg = `[CytoscapeView] 🚀 Auto-scanning project: ${projectPath}`
+      console.log(msg)
+      if (typeof window !== 'undefined' && (window as any).electron?.fs?.appendFile) {
+        try {
+          (window as any).electron.fs.appendFile('/tmp/cytoscape_debug.log', msg + '\n')
+        } catch (e) {
+          // Ignore
+        }
+      }
       setAutoScanned(true)
       handleScanProject()
     }
@@ -212,28 +254,32 @@ export default function CytoscapeView({ projectPath, mapId }: CytoscapeViewProps
       },
     }))
 
-    // Add edges
-    const edges = graph.edges.map((edge) => ({
-      data: {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: edge.type,
-        label: edge.label,
-      },
-    }))
+    // Create a set of valid node IDs
+    const nodeIds = new Set(graph.nodes.map(n => n.id))
+
+    // Add edges - only include edges with valid source and target nodes
+    const edges = graph.edges
+      .filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+      .map((edge) => ({
+        data: {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: edge.type,
+          label: edge.label,
+        },
+      }))
+
+    console.log(`[CytoscapeView] 🔗 Filtered ${graph.edges.length - edges.length} invalid edges (missing nodes)`)
 
     cy.add([...nodes, ...edges])
 
     // Apply layout
     cy.layout({
       name: 'dagre',
-      rankDir: 'TB',
-      nodeSep: 50,
-      rankSep: 100,
       animate: true,
       animationDuration: 500,
-    }).run()
+    } as any).run()
 
     // Fit to view
     cy.fit(undefined, 50)
@@ -273,20 +319,37 @@ export default function CytoscapeView({ projectPath, mapId }: CytoscapeViewProps
 
   // Select project folder
   const handleSelectFolder = async () => {
-    if (!window.electron?.fs) {
+    const electronFs = window.electron?.fs
+    if (!electronFs?.selectDirectory) {
       alert('Electron API가 필요합니다. 데스크톱 앱에서 실행하세요.')
       return
     }
 
     try {
-      const result = await window.electron.fs.selectDirectory()
+      const result = await electronFs.selectDirectory()
       if (result) {
-        console.log('Selected folder:', result.path)
+        const msg = `[CytoscapeView] 📁 Selected folder: ${result.path}`
+        console.log(msg)
+        if (typeof window !== 'undefined' && (window as any).electron?.fs?.appendFile) {
+          try {
+            (window as any).electron.fs.appendFile('/tmp/cytoscape_debug.log', msg + '\n')
+          } catch (e) {
+            // Ignore
+          }
+        }
         // Update project path in store
         useNeuralMapStore.getState().setProjectPath(result.path)
       }
     } catch (error) {
-      console.error('Failed to select folder:', error)
+      const errorMsg = `[CytoscapeView] ❌ Failed to select folder: ${error}`
+      console.error(errorMsg)
+      if (typeof window !== 'undefined' && (window as any).electron?.fs?.appendFile) {
+        try {
+          (window as any).electron.fs.appendFile('/tmp/cytoscape_debug.log', errorMsg + '\n')
+        } catch (e) {
+          // Ignore
+        }
+      }
     }
   }
 
@@ -342,7 +405,7 @@ export default function CytoscapeView({ projectPath, mapId }: CytoscapeViewProps
 
       {/* Instructions */}
       {!graph && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center text-muted-foreground">
             <p className="mb-2">프로젝트 폴더를 선택하고 "프로젝트 분석"을 클릭하세요.</p>
             <p className="text-xs">

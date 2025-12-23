@@ -14,7 +14,8 @@ declare global {
 
       // File system operations
       fs?: {
-        selectDirectory?: () => Promise<string | null>
+        getCwd?: () => Promise<string>
+        selectDirectory?: () => Promise<{ kind: string; name: string; path: string } | null>
         readDirectory?: (path: string, options: any) => Promise<any>
         scanTree?: (rootPath: string, options?: {
           includeSystemFiles?: boolean

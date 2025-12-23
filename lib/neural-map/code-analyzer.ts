@@ -7,7 +7,10 @@
  */
 
 import { parse } from '@babel/parser'
-import traverse from '@babel/traverse'
+import _traverse from '@babel/traverse'
+
+// Fix for ES module default export issues in Next.js
+const traverse = (_traverse as any).default || _traverse
 
 export interface CodeNode {
   id: string
@@ -136,8 +139,8 @@ export function detectReactComponent(ast: any): boolean {
     FunctionDeclaration(path: any) {
       const name = path.node.id?.name
       if (name && /^[A-Z]/.test(name)) {
-        // JSX return
-        traverse(path.node, {
+        // JSX return - use path.traverse() instead of traverse(path.node)
+        path.traverse({
           ReturnStatement(returnPath: any) {
             if (returnPath.node.argument?.type === 'JSXElement') {
               isComponent = true
@@ -151,7 +154,8 @@ export function detectReactComponent(ast: any): boolean {
     VariableDeclarator(path: any) {
       const name = path.node.id?.name
       if (name && /^[A-Z]/.test(name) && path.node.init?.type === 'ArrowFunctionExpression') {
-        traverse(path.node.init, {
+        // Check for JSX in the arrow function body
+        path.traverse({
           ReturnStatement(returnPath: any) {
             if (returnPath.node.argument?.type === 'JSXElement') {
               isComponent = true
@@ -253,29 +257,78 @@ export function buildDependencyGraph(
   const nodes: CodeNode[] = []
   const edges: CodeEdge[] = []
 
+  console.log(`[CodeAnalyzer] 📊 Starting analysis of ${files.length} files`)
+  console.log(`[CodeAnalyzer] 📂 Project root: ${projectRoot}`)
+
   // 1단계: 각 파일을 노드로 변환
+  let successCount = 0
+  let failCount = 0
+
   for (const file of files) {
     const node = analyzeFile(file.path, file.content, projectRoot)
     if (node) {
       nodes.push(node)
+      successCount++
+    } else {
+      failCount++
+      console.warn(`[CodeAnalyzer] ❌ Failed to analyze: ${file.path}`)
     }
   }
 
+  console.log(`[CodeAnalyzer] ✅ Successfully parsed: ${successCount} files`)
+  console.log(`[CodeAnalyzer] ❌ Failed to parse: ${failCount} files`)
+
   // 2단계: 의존성 관계를 엣지로 변환
+  // Create a map of file paths for quick lookup (just filename to full path)
+  const fileNameMap = new Map<string, string[]>()
+  nodes.forEach(node => {
+    const fileName = node.id.split('/').pop()?.replace(/\.(ts|tsx|js|jsx)$/, '') || ''
+    if (!fileNameMap.has(fileName)) {
+      fileNameMap.set(fileName, [])
+    }
+    fileNameMap.get(fileName)!.push(node.id)
+  })
+
   for (const file of files) {
     const ast = parseCode(file.content, file.path)
     if (!ast) continue
 
     const relativePath = file.path.replace(projectRoot, '').replace(/^\//, '')
 
-    // Import edges
+    // Import edges - try to match import paths to actual files
     const importEdges = extractImports(ast, relativePath)
-    edges.push(...importEdges)
+      .map(edge => {
+        let targetPath = edge.target
+          // Handle alias imports: @/... -> remove @/
+          .replace(/^@\//, '')
+          // Handle relative imports: ./... or ../...
+          .replace(/^\.\//, '')
+          .replace(/^\.\.\//, '')
+          // Remove file extensions
+          .replace(/\.(ts|tsx|js|jsx)$/, '')
 
-    // Function call edges
-    const callEdges = extractFunctionCalls(ast, relativePath)
-    edges.push(...callEdges)
+        // Get the last part of the path (filename without extension)
+        const targetFileName = targetPath.split('/').pop() || ''
+
+        // Try to find matching node
+        const matchingNodes = fileNameMap.get(targetFileName) || []
+
+        if (matchingNodes.length > 0) {
+          // Use the first matching node as target
+          return {
+            ...edge,
+            target: matchingNodes[0]
+          }
+        }
+
+        return null
+      })
+      .filter(Boolean) as CodeEdge[]
+
+    edges.push(...importEdges)
   }
+
+  console.log(`[CodeAnalyzer] 🔗 Created ${edges.length} edges`)
 
   return { nodes, edges }
 }

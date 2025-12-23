@@ -65,7 +65,9 @@ interface ExecutionMonitorProps {
   className?: string
 }
 
-const STAGES: { id: AgentStage; label: string; icon: React.ElementType }[] = [
+type WorkflowStage = 'plan' | 'modify' | 'verify' | 'commit'
+
+const STAGES: { id: WorkflowStage; label: string; icon: React.ElementType }[] = [
   { id: 'plan', label: 'Plan', icon: ClipboardList },
   { id: 'modify', label: 'Modify', icon: Pencil },
   { id: 'verify', label: 'Verify', icon: CheckCircle2 },
@@ -103,7 +105,10 @@ export function ExecutionMonitor({
     })
   }
 
-  const getStageIndex = (s: AgentStage) => STAGES.findIndex(st => st.id === s)
+  const getStageIndex = (s: AgentStage): number => {
+    const workflowStage = s as WorkflowStage
+    return STAGES.findIndex(st => st.id === workflowStage)
+  }
   const currentStageIndex = getStageIndex(stage)
 
   const formatDuration = (ms: number) => {
@@ -362,7 +367,7 @@ export function ExecutionMonitor({
                           isDark ? "border-zinc-700 bg-zinc-900" : "border-zinc-200 bg-white"
                         )}>
                           {/* Args */}
-                          {tool.args && Object.keys(tool.args).length > 0 && (
+                          {tool.args && typeof tool.args === 'object' && Object.keys(tool.args).length > 0 && (
                             <div className="mb-2">
                               <div className={cn(
                                 "text-xs font-semibold mb-1",
@@ -380,7 +385,7 @@ export function ExecutionMonitor({
                           )}
 
                           {/* Result */}
-                          {tool.status === 'success' && tool.result && (
+                          {tool.status === 'success' && tool.result !== undefined && (
                             <div>
                               <div className={cn(
                                 "text-xs font-semibold mb-1",
@@ -442,7 +447,7 @@ export function ExecutionMonitor({
               Execution failed. Check the logs for details.
             </div>
           )}
-          {stage !== 'complete' && stage !== 'error' && stage !== 'idle' && (
+          {stage !== 'complete' && stage !== 'error' && (
             <div className={cn(
               "flex items-center gap-2",
               isDark ? "text-zinc-400" : "text-zinc-600"

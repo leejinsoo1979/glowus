@@ -233,8 +233,8 @@ export function MermaidView({ className }: MermaidViewProps) {
 
         case 'gitgraph':
           // Fetch git log from Electron IPC
-          if (projectPath && window.electron?.git) {
-            const gitLog = await window.electron.git.log(projectPath, { maxCommits: 30 })
+          if (projectPath && window.electron?.git?.log) {
+            const gitLog = await window.electron.git.log!(projectPath, { maxCommits: 30 })
             if (gitLog) {
               generatedCode = generateGitGraph(parseGitLog(gitLog))
               source = `Git History (${projectPath})`
@@ -250,8 +250,8 @@ export function MermaidView({ className }: MermaidViewProps) {
 
         case 'pie':
           // Fetch file statistics
-          if (projectPath && window.electron?.fs) {
-            const stats = await window.electron.fs.fileStats(projectPath)
+          if (projectPath && window.electron?.fs?.fileStats) {
+            const stats = await window.electron.fs.fileStats!(projectPath)
             if (stats?.length) {
               generatedCode = generatePieChart(stats, { title: 'Codebase File Distribution', showData: true })
               source = `File Stats (${stats.reduce((a, b) => a + b.count, 0)} files)`
@@ -267,8 +267,8 @@ export function MermaidView({ className }: MermaidViewProps) {
 
         case 'class':
           // Scan TypeScript types
-          if (projectPath && window.electron?.fs) {
-            const types = await window.electron.fs.scanTypes(projectPath)
+          if (projectPath && window.electron?.fs?.scanTypes) {
+            const types = await window.electron.fs.scanTypes!(projectPath)
             if (types?.length) {
               generatedCode = generateClassDiagram(types.slice(0, 20)) // Limit for readability
               source = `TypeScript (${types.length} types)`
@@ -284,8 +284,8 @@ export function MermaidView({ className }: MermaidViewProps) {
 
         case 'er':
           // Scan database schema
-          if (projectPath && window.electron?.fs) {
-            const tables = await window.electron.fs.scanSchema(projectPath)
+          if (projectPath && window.electron?.fs?.scanSchema) {
+            const tables = await window.electron.fs.scanSchema!(projectPath)
             if (tables?.length) {
               generatedCode = generateERDiagram(tables)
               source = `Database Schema (${tables.length} tables)`
@@ -301,8 +301,8 @@ export function MermaidView({ className }: MermaidViewProps) {
 
         case 'sequence':
           // Scan API routes
-          if (projectPath && window.electron?.fs) {
-            const routes = await window.electron.fs.scanApiRoutes(projectPath)
+          if (projectPath && window.electron?.fs?.scanApiRoutes) {
+            const routes = await window.electron.fs.scanApiRoutes!(projectPath)
             if (routes?.length) {
               const apiRoutes: APIRoute[] = routes.map(r => ({
                 path: r.path,

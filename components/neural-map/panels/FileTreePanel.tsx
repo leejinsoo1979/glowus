@@ -734,8 +734,9 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const handleNativeFolderUpload = async () => {
     try {
       // Electron 환경에서는 Electron API 사용
-      if (isElectron() && window.electron?.fs) {
-        const result = await window.electron.fs.selectDirectory()
+      const electronFs = window.electron?.fs
+      if (isElectron() && electronFs?.selectDirectory) {
+        const result = await electronFs.selectDirectory()
         if (!result) return
 
         setIsExpanded(true)

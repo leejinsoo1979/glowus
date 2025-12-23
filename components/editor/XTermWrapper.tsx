@@ -60,35 +60,21 @@ const lightTheme = {
   brightWhite: '#1e1e1e',
 }
 
-const MAX_TERMINAL_RECONNECT_ATTEMPTS = 3
-
-// Production 환경 체크 함수 (런타임에 평가)
-function checkIsProduction(): boolean {
-  if (typeof window === 'undefined') return true // SSR에서는 production으로 간주
-  const hostname = window.location.hostname
-  return !hostname.includes('localhost') && !hostname.includes('127.0.0.1')
+// Electron 환경 체크
+function isElectron(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).electron?.terminal
 }
 
 export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const eventListenerRef = useRef<((e: Event) => void) | null>(null)
+  const cleanupFnsRef = useRef<(() => void)[]>([])
   const isInitializedRef = useRef(false)
   const isMountedRef = useRef(false)
-  const reconnectAttemptsRef = useRef(0)
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const isProductionRef = useRef<boolean | null>(null) // Production 여부 캐시
   const { resolvedTheme } = useTheme()
-
-  // Production 체크 (캐시됨)
-  const isProductionEnv = (): boolean => {
-    if (isProductionRef.current !== null) return isProductionRef.current
-    isProductionRef.current = checkIsProduction()
-    return isProductionRef.current
-  }
 
   // 테마 변경 시 xterm 테마 업데이트
   useEffect(() => {
@@ -162,8 +148,12 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
     xtermRef.current = terminal
     fitAddonRef.current = fitAddon
 
-    // WebSocket 연결 (진짜 터미널)
-    connectWebSocket(terminal)
+    // Electron IPC 또는 WebSocket 연결
+    if (isElectron()) {
+      connectElectronTerminal(terminal)
+    } else {
+      connectWebSocketTerminal(terminal)
+    }
 
     // External write listener
     const handleExternalWrite = (e: Event) => {
@@ -180,6 +170,11 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
       if (fitAddonRef.current && isMountedRef.current) {
         try {
           fitAddonRef.current.fit()
+          // Electron 환경에서 리사이즈 전송
+          if (isElectron() && xtermRef.current) {
+            const { cols, rows } = xtermRef.current
+            ;(window as any).electron.terminal.resize(tabId, cols, rows)
+          }
         } catch (e) {
           // ignore
         }
@@ -189,151 +184,119 @@ export default function XTermWrapper({ tabId, onExecute }: XTermWrapperProps) {
     resizeObserver.observe(container)
   }
 
-  function connectWebSocket(terminal: Terminal) {
+  // Electron IPC 기반 터미널 (안정적)
+  async function connectElectronTerminal(terminal: Terminal) {
     if (!isMountedRef.current) return
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    // Production 환경에서는 WebSocket 연결 시도하지 않음
-    if (isProductionEnv()) {
-      terminal.write('\x1b[36m┌─────────────────────────────────────────────────────┐\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m  \x1b[33m⚡ Cloud Terminal Mode\x1b[0m                            \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m  터미널은 로컬 개발 환경에서만 사용 가능합니다.    \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m  MCP 기능은 정상 작동합니다.                       \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m  \x1b[32m✓\x1b[0m Claude Code로 캔버스 제어 가능                 \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m│\x1b[0m  \x1b[32m✓\x1b[0m 세션 ID를 복사하여 Claude에서 사용             \x1b[36m│\x1b[0m\r\n')
-      terminal.write('\x1b[36m└─────────────────────────────────────────────────────┘\x1b[0m\r\n')
-      return
-    }
+    const electronApi = (window as any).electron.terminal
 
-    if (reconnectAttemptsRef.current >= MAX_TERMINAL_RECONNECT_ATTEMPTS) {
-      // Production에서는 메시지 표시하지 않음
-      if (!isProductionEnv()) {
-        terminal.write('\r\n\x1b[31m[Max reconnection attempts reached]\x1b[0m\r\n')
-        terminal.write('\x1b[33mRun: node server/terminal-server.js\x1b[0m\r\n')
-      }
-      return
-    }
+    try {
+      // 터미널 생성
+      const result = await electronApi.create(tabId)
 
-    const ws = new WebSocket('ws://localhost:3001')
-
-    ws.onopen = () => {
-      if (!isMountedRef.current) {
-        ws.close()
+      if (!result.success) {
+        terminal.write(`\x1b[31m[Error] ${result.error}\x1b[0m\r\n`)
         return
       }
-      console.log('Terminal connected')
-      reconnectAttemptsRef.current = 0
-      wsRef.current = ws
+
+      console.log(`[Terminal] Connected: ${result.shell} (PID: ${result.pid})`)
+
+      // 셸 정보 이벤트 발송
+      window.dispatchEvent(new CustomEvent('terminal-shell-info', {
+        detail: {
+          id: tabId,
+          shell: result.shell,
+          cwd: result.cwd,
+          pid: result.pid
+        }
+      }))
+
+      // 터미널 출력 수신
+      const unsubData = electronApi.onData((id: string, data: string) => {
+        if (id === tabId && isMountedRef.current) {
+          terminal.write(data)
+        }
+      })
+      cleanupFnsRef.current.push(unsubData)
+
+      // 터미널 종료 수신
+      const unsubExit = electronApi.onExit((id: string, exitCode: number) => {
+        if (id === tabId && isMountedRef.current) {
+          terminal.write(`\r\n\x1b[33m[Process exited with code ${exitCode}]\x1b[0m\r\n`)
+        }
+      })
+      cleanupFnsRef.current.push(unsubExit)
+
+      // 터미널 입력 → Electron
+      terminal.onData((data) => {
+        if (isMountedRef.current) {
+          electronApi.write(tabId, data)
+        }
+      })
+
+      // 초기 리사이즈
       const { cols, rows } = terminal
-      ws.send(JSON.stringify({ type: 'resize', cols, rows }))
-    }
+      await electronApi.resize(tabId, cols, rows)
 
-    ws.onmessage = (event) => {
-      if (!isMountedRef.current) return
-      try {
-        const msg = JSON.parse(event.data)
-        if (msg.type === 'output') {
-          terminal.write(msg.data)
-        } else if (msg.type === 'exit') {
-          terminal.write('\r\n\x1b[31m[Process exited]\x1b[0m\r\n')
-        } else if (msg.type === 'shell-info') {
-          // 셸 정보를 TerminalPanel에 전달
-          window.dispatchEvent(new CustomEvent('terminal-shell-info', {
-            detail: {
-              id: tabId,
-              shell: msg.shell,
-              cwd: msg.cwd,
-              pid: msg.pid
-            }
-          }))
-        } else if (msg.type === 'cwd-update') {
-          // CWD 업데이트를 TerminalPanel에 전달
-          window.dispatchEvent(new CustomEvent('terminal-cwd-update', {
-            detail: { id: tabId, cwd: msg.cwd }
-          }))
+      // 리사이즈 이벤트
+      terminal.onResize(({ cols, rows }) => {
+        if (isMountedRef.current) {
+          electronApi.resize(tabId, cols, rows)
         }
-      } catch (e) {
-        console.error('Message parse error:', e)
-      }
+      })
+
+    } catch (err) {
+      console.error('Electron terminal error:', err)
+      terminal.write(`\x1b[31m[Error] Failed to connect terminal\x1b[0m\r\n`)
     }
+  }
 
-    ws.onclose = () => {
-      if (!isMountedRef.current) return
-      wsRef.current = null
+  // WebSocket 기반 터미널 (브라우저 환경 폴백)
+  function connectWebSocketTerminal(terminal: Terminal) {
+    if (!isMountedRef.current) return
 
-      // Production 환경에서는 재연결 시도하지 않음
-      if (isProductionEnv()) return
-
-      // 재연결 시도 (제한 있음)
-      if (reconnectTimerRef.current) return
-      if (reconnectAttemptsRef.current >= MAX_TERMINAL_RECONNECT_ATTEMPTS) {
-        return
-      }
-
-      reconnectAttemptsRef.current++
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null
-        if (isMountedRef.current && xtermRef.current && !isProductionEnv()) {
-          connectWebSocket(xtermRef.current)
-        }
-      }, 3000)
-    }
-
-    ws.onerror = () => {
-      if (!isMountedRef.current) return
-      // Production 환경에서는 에러 메시지 표시하지 않음
-      if (isProductionEnv()) return
-      terminal.write('\r\n\x1b[31m[Connection error]\x1b[0m\r\n')
-      terminal.write('\x1b[33mRun: node server/terminal-server.js\x1b[0m\r\n')
-    }
-
-    wsRef.current = ws
-
-    // Terminal input -> WebSocket
-    terminal.onData((data) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'input', data }))
-      }
-    })
-
-    terminal.onResize(({ cols, rows }) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'resize', cols, rows }))
-      }
-    })
+    // 브라우저 환경에서는 안내 메시지 표시
+    terminal.write('\x1b[36m┌─────────────────────────────────────────────────────┐\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m  \x1b[33mTerminal requires Electron environment\x1b[0m          \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m  Desktop 앱에서 터미널이 작동합니다.               \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m  브라우저에서는 지원되지 않습니다.                 \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m                                                     \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m  \x1b[32mOption 1:\x1b[0m Electron 앱으로 실행                  \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m│\x1b[0m  \x1b[32mOption 2:\x1b[0m node server/terminal-server.js       \x1b[36m│\x1b[0m\r\n')
+    terminal.write('\x1b[36m└─────────────────────────────────────────────────────┘\x1b[0m\r\n')
   }
 
   function cleanup() {
+    // Electron 터미널 종료
+    if (isElectron()) {
+      ;(window as any).electron.terminal.kill(tabId).catch(() => {})
+    }
+
+    // 클린업 함수들 실행
+    cleanupFnsRef.current.forEach(fn => fn())
+    cleanupFnsRef.current = []
+
     // Event listener 제거
     if (eventListenerRef.current) {
       window.removeEventListener('terminal-write', eventListenerRef.current)
       eventListenerRef.current = null
     }
+
     // ResizeObserver 해제
     if (resizeObserverRef.current) {
       resizeObserverRef.current.disconnect()
       resizeObserverRef.current = null
     }
-    // 재연결 타이머 정리
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current)
-      reconnectTimerRef.current = null
-    }
-    // WebSocket 닫기
-    if (wsRef.current) {
-      wsRef.current.close()
-      wsRef.current = null
-    }
+
     // xterm dispose
     if (xtermRef.current) {
       xtermRef.current.dispose()
       xtermRef.current = null
     }
+
     fitAddonRef.current = null
     isInitializedRef.current = false
-    reconnectAttemptsRef.current = 0
   }
 
   return (

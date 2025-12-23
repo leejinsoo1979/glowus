@@ -339,6 +339,11 @@ app.on('before-quit', () => {
 // IPC Handlers (File System Abstraction)
 // ==========================================
 
+// 0. Get Current Working Directory
+ipcMain.handle('fs:get-cwd', async () => {
+    return process.cwd();
+});
+
 // 1. Select Directory
 ipcMain.handle('fs:select-directory', async () => {
     if (!mainWindow) return null;
@@ -974,4 +979,108 @@ ipcMain.handle('fs:scan-schema', async (_, dirPath: string) => {
     }
 
     return tables;
+});
+
+// ============================================
+// 15. Terminal (PTY) - VS Code style
+// ============================================
+import * as pty from 'node-pty';
+import * as os from 'os';
+
+// 터미널 인스턴스 저장소
+const terminals: Map<string, pty.IPty> = new Map();
+
+// 기본 셸 결정
+function getDefaultShell(): string {
+    if (process.platform === 'win32') {
+        return process.env.COMSPEC || 'powershell.exe';
+    }
+    return process.env.SHELL || '/bin/zsh';
+}
+
+// 터미널 생성
+ipcMain.handle('terminal:create', async (event, id: string, cwd?: string) => {
+    try {
+        const shell = getDefaultShell();
+        const shellName = path.basename(shell);
+        const workingDir = cwd || process.cwd();
+
+        const ptyProcess = pty.spawn(shell, [], {
+            name: 'xterm-256color',
+            cols: 120,
+            rows: 30,
+            cwd: workingDir,
+            env: {
+                ...process.env,
+                TERM: 'xterm-256color',
+                COLORTERM: 'truecolor',
+            } as { [key: string]: string },
+        });
+
+        terminals.set(id, ptyProcess);
+
+        // PTY 출력 → 렌더러
+        ptyProcess.onData((data) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('terminal:data', id, data);
+            }
+        });
+
+        // PTY 종료
+        ptyProcess.onExit(({ exitCode, signal }) => {
+            terminals.delete(id);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('terminal:exit', id, exitCode, signal);
+            }
+        });
+
+        return {
+            success: true,
+            shell: shellName,
+            cwd: workingDir,
+            pid: ptyProcess.pid,
+        };
+    } catch (err: any) {
+        console.error('Terminal create error:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// 터미널 입력
+ipcMain.handle('terminal:write', async (_, id: string, data: string) => {
+    const ptyProcess = terminals.get(id);
+    if (ptyProcess) {
+        ptyProcess.write(data);
+        return { success: true };
+    }
+    return { success: false, error: 'Terminal not found' };
+});
+
+// 터미널 리사이즈
+ipcMain.handle('terminal:resize', async (_, id: string, cols: number, rows: number) => {
+    const ptyProcess = terminals.get(id);
+    if (ptyProcess) {
+        ptyProcess.resize(cols, rows);
+        return { success: true };
+    }
+    return { success: false, error: 'Terminal not found' };
+});
+
+// 터미널 종료
+ipcMain.handle('terminal:kill', async (_, id: string) => {
+    const ptyProcess = terminals.get(id);
+    if (ptyProcess) {
+        ptyProcess.kill();
+        terminals.delete(id);
+        return { success: true };
+    }
+    return { success: false, error: 'Terminal not found' };
+});
+
+// 앱 종료 시 모든 터미널 정리
+app.on('before-quit', () => {
+    terminals.forEach((ptyProcess) => {
+        ptyProcess.kill();
+    });
+    terminals.clear();
 });

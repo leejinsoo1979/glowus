@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electron', {
 
     // File system operations
     fs: {
+        getCwd: () => ipcRenderer.invoke('fs:get-cwd'),
         selectDirectory: () => ipcRenderer.invoke('fs:select-directory'),
         readDirectory: (path: string, options: any) => ipcRenderer.invoke('fs:read-directory', path, options),
         scanTree: (rootPath: string, options?: {
@@ -46,5 +47,23 @@ contextBridge.exposeInMainWorld('electron', {
         // 메인 윈도우 캡처
         captureWindow: (rect?: { x: number; y: number; width: number; height: number }) =>
             ipcRenderer.invoke('viewfinder:capture-window', rect),
+    },
+
+    // Terminal (PTY) - VS Code style
+    terminal: {
+        create: (id: string, cwd?: string) => ipcRenderer.invoke('terminal:create', id, cwd),
+        write: (id: string, data: string) => ipcRenderer.invoke('terminal:write', id, data),
+        resize: (id: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
+        kill: (id: string) => ipcRenderer.invoke('terminal:kill', id),
+        onData: (callback: (id: string, data: string) => void) => {
+            const handler = (_: any, id: string, data: string) => callback(id, data);
+            ipcRenderer.on('terminal:data', handler);
+            return () => ipcRenderer.removeListener('terminal:data', handler);
+        },
+        onExit: (callback: (id: string, exitCode: number, signal?: number) => void) => {
+            const handler = (_: any, id: string, exitCode: number, signal?: number) => callback(id, exitCode, signal);
+            ipcRenderer.on('terminal:exit', handler);
+            return () => ipcRenderer.removeListener('terminal:exit', handler);
+        },
     },
 });

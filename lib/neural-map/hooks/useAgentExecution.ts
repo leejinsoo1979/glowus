@@ -1,13 +1,44 @@
 'use client'
 
+/**
+ * useAgentExecution - 코딩 에이전트 실행 훅
+ * SSE 스트리밍, 상태 관리, 도구 실행 추적
+ *
+ * Features:
+ * - SSE 스트리밍 연결
+ * - Agentic Loop 상태 관리
+ * - 도구 실행 추적
+ * - 플랜 승인/거부 처리
+ */
+
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type {
   AgentState,
   AgentMessage,
   AgentExecutionStage,
   AgentPlan,
-  createInitialAgentState,
 } from '../types'
+
+// Import types for coding components
+export type AgentStage = 'idle' | 'plan' | 'modify' | 'verify' | 'commit' | 'complete' | 'error'
+
+export interface ToolExecution {
+  id: string
+  name: string
+  args?: Record<string, unknown>
+  status: 'pending' | 'running' | 'success' | 'error'
+  result?: unknown
+  error?: string
+  startTime: number
+  endTime?: number
+}
+
+export interface TaskProgress {
+  id: string
+  description: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  files?: string[]
+}
 
 // SSE Event types
 interface SSEEvent {
@@ -47,9 +78,18 @@ interface UseAgentExecutionOptions {
 }
 
 interface UseAgentExecutionReturn {
+  // Core state
   state: AgentState
   isExecuting: boolean
   currentStage: AgentExecutionStage
+
+  // Coding UX state
+  stage: AgentStage
+  toolExecutions: ToolExecution[]
+  tasks: TaskProgress[]
+  currentTaskIndex: number
+
+  // Actions
   execute: (input: string, imageDataUrl?: string) => Promise<void>
   approvePlan: () => Promise<void>
   rejectPlan: () => Promise<void>
@@ -205,10 +245,18 @@ export function useAgentExecution(
     onComplete,
   } = options
 
+  // Core state
   const [state, setState] = useState<AgentState>(() =>
     createInitialState(userId, projectPath)
   )
   const [isExecuting, setIsExecuting] = useState(false)
+
+  // Coding UX state
+  const [stage, setStage] = useState<AgentStage>('idle')
+  const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([])
+  const [tasks, setTasks] = useState<TaskProgress[]>([])
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0)
+
   const abortControllerRef = useRef<AbortController | null>(null)
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
 
@@ -297,17 +345,58 @@ export function useAgentExecution(
                 setState(prev => {
                   const newState = updateState(prev, event)
 
-                  // Callbacks
+                  // Callbacks and Coding UX updates
                   if (event.type === 'stage_change') {
-                    onStageChange?.(event.data as AgentExecutionStage)
+                    const stageData = event.data as StageChangeData
+                    onStageChange?.(stageData.stage)
+                    // Map to AgentStage for coding UX
+                    const agentStage = stageData.stage as unknown as AgentStage
+                    setStage(agentStage)
                   } else if (event.type === 'message') {
                     onMessage?.(event.data as AgentMessage)
                   } else if (event.type === 'plan') {
-                    onPlanGenerated?.(event.data as AgentPlan)
+                    const planData = event.data as AgentPlan
+                    onPlanGenerated?.(planData)
+                    // Convert plan tasks to TaskProgress
+                    if (planData.tasks) {
+                      setTasks(planData.tasks.map(t => ({
+                        id: t.id,
+                        description: t.description,
+                        status: t.status as TaskProgress['status'],
+                        files: t.files,
+                      })))
+                    }
+                  } else if (event.type === 'tool_call') {
+                    const toolData = event.data as ToolCallData
+                    setToolExecutions(prev => [...prev, {
+                      id: toolData.id,
+                      name: toolData.name,
+                      args: toolData.args,
+                      status: 'running',
+                      startTime: Date.now(),
+                    }])
+                  } else if (event.type === 'tool_result') {
+                    const resultData = event.data as ToolResultData
+                    setToolExecutions(prev => prev.map(t =>
+                      t.id === resultData.id
+                        ? {
+                            ...t,
+                            status: resultData.success ? 'success' : 'error',
+                            result: resultData.result,
+                            error: resultData.error,
+                            endTime: Date.now(),
+                          }
+                        : t
+                    ))
                   } else if (event.type === 'error') {
                     onError?.(event.data as string)
+                    setStage('error')
                   } else if (event.type === 'complete') {
                     onComplete?.()
+                    const completeData = event.data as { success?: boolean; waitingForApproval?: boolean }
+                    if (!completeData.waitingForApproval) {
+                      setStage(completeData.success ? 'complete' : 'error')
+                    }
                   }
 
                   return newState
@@ -395,6 +484,11 @@ export function useAgentExecution(
     readerRef.current?.cancel()
     setIsExecuting(false)
     setState(createInitialState(userId, projectPath))
+    // Reset coding UX state
+    setStage('idle')
+    setToolExecutions([])
+    setTasks([])
+    setCurrentTaskIndex(0)
   }, [userId, projectPath])
 
   const addMessage = useCallback((message: AgentMessage) => {
@@ -405,9 +499,18 @@ export function useAgentExecution(
   }, [])
 
   return {
+    // Core state
     state,
     isExecuting,
     currentStage: state.execution.stage,
+
+    // Coding UX state
+    stage,
+    toolExecutions,
+    tasks,
+    currentTaskIndex,
+
+    // Actions
     execute,
     approvePlan,
     rejectPlan,

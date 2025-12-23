@@ -62,13 +62,13 @@ export class ResendService {
                 subject: options.subject,
                 text: options.text,
                 html: options.html,
-                reply_to: options.replyTo,
+                replyTo: options.replyTo,
                 attachments,
                 headers: {
                     ...(options.inReplyTo && { 'In-Reply-To': options.inReplyTo }),
                     ...(options.references && { 'References': options.references.join(' ') }),
                 }
-            })
+            } as any)
 
             if (error) {
                 console.error('Resend API error:', error)

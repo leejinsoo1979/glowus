@@ -282,7 +282,7 @@ const initialState: NeuralMapState = {
 
   activeTab: 'map',
   mermaidDiagramType: 'flowchart',
-  rightPanelTab: 'inspector',
+  rightPanelTab: 'chat',
 
   leftPanelWidth: PANEL_SIZES.left.default,
   rightPanelWidth: PANEL_SIZES.right.default,
@@ -1231,6 +1231,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           leftPanelCollapsed: state.leftPanelCollapsed,
           rightPanelCollapsed: state.rightPanelCollapsed,
           radialDistance: state.radialDistance,
+          // 프로젝트 경로 persist - 앱 재시작 시 복원
+          projectPath: state.projectPath,
         }),
       }
     ),

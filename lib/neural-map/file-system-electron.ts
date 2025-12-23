@@ -34,10 +34,10 @@ export class ElectronFileSystemProvider implements IFileSystemProvider {
     private fileHandleRegistry = new Map<string, any>();
 
     async selectDirectory(): Promise<FileSystemDirectoryHandle | null> {
-        // @ts-ignore
-        const result = await window.electron.fs.selectDirectory();
+        const result = await window.electron?.fs?.selectDirectory?.();
         if (!result) return null;
-        return result as FileSystemDirectoryHandle;
+        // Electron returns { kind, name, path } which we treat as a pseudo-handle
+        return result as unknown as FileSystemDirectoryHandle;
     }
 
     getProjectHandle(): FileSystemDirectoryHandle | null {

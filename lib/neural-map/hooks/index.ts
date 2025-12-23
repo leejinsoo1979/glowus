@@ -1,2 +1,7 @@
-export { useAgentExecution, default } from './useAgentExecution'
-export type { } from './useAgentExecution'
+export {
+  useAgentExecution,
+  default,
+  type AgentStage,
+  type ToolExecution,
+  type TaskProgress,
+} from './useAgentExecution'

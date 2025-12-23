@@ -147,6 +147,7 @@ export default function NeuralMapPage() {
   // Chat store for viewfinder → chat integration
   const { setPendingImage } = useChatStore()
   const setNeuralMapRightPanelTab = useNeuralMapStore((s) => s.setRightPanelTab)
+  const setProjectPath = useNeuralMapStore((s) => s.setProjectPath)
 
   // Viewfinder → Chat 연결 핸들러
   const handleViewfinderShareToAI = useCallback((context: { imageDataUrl: string; timestamp: number }) => {
@@ -190,6 +191,29 @@ export default function NeuralMapPage() {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Auto-set projectPath from Electron cwd if not already set
+  useEffect(() => {
+    if (!mounted) return
+    if (projectPath) return // 이미 설정됨
+
+    // Electron 환경에서 cwd 가져오기
+    const initProjectPath = async () => {
+      if (typeof window !== 'undefined' && window.electron?.fs?.getCwd) {
+        try {
+          const cwd = await window.electron.fs.getCwd()
+          if (cwd) {
+            setProjectPath(cwd)
+            console.log('[NeuralMap] Auto-set projectPath from cwd:', cwd)
+          }
+        } catch (err) {
+          console.warn('[NeuralMap] Failed to get cwd:', err)
+        }
+      }
+    }
+
+    initProjectPath()
+  }, [mounted, projectPath, setProjectPath])
 
   // Sync Global Theme to Neural Map
   useEffect(() => {
@@ -415,7 +439,7 @@ export default function NeuralMapPage() {
             ) : activeTab === 'browser' ? (
               <BrowserView onShareToAI={handleViewfinderShareToAI} />
             ) : activeTab === 'mermaid' ? (
-              <CytoscapeView projectPath={projectPath || undefined} mapId={mapId} />
+              <CytoscapeView projectPath={projectPath ?? undefined} mapId={mapId ?? undefined} />
             ) : (
               <Graph2DView className="absolute inset-0" />
             )}
