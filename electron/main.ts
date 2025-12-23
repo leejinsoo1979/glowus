@@ -112,9 +112,9 @@ async function createWindow() {
 
         mainWindow.loadURL(startUrl);
 
-        // if (!app.isPackaged) {
-        //    mainWindow.webContents.openDevTools();
-        // }
+        if (!app.isPackaged) {
+            mainWindow.webContents.openDevTools();
+        }
 
         // Handle external links - DISABLED: This overrides webview internal popups.
         // webview internal "new-window" events should be handled by the renderer.
