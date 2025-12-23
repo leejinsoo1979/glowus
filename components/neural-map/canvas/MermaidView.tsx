@@ -372,7 +372,7 @@ export function MermaidView({ className }: MermaidViewProps) {
       setCode(DIAGRAM_TEMPLATES[mermaidDiagramType])
       setDataSource('Template')
     }
-  }, [mermaidDiagramType, autoMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mermaidDiagramType, autoMode, projectPath, mounted, generateFromProject])
 
   // Render diagram - stable function that reads current state
   const renderDiagram = useCallback(async () => {
