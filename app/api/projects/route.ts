@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
         color: body.color || '#8B5CF6',
         owner_id: user.id,
         progress: 0,
-        folder_path: body.folder_path || null,  // 로컬 폴더 경로
+        // folder_path는 DB 스키마에 없음 - 추후 마이그레이션 필요
       })
       .select()
       .single()

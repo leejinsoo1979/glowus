@@ -325,9 +325,10 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     return parts[parts.length - 1] || parts[parts.length - 2] || ''
   }
 
-  // 맵 제목 우선순위: linkedProjectName > graph.title > projectPath 폴더명 > 'Untitled Map'
+  // 맵 제목: 프로젝트가 있을 때만 표시
   const folderName = getFolderName(projectPath)
-  const mapTitle = linkedProjectName || graph?.title || folderName || 'Untitled Map'
+  const hasProject = linkedProjectName || projectPath
+  const mapTitle = linkedProjectName || graph?.title || folderName || ''
 
   // 파일 확장자로 타입 결정 (VS Code 스타일)
   const getFileTypeFromExt = useCallback((fileName: string): NeuralFile['type'] => {
@@ -1830,47 +1831,48 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
       {/* 파일 트리 영역 */}
       <div className="flex-1 overflow-y-auto">
-        {/* 루트 폴더 (맵 이름) + VS Code 스타일 액션 아이콘 */}
-        <div
-          className={cn(
-            'group flex items-center justify-between py-[3px] px-2 cursor-pointer select-none',
-            isDark
-              ? 'hover:bg-[#2a2d2e] text-[#cccccc]'
-              : 'hover:bg-[#e8e8e8] text-[#3b3b3b]',
-            'font-semibold text-[11px] uppercase tracking-wide'
-          )}
-        >
-          {/* 좌측: 폴더 토글 + 이름 */}
+        {/* 루트 폴더 헤더 - 프로젝트가 있을 때만 표시 */}
+        {hasProject ? (
           <div
-            className="flex items-center gap-1 flex-1 min-w-0"
-            onClick={() => {
-              const newExpanded = !isExpanded
-              setIsExpanded(newExpanded)
+            className={cn(
+              'group flex items-center justify-between py-[3px] px-2 cursor-pointer select-none',
+              isDark
+                ? 'hover:bg-[#2a2d2e] text-[#cccccc]'
+                : 'hover:bg-[#e8e8e8] text-[#3b3b3b]',
+              'font-semibold text-[11px] uppercase tracking-wide'
+            )}
+          >
+            {/* 좌측: 폴더 토글 + 이름 */}
+            <div
+              className="flex items-center gap-1 flex-1 min-w-0"
+              onClick={() => {
+                const newExpanded = !isExpanded
+                setIsExpanded(newExpanded)
 
-              // Sync with graph: Toggle self node
-              if (graph?.nodes) {
-                const selfNode = graph.nodes.find(n => n.type === 'self')
-                if (selfNode) {
-                  if (newExpanded) {
-                    if (!expandedNodeIds.has(selfNode.id)) {
-                      toggleNodeExpansion(selfNode.id)
-                    }
-                  } else {
-                    if (expandedNodeIds.has(selfNode.id)) {
-                      toggleNodeExpansion(selfNode.id)
+                // Sync with graph: Toggle self node
+                if (graph?.nodes) {
+                  const selfNode = graph.nodes.find(n => n.type === 'self')
+                  if (selfNode) {
+                    if (newExpanded) {
+                      if (!expandedNodeIds.has(selfNode.id)) {
+                        toggleNodeExpansion(selfNode.id)
+                      }
+                    } else {
+                      if (expandedNodeIds.has(selfNode.id)) {
+                        toggleNodeExpansion(selfNode.id)
+                      }
                     }
                   }
                 }
-              }
-            }}
-          >
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4 flex-shrink-0" />
-            ) : (
-              <ChevronRight className="w-4 h-4 flex-shrink-0" />
-            )}
-            <span className="truncate">{mapTitle}</span>
-          </div>
+              }}
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-4 h-4 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-4 h-4 flex-shrink-0" />
+              )}
+              <span className="truncate">{mapTitle}</span>
+            </div>
 
           {/* 우측: 액션 아이콘 (호버 시 표시) */}
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1955,6 +1957,27 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
             </button>
           </div>
         </div>
+        ) : (
+          /* 프로젝트 없을 때 - 새 프로젝트 생성 버튼 */
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <button
+              onClick={() => {
+                setIsCreatingProject(true)
+                setNewProjectName('')
+                setTimeout(() => projectNameInputRef.current?.focus(), 100)
+              }}
+              className={cn(
+                'flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all',
+                isDark
+                  ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+              )}
+            >
+              <Plus className="w-4 h-4" />
+              <span>새 프로젝트</span>
+            </button>
+          </div>
+        )}
 
         {/* 새 파일/폴더 입력창 - VS Code 스타일 */}
         {isCreatingNew && (
@@ -2011,7 +2034,8 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           </div>
         )}
 
-        {/* 파일 트리 목록 */}
+        {/* 파일 트리 목록 - 프로젝트가 있을 때만 */}
+        {hasProject && (
         <AnimatePresence>
           {isExpanded && (
             <motion.div
@@ -2072,6 +2096,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </div>
 
       {/* 하단 패널들 (VS Code 스타일) */}
