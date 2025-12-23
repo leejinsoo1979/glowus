@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
+import { useChatStore } from '@/stores/chatStore'
 import { PANEL_SIZES, THEME_PRESETS } from '@/lib/neural-map/constants'
 import type { NeuralGraph, NeuralNode, ViewTab } from '@/lib/neural-map/types'
 
@@ -141,6 +142,29 @@ export default function NeuralMapPage() {
     setTerminalHeight,
     setTheme: setMapTheme
   } = useNeuralMapStore()
+
+  // Chat store for viewfinder → chat integration
+  const { setPendingImage } = useChatStore()
+  const setNeuralMapRightPanelTab = useNeuralMapStore((s) => s.setRightPanelTab)
+
+  // Viewfinder → Chat 연결 핸들러
+  const handleViewfinderShareToAI = useCallback((context: { imageDataUrl: string; timestamp: number }) => {
+    // 1. 이미지를 chat store에 pending으로 설정
+    setPendingImage({ dataUrl: context.imageDataUrl, timestamp: context.timestamp })
+
+    // 2. 오른쪽 패널의 Chat 탭으로 자동 전환
+    setNeuralMapRightPanelTab('chat')
+
+    // 3. 패널이 닫혀있다면 열기
+    if (rightPanelCollapsed) {
+      toggleRightPanel()
+    }
+
+    console.log('[NeuralMap] Viewfinder image shared to chat:', {
+      timestamp: new Date(context.timestamp).toISOString(),
+      imageSize: Math.round(context.imageDataUrl.length / 1024) + 'KB'
+    })
+  }, [setPendingImage, setNeuralMapRightPanelTab, rightPanelCollapsed, toggleRightPanel])
 
   const nodes = graph?.nodes || []
 
@@ -388,7 +412,7 @@ export default function NeuralMapPage() {
                 </div>
               </div>
             ) : activeTab === 'browser' ? (
-              <BrowserView />
+              <BrowserView onShareToAI={handleViewfinderShareToAI} />
             ) : activeTab === 'mermaid' ? (
               <MermaidView className="absolute inset-0" />
             ) : (

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Electron IPC Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; }
+        .result { background: #2d2d2d; padding: 15px; margin: 10px 0; border-left: 3px solid #007acc; }
+        .error { border-left-color: #f44747; }
+        .success { border-left-color: #4ec9b0; }
+        pre { overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Electron IPC 실제 작동 테스트</h1>
+
+    <div>
+        <button onclick="testElectronExists()">1. window.electron 존재 확인</button>
+        <button onclick="testSelectDirectory()">2. 폴더 선택 테스트</button>
+        <button onclick="testScanProject()">3. 프로젝트 스캔 테스트</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script>
+        function log(message, isError = false) {
+            const output = document.getElementById('output');
+            const div = document.createElement('div');
+            div.className = 'result ' + (isError ? 'error' : 'success');
+            div.innerHTML = message;
+            output.appendChild(div);
+        }
+
+        function testElectronExists() {
+            log('=== window.electron 확인 ===');
+            if (window.electron) {
+                log('✅ window.electron 존재함');
+                log('사용 가능한 메서드:<br>' +
+                    'fs: ' + (window.electron.fs ? '✅' : '❌') + '<br>' +
+                    'git: ' + (window.electron.git ? '✅' : '❌'));
+            } else {
+                log('❌ window.electron 없음 - Electron 앱에서 실행하세요', true);
+            }
+        }
+
+        async function testSelectDirectory() {
+            log('=== 폴더 선택 테스트 ===');
+            if (!window.electron || !window.electron.fs) {
+                log('❌ window.electron.fs 없음', true);
+                return;
+            }
+
+            try {
+                const result = await window.electron.fs.selectDirectory();
+                if (result) {
+                    log('✅ 폴더 선택 성공:<br>' +
+                        'name: ' + result.name + '<br>' +
+                        'path: ' + result.path + '<br>' +
+                        'kind: ' + result.kind);
+                    window.selectedPath = result.path;
+                } else {
+                    log('❌ 폴더 선택 취소됨');
+                }
+            } catch (error) {
+                log('❌ 에러: ' + error.message, true);
+            }
+        }
+
+        async function testScanProject() {
+            log('=== 프로젝트 스캔 테스트 ===');
+
+            if (!window.selectedPath) {
+                log('⚠️  먼저 "폴더 선택 테스트" 버튼을 눌러주세요');
+                return;
+            }
+
+            const path = window.selectedPath;
+            log('📂 스캔 경로: ' + path);
+
+            try {
+                // 1. File Stats
+                log('<br>1️⃣ File Stats 테스트...');
+                const stats = await window.electron.fs.fileStats(path);
+                log('✅ File Stats: ' + stats.length + '개 파일 찾음<br>' +
+                    '<pre>' + JSON.stringify(stats.slice(0, 3), null, 2) + '</pre>');
+
+                // 2. Git Log
+                log('<br>2️⃣ Git Log 테스트...');
+                const gitLog = await window.electron.git.log(path, { maxCommits: 5 });
+                log('✅ Git Log 가져옴<br>' +
+                    '<pre>' + gitLog.substring(0, 500) + '...</pre>');
+
+                // 3. API Routes
+                log('<br>3️⃣ API Routes 스캔...');
+                const routes = await window.electron.fs.scanApiRoutes(path);
+                log('✅ API Routes: ' + routes.length + '개 찾음<br>' +
+                    '<pre>' + JSON.stringify(routes.slice(0, 3), null, 2) + '</pre>');
+
+                // 4. TypeScript Types
+                log('<br>4️⃣ TypeScript Types 스캔...');
+                const types = await window.electron.fs.scanTypes(path);
+                log('✅ Types: ' + types.length + '개 찾음<br>' +
+                    '<pre>' + JSON.stringify(types.slice(0, 3), null, 2) + '</pre>');
+
+                // 5. Database Schema
+                log('<br>5️⃣ Database Schema 스캔...');
+                const schema = await window.electron.fs.scanSchema(path);
+                log('✅ Schema: ' + schema.length + '개 테이블 찾음<br>' +
+                    '<pre>' + JSON.stringify(schema.slice(0, 3), null, 2) + '</pre>');
+
+                log('<br>🎉 모든 테스트 성공! IPC가 제대로 작동합니다.');
+
+            } catch (error) {
+                log('❌ 에러 발생: ' + error.message + '<br>' +
+                    '<pre>' + error.stack + '</pre>', true);
+            }
+        }
+    </script>
+</body>
+</html>

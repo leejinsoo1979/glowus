@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
@@ -27,7 +27,11 @@ import {
   Loader2,
   Settings2,
   Radius,
+  Image as ImageIcon,
+  Send,
 } from 'lucide-react'
+import { ChatInput } from '@/components/chat/ChatInput'
+import { useChatStore } from '@/stores/chatStore'
 
 const tabs: { id: RightPanelTab; label: string; icon: typeof Info }[] = [
   { id: 'inspector', label: 'Inspector', icon: Info },
@@ -393,14 +397,11 @@ function ActionsTab({ isDark }: { isDark: boolean }) {
   )
 }
 
-import { useRef, useEffect } from 'react'
-import { ChatInput } from '@/components/chat/ChatInput'
-import { useChatStore } from '@/stores/chatStore'
-
 function ChatTab({ isDark, currentAccent }: { isDark: boolean; currentAccent: typeof accentColors[0] }) {
   const selectedNode = useNeuralMapStore(selectFirstSelectedNode)
-  const { messages } = useChatStore()
+  const { messages, pendingImage, setPendingImage, isLoading, addMessage, selectedModel, setIsLoading } = useChatStore()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [inputValue, setInputValue] = useState('')
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -409,22 +410,137 @@ function ChatTab({ isDark, currentAccent }: { isDark: boolean; currentAccent: ty
     }
   }, [messages])
 
+  // Vision API로 이미지와 함께 메시지 전송
+  const sendMessageWithVision = async () => {
+    if (!inputValue.trim() && !pendingImage) return
+
+    const userMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
+      content: inputValue || '이 화면을 분석해주세요.',
+      timestamp: Date.now(),
+      model: selectedModel,
+      imageDataUrl: pendingImage?.dataUrl,
+      metadata: pendingImage ? { source: 'viewfinder', capturedAt: pendingImage.timestamp } : undefined
+    }
+
+    addMessage(userMessage)
+    setInputValue('')
+    setPendingImage(null)
+    setIsLoading(true)
+
+    try {
+      // Vision API 호출
+      const response = await fetch('/api/ai/vision/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageDataUrl: userMessage.imageDataUrl,
+          prompt: userMessage.content,
+          model: selectedModel
+        })
+      })
+
+      if (!response.ok) throw new Error('Vision API failed')
+
+      // 스트리밍 응답 처리
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let fullResponse = ''
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          fullResponse += decoder.decode(value, { stream: true })
+        }
+      }
+
+      addMessage({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: fullResponse || '분석을 완료했습니다.',
+        timestamp: Date.now(),
+        model: selectedModel
+      })
+    } catch (error) {
+      console.error('Vision API error:', error)
+      addMessage({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
+        timestamp: Date.now(),
+        model: selectedModel
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.nativeEvent.isComposing) return
+      e.preventDefault()
+      sendMessageWithVision()
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 p-4 overflow-y-auto" ref={scrollRef}>
         {messages.length > 0 ? (
           <div className="space-y-4">
             {messages.map((msg) => (
-              <div key={msg.id} className={cn("text-sm", msg.role === 'assistant' ? "pl-2 border-l-2 border-blue-500" : "bg-zinc-100 dark:bg-zinc-800/50 p-2 rounded-lg")}>
+              <div key={msg.id} className={cn(
+                "text-sm",
+                msg.role === 'assistant'
+                  ? "pl-2 border-l-2 border-blue-500"
+                  : "bg-zinc-100 dark:bg-zinc-800/50 p-2 rounded-lg"
+              )}>
+                {/* 이미지가 있으면 표시 */}
+                {msg.imageDataUrl && (
+                  <div className="mb-2 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                    <img
+                      src={msg.imageDataUrl}
+                      alt="Viewfinder capture"
+                      className="max-w-full h-auto max-h-32 object-contain"
+                    />
+                    <div className="px-2 py-1 text-[10px] text-zinc-500 bg-zinc-50 dark:bg-zinc-800 flex items-center gap-1">
+                      <ImageIcon className="w-3 h-3" />
+                      화면 캡처
+                    </div>
+                  </div>
+                )}
                 {msg.content}
               </div>
             ))}
-            {/* Fake thinking indicator if last message is user */}
-            {messages[messages.length - 1]?.role === 'user' && (
-              <div className="pl-2 border-l-2 border-zinc-300 animate-pulse text-xs text-zinc-500">
-                AI가 생각중입니다...
+            {/* Loading indicator */}
+            {isLoading && (
+              <div className="pl-2 border-l-2 border-zinc-300 animate-pulse text-xs text-zinc-500 flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                AI가 분석 중입니다...
               </div>
             )}
+          </div>
+        ) : pendingImage ? (
+          <div className="space-y-3">
+            <div className={cn(
+              'p-3 rounded-lg',
+              isDark ? 'bg-zinc-800' : 'bg-zinc-100'
+            )}>
+              <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400 mb-2">
+                <ImageIcon className="w-3.5 h-3.5" />
+                화면이 공유되었습니다
+              </div>
+              <img
+                src={pendingImage.dataUrl}
+                alt="Pending viewfinder capture"
+                className="w-full h-auto max-h-40 object-contain rounded border border-zinc-200 dark:border-zinc-700"
+              />
+              <p className="text-[10px] text-zinc-500 mt-2">
+                이 화면에 대해 질문하거나 분석을 요청하세요
+              </p>
+            </div>
           </div>
         ) : selectedNode ? (
           <div className="space-y-3">
@@ -448,18 +564,66 @@ function ChatTab({ isDark, currentAccent }: { isDark: boolean; currentAccent: ty
             <div className="text-center space-y-2">
               <MessageSquare className="w-8 h-8 mx-auto text-zinc-500" />
               <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
-                노드를 선택하면
+                노드를 선택하거나
                 <br />
-                AI와 대화할 수 있습니다
+                뷰파인더로 화면을 공유하세요
               </p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Cursor-style Chat Input */}
+      {/* Pending Image Preview in Input Area */}
+      {pendingImage && (
+        <div className={cn('px-3 py-2 border-t flex items-center gap-2', isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50')}>
+          <img
+            src={pendingImage.dataUrl}
+            alt="Pending"
+            className="w-10 h-10 object-cover rounded border border-zinc-300 dark:border-zinc-600"
+          />
+          <span className="text-xs text-zinc-500 flex-1">화면 캡처 첨부됨</span>
+          <button
+            onClick={() => setPendingImage(null)}
+            className="text-xs text-red-500 hover:text-red-600"
+          >
+            제거
+          </button>
+        </div>
+      )}
+
+      {/* Custom Input for Vision Chat */}
       <div className={cn('p-3 border-t', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-        <ChatInput />
+        {pendingImage ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="이 화면에 대해 질문하세요..."
+              className={cn(
+                'flex-1 px-3 py-2 text-sm rounded-lg border outline-none transition-colors',
+                isDark
+                  ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600'
+                  : 'bg-white border-zinc-200 text-zinc-800 placeholder:text-zinc-400'
+              )}
+            />
+            <button
+              onClick={sendMessageWithVision}
+              disabled={isLoading}
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                isLoading
+                  ? 'bg-zinc-300 dark:bg-zinc-700 cursor-not-allowed'
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+              )}
+            >
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          </div>
+        ) : (
+          <ChatInput />
+        )}
       </div>
     </div>
   )

@@ -442,3 +442,221 @@ export interface TerminalInstance {
   customName?: string
 }
 
+// ============================================
+// Agent State Types (Agentic Loop)
+// ============================================
+
+export type AgentExecutionStage = 'idle' | 'plan' | 'modify' | 'verify' | 'commit'
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
+export type TaskRisk = 'low' | 'medium' | 'high'
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
+export type DiagnosticSeverity = 'error' | 'warning' | 'info'
+export type DiagnosticSource = 'build' | 'lint' | 'test' | 'lsp'
+export type SymbolKind = 'function' | 'class' | 'variable' | 'interface' | 'type' | 'method' | 'property'
+
+export interface AgentMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string
+  timestamp: number
+  toolCall?: {
+    name: string
+    args: Record<string, unknown>
+    result?: unknown
+  }
+  imageDataUrl?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface AgentTask {
+  id: string
+  description: string
+  status: TaskStatus
+  files: string[]
+  estimatedRisk: TaskRisk
+  requiredApproval: boolean
+  startTime?: number
+  endTime?: number
+  error?: string
+  operations?: PatchOperation[]
+}
+
+export interface PatchOperation {
+  op: 'create' | 'modify' | 'delete' | 'rename'
+  path: string
+  oldPath?: string  // for rename
+  content?: string  // for create
+  changes?: PatchChange[]  // for modify
+}
+
+export interface PatchChange {
+  oldText: string
+  newText: string
+  startLine?: number
+  endLine?: number
+}
+
+export interface FileContext {
+  path: string
+  content: string
+  language: string
+  lastModified: number
+  symbols: SymbolInfo[]
+}
+
+export interface SymbolInfo {
+  name: string
+  kind: SymbolKind
+  location: {
+    file: string
+    line: number
+    column: number
+  }
+  references?: SymbolReference[]
+}
+
+export interface SymbolReference {
+  file: string
+  line: number
+  column: number
+  context?: string
+}
+
+export interface AgentDiagnostic {
+  severity: DiagnosticSeverity
+  message: string
+  file: string
+  line: number
+  column?: number
+  source: DiagnosticSource
+  code?: string
+}
+
+export interface DependencyNode {
+  id: string
+  path: string
+  imports: string[]
+  importedBy: string[]
+}
+
+export interface DependencyGraph {
+  nodes: DependencyNode[]
+  rootFiles: string[]
+}
+
+export interface GCCCheckpoint {
+  id: string
+  description: string
+  files: string[]
+  timestamp: number
+  commitSha?: string
+  taskId?: string
+}
+
+export interface AgentPlan {
+  tasks: AgentTask[]
+  currentTaskIndex: number
+  approvalStatus: ApprovalStatus
+  commitMessage?: string
+  files: string[]
+  generatedAt?: number
+}
+
+export interface AgentExecution {
+  stage: AgentExecutionStage
+  toolCallsCount: number
+  lastToolResult: string | null
+  error: string | null
+  allPassed?: boolean
+  results?: {
+    build?: ToolResult
+    lint?: ToolResult
+    test?: ToolResult
+    diagnostics?: AgentDiagnostic[]
+  }
+}
+
+export interface AgentMetadata {
+  model: string
+  startTime: number
+  threadId: string
+  userId: string
+  projectPath?: string
+}
+
+export interface AgentMemory {
+  checkpoints: GCCCheckpoint[]
+  currentBranch: string
+  workingDirectory: string
+}
+
+export interface AgentContext {
+  files: FileContext[]
+  symbols: SymbolInfo[]
+  diagnostics: AgentDiagnostic[]
+  dependencies?: DependencyGraph
+}
+
+export interface AgentState {
+  messages: AgentMessage[]
+  context: AgentContext
+  plan: AgentPlan | null
+  execution: AgentExecution
+  metadata: AgentMetadata
+  memory: AgentMemory
+}
+
+export interface ToolResult {
+  success: boolean
+  data?: unknown
+  error?: string
+  output?: string
+  exitCode?: number
+  executionTime?: number
+  metadata?: {
+    resourceUsage?: {
+      cpu?: number
+      memory?: number
+    }
+  }
+}
+
+export interface ToolDefinition {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+  permissions: ('read' | 'write' | 'execute')[]
+  timeout?: number
+}
+
+// Initial state factory
+export function createInitialAgentState(userId: string, projectPath?: string): AgentState {
+  return {
+    messages: [],
+    context: {
+      files: [],
+      symbols: [],
+      diagnostics: [],
+    },
+    plan: null,
+    execution: {
+      stage: 'idle',
+      toolCallsCount: 0,
+      lastToolResult: null,
+      error: null,
+    },
+    metadata: {
+      model: 'claude-3.5-sonnet',
+      startTime: Date.now(),
+      threadId: crypto.randomUUID(),
+      userId,
+      projectPath,
+    },
+    memory: {
+      checkpoints: [],
+      currentBranch: 'main',
+      workingDirectory: projectPath || process.cwd?.() || '/',
+    },
+  }
+}
+

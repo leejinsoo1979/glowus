@@ -59,6 +59,8 @@
   "dependencies": {
     "@ai-sdk/google": "^2.0.45",
     "@ai-sdk/openai": "^2.0.80",
+    "@babel/parser": "^7.28.5",
+    "@babel/traverse": "^7.28.5",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -102,6 +104,9 @@
     "ai": "^5.0.108",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "cytoscape": "^3.33.1",
+    "cytoscape-cola": "^2.5.1",
+    "cytoscape-dagre": "^2.5.0",
     "d3-force": "^3.0.0",
     "d3-force-3d": "^3.0.5",
     "dagre": "^0.8.5",
