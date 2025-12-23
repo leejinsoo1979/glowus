@@ -93,7 +93,7 @@ const LifeStreamView = dynamic(
   }
 )
 
-// Dynamically import Cytoscape View (AI-powered code diagram - flowchart only)
+// Dynamically import Cytoscape View (flowchart - code dependencies)
 const CytoscapeView = dynamic(
   () => import('@/components/neural-map/canvas/CytoscapeView').then((mod) => mod.default),
   {
@@ -102,9 +102,49 @@ const CytoscapeView = dynamic(
   }
 )
 
-// Dynamically import Mermaid View (all other diagram types)
-const MermaidView = dynamic(
-  () => import('@/components/neural-map/canvas/MermaidView').then((mod) => mod.default),
+// Dynamically import interactive diagram views
+const SequenceDiagramView = dynamic(
+  () => import('@/components/neural-map/canvas/SequenceDiagramView').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+const ClassDiagramView = dynamic(
+  () => import('@/components/neural-map/canvas/ClassDiagramView').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+const ERDiagramView = dynamic(
+  () => import('@/components/neural-map/canvas/ERDiagramView').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+const PieChartView = dynamic(
+  () => import('@/components/neural-map/canvas/PieChartView').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+const StateDiagramView = dynamic(
+  () => import('@/components/neural-map/canvas/StateDiagramView').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+const GitGraphView = dynamic(
+  () => import('@/components/neural-map/canvas/GitGraphView').then((mod) => mod.default),
   {
     ssr: false,
     loading: () => <CanvasLoadingFallback />,
@@ -455,11 +495,25 @@ export default function NeuralMapPage() {
             ) : activeTab === 'browser' ? (
               <BrowserView onShareToAI={handleViewfinderShareToAI} />
             ) : activeTab === 'mermaid' ? (
-              // Use Cytoscape for flowchart (code dependencies), Mermaid for others
+              // Interactive diagram views based on type
               mermaidDiagramType === 'flowchart' ? (
                 <CytoscapeView projectPath={projectPath ?? undefined} mapId={mapId ?? undefined} />
+              ) : mermaidDiagramType === 'sequence' ? (
+                <SequenceDiagramView className="absolute inset-0" />
+              ) : mermaidDiagramType === 'class' ? (
+                <ClassDiagramView className="absolute inset-0" />
+              ) : mermaidDiagramType === 'er' ? (
+                <ERDiagramView className="absolute inset-0" />
+              ) : mermaidDiagramType === 'pie' ? (
+                <PieChartView projectPath={projectPath ?? undefined} className="absolute inset-0" />
+              ) : mermaidDiagramType === 'state' ? (
+                <StateDiagramView className="absolute inset-0" />
+              ) : mermaidDiagramType === 'gitgraph' ? (
+                <GitGraphView className="absolute inset-0" />
               ) : (
-                <MermaidView className="absolute inset-0" />
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
+                  <p>Unknown diagram type: {mermaidDiagramType}</p>
+                </div>
               )
             ) : (
               <Graph2DView className="absolute inset-0" />

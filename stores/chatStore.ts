@@ -44,7 +44,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     messages: [],
     input: '',
     isLoading: false,
-    selectedModel: 'claude-3.5-sonnet',
+    selectedModel: 'gemini-3-flash',
     isAgentMode: false,
     pendingImage: null,
 

@@ -18,7 +18,6 @@ import {
   ArrowLeftRight, // Sequence
   Boxes, // Class
   TableProperties, // ER
-  GanttChart, // Gantt
   PieChart, // Pie
   CircleDot, // State
   GitFork, // GitGraph
@@ -34,14 +33,13 @@ const viewTabs: { id: ViewTab; label: string; icon: typeof Network; description:
 ]
 
 const mermaidDiagrams: { id: MermaidDiagramType; label: string; icon: typeof Workflow; description: string }[] = [
-  { id: 'flowchart', label: 'Flowchart', icon: Workflow, description: '플로우차트 / 순서도' },
-  { id: 'sequence', label: 'Sequence', icon: ArrowLeftRight, description: '시퀀스 다이어그램' },
-  { id: 'class', label: 'Class', icon: Boxes, description: '클래스 다이어그램' },
-  { id: 'er', label: 'ER', icon: TableProperties, description: 'ER 다이어그램' },
-  { id: 'gantt', label: 'Gantt', icon: GanttChart, description: '간트 차트' },
-  { id: 'pie', label: 'Pie', icon: PieChart, description: '파이 차트' },
-  { id: 'state', label: 'State', icon: CircleDot, description: '상태 다이어그램' },
-  { id: 'gitgraph', label: 'GitGraph', icon: GitFork, description: 'Git 브랜치 시각화' },
+  { id: 'flowchart', label: 'Flowchart', icon: Workflow, description: '코드 의존성 그래프' },
+  { id: 'sequence', label: 'Sequence', icon: ArrowLeftRight, description: '시퀀스 다이어그램 (인터랙티브)' },
+  { id: 'class', label: 'Class', icon: Boxes, description: '클래스 다이어그램 (인터랙티브)' },
+  { id: 'er', label: 'ER', icon: TableProperties, description: 'ER 다이어그램 (인터랙티브)' },
+  { id: 'pie', label: 'Pie', icon: PieChart, description: '파일 분포 차트 (인터랙티브)' },
+  { id: 'state', label: 'State', icon: CircleDot, description: '상태 다이어그램 (인터랙티브)' },
+  { id: 'gitgraph', label: 'GitGraph', icon: GitFork, description: 'Git 그래프 (인터랙티브)' },
 ]
 
 export function ViewTabs() {
