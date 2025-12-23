@@ -257,7 +257,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
   const openEditor = useNeuralMapStore((s) => s.openEditor)
-  const buildGraphFromFiles = useNeuralMapStore((s) => s.buildGraphFromFiles)
+  const buildGraphFromFilesAsync = useNeuralMapStore((s) => s.buildGraphFromFilesAsync)
   const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
 
   // Node Expansion Store
@@ -711,16 +711,16 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       )
       if (choice) {
         setFiles(localFiles)
-        buildGraphFromFiles()
+        buildGraphFromFilesAsync()
       } else {
         const existingPaths = new Set(files.map(f => f.path))
         const newFiles = localFiles.filter(f => !existingPaths.has(f.path))
         setFiles([...files, ...newFiles])
-        buildGraphFromFiles()
+        buildGraphFromFilesAsync()
       }
     } else {
       setFiles(localFiles)
-      buildGraphFromFiles()
+      buildGraphFromFilesAsync()
     }
 
     // 입력 초기화
@@ -844,16 +844,16 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         )
         if (choice) {
           setFiles(localFiles)
-          buildGraphFromFiles()
+          buildGraphFromFilesAsync()
         } else {
           const existingPaths = new Set(files.map(f => f.path))
           const newFiles = localFiles.filter(f => !existingPaths.has(f.path))
           setFiles([...files, ...newFiles])
-          buildGraphFromFiles()
+          buildGraphFromFilesAsync()
         }
       } else {
         setFiles(localFiles)
-        buildGraphFromFiles()
+        buildGraphFromFilesAsync()
       }
 
       console.log(`✅ ${localFiles.length} files loaded via File System Access API`)
@@ -885,6 +885,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     if (!electron?.onMenuEvent) return
 
     // 폴더 선택 완료 이벤트 - Electron main에서 직접 다이얼로그 열고 결과 전송
+    // 폴더 선택 완료 이벤트 - Electron main에서 직접 다이얼로그 열고 결과 전송
     const unsubFolderSelected = electron.onMenuEvent('menu:folder-selected', async (_event: any, dirInfo: { name: string, path: string }) => {
       console.log('[Menu] Folder selected:', dirInfo)
 
@@ -894,64 +895,69 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         setIsUploading(true)
         setIsExpanded(true)
 
-        // Electron IPC로 폴더 읽기
-        const entries = await electron.fs.readDirectory(dirInfo.path, { includeSystemFiles: showHiddenFiles })
-        console.log(`Found ${entries.length} entries in ${dirInfo.name}`)
+        // 🚀 Batch Scan: Single IPC call for entire tree (includes file content)
+        console.time('Batch Scan Tree')
 
-        // 파일만 필터링하고 NeuralFile 형식으로 변환
+        const scanResult = await electron.fs.scanTree(dirInfo.path, {
+          includeSystemFiles: showHiddenFiles,
+          includeContent: true,  // 파일 내용도 함께 로드
+          contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs']
+        })
+
+        console.timeEnd('Batch Scan Tree')
+        console.log(`[Batch Scan] ${scanResult.stats.fileCount} files, ${scanResult.stats.dirCount} dirs in ${scanResult.stats.elapsed}ms`)
+
         const timestamp = Date.now()
-        const localFiles: NeuralFile[] = []
+        const neuralFiles: NeuralFile[] = []
 
-        const processEntries = async (entries: any[], basePath: string) => {
-          for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i]
-            if (entry.kind === 'file') {
-              try {
-                const content = await electron.fs.readFile(entry.path)
-                const ext = entry.name.split('.').pop()?.toLowerCase() || ''
-                const getFileType = (ext: string) => {
-                  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
-                  const mdExts = ['md', 'markdown', 'mdx']
-                  const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py']
-                  if (imageExts.includes(ext)) return 'image'
-                  if (mdExts.includes(ext)) return 'markdown'
-                  if (codeExts.includes(ext)) return 'code'
-                  return 'text'
-                }
+        // Flatten tree to file list
+        const getFileType = (ext: string) => {
+          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+          const mdExts = ['md', 'markdown', 'mdx']
+          const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go']
+          if (imageExts.includes(ext)) return 'image'
+          if (mdExts.includes(ext)) return 'markdown'
+          if (codeExts.includes(ext)) return 'code'
+          return 'text'
+        }
 
-                localFiles.push({
-                  id: `local-${timestamp}-${localFiles.length}`,
-                  name: entry.name,
-                  path: entry.path.replace(dirInfo.path + '/', ''),
-                  type: getFileType(ext),
-                  content: content,
-                  size: entry.size || content.length,
-                  createdAt: new Date().toISOString(),
-                  mapId: mapId || '',
-                  url: '', // 로컬 파일이라 URL 없음
-                })
+        const flattenTree = (node: any) => {
+          if (node.kind === 'file') {
+            const ext = node.name.split('.').pop()?.toLowerCase() || ''
+            const type = getFileType(ext)
 
-              } catch (err) {
-                console.warn('Failed to read file:', entry.path, err)
-              }
-            } else if (entry.kind === 'directory') {
-              // 재귀적으로 서브폴더 처리
-              const subEntries = await electron.fs.readDirectory(entry.path, { includeSystemFiles: showHiddenFiles })
-              await processEntries(subEntries, entry.path)
+            neuralFiles.push({
+              id: `local-${timestamp}-${neuralFiles.length}`,
+              name: node.name,
+              path: node.relativePath,
+              type: type as any,
+              content: node.content || '',
+              size: node.size || 0,
+              createdAt: new Date().toISOString(),
+              mapId: mapId || '',
+              url: '',
+            })
+          }
+
+          if (node.children) {
+            for (const child of node.children) {
+              flattenTree(child)
             }
           }
         }
 
-        await processEntries(entries, dirInfo.path)
+        flattenTree(scanResult.tree)
 
-        console.log(`Loaded ${localFiles.length} files from ${dirInfo.name}`)
-        setFiles(localFiles)
-        buildGraphFromFiles()
+        console.log(`[Batch Scan] Processed ${neuralFiles.length} files for Neural Map`)
+
+        // 즉시 파일 설정 및 그래프 빌드
+        setFiles(neuralFiles)
+        buildGraphFromFilesAsync()
+        setIsUploading(false)
 
       } catch (err) {
         console.error('Failed to load folder:', err)
         alert('폴더 로딩 실패: ' + (err as Error).message)
-      } finally {
         setIsUploading(false)
       }
     })
@@ -1070,7 +1076,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
                 {/* Visualize */}
                 <button
-                  onClick={() => { buildGraphFromFiles(); setShowFileMenu(false) }}
+                  onClick={() => { buildGraphFromFilesAsync(); setShowFileMenu(false) }}
                   disabled={files.length === 0}
                   className={cn(
                     'w-full px-4 py-2 text-left flex items-center justify-between',

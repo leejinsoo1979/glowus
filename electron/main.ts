@@ -399,6 +399,137 @@ ipcMain.handle('fs:read-directory', async (_, dirPath: string, options: { includ
     }
 });
 
+// 2.5 Batch Scan Directory Tree (Single IPC call for entire tree)
+interface ScanResult {
+    path: string;
+    relativePath: string;
+    name: string;
+    kind: 'file' | 'directory';
+    size?: number;
+    lastModified?: number;
+    children?: ScanResult[];
+    childCount?: number;
+}
+
+ipcMain.handle('fs:scan-tree', async (_, rootPath: string, options: {
+    includeSystemFiles?: boolean;
+    maxDepth?: number;
+    includeContent?: boolean;
+    contentExtensions?: string[];
+} = {}) => {
+    const {
+        includeSystemFiles = false,
+        maxDepth = Infinity,
+        includeContent = false,
+        contentExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html']
+    } = options;
+
+    const startTime = Date.now();
+    let fileCount = 0;
+    let dirCount = 0;
+
+    const shouldSkip = (name: string): boolean => {
+        if (includeSystemFiles) return false;
+        if (name.startsWith('.')) return true;
+        if (name === 'node_modules') return true;
+        if (name === '__pycache__') return true;
+        if (name === '.git') return true;
+        if (name === 'dist') return true;
+        if (name === 'build') return true;
+        if (name === '.next') return true;
+        return false;
+    };
+
+    const scanDir = async (dirPath: string, relativePath: string, depth: number): Promise<ScanResult> => {
+        const name = path.basename(dirPath);
+        const result: ScanResult = {
+            path: dirPath,
+            relativePath,
+            name,
+            kind: 'directory',
+            children: [],
+            childCount: 0
+        };
+
+        if (depth >= maxDepth) {
+            // Just count children without recursing
+            try {
+                const entries = await readdir(dirPath, { withFileTypes: true });
+                result.childCount = entries.filter(e => !shouldSkip(e.name)).length;
+            } catch {}
+            return result;
+        }
+
+        try {
+            const entries = await readdir(dirPath, { withFileTypes: true });
+
+            // Process in parallel for speed
+            const promises = entries
+                .filter(entry => !shouldSkip(entry.name))
+                .map(async (entry) => {
+                    const fullPath = path.join(dirPath, entry.name);
+                    const entryRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+                    if (entry.isDirectory()) {
+                        dirCount++;
+                        return scanDir(fullPath, entryRelativePath, depth + 1);
+                    } else if (entry.isFile()) {
+                        fileCount++;
+                        const stats = await stat(fullPath);
+                        const ext = path.extname(entry.name).toLowerCase();
+
+                        const fileResult: ScanResult = {
+                            path: fullPath,
+                            relativePath: entryRelativePath,
+                            name: entry.name,
+                            kind: 'file',
+                            size: stats.size,
+                            lastModified: stats.mtimeMs
+                        };
+
+                        // Optionally include file content for code analysis
+                        if (includeContent && contentExtensions.includes(ext) && stats.size < 100000) {
+                            try {
+                                (fileResult as any).content = await readFile(fullPath, 'utf-8');
+                            } catch {}
+                        }
+
+                        return fileResult;
+                    }
+                    return null;
+                });
+
+            const children = await Promise.all(promises);
+            result.children = children.filter(Boolean) as ScanResult[];
+            result.childCount = result.children.length;
+
+        } catch (err) {
+            console.error('Failed to scan dir:', dirPath, err);
+        }
+
+        return result;
+    };
+
+    try {
+        const tree = await scanDir(rootPath, '', 0);
+        const elapsed = Date.now() - startTime;
+
+        console.log(`[fs:scan-tree] Scanned ${fileCount} files, ${dirCount} dirs in ${elapsed}ms`);
+
+        return {
+            tree,
+            stats: {
+                fileCount,
+                dirCount,
+                elapsed
+            }
+        };
+    } catch (err) {
+        console.error('Failed to scan tree:', rootPath, err);
+        throw err;
+    }
+});
+
 // 3. Read File Content
 ipcMain.handle('fs:read-file', async (_, filePath: string) => {
     return await readFile(filePath, 'utf-8');

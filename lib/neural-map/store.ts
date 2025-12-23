@@ -251,6 +251,7 @@ interface NeuralMapActions {
 
   // Build graph from real files
   buildGraphFromFiles: () => void
+  buildGraphFromFilesAsync: () => Promise<void>
 
   // Reset layout
   resetLayout: () => void
@@ -1050,6 +1051,49 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             }
             state.expandedNodeIds = new Set(nodes.map((n) => n.id))
           }),
+
+        // Async version using Web Worker (non-blocking)
+        buildGraphFromFilesAsync: async () => {
+          const state = get()
+          const currentFiles = state.files
+          if (!currentFiles || currentFiles.length === 0) {
+            set((s) => {
+              s.graph = null
+            })
+            return
+          }
+
+          set((s) => {
+            s.isLoading = true
+          })
+
+          try {
+            // Dynamic import to avoid SSR issues
+            const { buildGraphAsync } = await import('./workers/useGraphWorker')
+            const result = await buildGraphAsync(currentFiles, state.themeId)
+
+            console.log(`[Worker] Graph built: ${result.stats.nodeCount} nodes, ${result.stats.edgeCount} edges in ${result.stats.elapsed}ms`)
+
+            set((s) => {
+              if (s.graph) {
+                s.graph.nodes = result.graph.nodes
+                s.graph.edges = result.graph.edges
+                s.graph.updatedAt = result.graph.updatedAt
+              } else {
+                s.graph = result.graph
+              }
+              s.expandedNodeIds = new Set(result.graph.nodes.map((n) => n.id))
+              s.isLoading = false
+            })
+          } catch (error) {
+            console.error('[Worker] Graph building failed:', error)
+            // Fallback to sync version
+            get().buildGraphFromFiles()
+            set((s) => {
+              s.isLoading = false
+            })
+          }
+        },
 
         // ========== Terminal ==========
         toggleTerminal: () =>

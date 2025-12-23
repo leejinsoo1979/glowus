@@ -88,12 +88,12 @@ export const LABEL_POLICY: LabelPolicy = {
 // ============================================
 
 export const NODE_THRESHOLDS = {
-  NORMAL: 500,          // 일반 렌더링
-  LARGE: 3000,          // InstancedMesh 적용
-  HUGE: 10000,          // 극한 최적화
-  INSTANCED: 500,       // InstancedMesh 사용 임계값
-  LOD_MEDIUM: 1000,     // 중간 LOD 임계값
-  LOD_LOW: 5000,        // 낮은 LOD 임계값
+  NORMAL: 100,          // 일반 렌더링 (낮춤 for performance)
+  LARGE: 1000,          // InstancedMesh 적용
+  HUGE: 5000,           // 극한 최적화
+  INSTANCED: 100,       // InstancedMesh 사용 임계값 (500→100)
+  LOD_MEDIUM: 200,      // 중간 LOD 임계값 (1000→200)
+  LOD_LOW: 2000,        // 낮은 LOD 임계값
 }
 
 // ============================================

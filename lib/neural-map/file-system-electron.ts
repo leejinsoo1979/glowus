@@ -6,10 +6,32 @@ import {
     FileSystemFileHandle
 } from '../../types/filesystem'
 
+// Batch scan result type (matches electron/main.ts)
+export interface ScanResult {
+    path: string;
+    relativePath: string;
+    name: string;
+    kind: 'file' | 'directory';
+    size?: number;
+    lastModified?: number;
+    content?: string;
+    children?: ScanResult[];
+    childCount?: number;
+}
+
+export interface ScanTreeResult {
+    tree: ScanResult;
+    stats: {
+        fileCount: number;
+        dirCount: number;
+        elapsed: number;
+    };
+}
+
 export class ElectronFileSystemProvider implements IFileSystemProvider {
 
     private projectHandle: FileSystemDirectoryHandle | null = null;
-    private fileHandleRegistry = new Map<string, any>(); // Not really needed for Electron but keeps interface happy
+    private fileHandleRegistry = new Map<string, any>();
 
     async selectDirectory(): Promise<FileSystemDirectoryHandle | null> {
         // @ts-ignore
@@ -31,20 +53,6 @@ export class ElectronFileSystemProvider implements IFileSystemProvider {
     }
 
     async writeFile(fileId: string, content: string): Promise<boolean> {
-        // fileId is expected to be the absolute path in Electron mode
-        // But the app uses generated IDs (e.g. `local-1234`).
-        // We need a mapping or we need the app to use paths as IDs.
-        // For now, in file-system-web.ts, fileId maps to a handle.
-        // Here, we can expect the caller to pass the PATH if we change the abstraction slightly.
-
-        // Wait, the interface says `writeFile(fileId, content)`.
-        // In Web, fileId -> Map -> Handle.
-        // In Electron, we need fileId -> Path.
-
-        // The FileTreePanel generates IDs. It also likely has the path.
-        // Currently FileTreePanel calls `FileSystemManager.writeFile(file.id, content)`.
-
-        // We need to store path in the registry for Electron then.
         const path = this.fileHandleRegistry.get(fileId);
         if (!path) throw new Error(`File path not found for ID: ${fileId}`);
 
@@ -53,12 +61,85 @@ export class ElectronFileSystemProvider implements IFileSystemProvider {
         return true;
     }
 
+    /**
+     * Batch scan entire directory tree in a single IPC call
+     * Much faster than recursive readDirectory calls
+     */
+    async scanTree(
+        dirHandle: FileSystemDirectoryHandle,
+        options: {
+            includeSystemFiles?: boolean;
+            maxDepth?: number;
+            includeContent?: boolean;
+            contentExtensions?: string[];
+        } = {}
+    ): Promise<ScanTreeResult> {
+        // @ts-ignore
+        const result = await window.electron.fs.scanTree((dirHandle as any).path, {
+            includeSystemFiles: options.includeSystemFiles ?? false,
+            maxDepth: options.maxDepth ?? Infinity,
+            includeContent: options.includeContent ?? true,
+            contentExtensions: options.contentExtensions ?? ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html']
+        });
+
+        return result as ScanTreeResult;
+    }
+
+    /**
+     * Convert scan tree to flat file list (for compatibility with existing code)
+     */
+    flattenTree(tree: ScanResult, projectName: string): File[] {
+        const files: File[] = [];
+
+        const traverse = (node: ScanResult) => {
+            if (node.kind === 'file') {
+                const fakeFile = {
+                    name: node.name,
+                    size: node.size || 0,
+                    lastModified: node.lastModified || Date.now(),
+                    type: '',
+                    webkitRelativePath: node.relativePath,
+                    path: node.relativePath, // Use relative path for graph building
+                    content: node.content || '',
+
+                    text: async () => {
+                        if (node.content) return node.content;
+                        // @ts-ignore
+                        return await window.electron.fs.readFile(node.path);
+                    },
+                    arrayBuffer: async () => {
+                        const content = node.content || await (fakeFile as any).text();
+                        return new TextEncoder().encode(content).buffer;
+                    },
+                    slice: () => new Blob([])
+                };
+
+                files.push(fakeFile as unknown as File);
+
+                // Register for write operations
+                this.fileHandleRegistry.set(node.relativePath, node.path);
+            }
+
+            if (node.children) {
+                for (const child of node.children) {
+                    traverse(child);
+                }
+            }
+        };
+
+        traverse(tree);
+        return files;
+    }
+
+    /**
+     * Legacy method - kept for backward compatibility
+     * Use scanTree() for better performance
+     */
     async readDirectory(
         dirHandle: FileSystemDirectoryHandle,
         path: string = '',
         options: ReadDirectoryOptions = {}
     ): Promise<DirectoryContent> {
-        // Use recursive helper to track relative paths
         const allFiles: File[] = [];
         const allHandles = new Map<string, FileSystemFileHandle>();
 
@@ -70,16 +151,14 @@ export class ElectronFileSystemProvider implements IFileSystemProvider {
                 const entryRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
 
                 if (entry.kind === 'file') {
-                    // Creates a more robust Fake File object
                     const fakeFile = {
                         name: entry.name,
                         size: entry.size,
                         lastModified: entry.lastModified,
-                        type: '', // Generic type
+                        type: '',
                         webkitRelativePath: entryRelativePath,
-                        path: entry.path, // Absolute path for internal Electron use
+                        path: entry.path,
 
-                        // FormData and fetch need these to work correctly
                         text: async () => {
                             // @ts-ignore
                             return await window.electron.fs.readFile(entry.path);
@@ -89,13 +168,9 @@ export class ElectronFileSystemProvider implements IFileSystemProvider {
                             const content = await window.electron.fs.readFile(entry.path);
                             return new TextEncoder().encode(content).buffer;
                         },
-                        slice: () => {
-                            // Minimal slice implementation
-                            return new Blob([]);
-                        }
+                        slice: () => new Blob([])
                     };
 
-                    // We treat this fake object as "File"
                     allFiles.push(fakeFile as unknown as File);
                     allHandles.set(entryRelativePath, entry.path as any);
 
