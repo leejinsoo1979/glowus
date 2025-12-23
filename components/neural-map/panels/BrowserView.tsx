@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, X, Globe, MousePointer2, Terminal, MoreHorizontal, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCw, X, Globe, MousePointer2, Terminal, MoreHorizontal, Plus, Eye, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
+import { AIViewfinder, useViewfinder } from '../viewfinder'
 
 export function BrowserView() {
     // 테마 설정
@@ -31,6 +32,19 @@ export function BrowserView() {
     const webviewRef = useRef<any>(null)
     // Webview Node 상태 (useEffect 의존성용)
     const [webviewNode, setWebviewNode] = useState<any>(null)
+
+    // 브라우저 컨테이너 ref (뷰파인더 bounds용)
+    const browserContainerRef = useRef<HTMLDivElement>(null)
+
+    // AI 뷰파인더 상태
+    const viewfinder = useViewfinder({
+        defaultActive: false,
+        initialBounds: { x: 50, y: 50, width: 400, height: 300 },
+        mode: 'manual'
+    })
+
+    // 분석 결과 표시용
+    const [showAnalysisPanel, setShowAnalysisPanel] = useState(false)
 
     // 탭 전환 핸들러
     const handleTabChange = (tabId: string) => {
@@ -240,13 +254,44 @@ export function BrowserView() {
                 </div>
 
                 <div className="flex items-center gap-1 border-l border-zinc-200 dark:border-zinc-800 pl-2 ml-1 electron-no-drag">
+                    {/* AI 뷰파인더 토글 */}
+                    <button
+                        onClick={viewfinder.toggle}
+                        className={cn(
+                            "p-1.5 rounded-md transition-colors",
+                            viewfinder.isActive
+                                ? "bg-blue-500/20 text-blue-500"
+                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                        )}
+                        title="AI Viewfinder"
+                    >
+                        <Eye className="w-3.5 h-3.5" />
+                    </button>
+                    {/* 분석 결과 패널 토글 */}
+                    {viewfinder.lastAnalysis && (
+                        <button
+                            onClick={() => setShowAnalysisPanel(!showAnalysisPanel)}
+                            className={cn(
+                                "p-1.5 rounded-md transition-colors relative",
+                                showAnalysisPanel
+                                    ? "bg-purple-500/20 text-purple-500"
+                                    : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                            )}
+                            title="분석 결과"
+                        >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            {viewfinder.isStreaming && (
+                                <span className="absolute top-0 right-0 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                            )}
+                        </button>
+                    )}
                     <button className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400" onClick={openDevTools} title="Inspect"><MousePointer2 className="w-3.5 h-3.5" /></button>
                     <button className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400" onClick={openDevTools} title="Terminal"><Terminal className="w-3.5 h-3.5" /></button>
                     <button className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"><MoreHorizontal className="w-3.5 h-3.5" /></button>
                 </div>
             </div>
 
-            <div className="flex-1 relative bg-white dark:bg-zinc-950 overflow-hidden">
+            <div ref={browserContainerRef} className="flex-1 relative bg-white dark:bg-zinc-950 overflow-hidden">
                 {/* @ts-ignore */}
                 <webview
                     ref={setWebviewRef}
@@ -263,6 +308,44 @@ export function BrowserView() {
                             <X className="w-6 h-6 text-red-500 mx-auto mb-4" />
                             <p className="text-sm text-zinc-500 mb-4">{error}</p>
                             <button onClick={reload} className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm">Try Again</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* AI 뷰파인더 */}
+                <AIViewfinder
+                    containerRef={browserContainerRef}
+                    isActive={viewfinder.isActive}
+                    onCapture={viewfinder.handleCapture}
+                    onAnalysis={viewfinder.handleAnalysis}
+                    onClose={viewfinder.close}
+                    initialBounds={viewfinder.bounds}
+                    mode="manual"
+                />
+
+                {/* 분석 결과 패널 */}
+                {showAnalysisPanel && viewfinder.lastAnalysis && (
+                    <div className="absolute bottom-4 right-4 w-80 max-h-64 bg-zinc-900/95 backdrop-blur rounded-lg shadow-2xl border border-zinc-700 overflow-hidden z-50">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700">
+                            <div className="flex items-center gap-2 text-white text-xs font-medium">
+                                <Eye className="w-3.5 h-3.5 text-blue-400" />
+                                AI 분석 결과
+                                {viewfinder.isStreaming && (
+                                    <span className="flex items-center gap-1 text-green-400">
+                                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                        스트리밍
+                                    </span>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setShowAnalysisPanel(false)}
+                                className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        <div className="p-3 text-xs text-zinc-300 overflow-y-auto max-h-48 whitespace-pre-wrap">
+                            {viewfinder.lastAnalysis}
                         </div>
                     </div>
                 )}
