@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
+import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { FileTreePanel } from '@/components/neural-map/panels/FileTreePanel'
 import {
     Files,
@@ -57,6 +58,7 @@ const dropdownMenuItems: MenuItem[] = [
 export function CursorStyleSidebar() {
     const { resolvedTheme } = useTheme()
     const isDark = resolvedTheme === 'dark'
+    const currentMapId = useNeuralMapStore(s => s.currentGraph?.id)
 
     const [activeItem, setActiveItem] = useState('explorer')
     const [showDropdown, setShowDropdown] = useState(false)
@@ -191,7 +193,7 @@ export function CursorStyleSidebar() {
             {/* 콘텐츠 영역 */}
             <div className="flex-1 overflow-auto min-h-0">
                 {activeItem === 'explorer' && (
-                    <FileTreePanel />
+                    <FileTreePanel mapId={currentMapId || ''} />
                 )}
 
                 {activeItem === 'search' && (

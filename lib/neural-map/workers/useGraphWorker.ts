@@ -1,6 +1,7 @@
 /**
  * Graph Worker Hook
  * Provides async graph building via Web Worker
+ * SSR-safe implementation
  */
 
 import { useCallback, useRef } from 'react'
@@ -22,8 +23,13 @@ export interface GraphWorkerError {
 
 let workerInstance: Worker | null = null
 
-function getWorker(): Worker {
-  if (!workerInstance && typeof window !== 'undefined') {
+function getWorker(): Worker | null {
+  // SSR guard
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  if (!workerInstance) {
     // Create worker with inline script URL
     const workerCode = `
       const generateId = () => 'node-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
@@ -289,7 +295,7 @@ function getWorker(): Worker {
     const url = URL.createObjectURL(blob)
     workerInstance = new Worker(url)
   }
-  return workerInstance!
+  return workerInstance
 }
 
 export function buildGraphAsync(
@@ -298,6 +304,12 @@ export function buildGraphAsync(
 ): Promise<GraphWorkerResult> {
   return new Promise((resolve, reject) => {
     const worker = getWorker()
+
+    // SSR fallback - reject so store falls back to sync version
+    if (!worker) {
+      reject(new Error('Worker not available (SSR)'))
+      return
+    }
 
     const handler = (e: MessageEvent) => {
       worker.removeEventListener('message', handler)
