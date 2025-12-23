@@ -24,43 +24,32 @@ interface AIMetric {
   icon?: typeof Zap
 }
 
+interface TaskStats {
+  total: number
+  completed: number
+  inProgress: number
+  overdue: number
+  aiGenerated: number
+}
+
 interface AICommandCenterProps {
   projectId: string
 }
 
 export function AICommandCenter({ projectId }: AICommandCenterProps) {
   const [metrics, setMetrics] = useState<AIMetric[]>([])
+  const [stats, setStats] = useState<TaskStats>({
+    total: 0,
+    completed: 0,
+    inProgress: 0,
+    overdue: 0,
+    aiGenerated: 0,
+  })
   const [pulseActive, setPulseActive] = useState(true)
+  const [lastSync, setLastSync] = useState<Date>(new Date())
 
   useEffect(() => {
-    // Sample metrics - replace with actual API
-    setMetrics([
-      {
-        id: "1",
-        type: "trigger",
-        title: "AI 트리거",
-        value: "오늘 5건 자동 연결",
-        status: "success",
-        icon: Zap,
-      },
-      {
-        id: "2",
-        type: "alert",
-        title: "AI 감시견",
-        value: "박개발 과부하!",
-        status: "warning",
-        icon: AlertTriangle,
-      },
-      {
-        id: "3",
-        type: "insight",
-        title: "AI 분석 인사이트",
-        value: "속도 20% 증가",
-        trend: "up",
-        status: "success",
-        icon: TrendingUp,
-      },
-    ])
+    fetchTaskData()
 
     // Pulse animation
     const interval = setInterval(() => {
@@ -69,6 +58,78 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
 
     return () => clearInterval(interval)
   }, [projectId])
+
+  const fetchTaskData = async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/tasks`)
+      if (!res.ok) return
+
+      const data = await res.json()
+      const tasks = data.tasks || []
+      const now = new Date()
+
+      // Calculate stats
+      const completed = tasks.filter((t: any) => t.status === "DONE").length
+      const inProgress = tasks.filter((t: any) => t.status === "IN_PROGRESS").length
+      const overdue = tasks.filter(
+        (t: any) => t.due_date && new Date(t.due_date) < now && t.status !== "DONE"
+      ).length
+      const aiGenerated = tasks.filter((t: any) => t.is_ai_generated || t.assignee_type === "agent").length
+
+      setStats({
+        total: tasks.length,
+        completed,
+        inProgress,
+        overdue,
+        aiGenerated,
+      })
+
+      // Generate dynamic metrics based on real data
+      const dynamicMetrics: AIMetric[] = [
+        {
+          id: "1",
+          type: "trigger",
+          title: "AI 트리거",
+          value: aiGenerated > 0 ? `${aiGenerated}건 AI 작업` : "대기 중",
+          status: aiGenerated > 0 ? "success" : "warning",
+          icon: Zap,
+        },
+        {
+          id: "2",
+          type: "alert",
+          title: "AI 감시견",
+          value: overdue > 0 ? `${overdue}건 지연!` : "정상 운영",
+          status: overdue > 0 ? "warning" : "success",
+          icon: AlertTriangle,
+        },
+        {
+          id: "3",
+          type: "insight",
+          title: "AI 분석 인사이트",
+          value: tasks.length > 0
+            ? `완료율 ${Math.round((completed / tasks.length) * 100)}%`
+            : "태스크 없음",
+          trend: completed > inProgress ? "up" : "stable",
+          status: "success",
+          icon: TrendingUp,
+        },
+      ]
+
+      setMetrics(dynamicMetrics)
+      setLastSync(new Date())
+    } catch (error) {
+      console.error("Task data fetch error:", error)
+    }
+  }
+
+  const formatLastSync = () => {
+    const diff = new Date().getTime() - lastSync.getTime()
+    const seconds = Math.floor(diff / 1000)
+    if (seconds < 60) return "방금 전"
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}분 전`
+    return `${Math.floor(minutes / 60)}시간 전`
+  }
 
   return (
     <motion.div
@@ -233,19 +294,19 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm text-zinc-400">완료 <span className="text-white font-semibold">12</span></span>
+              <span className="text-sm text-zinc-400">완료 <span className="text-white font-semibold">{stats.completed}</span></span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-400" />
-              <span className="text-sm text-zinc-400">진행중 <span className="text-white font-semibold">5</span></span>
+              <span className="text-sm text-zinc-400">진행중 <span className="text-white font-semibold">{stats.inProgress}</span></span>
             </div>
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-zinc-400">목표 <span className="text-white font-semibold">20</span></span>
+              <span className="text-sm text-zinc-400">전체 <span className="text-white font-semibold">{stats.total}</span></span>
             </div>
           </div>
           <div className="text-xs text-zinc-500">
-            마지막 동기화: <span className="text-zinc-400">방금 전</span>
+            마지막 동기화: <span className="text-zinc-400">{formatLastSync()}</span>
           </div>
         </div>
       </div>

@@ -63,19 +63,31 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
 
   const fetchData = async () => {
     try {
-      // Fetch tasks
-      const tasksRes = await fetch(`/api/projects/${projectId}/tasks`)
+      // Fetch tasks and project data in parallel
+      const [tasksRes, projectRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/tasks`),
+        fetch(`/api/projects/${projectId}`),
+      ])
+
       if (tasksRes.ok) {
         const tasksData = await tasksRes.json()
         setTasks(tasksData.tasks || [])
       }
 
-      // Sample team members - integrate with actual API
-      setMembers([
-        { id: "1", name: "디자이너", avatar_url: "", role: "이지은" },
-        { id: "2", name: "개발자", avatar_url: "", role: "박준우" },
-        { id: "3", name: "PM", avatar_url: "", role: "최현우" },
-      ])
+      // Get real team members from project data
+      if (projectRes.ok) {
+        const projectData = await projectRes.json()
+        const projectMembers = projectData.project_members || projectData.members || []
+
+        const realMembers: TeamMember[] = projectMembers.map((pm: any) => ({
+          id: pm.user_id || pm.user?.id || pm.id,
+          name: pm.user?.name || pm.name || "Unknown",
+          avatar_url: pm.user?.avatar_url || pm.avatar_url || "",
+          role: pm.role === "lead" ? "리드" : pm.user?.job_title || pm.role || "멤버",
+        }))
+
+        setMembers(realMembers)
+      }
     } catch (error) {
       console.error("Data fetch error:", error)
     } finally {
@@ -142,6 +154,19 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
             </thead>
 
             <tbody>
+              {/* Empty State */}
+              {members.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={statusColumns.length + 1} className="p-12 text-center">
+                    <div className="flex flex-col items-center gap-3 text-zinc-500">
+                      <Bot className="w-12 h-12 opacity-50" />
+                      <p>아직 팀원이 없습니다</p>
+                      <p className="text-xs text-zinc-600">프로젝트에 팀원을 추가해주세요</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
               {/* Team Member Rows */}
               {members.map((member, idx) => (
                 <motion.tr

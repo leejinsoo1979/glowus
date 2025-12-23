@@ -28,32 +28,82 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Sample logs - replace with actual API/WebSocket
-    const sampleLogs: LogEntry[] = [
-      { id: "1", timestamp: "17:25:33", message: "시스템 시작", type: "info" },
-      { id: "2", timestamp: "17:25:33", message: "디자이너 디자인", type: "success" },
-      { id: "3", timestamp: "17:25:38", message: "개발자 구현", type: "success" },
-      { id: "4", timestamp: "17:25:33", message: "배너 배너 디자인", type: "ai" },
-      { id: "5", timestamp: "17:25:33", message: "로그인 구현", type: "success" },
-      { id: "6", timestamp: "17:25:33", message: "기획서 v1.2", type: "info" },
-      { id: "7", timestamp: "17:25:33", message: "개발자 구현", type: "success" },
-      { id: "8", timestamp: "17:25:33", message: "배너 퍼블리싱", type: "ai" },
-    ]
-    setLogs(sampleLogs)
-
-    // Simulate real-time logs
-    const interval = setInterval(() => {
-      const newLog: LogEntry = {
-        id: Date.now().toString(),
-        timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
-        message: getRandomLogMessage(),
-        type: getRandomLogType(),
-      }
-      setLogs((prev) => [...prev.slice(-50), newLog])
-    }, 5000)
-
-    return () => clearInterval(interval)
+    fetchActivityLogs()
   }, [projectId])
+
+  const fetchActivityLogs = async () => {
+    try {
+      // Fetch tasks and documents to generate activity logs
+      const [tasksRes, docsRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/tasks`),
+        fetch(`/api/projects/${projectId}/documents`),
+      ])
+
+      const activityLogs: LogEntry[] = []
+
+      // Add system start log
+      activityLogs.push({
+        id: "system-start",
+        timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        message: "대시보드 연결됨",
+        type: "info",
+      })
+
+      if (tasksRes.ok) {
+        const tasksData = await tasksRes.json()
+        const tasks = tasksData.tasks || []
+
+        // Add recent task activities
+        tasks.slice(0, 5).forEach((task: any, idx: number) => {
+          activityLogs.push({
+            id: `task-${task.id || idx}`,
+            timestamp: task.updated_at
+              ? new Date(task.updated_at).toLocaleTimeString("ko-KR", { hour12: false })
+              : new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+            message: `태스크: ${task.title}`,
+            type: task.status === "DONE" ? "success" : task.assignee_type === "agent" ? "ai" : "info",
+          })
+        })
+      }
+
+      if (docsRes.ok) {
+        const docsData = await docsRes.json()
+        const docs = docsData.documents || []
+
+        // Add recent document activities
+        docs.slice(0, 3).forEach((doc: any, idx: number) => {
+          activityLogs.push({
+            id: `doc-${doc.id || idx}`,
+            timestamp: doc.updated_at
+              ? new Date(doc.updated_at).toLocaleTimeString("ko-KR", { hour12: false })
+              : new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+            message: `문서: ${doc.title}`,
+            type: "info",
+          })
+        })
+      }
+
+      // If no activities, show placeholder
+      if (activityLogs.length === 1) {
+        activityLogs.push({
+          id: "no-activity",
+          timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+          message: "아직 활동 기록이 없습니다",
+          type: "info",
+        })
+      }
+
+      setLogs(activityLogs)
+    } catch (error) {
+      console.error("Activity fetch error:", error)
+      setLogs([{
+        id: "error",
+        timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        message: "활동 로그 로드 실패",
+        type: "warning",
+      }])
+    }
+  }
 
   useEffect(() => {
     // Auto-scroll to bottom
@@ -61,22 +111,6 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
     }
   }, [logs])
-
-  const getRandomLogMessage = () => {
-    const messages = [
-      "태스크 상태 업데이트",
-      "AI 에이전트 활동 감지",
-      "새 커밋 연결됨",
-      "문서 자동 생성 완료",
-      "팀원 활동 기록",
-    ]
-    return messages[Math.floor(Math.random() * messages.length)]
-  }
-
-  const getRandomLogType = (): LogEntry["type"] => {
-    const types: LogEntry["type"][] = ["info", "success", "warning", "ai"]
-    return types[Math.floor(Math.random() * types.length)]
-  }
 
   const getLogColor = (type: LogEntry["type"]) => {
     switch (type) {
