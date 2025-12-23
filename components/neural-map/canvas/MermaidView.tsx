@@ -143,7 +143,7 @@ export function MermaidView({ className }: MermaidViewProps) {
   const [showCode, setShowCode] = useState(true)
   const [svgContent, setSvgContent] = useState<string>('')
   const [isRendering, setIsRendering] = useState(false)
-  const [autoMode, setAutoMode] = useState(false) // Start with manual mode
+  const [autoMode, setAutoMode] = useState(true) // Start with auto mode by default
   const [isLoading, setIsLoading] = useState(false)
   const [dataSource, setDataSource] = useState<string>('Template')
 
@@ -209,6 +209,13 @@ export function MermaidView({ className }: MermaidViewProps) {
   // Auto-generate diagram from project data
   const generateFromProject = useCallback(async () => {
     if (!autoMode || !mounted) return
+
+    console.log('[Mermaid] Generating diagram:', {
+      type: mermaidDiagramType,
+      projectPath,
+      autoMode,
+      hasElectron: !!window.electron
+    })
 
     setIsLoading(true)
     setError(null)
