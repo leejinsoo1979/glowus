@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react'
 import { Terminal as TerminalIcon, X, ChevronDown, Plus, Trash2, Maximize2, Minimize2, SplitSquareHorizontal } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
@@ -60,8 +60,12 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
   const updateTerminal = useNeuralMapStore(s => s.updateTerminal)
   const setTerminals = useNeuralMapStore(s => s.setTerminals)
 
-  // Initialize defaults if empty
+  // Track if initialization has been done
+  const isInitializedRef = useRef(false)
+
+  // Initialize defaults if empty (runs once)
   useEffect(() => {
+    if (isInitializedRef.current) return
     if (terminals.length === 0) {
       const initialId = '1'
       const initialGroupId = '1'
@@ -70,7 +74,8 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
       ])
       setActiveTerminal(initialId)
     }
-  }, []) // run once on mount
+    isInitializedRef.current = true
+  }, [terminals.length, setTerminals, setActiveTerminal])
 
   // Local derived state aliases for compatibility
   const activeTerminal = activeTerminalId || (terminals[0]?.id ?? '1')
@@ -363,25 +368,18 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
   }, [contextMenu])
 
   // 셸 정보 이벤트 리스너
+  // updateTerminal은 store 내부에서 ID 존재 여부를 체크하므로 별도 검증 불필요
   useEffect(() => {
     const handleShellInfo = (e: Event) => {
       const event = e as CustomEvent
       const { id, shell, cwd, pid } = event.detail
-
-      const terminal = terminals.find(t => t.id === id)
-      if (terminal) {
-        updateTerminal(id, { shell, cwd, pid })
-      }
+      updateTerminal(id, { shell, cwd, pid })
     }
 
     const handleCwdUpdate = (e: Event) => {
       const event = e as CustomEvent
       const { id, cwd } = event.detail
-
-      const terminal = terminals.find(t => t.id === id)
-      if (terminal) {
-        updateTerminal(id, { cwd })
-      }
+      updateTerminal(id, { cwd })
     }
 
     window.addEventListener('terminal-shell-info', handleShellInfo)
@@ -391,7 +389,7 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
       window.removeEventListener('terminal-shell-info', handleShellInfo)
       window.removeEventListener('terminal-cwd-update', handleCwdUpdate)
     }
-  }, [])
+  }, [updateTerminal])
 
   const toggleMaximize = () => {
     if (isMaximized) {
@@ -545,16 +543,14 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
     return elements
   }
 
-  // 최소화된 상태 - CSS로 숨김 처리 (RESTORATION)
-  // if (!isOpen) return null
-
-  // if (!isOpen) return null // Removed for persistence
-
+  // 터미널 상태 유지를 위해 DOM에서 제거하지 않고 CSS로 숨김 처리
+  // XTerm 컴포넌트가 언마운트되면 히스토리/상태가 사라지므로 hidden 클래스 사용
   return (
     <div
       ref={panelRef}
-      className={`terminal-panel flex flex-col bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 shrink-0 relative ${className}`}
+      className={`terminal-panel flex flex-col bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 shrink-0 relative ${className} ${!isOpen ? 'hidden' : ''}`}
       style={{ height: '100%', transition: 'none', animation: 'none', willChange: 'auto' }}
+      aria-hidden={!isOpen}
     >
       {/* 리사이즈 핸들 */}
       <div
