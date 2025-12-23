@@ -1,29 +1,32 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import cytoscape, { Core } from 'cytoscape'
 import dagre from 'cytoscape-dagre'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
-import { ZoomIn, ZoomOut, Maximize } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Loader2 } from 'lucide-react'
 
 if (typeof cytoscape !== 'undefined') {
   cytoscape.use(dagre)
 }
 
 interface ClassDiagramViewProps {
+  projectPath?: string
   className?: string
 }
 
-export default function ClassDiagramView({ className }: ClassDiagramViewProps) {
+export default function ClassDiagramView({ projectPath, className }: ClassDiagramViewProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const containerRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [classCount, setClassCount] = useState(0)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current || !projectPath) return
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -109,47 +112,72 @@ export default function ClassDiagramView({ className }: ClassDiagramViewProps) {
 
     cyRef.current = cy
 
-    // Example class diagram data
-    const classes = [
-      {
-        id: 'Animal',
-        label: 'Animal\n─────\n+name: string\n+age: number\n─────\n+makeSound()',
-        type: 'abstract',
-      },
-      {
-        id: 'Flyable',
-        label: 'Flyable\n─────\n+fly()',
-        type: 'interface',
-      },
-      {
-        id: 'Dog',
-        label: 'Dog\n─────\n+breed: string\n─────\n+bark()\n+fetch()',
-        type: 'class',
-      },
-      {
-        id: 'Bird',
-        label: 'Bird\n─────\n+wingspan: number\n─────\n+chirp()',
-        type: 'class',
-      },
-    ]
+    // Load real TypeScript classes
+    const loadClasses = async () => {
+      setIsLoading(true)
+      try {
+        if (window.electron?.fs?.scanTypes) {
+          const typesData = await window.electron.fs.scanTypes(projectPath, { extensions: ['.ts', '.tsx'] })
 
-    const relationships = [
-      { source: 'Dog', target: 'Animal', type: 'extends', label: 'extends' },
-      { source: 'Bird', target: 'Animal', type: 'extends', label: 'extends' },
-      { source: 'Bird', target: 'Flyable', type: 'implements', label: 'implements' },
-      { source: 'Dog', target: 'Bird', type: 'uses', label: 'chases' },
-    ]
+          if (typesData && Array.isArray(typesData)) {
+            const classes: any[] = []
+            const relationships: any[] = []
 
-    cy.add(classes.map(c => ({ data: c })))
-    cy.add(relationships.map(r => ({ data: r })))
+            typesData.slice(0, 20).forEach((item: any) => {
+              const { name, type, properties, methods, extends: extendsClass, implements: implementsInterfaces } = item
 
-    cy.layout({ name: 'dagre', rankDir: 'TB', padding: 50 } as any).run()
-    cy.fit(undefined, 50)
+              // Create class/interface node
+              let label = `${name}\n─────\n`
+              if (properties && properties.length > 0) {
+                label += properties.slice(0, 3).map((p: any) => `+${p.name}: ${p.type || 'any'}`).join('\n')
+                if (properties.length > 3) label += '\n...'
+              }
+              if (methods && methods.length > 0) {
+                label += '\n─────\n'
+                label += methods.slice(0, 3).map((m: any) => `+${m.name}()`).join('\n')
+                if (methods.length > 3) label += '\n...'
+              }
+
+              classes.push({
+                id: name,
+                label,
+                type: type === 'interface' ? 'interface' : type === 'abstract' ? 'abstract' : 'class',
+              })
+
+              // Add extends relationship
+              if (extendsClass) {
+                relationships.push({ source: name, target: extendsClass, type: 'extends', label: 'extends' })
+              }
+
+              // Add implements relationships
+              if (implementsInterfaces && Array.isArray(implementsInterfaces)) {
+                implementsInterfaces.forEach((impl: string) => {
+                  relationships.push({ source: name, target: impl, type: 'implements', label: 'implements' })
+                })
+              }
+            })
+
+            setClassCount(classes.length)
+            cy.add(classes.map(c => ({ data: c })))
+            cy.add(relationships.map(r => ({ data: r })))
+
+            cy.layout({ name: 'dagre', rankDir: 'TB', padding: 50 } as any).run()
+            cy.fit(undefined, 50)
+          }
+        }
+      } catch (error) {
+        console.error('[ClassDiagramView] Failed to load types:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadClasses()
 
     return () => {
       cy.destroy()
     }
-  }, [isDark])
+  }, [isDark, projectPath])
 
   const handleZoomIn = useCallback(() => {
     cyRef.current?.zoom(cyRef.current.zoom() * 1.2)
@@ -176,9 +204,12 @@ export default function ClassDiagramView({ className }: ClassDiagramViewProps) {
           <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
             Class Diagram
           </span>
-          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            Example: OOP Inheritance
-          </span>
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+          {!isLoading && classCount > 0 && (
+            <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+              {classCount} classes from your project
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

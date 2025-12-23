@@ -147,26 +147,53 @@ ${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
             setIsLoading(true)
 
             try {
-                // 프로젝트 컨텍스트 포함
-                const projectContext = getProjectContext()
-                const messagesWithContext = projectContext
-                    ? [
-                        { role: 'system', content: projectContext },
-                        ...useChatStore.getState().messages,
-                        { role: 'user', content: userInput }
-                      ]
-                    : [
-                        ...useChatStore.getState().messages,
-                        { role: 'user', content: userInput }
-                      ]
+                // Agent 모드: 도구 사용 가능한 에이전트 API
+                // 일반 모드: 기본 챗 API
+                const apiEndpoint = isAgentMode ? '/api/agent' : '/api/chat'
 
-                const response = await fetch('/api/chat', {
+                // 프로젝트 컨텍스트
+                const projectContext = getProjectContext()
+                const chatMessages = useChatStore.getState().messages.map(m => ({
+                    role: m.role,
+                    content: m.content
+                }))
+
+                const messagesWithContext = projectContext
+                    ? [{ role: 'system', content: projectContext }, ...chatMessages, { role: 'user', content: userInput }]
+                    : [...chatMessages, { role: 'user', content: userInput }]
+
+                // Agent 모드일 때 파일 컨텍스트 전달
+                const body: Record<string, unknown> = {
+                    messages: messagesWithContext,
+                    model: selectedModel
+                }
+
+                if (isAgentMode) {
+                    body.context = {
+                        files: files.map(f => ({
+                            id: f.id,
+                            name: f.name,
+                            path: f.path,
+                            content: f.content,
+                            type: f.type
+                        })),
+                        projectPath,
+                        graph: graph ? {
+                            title: graph.title,
+                            nodes: graph.nodes.map(n => ({
+                                id: n.id,
+                                type: n.type,
+                                title: n.title,
+                                sourceRef: n.sourceRef
+                            }))
+                        } : null
+                    }
+                }
+
+                const response = await fetch(apiEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        messages: messagesWithContext,
-                        model: selectedModel
-                    })
+                    body: JSON.stringify(body)
                 })
 
                 if (!response.ok) {
@@ -176,12 +203,19 @@ ${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
 
                 const data = await response.json()
 
+                // Agent 모드면 도구 호출 내역 포함
+                let content = data.content
+                if (isAgentMode && data.toolCalls?.length > 0) {
+                    content = `${data.content}\n\n---\n사용된 도구: ${data.toolCalls.join(', ')}`
+                }
+
                 addMessage({
                     id: Date.now().toString(),
                     role: 'assistant',
-                    content: data.content,
+                    content,
                     timestamp: Date.now(),
-                    model: selectedModel
+                    model: selectedModel,
+                    metadata: data.toolCalls ? { toolCalls: data.toolCalls } : undefined
                 })
             } catch (error: any) {
                 console.error('Chat error:', error)

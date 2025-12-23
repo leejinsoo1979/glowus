@@ -1,29 +1,32 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import cytoscape, { Core } from 'cytoscape'
 import dagre from 'cytoscape-dagre'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
-import { ZoomIn, ZoomOut, Maximize } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Loader2 } from 'lucide-react'
 
 if (typeof cytoscape !== 'undefined') {
   cytoscape.use(dagre)
 }
 
 interface ERDiagramViewProps {
+  projectPath?: string
   className?: string
 }
 
-export default function ERDiagramView({ className }: ERDiagramViewProps) {
+export default function ERDiagramView({ projectPath, className }: ERDiagramViewProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const containerRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [entityCount, setEntityCount] = useState(0)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current || !projectPath) return
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -74,38 +77,73 @@ export default function ERDiagramView({ className }: ERDiagramViewProps) {
 
     cyRef.current = cy
 
-    // Example ER diagram data
-    const entities = [
-      {
-        id: 'User',
-        label: 'User\n─────\nPK: id\n─────\nusername\nemail\npassword\ncreated_at',
-      },
-      {
-        id: 'Post',
-        label: 'Post\n─────\nPK: id\nFK: user_id\n─────\ntitle\ncontent\npublished',
-      },
-      {
-        id: 'Comment',
-        label: 'Comment\n─────\nPK: id\nFK: post_id\nFK: user_id\n─────\ntext\ncreated_at',
-      },
-    ]
+    // Load real database schema
+    const loadSchema = async () => {
+      setIsLoading(true)
+      try {
+        if (window.electron?.fs?.scanSchema) {
+          const schemaData = await window.electron.fs.scanSchema(projectPath)
 
-    const relationships = [
-      { source: 'User', target: 'Post', label: '1:N (creates)' },
-      { source: 'Post', target: 'Comment', label: '1:N (has)' },
-      { source: 'User', target: 'Comment', label: '1:N (writes)' },
-    ]
+          if (schemaData && Array.isArray(schemaData)) {
+            const entities: any[] = []
+            const relationships: any[] = []
 
-    cy.add(entities.map(e => ({ data: e })))
-    cy.add(relationships.map(r => ({ data: r })))
+            schemaData.slice(0, 15).forEach((entity: any) => {
+              const { name, fields, primaryKey, foreignKeys } = entity
 
-    cy.layout({ name: 'dagre', rankDir: 'LR', padding: 50 } as any).run()
-    cy.fit(undefined, 50)
+              // Build entity label
+              let label = `${name}\n─────\n`
+              if (primaryKey) {
+                label += `PK: ${Array.isArray(primaryKey) ? primaryKey.join(', ') : primaryKey}\n`
+              }
+              if (foreignKeys && foreignKeys.length > 0) {
+                foreignKeys.forEach((fk: any) => {
+                  label += `FK: ${fk.field}\n`
+                })
+              }
+              if (fields && fields.length > 0) {
+                label += '─────\n'
+                label += fields.slice(0, 5).map((f: any) => `${f.name}: ${f.type || 'any'}`).join('\n')
+                if (fields.length > 5) label += '\n...'
+              }
+
+              entities.push({ id: name, label })
+
+              // Add foreign key relationships
+              if (foreignKeys && foreignKeys.length > 0) {
+                foreignKeys.forEach((fk: any) => {
+                  if (fk.references) {
+                    relationships.push({
+                      source: name,
+                      target: fk.references,
+                      label: `${fk.cardinality || 'N:1'}`,
+                    })
+                  }
+                })
+              }
+            })
+
+            setEntityCount(entities.length)
+            cy.add(entities.map(e => ({ data: e })))
+            cy.add(relationships.map(r => ({ data: r })))
+
+            cy.layout({ name: 'dagre', rankDir: 'LR', padding: 50 } as any).run()
+            cy.fit(undefined, 50)
+          }
+        }
+      } catch (error) {
+        console.error('[ERDiagramView] Failed to load schema:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadSchema()
 
     return () => {
       cy.destroy()
     }
-  }, [isDark])
+  }, [isDark, projectPath])
 
   const handleZoomIn = useCallback(() => {
     cyRef.current?.zoom(cyRef.current.zoom() * 1.2)
@@ -131,9 +169,12 @@ export default function ERDiagramView({ className }: ERDiagramViewProps) {
           <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
             ER Diagram
           </span>
-          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            Example: Database Schema
-          </span>
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+          {!isLoading && entityCount > 0 && (
+            <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+              {entityCount} entities from your database
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

@@ -96,34 +96,88 @@ export default function StateDiagramView({ projectPath, className }: StateDiagra
 
     cyRef.current = cy
 
-    // Example state machine data
-    const states = [
-      { id: 'idle', label: 'Idle', type: 'initial' },
-      { id: 'loading', label: 'Loading', type: 'normal' },
-      { id: 'success', label: 'Success', type: 'normal' },
-      { id: 'error', label: 'Error', type: 'normal' },
-      { id: 'done', label: 'Done', type: 'final' },
-    ]
+    // Load real Zustand stores from project
+    const loadStores = async () => {
+      if (!projectPath) return
 
-    const transitions = [
-      { source: 'idle', target: 'loading', label: 'fetch()' },
-      { source: 'loading', target: 'success', label: 'success' },
-      { source: 'loading', target: 'error', label: 'failure' },
-      { source: 'success', target: 'done', label: 'complete' },
-      { source: 'error', target: 'loading', label: 'retry()' },
-      { source: 'error', target: 'idle', label: 'reset()' },
-    ]
+      setIsLoading(true)
+      try {
+        if (window.electron?.fs?.scanTree) {
+          // Scan for Zustand store files
+          const files = await window.electron.fs.scanTree(projectPath)
+          const storeFiles = files.filter((f: any) =>
+            (f.path.includes('/store') || f.path.includes('/stores')) &&
+            (f.path.endsWith('.ts') || f.path.endsWith('.tsx'))
+          )
 
-    cy.add(states.map(s => ({ data: { id: s.id, label: s.label, type: s.type } })))
-    cy.add(transitions.map(t => ({ data: { source: t.source, target: t.target, label: t.label } })))
+          if (storeFiles.length > 0) {
+            // For now, create a simple state machine from store file names
+            const states: any[] = []
+            const transitions: any[] = []
 
-    cy.layout({ name: 'dagre', rankDir: 'TB', padding: 50 } as any).run()
-    cy.fit(undefined, 50)
+            // Initial state
+            states.push({ id: 'idle', label: 'Idle', type: 'initial' })
+
+            // Add state for each store
+            storeFiles.slice(0, 8).forEach((file: any, i: number) => {
+              const storeName = file.path.split('/').pop()?.replace(/\.(ts|tsx)$/, '') || `store${i}`
+              states.push({
+                id: storeName,
+                label: storeName.replace('store', '').replace(/([A-Z])/g, ' $1').trim(),
+                type: 'normal'
+              })
+
+              // Add transition from idle to this store
+              transitions.push({
+                source: 'idle',
+                target: storeName,
+                label: 'activate'
+              })
+            })
+
+            // Final state
+            states.push({ id: 'complete', label: 'Complete', type: 'final' })
+
+            // Connect last store to final
+            if (storeFiles.length > 0) {
+              const lastStore = storeFiles.slice(0, 8)[storeFiles.slice(0, 8).length - 1]
+              const lastStoreName = lastStore.path.split('/').pop()?.replace(/\.(ts|tsx)$/, '') || 'store'
+              transitions.push({
+                source: lastStoreName,
+                target: 'complete',
+                label: 'finish'
+              })
+            }
+
+            cy.add(states.map(s => ({ data: { id: s.id, label: s.label, type: s.type } })))
+            cy.add(transitions.map(t => ({ data: { source: t.source, target: t.target, label: t.label } })))
+
+            cy.layout({ name: 'dagre', rankDir: 'TB', padding: 50 } as any).run()
+            cy.fit(undefined, 50)
+          } else {
+            // No stores found, show placeholder
+            const states = [{ id: 'no-stores', label: 'No Zustand stores found', type: 'initial' }]
+            cy.add(states.map(s => ({ data: { id: s.id, label: s.label, type: s.type } })))
+            cy.fit(undefined, 50)
+          }
+        }
+      } catch (error) {
+        console.error('[StateDiagramView] Failed to load stores:', error)
+        // Fallback: show error state
+        const states = [{ id: 'error', label: 'Failed to load stores', type: 'initial' }]
+        cy.add(states.map(s => ({ data: { id: s.id, label: s.label, type: s.type } })))
+        cy.fit(undefined, 50)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadStores()
 
     return () => {
       cy.destroy()
     }
-  }, [isDark])
+  }, [isDark, projectPath])
 
   const handleZoomIn = useCallback(() => {
     cyRef.current?.zoom(cyRef.current.zoom() * 1.2)
@@ -150,9 +204,12 @@ export default function StateDiagramView({ projectPath, className }: StateDiagra
           <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
             State Diagram
           </span>
-          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            Example: App State Machine
-          </span>
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+          {!isLoading && (
+            <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+              Zustand stores from your project
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

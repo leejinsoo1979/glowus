@@ -5,7 +5,7 @@ import * as d3 from 'd3'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
-import { ZoomIn, ZoomOut, Maximize } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Loader2 } from 'lucide-react'
 
 interface SequenceMessage {
   from: string
@@ -15,17 +15,20 @@ interface SequenceMessage {
 }
 
 interface SequenceDiagramViewProps {
+  projectPath?: string
   className?: string
 }
 
-export default function SequenceDiagramView({ className }: SequenceDiagramViewProps) {
+export default function SequenceDiagramView({ projectPath, className }: SequenceDiagramViewProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const svgRef = useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = useState(1)
+  const [isLoading, setIsLoading] = useState(false)
+  const [routeCount, setRouteCount] = useState(0)
 
   useEffect(() => {
-    if (!svgRef.current) return
+    if (!svgRef.current || !projectPath) return
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -33,16 +36,56 @@ export default function SequenceDiagramView({ className }: SequenceDiagramViewPr
     const width = svgRef.current.clientWidth
     const height = svgRef.current.clientHeight
 
-    // Example data
-    const actors = ['User', 'Client', 'Server', 'Database']
-    const messages: SequenceMessage[] = [
-      { from: 'User', to: 'Client', message: 'click button', type: 'sync' },
-      { from: 'Client', to: 'Server', message: 'POST /api/data', type: 'async' },
-      { from: 'Server', to: 'Database', message: 'SELECT *', type: 'sync' },
-      { from: 'Database', to: 'Server', message: 'rows[]', type: 'return' },
-      { from: 'Server', to: 'Client', message: '{ data }', type: 'return' },
-      { from: 'Client', to: 'User', message: 'render UI', type: 'sync' },
-    ]
+    // Load real API routes and convert to sequence diagram
+    const loadAPIRoutes = async () => {
+      setIsLoading(true)
+      try {
+        if (window.electron?.fs?.scanApiRoutes) {
+          const routesData = await window.electron.fs.scanApiRoutes(projectPath)
+
+          if (routesData && Array.isArray(routesData)) {
+            setRouteCount(routesData.length)
+
+            // Convert API routes to sequence diagram format
+            const actors = ['Client', 'API', 'Database', 'Service']
+            const messages: SequenceMessage[] = []
+
+            routesData.slice(0, 10).forEach((route: any, i: number) => {
+              const { method, path } = route
+              messages.push({ from: 'Client', to: 'API', message: `${method} ${path}`, type: 'async' })
+              messages.push({ from: 'API', to: 'Database', message: 'Query', type: 'sync' })
+              messages.push({ from: 'Database', to: 'API', message: 'Result', type: 'return' })
+              messages.push({ from: 'API', to: 'Client', message: 'Response', type: 'return' })
+            })
+
+            drawSequenceDiagram(svg, width, height, isDark, actors, messages)
+          }
+        }
+      } catch (error) {
+        console.error('[SequenceDiagramView] Failed to load API routes:', error)
+        // Fallback to example
+        const actors = ['Client', 'Server']
+        const messages: SequenceMessage[] = [
+          { from: 'Client', to: 'Server', message: 'No routes found', type: 'sync' },
+        ]
+        drawSequenceDiagram(svg, width, height, isDark, actors, messages)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadAPIRoutes()
+  }, [isDark, projectPath])
+
+  // Helper function to draw sequence diagram
+  const drawSequenceDiagram = (
+    svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+    width: number,
+    height: number,
+    isDark: boolean,
+    actors: string[],
+    messages: SequenceMessage[]
+  ) => {
 
     const actorWidth = 120
     const actorHeight = 50
@@ -161,8 +204,7 @@ export default function SequenceDiagramView({ className }: SequenceDiagramViewPr
       })
 
     svg.call(zoomBehavior as any)
-
-  }, [isDark])
+  }
 
   const handleZoomIn = () => {
     const svg = d3.select(svgRef.current!)
@@ -192,9 +234,12 @@ export default function SequenceDiagramView({ className }: SequenceDiagramViewPr
           <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
             Sequence Diagram
           </span>
-          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            Example: API Call Flow
-          </span>
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+          {!isLoading && routeCount > 0 && (
+            <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+              {routeCount} API routes from your project
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
