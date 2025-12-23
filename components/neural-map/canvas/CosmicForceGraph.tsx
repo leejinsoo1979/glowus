@@ -336,7 +336,9 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
   // Convert graph data to force-graph format
   // PERFORMANCE: Limit max visible nodes to prevent lag
-  const MAX_VISIBLE_NODES = 500
+  // This only affects 3D visualization - all files are still accessible via file tree/search
+  // With LOD (folders collapsed by default), this limit is rarely hit
+  const MAX_VISIBLE_NODES = 2000
 
   const convertToGraphData = useCallback(() => {
     if (!graph) return { nodes: [], links: [] }

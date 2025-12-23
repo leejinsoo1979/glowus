@@ -1049,7 +1049,13 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             } else {
               state.graph = graphData
             }
-            state.expandedNodeIds = new Set(nodes.map((n) => n.id))
+            // PERFORMANCE: Only expand root and first-level folders by default
+            // Users can click to expand deeper levels (rootNode already defined above)
+            const firstLevelFolders = nodes.filter((n) => n.type === 'folder' && n.parentId === rootNode.id)
+            state.expandedNodeIds = new Set([
+              rootNode.id,
+              ...firstLevelFolders.map((n) => n.id)
+            ])
           }),
 
         // Async version using Web Worker (non-blocking)
@@ -1082,7 +1088,13 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               } else {
                 s.graph = result.graph
               }
-              s.expandedNodeIds = new Set(result.graph.nodes.map((n) => n.id))
+              // PERFORMANCE: Only expand root and first-level folders by default
+              const rootNode = result.graph.nodes.find((n) => n.type === 'self')
+              const firstLevelFolders = result.graph.nodes.filter((n) => n.type === 'folder' && n.parentId === rootNode?.id)
+              s.expandedNodeIds = new Set([
+                rootNode?.id,
+                ...firstLevelFolders.map((n) => n.id)
+              ].filter(Boolean) as string[])
               s.isLoading = false
             })
           } catch (error) {
