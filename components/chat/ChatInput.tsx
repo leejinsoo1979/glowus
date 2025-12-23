@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect } from 'react'
 import { useChatStore } from '@/stores/chatStore'
+import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { getModelList, type ChatModelId } from '@/lib/ai/models'
 import {
     Globe,
@@ -26,7 +27,92 @@ const MODELS = getModelList()
 
 export function ChatInput() {
     const { input, setInput, selectedModel, setSelectedModel, isAgentMode, toggleAgentMode, addMessage, setIsLoading } = useChatStore()
+    const { projectPath, files, graph, selectedNodeIds, codePreviewFile, activeTab } = useNeuralMapStore()
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+    // 프로젝트 컨텍스트 생성 - 실제 분석 데이터 포함
+    const getProjectContext = () => {
+        if (!projectPath && files.length === 0) return null
+
+        const projectName = graph?.title || projectPath?.split('/').pop() || '프로젝트'
+        const sections: string[] = []
+
+        // 1. 프로젝트 기본 정보
+        const pkgJson = files.find(f => f.name === 'package.json')
+        let projectType = '알 수 없음'
+        let dependencies: string[] = []
+
+        if (pkgJson?.content) {
+            try {
+                const pkg = JSON.parse(pkgJson.content)
+                const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+                dependencies = Object.keys(deps).slice(0, 20)
+
+                if (deps['next']) projectType = 'Next.js 앱'
+                else if (deps['react']) projectType = 'React 앱'
+                else if (deps['vue']) projectType = 'Vue 앱'
+                else if (deps['express']) projectType = 'Express 서버'
+                else if (deps['electron']) projectType = 'Electron 앱'
+                else if (pkg.type === 'module') projectType = 'ES Module 프로젝트'
+
+                sections.push(`프로젝트: ${pkg.name || projectName} (${projectType})
+설명: ${pkg.description || '없음'}
+주요 의존성: ${dependencies.join(', ')}`)
+            } catch {}
+        }
+
+        // 2. 폴더 구조 분석
+        const folderCounts: Record<string, number> = {}
+        files.forEach(f => {
+            const parts = (f.path || f.name).split('/')
+            if (parts.length > 1) {
+                const folder = parts[0]
+                folderCounts[folder] = (folderCounts[folder] || 0) + 1
+            }
+        })
+        const topFolders = Object.entries(folderCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([name, count]) => `${name}/ (${count})`)
+
+        if (topFolders.length > 0) {
+            sections.push(`폴더 구조: ${topFolders.join(', ')}`)
+        }
+
+        // 3. 현재 선택된 파일 (가장 중요)
+        if (codePreviewFile?.content) {
+            const content = codePreviewFile.content.slice(0, 4000)
+            sections.push(`[현재 보고 있는 파일: ${codePreviewFile.path || codePreviewFile.name}]
+\`\`\`
+${content}${codePreviewFile.content.length > 4000 ? '\n... (생략)' : ''}
+\`\`\``)
+        } else if (selectedNodeIds.length > 0 && graph) {
+            // 선택된 노드의 파일 찾기
+            const selectedNode = graph.nodes.find(n => n.id === selectedNodeIds[0])
+            if (selectedNode?.sourceRef?.fileId) {
+                const selectedFile = files.find(f => f.id === selectedNode.sourceRef?.fileId)
+                if (selectedFile?.content) {
+                    const content = selectedFile.content.slice(0, 4000)
+                    sections.push(`[현재 선택된 파일: ${selectedFile.path || selectedFile.name}]
+\`\`\`
+${content}${selectedFile.content.length > 4000 ? '\n... (생략)' : ''}
+\`\`\``)
+                }
+            }
+        }
+
+        // 4. README 내용 (프로젝트 설명)
+        const readme = files.find(f => f.name.toLowerCase() === 'readme.md')
+        if (readme?.content && !codePreviewFile) {
+            sections.push(`[README.md 요약]
+${readme.content.slice(0, 1500)}${readme.content.length > 1500 ? '...' : ''}`)
+        }
+
+        // 5. 현재 뷰 상태
+        sections.push(`현재 화면: ${activeTab === 'map' ? '파일 맵' : activeTab === 'logic' ? '로직 플로우' : activeTab === 'mermaid' ? '다이어그램' : activeTab}`)
+
+        return sections.join('\n\n')
+    }
 
     // Auto-resize textarea
     useEffect(() => {
@@ -44,28 +130,41 @@ export function ChatInput() {
             e.preventDefault()
             if (!input.trim()) return
 
+            // Save input and clear immediately
+            const userInput = input.trim()
+            setInput('')
+
             // Add user message
             addMessage({
                 id: Date.now().toString(),
                 role: 'user',
-                content: input,
+                content: userInput,
                 timestamp: Date.now(),
                 model: selectedModel
             })
 
-            // Mock response removed
             // Real API integration
             setIsLoading(true)
 
             try {
+                // 프로젝트 컨텍스트 포함
+                const projectContext = getProjectContext()
+                const messagesWithContext = projectContext
+                    ? [
+                        { role: 'system', content: projectContext },
+                        ...useChatStore.getState().messages,
+                        { role: 'user', content: userInput }
+                      ]
+                    : [
+                        ...useChatStore.getState().messages,
+                        { role: 'user', content: userInput }
+                      ]
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        messages: [
-                            ...useChatStore.getState().messages,
-                            { role: 'user', content: input }
-                        ],
+                        messages: messagesWithContext,
                         model: selectedModel
                     })
                 })
@@ -96,8 +195,6 @@ export function ChatInput() {
             } finally {
                 setIsLoading(false)
             }
-
-            setInput('')
         }
     }
 
@@ -106,14 +203,14 @@ export function ChatInput() {
     return (
         <div className="relative bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm transition-all duration-200">
             {/* Context & Input Area */}
-            <div className="p-3">
+            <div className="px-3 pt-2 pb-1">
                 <textarea
                     ref={textareaRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Plan, @ for context, / for commands"
-                    className="no-focus-ring w-full bg-transparent border-none outline-none resize-none text-sm leading-relaxed text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 min-h-[40px] max-h-[200px]"
+                    placeholder="메시지를 입력하세요..."
+                    className="no-focus-ring w-full bg-transparent border-none outline-none resize-none text-sm leading-snug text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 min-h-[24px] max-h-[150px]"
                     rows={1}
                 />
             </div>

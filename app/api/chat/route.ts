@@ -150,11 +150,20 @@ export async function POST(request: NextRequest) {
 
     const apiModel = getApiModelId(model)
 
-    // System prompt 중복 방지: 기존에 system이 없을 때만 추가
-    const hasSystemPrompt = messages.some((m: ChatMessage) => m.role === 'system')
-    const finalMessages: ChatMessage[] = hasSystemPrompt
-      ? messages
-      : [{ role: 'system', content: SYSTEM_PROMPTS.coding }, ...messages]
+    // 시스템 프롬프트 처리: 기본 프롬프트 + 프로젝트 컨텍스트 병합
+    const systemMessages = messages.filter((m: ChatMessage) => m.role === 'system')
+    const nonSystemMessages = messages.filter((m: ChatMessage) => m.role !== 'system')
+
+    // 기본 시스템 프롬프트 + 프로젝트 컨텍스트 합치기
+    const combinedSystemPrompt = [
+      SYSTEM_PROMPTS.coding,
+      ...systemMessages.map(m => m.content)
+    ].join('\n\n')
+
+    const finalMessages: ChatMessage[] = [
+      { role: 'system', content: combinedSystemPrompt },
+      ...nonSystemMessages
+    ]
 
     // Route to provider
     let content: string

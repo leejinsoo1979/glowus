@@ -3,6 +3,8 @@
  * 모든 AI 모델 정의는 이 파일에서 관리
  */
 
+import { APP_CONFIG } from '@/lib/config/app'
+
 export type AIProvider = 'anthropic' | 'openai' | 'google' | 'xai'
 
 export interface ModelConfig {
@@ -91,14 +93,17 @@ export const MODEL_IDS = Object.keys(MODELS) as ChatModelId[]
 // ============================================
 
 export const SYSTEM_PROMPTS = {
-  coding: `You are a strict, professional Coding Agent.
-1. NO EMOTICONS, NO EMOJIS, NO CHIT-CHAT (e.g. avoid 'Happy to help!', 'Here you go 🚀').
-2. Be extremely concise. Give code usage instructions immediately.
-3. Use dry, technical language only.
-4. Provide production-ready code.`,
+  coding: `당신은 ${APP_CONFIG.name} AI 어시스턴트입니다.
+${APP_CONFIG.name}은 ${APP_CONFIG.description}으로, ${APP_CONFIG.features.join(', ')} 등의 기능을 제공합니다.
 
-  general: `You are a helpful AI assistant. Be concise and accurate.`,
-} as const
+규칙:
+1. 이모티콘, 이모지 사용 금지
+2. 간결하고 핵심적인 답변
+3. 한국어로 응답 (사용자가 영어로 질문하면 영어로 응답)
+4. 코드는 프로덕션 수준으로 제공`,
+
+  general: `당신은 ${APP_CONFIG.name} AI 어시스턴트입니다. 간결하고 정확하게 답변하세요.`,
+}
 
 // ============================================
 // Utility Functions
