@@ -3694,17 +3694,42 @@ export default function AgentProfilePage() {
 
   // End voice call
   const endVoiceCall = () => {
+    console.log('[VoiceCall] Ending voice call...')
+
+    // WebSocket 종료
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
     }
+
+    // 마이크 중지
     stopMicrophone()
+
+    // 오디오 큐 비우기
     audioQueueRef.current = []
     isPlayingRef.current = false
+
+    // 진행 중인 오디오 재생 중지
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.stop()
+      } catch (e) {
+        // 이미 중지됨
+      }
+      sourceNodeRef.current = null
+    }
+
+    // 상태 초기화
+    setIsAgentSpeaking(false)
+    isAgentSpeakingRef.current = false
+    voiceTranscriptRef.current = ''
+
     setIsVoiceCallActive(false)
     setVoiceCallActive(false)  // 🔥 알림 팝업 TTS 재활성화
     setIsVoiceConnecting(false)
     setIsListening(false)
+
+    console.log('[VoiceCall] Voice call ended completely')
   }
 
   // Play preview audio chunk
@@ -4770,13 +4795,8 @@ export default function AgentProfilePage() {
                 setActiveTab('chat')
                 // 🔥 통화 중이면 종료, 아니면 시작
                 if (isVoiceCallActive) {
-                  // 통화 종료
-                  if (wsRef.current) {
-                    wsRef.current.close()
-                  }
-                  stopMicrophone()
-                  setIsVoiceCallActive(false)
-                  setVoiceCallActive(false)  // 🔥 알림 팝업 TTS 재활성화
+                  // 통화 종료 - endVoiceCall() 사용으로 완전한 정리
+                  endVoiceCall()
                 } else if (!isVoiceConnecting) {
                   // 통화 시작
                   startVoiceCall()
