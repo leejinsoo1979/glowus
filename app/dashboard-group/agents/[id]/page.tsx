@@ -144,9 +144,9 @@ const CONVERSATION_STYLES = [
 
 // VAD 감도 옵션 (threshold 낮을수록 작은 소리도 감지)
 const VAD_SENSITIVITY_OPTIONS = [
-  { id: 'low', name: '낮음', threshold: 0.5, description: '조용한 환경에서 사용' },
-  { id: 'medium', name: '보통', threshold: 0.3, description: '일반적인 환경에서 사용' },
-  { id: 'high', name: '높음', threshold: 0.15, description: '작은 목소리도 감지' },
+  { id: 'low', name: '낮음', threshold: 0.4, description: '조용한 환경에서 사용' },
+  { id: 'medium', name: '보통', threshold: 0.2, description: '일반적인 환경에서 사용' },
+  { id: 'high', name: '높음', threshold: 0.1, description: '작은 목소리도 감지' },
 ] as const
 
 // 8섹션 프롬프트 정의
@@ -3343,11 +3343,23 @@ export default function AgentProfilePage() {
       case 'response.done':
         // AI finished responding - add transcript to chat
         setIsAgentSpeaking(false)
-        // 🔥 재생 끝난 후 딜레이 주고 마이크 재개 (에코 방지)
+        // 🔥 오디오 재생 완전히 끝날 때까지 대기 후 마이크 재개 (에코 방지)
+        // isPlayingRef도 체크하므로 오디오 큐가 빌 때까지 마이크 차단됨
         setTimeout(() => {
-          isAgentSpeakingRef.current = false
-          console.log('[VoiceEvent] 🎤 Agent stopped speaking, mic resumed')
-        }, 800)  // 800ms 딜레이로 잔향 차단
+          // 오디오 재생 끝날 때까지 추가 대기
+          const waitForAudio = () => {
+            if (isPlayingRef.current) {
+              setTimeout(waitForAudio, 200)
+            } else {
+              // 잔향 방지 추가 딜레이
+              setTimeout(() => {
+                isAgentSpeakingRef.current = false
+                console.log('[VoiceEvent] 🎤 Agent stopped speaking, mic resumed')
+              }, 500)
+            }
+          }
+          waitForAudio()
+        }, 300)
 
         // 🔥 response.done에서 직접 transcript 추출 시도 (xAI format)
         let finalTranscript = voiceTranscriptRef.current.trim()
@@ -3517,9 +3529,9 @@ export default function AgentProfilePage() {
       const processor = ctx.createScriptProcessor(4096, 1, 1)
 
       processor.onaudioprocess = (e) => {
-        // 🔥 에이전트가 말하는 중이면 마이크 입력 차단 (에코 방지)
-        // isAgentSpeakingRef 사용 (서버 이벤트 기반, 더 안정적)
-        if (isMuted || isAgentSpeakingRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+        // 🔥 에이전트가 말하는 중 OR 오디오 재생 중이면 마이크 입력 차단 (에코 방지)
+        // isAgentSpeakingRef (서버 이벤트) + isPlayingRef (실제 재생) 둘 다 체크
+        if (isMuted || isAgentSpeakingRef.current || isPlayingRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
 
         const inputData = e.inputBuffer.getChannelData(0)
         const pcm16 = new Int16Array(inputData.length)

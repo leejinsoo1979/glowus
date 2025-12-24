@@ -1,7 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Grok Voice API - TTS 엔드포인트
-// WebSocket 기반 실시간 API를 HTTP로 래핑
+// WebSocket 연결 풀 (재사용)
+let cachedWs: any = null
+let wsReady = false
+let currentVoice = ''
+
+function getWebSocket(apiKey: string, voice: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+        // 기존 연결이 있고 준비됐으면 재사용
+        if (cachedWs && wsReady && cachedWs.readyState === 1 && currentVoice === voice) {
+            resolve(cachedWs)
+            return
+        }
+
+        // 기존 연결 정리
+        if (cachedWs) {
+            try { cachedWs.close() } catch (e) {}
+            cachedWs = null
+            wsReady = false
+        }
+
+        const WebSocket = require('ws')
+        const ws = new WebSocket('wss://api.x.ai/v1/realtime', {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        })
+
+        ws.on('open', () => {
+            console.log('[Grok] Connected')
+        })
+
+        ws.on('message', (data: Buffer) => {
+            try {
+                const msg = JSON.parse(data.toString())
+                if (msg.type === 'conversation.created') {
+                    ws.send(JSON.stringify({
+                        type: 'session.update',
+                        session: {
+                            voice: voice,
+                            modalities: ['text', 'audio'],
+                            output_audio_format: 'pcm16',
+                            turn_detection: null,
+                        }
+                    }))
+                }
+                if (msg.type === 'session.updated') {
+                    wsReady = true
+                    currentVoice = voice
+                    cachedWs = ws
+                    resolve(ws)
+                }
+                if (msg.type === 'error') {
+                    reject(new Error(msg.error?.message || 'Connection error'))
+                }
+            } catch (e) {}
+        })
+
+        ws.on('error', (e: Error) => {
+            wsReady = false
+            cachedWs = null
+            reject(e)
+        })
+
+        ws.on('close', () => {
+            wsReady = false
+            cachedWs = null
+        })
+
+        setTimeout(() => {
+            if (!wsReady) {
+                ws.close()
+                reject(new Error('Connection timeout'))
+            }
+        }, 5000)
+    })
+}
+
 export async function POST(req: NextRequest) {
     try {
         const { text, voice = 'Eve' } = await req.json()
@@ -15,135 +88,67 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'XAI API key not configured' }, { status: 500 })
         }
 
-        console.log('[Grok TTS] Starting with text:', text.substring(0, 50))
+        const startTime = Date.now()
+        const ws = await getWebSocket(XAI_API_KEY, voice)
+        console.log('[Grok] Connection ready in', Date.now() - startTime, 'ms')
 
         const audioChunks: Buffer[] = []
 
         await new Promise<void>((resolve, reject) => {
-            const WebSocket = require('ws')
-
-            const ws = new WebSocket('wss://api.x.ai/v1/realtime', {
-                headers: {
-                    'Authorization': `Bearer ${XAI_API_KEY}`,
-                }
-            })
-
-            let configured = false
-
-            ws.on('open', () => {
-                console.log('[Grok TTS] WebSocket connected')
-            })
-
-            ws.on('message', (data: Buffer) => {
+            const messageHandler = (data: Buffer) => {
                 try {
-                    const message = JSON.parse(data.toString())
-                    console.log('[Grok TTS] Received:', message.type)
+                    const msg = JSON.parse(data.toString())
 
-                    // conversation.created 이벤트 시 세션 설정
-                    if (message.type === 'conversation.created' && !configured) {
-                        configured = true
-                        console.log('[Grok TTS] Configuring session...')
-
-                        // 세션 업데이트
-                        ws.send(JSON.stringify({
-                            type: 'session.update',
-                            session: {
-                                voice: voice,
-                                modalities: ['text', 'audio'],
-                                input_audio_format: 'pcm16',
-                                output_audio_format: 'pcm16',
-                                turn_detection: null,
-                            }
-                        }))
+                    if (msg.type === 'response.output_audio.delta') {
+                        audioChunks.push(Buffer.from(msg.delta, 'base64'))
                     }
 
-                    // 세션 업데이트 완료 후 텍스트 전송
-                    if (message.type === 'session.updated') {
-                        console.log('[Grok TTS] Session updated, sending text...')
-
-                        // 사용자 메시지로 텍스트 전송
-                        ws.send(JSON.stringify({
-                            type: 'conversation.item.create',
-                            item: {
-                                type: 'message',
-                                role: 'user',
-                                content: [{
-                                    type: 'input_text',
-                                    text: text
-                                }]
-                            }
-                        }))
-
-                        // 응답 생성 요청
-                        setTimeout(() => {
-                            console.log('[Grok TTS] Requesting response...')
-                            ws.send(JSON.stringify({
-                                type: 'response.create',
-                                response: {
-                                    modalities: ['audio', 'text']
-                                }
-                            }))
-                        }, 50)
-                    }
-
-                    // 오디오 델타 수신 (Grok은 response.output_audio.delta 사용)
-                    if (message.type === 'response.output_audio.delta') {
-                        const audioData = Buffer.from(message.delta, 'base64')
-                        audioChunks.push(audioData)
-                        if (audioChunks.length === 1) {
-                            console.log('[Grok TTS] First audio chunk received')
-                        }
-                    }
-
-                    // 응답 완료
-                    if (message.type === 'response.done') {
-                        console.log('[Grok TTS] Response done, chunks:', audioChunks.length)
-                        ws.close()
+                    if (msg.type === 'response.done') {
+                        ws.removeListener('message', messageHandler)
+                        console.log('[Grok] Audio received in', Date.now() - startTime, 'ms')
                         resolve()
                     }
 
-                    // 에러 처리
-                    if (message.type === 'error') {
-                        console.error('[Grok TTS] Error:', message.error)
-                        ws.close()
-                        reject(new Error(message.error?.message || 'Grok Voice API error'))
+                    if (msg.type === 'error') {
+                        ws.removeListener('message', messageHandler)
+                        reject(new Error(msg.error?.message))
                     }
-                } catch (e) {
-                    console.error('[Grok TTS] Parse error:', e)
+                } catch (e) {}
+            }
+
+            ws.on('message', messageHandler)
+
+            // 텍스트 전송 및 응답 요청을 동시에
+            ws.send(JSON.stringify({
+                type: 'conversation.item.create',
+                item: {
+                    type: 'message',
+                    role: 'user',
+                    content: [{ type: 'input_text', text }]
                 }
-            })
+            }))
 
-            ws.on('error', (error: Error) => {
-                console.error('[Grok TTS] WebSocket Error:', error.message)
-                reject(error)
-            })
+            ws.send(JSON.stringify({
+                type: 'response.create',
+                response: { modalities: ['audio'] }
+            }))
 
-            ws.on('close', (code: number) => {
-                console.log('[Grok TTS] Closed with code:', code)
-                if (audioChunks.length === 0 && configured) {
-                    reject(new Error('No audio received'))
-                }
-            })
-
-            // 20초 타임아웃
             setTimeout(() => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    console.log('[Grok TTS] Timeout')
-                    ws.close()
+                ws.removeListener('message', messageHandler)
+                if (audioChunks.length === 0) {
                     reject(new Error('Timeout'))
                 }
-            }, 20000)
+            }, 15000)
         })
 
         if (audioChunks.length === 0) {
-            return NextResponse.json({ error: 'No audio generated' }, { status: 500 })
+            return NextResponse.json({ error: 'No audio' }, { status: 500 })
         }
 
-        // PCM을 WAV로 변환
         const pcmBuffer = Buffer.concat(audioChunks)
-        console.log('[Grok TTS] Total PCM size:', pcmBuffer.length)
-
         const wavBuffer = pcmToWav(pcmBuffer, 24000, 1, 16)
+
+        console.log('[Grok] Total time:', Date.now() - startTime, 'ms')
 
         return new NextResponse(wavBuffer, {
             headers: {
@@ -152,26 +157,22 @@ export async function POST(req: NextRequest) {
             },
         })
     } catch (error: any) {
-        console.error('[Grok Voice API Error]:', error.message)
-        return NextResponse.json(
-            { error: error.message || 'Internal Server Error' },
-            { status: 500 }
-        )
+        console.error('[Grok Error]:', error.message)
+        // 에러 시 연결 초기화
+        cachedWs = null
+        wsReady = false
+        return NextResponse.json({ error: error.message }, { status: 500 })
     }
 }
 
-// PCM을 WAV로 변환하는 헬퍼 함수
 function pcmToWav(pcmData: Buffer, sampleRate: number, numChannels: number, bitsPerSample: number): Buffer {
     const byteRate = sampleRate * numChannels * bitsPerSample / 8
     const blockAlign = numChannels * bitsPerSample / 8
     const dataSize = pcmData.length
-    const headerSize = 44
-    const totalSize = headerSize + dataSize
-
-    const buffer = Buffer.alloc(totalSize)
+    const buffer = Buffer.alloc(44 + dataSize)
 
     buffer.write('RIFF', 0)
-    buffer.writeUInt32LE(totalSize - 8, 4)
+    buffer.writeUInt32LE(36 + dataSize, 4)
     buffer.write('WAVE', 8)
     buffer.write('fmt ', 12)
     buffer.writeUInt32LE(16, 16)
