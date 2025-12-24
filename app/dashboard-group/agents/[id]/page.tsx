@@ -142,11 +142,11 @@ const CONVERSATION_STYLES = [
   { id: 'concise', name: '간결함', description: '핵심만 전달하는 짧고 명확한 대화' },
 ] as const
 
-// VAD 감도 옵션
+// VAD 감도 옵션 (threshold 낮을수록 작은 소리도 감지)
 const VAD_SENSITIVITY_OPTIONS = [
-  { id: 'low', name: '낮음', threshold: 0.7, description: '조용한 환경에서 사용' },
-  { id: 'medium', name: '보통', threshold: 0.5, description: '일반적인 환경에서 사용' },
-  { id: 'high', name: '높음', threshold: 0.3, description: '시끄러운 환경에서 사용' },
+  { id: 'low', name: '낮음', threshold: 0.5, description: '조용한 환경에서 사용' },
+  { id: 'medium', name: '보통', threshold: 0.3, description: '일반적인 환경에서 사용' },
+  { id: 'high', name: '높음', threshold: 0.15, description: '작은 목소리도 감지' },
 ] as const
 
 // 8섹션 프롬프트 정의
