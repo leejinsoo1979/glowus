@@ -25,25 +25,24 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
 
   return (
     <>
-      {/* 배경 오버레이 */}
+      {/* 배경 오버레이 + 중앙 정렬 컨테이너 */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center"
         onClick={() => dismissNotification(notification.id)}
         style={{ zIndex: 100 + index }}
-      />
-
-      {/* 팝업 카드 */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.8, y: 20 }}
-        transition={{ type: "spring", damping: 25, stiffness: 400 }}
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[360px]"
-        style={{ zIndex: 101 + index }}
       >
+        {/* 팝업 카드 */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.8, y: 20 }}
+          transition={{ type: "spring", damping: 25, stiffness: 400 }}
+          className="w-[360px]"
+          onClick={(e) => e.stopPropagation()}
+        >
         {/* 메인 카드 */}
         <div
           className="relative bg-gradient-to-b from-zinc-900 to-zinc-950 rounded-3xl overflow-hidden"
@@ -197,6 +196,7 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
             />
           </div>
         </div>
+        </motion.div>
       </motion.div>
     </>
   )
