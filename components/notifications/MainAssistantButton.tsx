@@ -61,9 +61,9 @@ export function MainAssistantButton() {
     if (!assistantInfo) return
 
     const greetings = [
-      "안녕하세요! 오늘 하루도 화이팅이에요! 무엇을 도와드릴까요?",
-      "반가워요! 좋은 하루 보내고 계신가요?",
-      "안녕하세요! 무엇이든 물어보세요~",
+      "네~ 대표님",
+      "대표님 부르셨어요?",
+      "네 무슨일이세요 대표님?",
     ]
     const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]
 

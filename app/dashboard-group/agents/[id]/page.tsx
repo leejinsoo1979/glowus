@@ -77,6 +77,7 @@ import { AgentOSPanel } from '@/components/agent/AgentOSPanel'
 import { BrainMapLayout } from '@/components/brain-map/BrainMapLayout'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import { GrokVoiceChat } from '@/components/voice/GrokVoiceChat'
+import { useAgentNotification } from '@/lib/contexts/AgentNotificationContext'
 
 type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'brainmap' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
 
@@ -2085,6 +2086,7 @@ export default function AgentProfilePage() {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
   const { accentColor: accentColorId } = useThemeStore()
+  const { setVoiceCallActive } = useAgentNotification()  // 🔥 알림 TTS 제어용
   const [mounted, setMounted] = useState(false)
   const agentId = params.id as string
 
@@ -3649,25 +3651,14 @@ export default function AgentProfilePage() {
         }))
 
         setIsVoiceCallActive(true)
+        setVoiceCallActive(true)  // 🔥 알림 팝업 TTS 비활성화
         setIsVoiceConnecting(false)
 
-        // 🔥 에이전트가 먼저 인사하도록 설정
-        // 인사 트리거 없이 바로 응답 생성 요청 (instructions에 인사 지시 포함됨)
+        // 🔥 인사 강제 안 함 - 사용자가 먼저 말하면 에이전트가 자연스럽게 응답
+        // 바로 마이크 시작
         setTimeout(() => {
-          console.log('[VoiceCall] Requesting agent greeting (no trigger message)...')
-          // 🔥 response.create만 호출 - instructions에 "통화 시작 시 먼저 인사" 지시가 있어야 함
-          ws.send(JSON.stringify({
-            type: 'response.create',
-            response: {
-              modalities: ['text', 'audio'],
-              // instructions override for greeting (xAI 지원 시)
-              instructions: '통화가 방금 연결되었습니다. 사용자에게 자연스럽게 먼저 인사해주세요. 짧고 친근하게.'
-            }
-          }))
-          // 인사 후 마이크 시작
-          setTimeout(() => {
-            startMicrophone()
-          }, 500)
+          console.log('[VoiceCall] Starting microphone, waiting for user to speak...')
+          startMicrophone()
         }, 300)
       }
 
@@ -3688,6 +3679,7 @@ export default function AgentProfilePage() {
       ws.onclose = () => {
         console.log('Voice WebSocket closed')
         setIsVoiceCallActive(false)
+        setVoiceCallActive(false)  // 🔥 알림 팝업 TTS 재활성화
         setIsVoiceConnecting(false)
         stopMicrophone()
       }
@@ -3710,6 +3702,7 @@ export default function AgentProfilePage() {
     audioQueueRef.current = []
     isPlayingRef.current = false
     setIsVoiceCallActive(false)
+    setVoiceCallActive(false)  // 🔥 알림 팝업 TTS 재활성화
     setIsVoiceConnecting(false)
     setIsListening(false)
   }
@@ -4783,6 +4776,7 @@ export default function AgentProfilePage() {
                   }
                   stopMicrophone()
                   setIsVoiceCallActive(false)
+                  setVoiceCallActive(false)  // 🔥 알림 팝업 TTS 재활성화
                 } else if (!isVoiceConnecting) {
                   // 통화 시작
                   startVoiceCall()

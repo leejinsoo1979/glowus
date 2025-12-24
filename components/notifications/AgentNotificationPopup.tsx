@@ -68,7 +68,7 @@ const typeIcons = {
 }
 
 function NotificationItem({ notification, index }: { notification: AgentNotification; index: number }) {
-  const { dismissNotification, showAgentNotification } = useAgentNotification()
+  const { dismissNotification, showAgentNotification, isVoiceCallActive } = useAgentNotification()
   const { accentColor: themeAccent } = useThemeStore()
   const { agent, message, type, emotion } = notification
 
@@ -260,7 +260,7 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
 
       ws.onopen = () => {
         const voiceSettings = agent.voice_settings || {}
-        const selectedVoice = voiceSettings.voice || "sol"
+        const selectedVoice = voiceSettings.voice || "tara"
         const conversationStyle = voiceSettings.conversation_style || "friendly"
 
         const toneMap: Record<string, string> = {
@@ -406,6 +406,12 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
 
   // TTS로 메시지 읽기 (모드에 따라 분기)
   const speakMessage = useCallback(async (text: string) => {
+    // 🔥 음성통화 중이면 알림 TTS 비활성화 (중복 음성 방지)
+    if (isVoiceCallActive) {
+      console.log("[TTS] Voice call active, skipping notification TTS")
+      return
+    }
+
     // 이모지 제거
     const cleanText = removeEmojis(text)
     console.log("[TTS] speakMessage called with:", cleanText, "mode:", ttsMode, "isSpeaking:", isSpeaking)
@@ -428,7 +434,7 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
     } else {
       await speakGrok(cleanText)
     }
-  }, [isSpeaking, ttsMode, speakNative, speakGrok])
+  }, [isSpeaking, ttsMode, speakNative, speakGrok, isVoiceCallActive])
 
   // speakMessage를 ref에 저장
   useEffect(() => {

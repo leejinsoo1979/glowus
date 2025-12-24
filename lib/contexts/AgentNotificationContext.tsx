@@ -78,6 +78,9 @@ interface AgentNotificationContextType {
   ) => string
   dismissNotification: (id: string) => void
   clearAllNotifications: () => void
+  // 🔥 음성통화 상태 - 통화 중일 때 알림 TTS 비활성화
+  isVoiceCallActive: boolean
+  setVoiceCallActive: (active: boolean) => void
 }
 
 const AgentNotificationContext = createContext<AgentNotificationContextType | null>(null)
@@ -96,6 +99,7 @@ const agentColors: Record<string, string> = {
 
 export function AgentNotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AgentNotification[]>([])
+  const [isVoiceCallActive, setVoiceCallActive] = useState(false)  // 🔥 음성통화 상태
   const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   const dismissNotification = useCallback((id: string) => {
@@ -180,6 +184,8 @@ export function AgentNotificationProvider({ children }: { children: React.ReactN
         showAgentNotification,
         dismissNotification,
         clearAllNotifications,
+        isVoiceCallActive,
+        setVoiceCallActive,
       }}
     >
       {children}
