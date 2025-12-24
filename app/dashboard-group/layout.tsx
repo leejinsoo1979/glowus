@@ -7,6 +7,9 @@ import { TwoLevelSidebar } from '@/components/nav/TwoLevelSidebar'
 import { CommitModal } from '@/components/commits/CommitModal'
 import { GlobalAgentSidebar } from '@/components/nav/GlobalAgentSidebar'
 import { ElectronHeader } from '@/components/nav/ElectronHeader'
+import { AgentNotificationProvider } from '@/lib/contexts/AgentNotificationContext'
+import { AgentNotificationPopup } from '@/components/notifications/AgentNotificationPopup'
+import { AgentNotificationDemo } from '@/components/notifications/AgentNotificationDemo'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { createClient } from '@/lib/supabase/client'
@@ -162,12 +165,15 @@ export default function DashboardLayout({
   const isDashboardRoot = pathname === '/dashboard-group'
 
   return (
-    <div className={cn("h-screen overflow-hidden", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
-      {isElectron ? <ElectronHeader /> : <Header />}
-      <TwoLevelSidebar />
-      <CommitModal />
-      <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />
-      <main
+    <AgentNotificationProvider>
+      <div className={cn("h-screen overflow-hidden", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
+        {isElectron ? <ElectronHeader /> : <Header />}
+        <TwoLevelSidebar />
+        <CommitModal />
+        <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />
+        <AgentNotificationPopup />
+        <AgentNotificationDemo />
+        <main
         className={cn(
           (isFullWidthPage || isElectron) ? "flex flex-col" : "pt-16",
           // Fix for resizing instability: block pointer events on main content (iframe/webview) when resizing sidebar
@@ -186,7 +192,8 @@ export default function DashboardLayout({
         )}>
           {children}
         </div>
-      </main>
-    </div>
+        </main>
+      </div>
+    </AgentNotificationProvider>
   )
 }
