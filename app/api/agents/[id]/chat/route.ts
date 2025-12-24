@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
 import { generateAgentChatResponse } from '@/lib/langchain/agent-chat'
+import { generateSuperAgentResponse, SuperAgentMessage } from '@/lib/ai/super-agent-chat'
 import {
   loadAgentWorkContext,
   formatContextForPrompt,
@@ -13,34 +14,69 @@ import {
 } from '@/lib/agent/work-memory'
 import { getLLMConfigForAgent } from '@/lib/llm/user-keys'
 
-// 인텐트 감지 함수
-type ActionType = 'project_create' | 'task_create' | 'general'
-
-function detectIntent(message: string): { actionType: ActionType; extractedData: any } {
-  // 프로젝트 생성 인텐트 감지
-  const projectCreatePatterns = [
-    /프로젝트\s*(를|을)?\s*(만들|생성|추가|새로)/,
-    /새\s*(로운|)?\s*프로젝트/,
-    /프로젝트\s*하나\s*(만들|생성)/,
+// 슈퍼에이전트 모드 감지 (도구 사용이 필요한 요청)
+function shouldUseSuperAgent(message: string, capabilities: string[] = []): boolean {
+  // 도구 사용이 필요한 패턴들
+  const toolPatterns = [
+    // 프로젝트 관련
+    /프로젝트\s*(를|을)?\s*(만들|생성|추가|새로)/i,
+    /새\s*(로운|)?\s*프로젝트/i,
     /create\s*project/i,
     /new\s*project/i,
+    // 파일 관련
+    /파일\s*(을|를)?\s*(읽|만들|생성|수정|작성)/i,
+    /read\s*file/i,
+    /write\s*file/i,
+    /edit\s*file/i,
+    /create\s*file/i,
+    // 터미널 관련
+    /터미널/i,
+    /명령어\s*(실행|수행)/i,
+    /npm\s*(install|run|build)/i,
+    /git\s*(clone|pull|push|commit)/i,
+    /run\s*(command|terminal)/i,
+    // 태스크 관련
+    /태스크\s*(를|을)?\s*(만들|생성|추가)/i,
+    /할\s*일\s*(추가|생성)/i,
+    /create\s*task/i,
+    /add\s*task/i,
+    // 검색 관련
+    /검색해\s*(줘|줘요|주세요)/i,
+    /찾아\s*(줘|줘요|주세요)/i,
+    /web\s*search/i,
+    /search\s*(for|the)/i,
+    // 코드 작성 요청
+    /코드\s*(짜|작성|만들)/i,
+    /구현해\s*(줘|주세요)/i,
+    /개발해\s*(줘|주세요)/i,
+    /만들어\s*(줘|주세요)/i,
   ]
 
-  for (const pattern of projectCreatePatterns) {
+  // 패턴 매칭
+  for (const pattern of toolPatterns) {
     if (pattern.test(message)) {
-      // 프로젝트명 추출 시도
-      const nameMatch = message.match(/["']([^"']+)["']/) ||
-                        message.match(/프로젝트\s*(?:이름은?|명은?)?\s*(.+?)(?:로|으로|라고|$)/)
-      return {
-        actionType: 'project_create',
-        extractedData: {
-          suggestedName: nameMatch?.[1]?.trim() || null
-        }
+      return true
+    }
+  }
+
+  // 개발 관련 capability가 있으면 슈퍼에이전트 모드
+  const devCapabilities = ['development', 'coding', 'programming', '개발', '코딩']
+  if (capabilities.some(cap => devCapabilities.some(dc => cap.toLowerCase().includes(dc)))) {
+    // 개발자 에이전트는 코드 관련 질문에 도구 사용
+    const codePatterns = [
+      /버그|에러|오류|error/i,
+      /리팩토링|refactor/i,
+      /최적화|optimize/i,
+      /테스트|test/i,
+    ]
+    for (const pattern of codePatterns) {
+      if (pattern.test(message)) {
+        return true
       }
     }
   }
 
-  return { actionType: 'general', extractedData: null }
+  return false
 }
 
 // POST: 에이전트와 1:1 대화 (프로필 페이지용 간단한 채팅)
@@ -95,35 +131,9 @@ export async function POST(
       return NextResponse.json({ error: '에이전트를 찾을 수 없습니다' }, { status: 404 })
     }
 
-    // 프로젝트 생성 인텐트 감지 시 컨펌 폼 반환
-    if (actionType === 'project_create') {
-      const confirmMessage = extractedData?.suggestedName
-        ? `"${extractedData.suggestedName}" 프로젝트를 생성할까요?\n\n아래 세부사항을 입력해주시면 바로 생성해드릴게요!`
-        : `프로젝트를 생성해드릴게요!\n\n아래 세부사항을 입력해주시면 바로 생성해드릴게요.`
-
-      return NextResponse.json({
-        response: confirmMessage,
-        action_type: 'project_create',
-        requires_confirmation: true,
-        input_fields: [
-          { name: 'name', label: '프로젝트 이름', type: 'text', required: true, placeholder: '예: 신규 마케팅 캠페인' },
-          { name: 'description', label: '설명', type: 'textarea', required: false, placeholder: '프로젝트에 대한 간단한 설명' },
-          { name: 'priority', label: '우선순위', type: 'select', required: false, options: [
-            { value: 'low', label: '낮음' },
-            { value: 'medium', label: '보통' },
-            { value: 'high', label: '높음' },
-            { value: 'urgent', label: '긴급' }
-          ]},
-          { name: 'deadline', label: '마감일', type: 'date', required: false }
-        ],
-        extracted_data: extractedData,
-        agent: {
-          id: agent.id,
-          name: agent.name,
-          avatar_url: agent.avatar_url
-        }
-      })
-    }
+    // 🔥 슈퍼에이전트 모드 확인 (Tool Calling 사용)
+    const useSuperAgent = body.superAgentMode === true ||
+                          shouldUseSuperAgent(message, agent.capabilities || [])
 
     // 에이전트 정체성 조회
     const { data: identity } = await (adminClient as any)
@@ -235,31 +245,67 @@ export async function POST(
 
     // 에이전트 응답 생성 (타임아웃 처리)
     let response: string
+    let actions: any[] = []
+    let toolsUsed: string[] = []
+
     try {
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('LLM 응답 시간 초과 (30초)')), 30000)
+        setTimeout(() => reject(new Error('LLM 응답 시간 초과 (60초)')), 60000)
       })
 
-      const responsePromise = generateAgentChatResponse(
-        { ...agent, identity, apiKey: userApiKey },
-        message,
-        chatHistory,
-        {
-          roomName: '1:1 대화',
-          roomType: 'direct',
-          participantNames: [userProfile?.name || user.email?.split('@')[0] || '사용자'],
-          userName: userProfile?.name || user.email?.split('@')[0] || '사용자',
-          userRole: userProfile?.job_title,
-          workContext: workContextPrompt, // 업무 맥락 주입
-        },
-        validImages // 이미지 전달
-      )
+      const userName = userProfile?.name || user.email?.split('@')[0] || '사용자'
 
-      response = await Promise.race([responsePromise, timeoutPromise])
+      // 🔥 슈퍼에이전트 모드: Tool Calling 사용
+      if (useSuperAgent) {
+        console.log('[AgentChat] 🚀 Using Super Agent mode with Tool Calling')
+
+        // 채팅 히스토리를 SuperAgentMessage 형식으로 변환
+        const superAgentHistory: SuperAgentMessage[] = chatHistory.map(msg => ({
+          role: msg.role === 'human' ? 'user' : 'assistant',
+          content: msg.content,
+        }))
+
+        const superAgentResponsePromise = generateSuperAgentResponse(
+          { ...agent, identity, apiKey: userApiKey },
+          message,
+          superAgentHistory,
+          {
+            projectPath: body.projectPath || null,
+            userName,
+            userRole: userProfile?.job_title,
+            workContext: workContextPrompt,
+          }
+        )
+
+        const superAgentResult = await Promise.race([superAgentResponsePromise, timeoutPromise])
+        response = superAgentResult.message
+        actions = superAgentResult.actions
+        toolsUsed = superAgentResult.toolsUsed
+
+        console.log(`[AgentChat] 🔧 Tools used: ${toolsUsed.join(', ') || 'none'}`)
+        console.log(`[AgentChat] 📋 Actions: ${actions.length}`)
+      } else {
+        // 일반 채팅 모드
+        const responsePromise = generateAgentChatResponse(
+          { ...agent, identity, apiKey: userApiKey },
+          message,
+          chatHistory,
+          {
+            roomName: '1:1 대화',
+            roomType: 'direct',
+            participantNames: [userName],
+            userName,
+            userRole: userProfile?.job_title,
+            workContext: workContextPrompt,
+          },
+          validImages
+        )
+
+        response = await Promise.race([responsePromise, timeoutPromise])
+      }
     } catch (llmError: any) {
       console.error('LLM Error:', llmError)
-      // LLM 오류 시 친근한 fallback 응답
-      response = `죄송해요, 지금 잠시 생각이 안 나네요 😅 (${llmError.message || 'LLM 연결 실패'})`
+      response = `죄송해요, 지금 잠시 생각이 안 나네요. (${llmError.message || 'LLM 연결 실패'})`
     }
 
     // NOTE: 메시지 저장은 프론트엔드가 /api/agents/[id]/history API로 처리
@@ -297,7 +343,13 @@ export async function POST(
       topicDomain: 'general',
     }).catch(err => console.error('[AgentOS] Process error:', err))
 
-    return NextResponse.json({ response })
+    // 🔥 슈퍼에이전트 응답: 액션 포함
+    return NextResponse.json({
+      response,
+      actions: actions.length > 0 ? actions : undefined,
+      toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+      superAgentMode: useSuperAgent,
+    })
   } catch (error) {
     console.error('Agent chat error:', error)
     return NextResponse.json(
