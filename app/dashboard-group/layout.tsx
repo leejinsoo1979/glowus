@@ -9,7 +9,7 @@ import { GlobalAgentSidebar } from '@/components/nav/GlobalAgentSidebar'
 import { ElectronHeader } from '@/components/nav/ElectronHeader'
 import { AgentNotificationProvider } from '@/lib/contexts/AgentNotificationContext'
 import { AgentNotificationPopup } from '@/components/notifications/AgentNotificationPopup'
-import { AgentNotificationDemo } from '@/components/notifications/AgentNotificationDemo'
+import { MainAssistantButton } from '@/components/notifications/MainAssistantButton'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { createClient } from '@/lib/supabase/client'
@@ -166,13 +166,13 @@ export default function DashboardLayout({
 
   return (
     <AgentNotificationProvider>
-      <div className={cn("h-screen overflow-hidden", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
+      <div className={cn("h-screen flex flex-col", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
         {isElectron ? <ElectronHeader /> : <Header />}
         <TwoLevelSidebar />
         <CommitModal />
         <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />
         <AgentNotificationPopup />
-        <AgentNotificationDemo />
+        <MainAssistantButton />
         <main
         className={cn(
           (isFullWidthPage || isElectron) ? "flex flex-col" : "pt-16",
@@ -188,7 +188,7 @@ export default function DashboardLayout({
         }}
       >
         <div className={cn(
-          isFullWidthPage ? "flex-1 overflow-hidden" : "p-8"
+          isFullWidthPage ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto p-8"
         )}>
           {children}
         </div>

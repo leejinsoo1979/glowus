@@ -120,7 +120,7 @@ export async function POST(
         user_id: agent_id ? null : user.id,
         agent_id: agent_id || null,
         metadata: metadata || {},
-      })
+      } as any)
       .select(`
         id,
         type,

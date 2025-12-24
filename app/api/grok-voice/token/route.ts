@@ -35,7 +35,11 @@ export async function POST() {
     }
 
     const data = await response.json()
-    return NextResponse.json(data)
+    // xAI returns token in 'value' field, map to 'client_secret' for client compatibility
+    return NextResponse.json({
+      client_secret: data.value || data.client_secret,
+      expires_at: data.expires_at,
+    })
   } catch (error: any) {
     console.error('[GrokVoice] Token error:', error)
     return NextResponse.json(

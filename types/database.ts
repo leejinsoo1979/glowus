@@ -446,6 +446,13 @@ export interface DeployedAgent {
   chain_config: ChainConfig | null
   chain_order: number
 
+  // Voice settings (음성 설정)
+  voice_settings: {
+    voice: string
+    conversation_style: string
+    vad_sensitivity: string
+  } | null
+
   created_at: string
   updated_at: string
 }
@@ -907,6 +914,43 @@ export interface CreateProjectDocumentInput {
   tags?: string[]
   metadata?: Record<string, any>
   status?: ProjectDocumentStatus
+}
+
+// ============================================
+// Project Activities
+// ============================================
+
+export type ProjectActivityType =
+  | 'task_created'
+  | 'task_completed'
+  | 'task_assigned'
+  | 'comment_added'
+  | 'document_created'
+  | 'document_updated'
+  | 'status_changed'
+  | 'member_added'
+  | 'member_removed'
+  | 'agent_executed'
+  | 'file_added'
+  | 'file_removed'
+  | 'milestone_reached'
+  | 'custom'
+
+export interface ProjectActivity {
+  id: string
+  project_id: string
+  type: ProjectActivityType | string
+  title: string
+  description: string | null
+  user_id: string | null
+  agent_id: string | null
+  metadata: Record<string, any>
+  created_at: string
+}
+
+export interface ProjectActivityWithRelations extends ProjectActivity {
+  user?: User | null
+  agent?: DeployedAgent | null
 }
 
 // ============================================
@@ -1915,6 +1959,51 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "agent_knowledge_base_agent_id_fkey"
+            columns: ["agent_id"]
+            referencedRelation: "deployed_agents"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      project_activities: {
+        Row: ProjectActivity
+        Insert: {
+          id?: string
+          project_id: string
+          type: ProjectActivityType | string
+          title: string
+          description?: string | null
+          user_id?: string | null
+          agent_id?: string | null
+          metadata?: Record<string, any>
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          type?: ProjectActivityType | string
+          title?: string
+          description?: string | null
+          user_id?: string | null
+          agent_id?: string | null
+          metadata?: Record<string, any>
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_activities_project_id_fkey"
+            columns: ["project_id"]
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_activities_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_activities_agent_id_fkey"
             columns: ["agent_id"]
             referencedRelation: "deployed_agents"
             referencedColumns: ["id"]

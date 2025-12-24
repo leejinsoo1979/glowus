@@ -36,12 +36,19 @@ function playNotificationSound() {
   }
 }
 
+export interface AgentVoiceSettings {
+  voice?: "sol" | "tara" | "cove" | "puck" | "charon" | "vale"
+  conversation_style?: "professional" | "friendly" | "casual" | "empathetic" | "concise"
+  vad_sensitivity?: "low" | "medium" | "high"
+}
+
 export interface AgentInfo {
   id: string
   name: string
   avatar_url?: string | null
   emotion_avatars?: Record<string, string> | null
   accentColor?: string
+  voice_settings?: AgentVoiceSettings
 }
 
 export interface AgentNotification {

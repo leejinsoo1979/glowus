@@ -224,6 +224,8 @@ export async function PATCH(
       'prompt_sections',
       // 직무/직함
       'job_title',
+      // 음성 설정 (JSONB)
+      'voice_settings',
     ]
 
     const updates: Record<string, unknown> = {}

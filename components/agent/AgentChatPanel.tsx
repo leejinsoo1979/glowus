@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Bot, User, ArrowRight, Loader2, Users, Plus, ChevronDown, ClipboardList, CheckCircle, XCircle } from 'lucide-react'
+import { Send, Bot, User, ArrowRight, Loader2, Users, Plus, ChevronDown, ClipboardList, CheckCircle, XCircle, Phone, PhoneOff, Mic, MicOff } from 'lucide-react'
 import type { DeployedAgent, AgentMessage, AgentConversation } from '@/types/database'
 
 interface TaskAnalysis {
@@ -70,6 +70,18 @@ export function AgentChatPanel({
   const [actionFormData, setActionFormData] = useState<Record<string, string>>({})
   const [isExecutingTask, setIsExecutingTask] = useState(false)
   const [isExecutingAction, setIsExecutingAction] = useState(false)
+  // Voice call state
+  const [isVoiceCallActive, setIsVoiceCallActive] = useState(false)
+  const [isVoiceConnecting, setIsVoiceConnecting] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const audioQueueRef = useRef<Float32Array[]>([])
+  const isPlayingRef = useRef(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -301,6 +313,208 @@ export function AgentChatPanel({
     return agents.find(a => a.id === id)
   }, [agents])
 
+  // ============ Voice Call Functions ============
+
+  const playAudioChunk = useCallback((base64Audio: string) => {
+    if (!audioContextRef.current) return
+    try {
+      const binaryString = atob(base64Audio)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      const pcm16 = new Int16Array(bytes.buffer)
+      const float32 = new Float32Array(pcm16.length)
+      for (let i = 0; i < pcm16.length; i++) {
+        float32[i] = pcm16[i] / 32768.0
+      }
+      audioQueueRef.current.push(float32)
+      if (!isPlayingRef.current) playNextChunk()
+    } catch (e) {
+      console.error('[VoiceCall] Audio decode error:', e)
+    }
+  }, [])
+
+  const playNextChunk = useCallback(() => {
+    if (!audioContextRef.current || audioQueueRef.current.length === 0) {
+      isPlayingRef.current = false
+      return
+    }
+    isPlayingRef.current = true
+    const chunk = audioQueueRef.current.shift()!
+    const buffer = audioContextRef.current.createBuffer(1, chunk.length, 24000)
+    buffer.getChannelData(0).set(chunk)
+    const source = audioContextRef.current.createBufferSource()
+    source.buffer = buffer
+    source.connect(audioContextRef.current.destination)
+    source.onended = () => playNextChunk()
+    source.start()
+  }, [])
+
+  const handleVoiceServerEvent = useCallback((data: any) => {
+    switch (data.type) {
+      case 'input_audio_buffer.speech_started':
+        setIsListening(true)
+        break
+      case 'input_audio_buffer.speech_stopped':
+        setIsListening(false)
+        break
+      case 'conversation.item.input_audio_transcription.completed':
+        // User's speech transcribed - add to chat
+        if (data.transcript && onSendMessage && selectedAgent) {
+          onSendMessage(data.transcript, selectedAgent.id)
+        }
+        break
+      case 'response.audio.delta':
+        if (data.delta) playAudioChunk(data.delta)
+        break
+      case 'response.audio_transcript.done':
+        // Agent's response - would be added via normal message flow
+        break
+      case 'error':
+        console.error('[VoiceCall] Server error:', data.error)
+        break
+    }
+  }, [playAudioChunk, onSendMessage, selectedAgent])
+
+  const startMicrophone = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+      })
+      mediaStreamRef.current = stream
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext({ sampleRate: 24000 })
+      }
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1)
+      processorRef.current = processor
+
+      processor.onaudioprocess = (e) => {
+        if (isMuted || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+        const inputData = e.inputBuffer.getChannelData(0)
+        const pcm16 = new Int16Array(inputData.length)
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]))
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+        }
+        const bytes = new Uint8Array(pcm16.buffer)
+        let binary = ''
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i])
+        }
+        wsRef.current.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: btoa(binary) }))
+      }
+      source.connect(processor)
+      processor.connect(audioContextRef.current.destination)
+    } catch (error) {
+      console.error('[VoiceCall] Microphone error:', error)
+    }
+  }, [isMuted])
+
+  const stopMicrophone = useCallback(() => {
+    processorRef.current?.disconnect()
+    processorRef.current = null
+    mediaStreamRef.current?.getTracks().forEach(track => track.stop())
+    mediaStreamRef.current = null
+  }, [])
+
+  const startVoiceCall = useCallback(async () => {
+    if (!selectedAgent) return
+    setIsVoiceConnecting(true)
+
+    try {
+      // Get ephemeral token first
+      const tokenRes = await fetch('/api/grok-voice/token', { method: 'POST' })
+      if (!tokenRes.ok) {
+        throw new Error('Failed to get voice token')
+      }
+      const tokenData = await tokenRes.json()
+
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 })
+      const ws = new WebSocket(
+        'wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime',
+        ['realtime', `openai-insecure-api-key.${tokenData.client_secret}`, 'openai-beta.realtime-v1']
+      )
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            modalities: ['text', 'audio'],
+            instructions: `You are ${selectedAgent.name}, an AI assistant. ${selectedAgent.system_prompt || ''} Speak naturally in Korean.`,
+            voice: 'tara',
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
+            input_audio_transcription: { model: 'whisper-1' },
+            turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 }
+          }
+        }))
+        setIsVoiceCallActive(true)
+        setIsVoiceConnecting(false)
+
+        // 🔥 에이전트가 먼저 인사
+        setTimeout(() => {
+          ws.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'input_text', text: '(통화가 연결되었습니다. 자연스럽게 인사해주세요.)' }]
+            }
+          }))
+          ws.send(JSON.stringify({
+            type: 'response.create',
+            response: { modalities: ['text', 'audio'] }
+          }))
+          setTimeout(() => startMicrophone(), 500)
+        }, 300)
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          handleVoiceServerEvent(JSON.parse(event.data))
+        } catch (e) {
+          console.error('[VoiceCall] Parse error:', e)
+        }
+      }
+
+      ws.onerror = () => {
+        setIsVoiceConnecting(false)
+        setIsVoiceCallActive(false)
+      }
+
+      ws.onclose = () => {
+        setIsVoiceCallActive(false)
+        stopMicrophone()
+      }
+    } catch (error) {
+      console.error('[VoiceCall] Connection error:', error)
+      setIsVoiceConnecting(false)
+    }
+  }, [selectedAgent, startMicrophone, stopMicrophone, handleVoiceServerEvent])
+
+  const endVoiceCall = useCallback(() => {
+    stopMicrophone()
+    wsRef.current?.close()
+    wsRef.current = null
+    audioContextRef.current?.close()
+    audioContextRef.current = null
+    audioQueueRef.current = []
+    isPlayingRef.current = false
+    setIsVoiceCallActive(false)
+    setIsListening(false)
+  }, [stopMicrophone])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close()
+      if (audioContextRef.current) audioContextRef.current.close()
+    }
+  }, [])
+
   const renderMessage = (msg: AgentMessage, index: number) => {
     const isUser = msg.sender_type === 'USER'
     const isAgentToAgent = msg.message_type === 'AGENT_TO_AGENT'
@@ -371,9 +585,52 @@ export function AgentChatPanel({
           <span className="font-medium text-zinc-900 dark:text-zinc-100">
             {currentConversation?.title || '에이전트 채팅'}
           </span>
+          {/* Voice call indicator */}
+          {isVoiceCallActive && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
+              <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-400'}`} />
+              <span className="text-xs text-emerald-600 dark:text-emerald-400">통화 중</span>
+            </div>
+          )}
         </div>
 
-        {/* Agent selector */}
+        <div className="flex items-center gap-2">
+          {/* Voice call button */}
+          {isVoiceCallActive ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className={`p-2 rounded-full transition-colors ${
+                  isMuted ? 'bg-red-100 dark:bg-red-900/30 text-red-500' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
+                }`}
+                title={isMuted ? '음소거 해제' : '음소거'}
+              >
+                {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={endVoiceCall}
+                className="p-2 rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors"
+                title="통화 종료"
+              >
+                <PhoneOff className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={startVoiceCall}
+              disabled={!selectedAgent || isVoiceConnecting}
+              className="p-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="음성 통화"
+            >
+              {isVoiceConnecting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Phone className="w-4 h-4" />
+              )}
+            </button>
+          )}
+
+          {/* Agent selector */}
         <div className="relative">
           <button
             onClick={() => setShowAgentSelector(!showAgentSelector)}
@@ -426,6 +683,7 @@ export function AgentChatPanel({
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
 

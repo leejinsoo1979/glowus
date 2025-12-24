@@ -160,16 +160,17 @@ export default function ProjectsPage() {
     setImporting(true)
     try {
       // 1. 폴더 선택
-      const folderPath = await window.electron.fs.selectDirectory()
-      if (!folderPath) {
+      const selectedFolder = await window.electron.fs.selectDirectory()
+      if (!selectedFolder) {
         setImporting(false)
         return
       }
+      const folderPath = selectedFolder.path
 
       console.log("[Import] Selected folder:", folderPath)
 
       // 2. package.json 파싱 시도
-      let projectName = folderPath.split("/").pop() || "Untitled Project"
+      let projectName = selectedFolder.name || folderPath.split("/").pop() || "Untitled Project"
       let projectDescription = ""
       let projectMetadata: Record<string, any> = {}
 

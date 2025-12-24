@@ -2111,8 +2111,8 @@ export default function AgentProfilePage() {
   // 프롬프트 섹션 확장 상태
   const [expandedPromptSections, setExpandedPromptSections] = useState<Record<string, boolean>>({})
 
-  // 음성 통화 모달 상태
-  const [showVoiceCall, setShowVoiceCall] = useState(false)
+  // 채팅 음성 모드 상태
+  const [chatVoiceMode, setChatVoiceMode] = useState(false)
 
   // Image upload states
   const [uploading, setUploading] = useState(false)
@@ -2173,6 +2173,11 @@ export default function AgentProfilePage() {
   const previewAudioContextRef = useRef<AudioContext | null>(null)
   const previewAudioQueueRef = useRef<Int16Array[]>([])
   const previewIsPlayingRef = useRef(false)
+
+  // Voice-chat integration: collect transcripts and show in chat
+  const voiceTranscriptRef = useRef<string>('')  // AI's current response transcript
+  const userSpeechTranscriptRef = useRef<string>('')  // User's speech transcript
+  const [isAgentSpeaking, setIsAgentSpeaking] = useState(false)  // For GIF animation
 
   // 감정 아바타 상태
   const [emotionAvatars, setEmotionAvatars] = useState<EmotionAvatars>({})
@@ -3201,9 +3206,13 @@ export default function AgentProfilePage() {
 
   // Play audio chunk from queue
   const playAudioChunk = (pcm16Data: Int16Array) => {
-    if (!audioContextRef.current) return
+    if (!audioContextRef.current) {
+      console.warn('[VoiceAudio] ❌ No AudioContext!')
+      return
+    }
 
     const ctx = audioContextRef.current
+    console.log('[VoiceAudio] 🔊 Playing chunk, size:', pcm16Data.length, 'state:', ctx.state)
     const float32Data = new Float32Array(pcm16Data.length)
     for (let i = 0; i < pcm16Data.length; i++) {
       float32Data[i] = pcm16Data[i] / 32768.0
@@ -3234,6 +3243,15 @@ export default function AgentProfilePage() {
 
   // Handle voice server events
   const handleVoiceServerEvent = (event: any) => {
+    // 🔥 모든 이벤트 로깅 (디버그용)
+    const eventType = event.type || 'unknown'
+    console.log('[VoiceEvent]', eventType, JSON.stringify(event).substring(0, 500))
+
+    // 🔊 오디오/트랜스크립트 관련 이벤트 강조
+    if (eventType.includes('audio') || eventType.includes('transcript') || eventType.includes('text')) {
+      console.log('[VoiceEvent] 🎯 Audio/Transcript event:', eventType)
+    }
+
     switch (event.type) {
       case 'session.created':
         console.log('Voice session created')
@@ -3245,6 +3263,12 @@ export default function AgentProfilePage() {
 
       case 'input_audio_buffer.speech_stopped':
         setIsListening(false)
+        break
+
+      case 'response.created':
+        // AI starts responding - reset transcript and show speaking animation
+        voiceTranscriptRef.current = ''
+        setIsAgentSpeaking(true)
         break
 
       case 'response.audio.delta':
@@ -3266,12 +3290,256 @@ export default function AgentProfilePage() {
         break
 
       case 'response.audio_transcript.delta':
-        // AI transcript - could display this
+        // AI audio transcript - 우선 사용 (xAI 기본 형식)
+        if (event.delta) {
+          voiceTranscriptRef.current += event.delta
+        }
+        break
+
+      case 'response.text.delta':
+        // 🔥 text.delta는 audio_transcript가 없을 때만 사용 (중복 방지)
+        // xAI는 보통 audio_transcript를 보내므로 이건 fallback
+        if (event.delta && !voiceTranscriptRef.current) {
+          voiceTranscriptRef.current += event.delta
+        }
+        break
+
+      case 'response.content_part.added':
+        // 🔥 xAI: content part가 추가됨 - 오디오 타입 확인
+        console.log('[VoiceEvent] 🎵 Content part added:', event.part?.type, event.part)
+        break
+
+      case 'response.content_part.delta':
+        // 🔥 xAI: content part delta - 오디오 데이터가 여기에 있을 수 있음
+        console.log('[VoiceEvent] 🎵 Content part delta:', event.delta ? 'has delta' : 'no delta')
+        if (event.delta) {
+          // 오디오 데이터 처리
+          try {
+            const binaryString = atob(event.delta)
+            const bytes = new Uint8Array(binaryString.length)
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
+            }
+            const pcm16Data = new Int16Array(bytes.buffer)
+
+            if (isPlayingRef.current) {
+              audioQueueRef.current.push(pcm16Data)
+            } else {
+              isPlayingRef.current = true
+              playAudioChunk(pcm16Data)
+            }
+          } catch (e) {
+            console.error('[VoiceEvent] Audio decode error:', e)
+          }
+        }
+        break
+
+      case 'response.content_part.done':
+        // Content part finished - audio part의 transcript만 사용
+        console.log('[VoiceEvent] 🎵 Content part done:', event.part?.type, event.part?.transcript?.substring(0, 50))
+        if (event.part?.type === 'audio' && event.part?.transcript) {
+          // audio transcript가 있으면 이걸로 덮어쓰기 (가장 정확)
+          voiceTranscriptRef.current = event.part.transcript
+        }
+        // text 타입도 처리
+        if (event.part?.type === 'text' && event.part?.text) {
+          voiceTranscriptRef.current = event.part.text
+        }
+        break
+
+      case 'response.done':
+        // AI finished responding - add transcript to chat
+        setIsAgentSpeaking(false)
+
+        // 🔥 response.done에서 직접 transcript 추출 시도 (xAI format)
+        let finalTranscript = voiceTranscriptRef.current.trim()
+        if (!finalTranscript && event.response?.output) {
+          // xAI: response.output[].content[].transcript 또는 text
+          for (const output of event.response.output) {
+            if (output.content) {
+              for (const content of output.content) {
+                if (content.transcript) finalTranscript = content.transcript
+                else if (content.text) finalTranscript = content.text
+              }
+            }
+          }
+        }
+
+        if (finalTranscript) {
+          const transcript = finalTranscript
+          // Detect emotion from response
+          const responseEmotion = detectEmotion(transcript, allEmotions)
+
+          const aiMessage = {
+            id: `voice-ai-${Date.now()}`,
+            role: 'agent' as const,
+            content: transcript,
+            timestamp: new Date(),
+            emotion: responseEmotion,
+            isVoice: true,  // Mark as voice message
+          }
+          setChatMessages((prev) => [...prev, aiMessage])
+
+          // Update emotion for GIF
+          if (responseEmotion !== 'neutral') {
+            setCurrentEmotion(responseEmotion)
+          }
+
+          // Save to history
+          saveMessageToHistory('agent', transcript)
+
+          voiceTranscriptRef.current = ''
+        }
+        break
+
+      case 'conversation.item.input_audio_transcription.completed':
+        // User's speech was transcribed - add to chat
+        if (event.transcript) {
+          const userTranscript = event.transcript.trim()
+          if (userTranscript) {
+            const userMessage = {
+              id: `voice-user-${Date.now()}`,
+              role: 'user' as const,
+              content: userTranscript,
+              timestamp: new Date(),
+              isVoice: true,  // Mark as voice message
+            }
+            setChatMessages((prev) => [...prev, userMessage])
+
+            // Save to history
+            saveMessageToHistory('user', userTranscript)
+
+            // Detect emotion from user speech
+            const userEmotion = detectEmotion(userTranscript, allEmotions)
+            if (userEmotion !== 'neutral') {
+              setCurrentEmotion(userEmotion)
+            }
+          }
+        }
         break
 
       case 'error':
         console.error('Voice error:', event.error)
+        setIsAgentSpeaking(false)
         break
+
+      // 🔥 xAI Realtime API 전용 이벤트 핸들링 (OpenAI와 다름!)
+      // xAI는 response.output_audio.* 형식 사용 (OpenAI는 response.audio.*)
+
+      case 'response.output_audio.delta':
+        // 🎵 xAI 오디오 스트리밍 데이터
+        if (event.delta) {
+          console.log('[VoiceEvent] 🔊 xAI Audio delta received, length:', event.delta.length)
+          try {
+            const binaryString = atob(event.delta)
+            const bytes = new Uint8Array(binaryString.length)
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
+            }
+            const pcm16Data = new Int16Array(bytes.buffer)
+
+            if (isPlayingRef.current) {
+              audioQueueRef.current.push(pcm16Data)
+            } else {
+              isPlayingRef.current = true
+              playAudioChunk(pcm16Data)
+            }
+          } catch (e) {
+            console.error('[VoiceEvent] xAI Audio decode error:', e)
+          }
+        }
+        break
+
+      case 'response.output_audio.done':
+        // 🎵 xAI 오디오 전송 완료 - 전체 오디오가 여기 있을 수 있음!
+        console.log('[VoiceEvent] 🔊 xAI Audio done, checking for audio data...')
+        // xAI는 done 이벤트에 전체 오디오를 보낼 수 있음
+        if (event.audio) {
+          console.log('[VoiceEvent] 🔊 Found audio in done event, length:', event.audio.length)
+          try {
+            const binaryString = atob(event.audio)
+            const bytes = new Uint8Array(binaryString.length)
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
+            }
+            const pcm16Data = new Int16Array(bytes.buffer)
+
+            if (isPlayingRef.current) {
+              audioQueueRef.current.push(pcm16Data)
+            } else {
+              isPlayingRef.current = true
+              playAudioChunk(pcm16Data)
+            }
+          } catch (e) {
+            console.error('[VoiceEvent] xAI Audio done decode error:', e)
+          }
+        } else if (event.data) {
+          // 혹시 data 필드에 있을 수도
+          console.log('[VoiceEvent] 🔊 Found data in done event, length:', event.data.length)
+          try {
+            const binaryString = atob(event.data)
+            const bytes = new Uint8Array(binaryString.length)
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
+            }
+            const pcm16Data = new Int16Array(bytes.buffer)
+
+            if (isPlayingRef.current) {
+              audioQueueRef.current.push(pcm16Data)
+            } else {
+              isPlayingRef.current = true
+              playAudioChunk(pcm16Data)
+            }
+          } catch (e) {
+            console.error('[VoiceEvent] xAI Audio data decode error:', e)
+          }
+        } else {
+          console.log('[VoiceEvent] 🔊 Audio done event keys:', Object.keys(event))
+        }
+        break
+
+      case 'response.output_audio_transcript.delta':
+        // 📝 xAI 트랜스크립트 스트리밍
+        if (event.delta) {
+          voiceTranscriptRef.current += event.delta
+          console.log('[VoiceEvent] 📝 xAI Transcript delta:', event.delta)
+        }
+        break
+
+      case 'response.output_audio_transcript.done':
+        // 📝 xAI 트랜스크립트 완료
+        if (event.transcript) {
+          voiceTranscriptRef.current = event.transcript
+          console.log('[VoiceEvent] 📝 xAI Transcript done:', event.transcript.substring(0, 50) + '...')
+        }
+        break
+
+      case 'response.output_item.added':
+      case 'response.output_item.done':
+      case 'conversation.item.created':
+        console.log('[VoiceEvent] Item event:', event.type)
+        break
+
+      case 'input_audio_buffer.committed':
+      case 'input_audio_buffer.cleared':
+        console.log('[VoiceEvent] Audio buffer event:', event.type)
+        break
+
+      case 'input_audio_buffer.speech_started':
+        // 사용자가 말하기 시작
+        console.log('[VoiceEvent] 🎤 User speech started')
+        break
+
+      case 'input_audio_buffer.speech_stopped':
+        // 사용자가 말하기 중단
+        console.log('[VoiceEvent] 🎤 User speech stopped')
+        break
+
+      default:
+        // 알 수 없는 이벤트 로깅
+        if (event.type && !event.type.startsWith('session.')) {
+          console.log('[VoiceEvent] ⚠️ Unhandled event:', event.type)
+        }
     }
   }
 
@@ -3359,9 +3627,40 @@ export default function AgentProfilePage() {
         concise: '핵심만 간결하게 전달하세요. 불필요한 말을 줄이고 명확하게 답변하세요.',
       }
 
-      const baseInstructions = agent.system_prompt || `You are ${agent.name}. ${agent.description || ''}`
-      const styleInstruction = styleInstructions[conversationStyle] || styleInstructions.friendly
-      const fullInstructions = `${baseInstructions}\n\n대화 스타일: ${styleInstruction}`
+      // 🔥 채팅과 동일한 인격 정보 로드 (메모리, 정체성, 대화기록 포함)
+      let fullInstructions = ''
+      try {
+        console.log('[VoiceCall] 🔥 Loading voice context for agent:', agent.id)
+        const contextRes = await fetch(`/api/grok-voice/context?agentId=${agent.id}`)
+        if (contextRes.ok) {
+          const contextData = await contextRes.json()
+          fullInstructions = contextData.systemPrompt
+          console.log('[VoiceCall] ✅ Context loaded:', {
+            hasIdentity: contextData.hasIdentity,
+            hasWorkContext: contextData.hasWorkContext,
+            hasChatHistory: contextData.hasChatHistory,
+            userName: contextData.userName,
+            promptLength: fullInstructions?.length || 0,
+          })
+          // 🔥 전체 프롬프트 로깅 (디버그용)
+          console.log('[VoiceCall] 📝 Full prompt:', fullInstructions)
+        } else {
+          console.error('[VoiceCall] ❌ Context API error:', contextRes.status, await contextRes.text())
+        }
+      } catch (contextError) {
+        console.error('[VoiceCall] ❌ Failed to load context:', contextError)
+      }
+
+      // 컨텍스트 로드 실패시 기본 프롬프트 사용
+      if (!fullInstructions) {
+        const baseInstructions = agent.system_prompt || `You are ${agent.name}. ${agent.description || ''}`
+        const styleInstruction = styleInstructions[conversationStyle] || styleInstructions.friendly
+        fullInstructions = `${baseInstructions}\n\n대화 스타일: ${styleInstruction}`
+      } else {
+        // 대화 스타일 추가
+        const styleInstruction = styleInstructions[conversationStyle] || styleInstructions.friendly
+        fullInstructions += `\n\n대화 스타일: ${styleInstruction}`
+      }
 
       // Get ephemeral token
       const tokenRes = await fetch('/api/grok-voice/token', { method: 'POST' })
@@ -3370,14 +3669,27 @@ export default function AgentProfilePage() {
       }
       const tokenData = await tokenRes.json()
 
-      // Connect to Grok Realtime API
+      // Connect to Grok Realtime API - OpenAI 호환 형식
       const ws = new WebSocket('wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime', [
         'realtime',
-        `client-secret.${tokenData.client_secret}`
+        `openai-insecure-api-key.${tokenData.client_secret}`,
+        'openai-beta.realtime-v1'
       ])
 
       ws.onopen = () => {
         console.log('Voice WebSocket connected')
+
+        // 🔥 AudioContext 먼저 생성 (오디오 재생을 위해 필수!)
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContext({ sampleRate: 24000 })
+          console.log('[VoiceCall] AudioContext created for playback')
+        }
+        // suspended 상태면 resume (브라우저 정책)
+        if (audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().then(() => {
+            console.log('[VoiceCall] AudioContext resumed')
+          })
+        }
 
         // Configure session with agent's voice settings
         ws.send(JSON.stringify({
@@ -3400,7 +3712,31 @@ export default function AgentProfilePage() {
 
         setIsVoiceCallActive(true)
         setIsVoiceConnecting(false)
-        startMicrophone()
+
+        // 🔥 에이전트가 먼저 인사하도록 설정
+        setTimeout(() => {
+          console.log('[VoiceCall] Requesting agent greeting...')
+          // 인사 요청 메시지 생성
+          ws.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'input_text', text: '(통화가 연결되었습니다. 자연스럽게 인사해주세요.)' }]
+            }
+          }))
+          // 음성 응답 요청
+          ws.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              modalities: ['text', 'audio']
+            }
+          }))
+          // 인사 후 마이크 시작
+          setTimeout(() => {
+            startMicrophone()
+          }, 500)
+        }, 300)
       }
 
       ws.onmessage = (event) => {
@@ -3447,10 +3783,16 @@ export default function AgentProfilePage() {
   }
 
   // Play preview audio chunk
-  const playPreviewAudioChunk = (pcm16Data: Int16Array) => {
+  const playPreviewAudioChunk = async (pcm16Data: Int16Array) => {
     if (!previewAudioContextRef.current) return
 
     const ctx = previewAudioContextRef.current
+
+    // Resume audio context if suspended (browser autoplay policy)
+    if (ctx.state === 'suspended') {
+      await ctx.resume()
+    }
+
     const float32Data = new Float32Array(pcm16Data.length)
     for (let i = 0; i < pcm16Data.length; i++) {
       float32Data[i] = pcm16Data[i] / 32768.0
@@ -3503,60 +3845,91 @@ export default function AgentProfilePage() {
 
     try {
       // Get preview session
+      console.log('[VoicePreview] Fetching token for voice:', voiceId)
       const res = await fetch('/api/grok-voice/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voice: voiceId, text: '반갑습니다. 주인님' }),
       })
 
+      const data = await res.json()
+      console.log('[VoicePreview] API response:', res.status, data)
+
       if (!res.ok) {
-        throw new Error('Failed to get preview session')
+        throw new Error(data.error || 'Failed to get preview session')
       }
 
-      const data = await res.json()
+      if (!data.client_secret) {
+        throw new Error('No client_secret in response')
+      }
 
       // Create audio context
       if (!previewAudioContextRef.current) {
         previewAudioContextRef.current = new AudioContext({ sampleRate: 24000 })
       }
 
-      // Connect to WebSocket
-      const ws = new WebSocket('wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime', [
-        'realtime',
-        `client-secret.${data.client_secret}`
-      ])
+      // Connect to WebSocket - OpenAI 호환 형식
+      const wsUrl = 'wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime'
+      const protocols = ['realtime', `openai-insecure-api-key.${data.client_secret}`, 'openai-beta.realtime-v1']
+      console.log('[VoicePreview] Connecting to WebSocket:', wsUrl)
+      console.log('[VoicePreview] Protocol token (first 30 chars):', data.client_secret?.substring(0, 30) + '...')
+      const ws = new WebSocket(wsUrl, protocols)
 
       ws.onopen = () => {
-        // Configure session
+        console.log('[VoicePreview] WebSocket connected')
+
+        // Configure session for audio output with instructions to speak
         ws.send(JSON.stringify({
           type: 'session.update',
           session: {
             modalities: ['text', 'audio'],
+            instructions: '당신은 음성 미리듣기 도우미입니다. 사용자가 요청하면 정확히 그 문장만 말하세요.',
             voice: voiceId,
             input_audio_format: 'pcm16',
             output_audio_format: 'pcm16',
+            turn_detection: null, // Disable turn detection for TTS
           }
         }))
 
-        // Send text to speak
+        // Send text to speak after session is configured
         setTimeout(() => {
+          console.log('[VoicePreview] Sending text-to-speech request')
+          // Create a message asking to speak the sample text
           ws.send(JSON.stringify({
             type: 'conversation.item.create',
             item: {
               type: 'message',
               role: 'user',
-              content: [{ type: 'input_text', text: '인사해줘' }]
+              content: [{ type: 'input_text', text: '다음 문장을 따라 말해주세요: "반갑습니다. 주인님."' }]
             }
           }))
-          ws.send(JSON.stringify({ type: 'response.create' }))
-        }, 100)
+          // Request response with audio
+          ws.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              modalities: ['text', 'audio']
+            }
+          }))
+        }, 300)
       }
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
 
-          if (msg.type === 'response.audio.delta' && msg.delta) {
+          // Log all messages to debug audio format
+          console.log('[VoicePreview] Message:', msg.type, JSON.stringify(msg).substring(0, 300))
+
+          if (msg.type === 'error') {
+            console.error('[VoicePreview] API Error:', msg)
+            setPreviewingVoice(null)
+            return
+          }
+
+          // 🔥 xAI API: response.output_audio.delta 형식 사용 (OpenAI는 response.audio.delta)
+          // 두 형식 모두 지원
+          if ((msg.type === 'response.audio.delta' || msg.type === 'response.output_audio.delta') && msg.delta) {
+            console.log('[VoicePreview] 🔊 Audio chunk received, type:', msg.type, 'size:', msg.delta.length)
             const binaryString = atob(msg.delta)
             const bytes = new Uint8Array(binaryString.length)
             for (let i = 0; i < binaryString.length; i++) {
@@ -3573,21 +3946,24 @@ export default function AgentProfilePage() {
           }
 
           if (msg.type === 'response.done') {
+            console.log('[VoicePreview] Response complete')
             // Close after a short delay to ensure all audio is played
             setTimeout(() => {
               ws.close()
             }, 500)
           }
         } catch (err) {
-          console.error('Preview message error:', err)
+          console.error('[VoicePreview] Message parse error:', err)
         }
       }
 
-      ws.onerror = () => {
+      ws.onerror = (error) => {
+        console.error('[VoicePreview] WebSocket error:', error)
         setPreviewingVoice(null)
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.log('[VoicePreview] WebSocket closed:', event.code, event.reason)
         // Wait for audio queue to finish
         setTimeout(() => {
           if (!previewIsPlayingRef.current) {
@@ -3641,6 +4017,26 @@ export default function AgentProfilePage() {
     setChatImage(null)
     setChatImageFile(null)
 
+    // 🔥 음성통화 중이면 WebSocket으로 전송 (음성 API 사용)
+    if (isVoiceCallActive && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // WebSocket으로 텍스트 전송 - 음성으로 응답받음
+      wsRef.current.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: messageContent }]
+        }
+      }))
+      // 음성 응답 요청
+      wsRef.current.send(JSON.stringify({
+        type: 'response.create',
+        response: { modalities: ['text', 'audio'] }
+      }))
+      return  // 음성모드에서는 여기서 끝 - 응답은 WebSocket 이벤트로 처리됨
+    }
+
+    // 텍스트 채팅 모드 - 기존 HTTP API 사용 (음성 API 비용 없음)
     // 자연스러운 딜레이: 먼저 "읽음" 표시, 랜덤 시간 후 "입력중" 표시
     setChatTypingStatus('read')
 
@@ -4445,15 +4841,36 @@ export default function AgentProfilePage() {
               채팅
             </button>
             <button
-              onClick={() => setShowVoiceCall(true)}
+              onClick={() => {
+                setActiveTab('chat')
+                // 🔥 통화 중이면 종료, 아니면 시작
+                if (isVoiceCallActive) {
+                  // 통화 종료
+                  if (wsRef.current) {
+                    wsRef.current.close()
+                  }
+                  stopMicrophone()
+                  setIsVoiceCallActive(false)
+                } else if (!isVoiceConnecting) {
+                  // 통화 시작
+                  startVoiceCall()
+                }
+              }}
+              disabled={isVoiceConnecting}
               className="flex-1 h-10 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
               style={{
-                backgroundColor: `${userAccentColor}20`,
-                color: userAccentColor,
+                backgroundColor: isVoiceCallActive ? '#ef4444' : `${userAccentColor}20`,
+                color: isVoiceCallActive ? 'white' : userAccentColor,
               }}
             >
-              <Phone className="w-4 h-4" />
-              보이스
+              {isVoiceConnecting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : isVoiceCallActive ? (
+                <PhoneOff className="w-4 h-4" />
+              ) : (
+                <Phone className="w-4 h-4" />
+              )}
+              {isVoiceConnecting ? '연결중...' : isVoiceCallActive ? '종료' : '보이스'}
             </button>
           </div>
           <div className="flex gap-2">
@@ -5130,6 +5547,7 @@ export default function AgentProfilePage() {
           {/* Chat Tab */}
           {activeTab === 'chat' && (
             <div className="flex flex-col h-[calc(100vh-130px)] min-h-[600px]">
+              {/* 🔥 통합 음성모드 - 채팅과 동일한 인격/메모리 사용 */}
               {/* Chat Header */}
 
 
@@ -5394,7 +5812,15 @@ export default function AgentProfilePage() {
                               />
                             )}
                             {msg.content && msg.content !== '[이미지]' && (
-                              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                              <div className="flex items-start gap-1.5">
+                                {(msg as any).isVoice && (
+                                  <Mic className={cn(
+                                    'w-3 h-3 mt-0.5 flex-shrink-0',
+                                    msg.role === 'user' ? 'text-white/60' : isDark ? 'text-accent/60' : 'text-accent/60'
+                                  )} />
+                                )}
+                                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                              </div>
                             )}
 
                             {/* 업무 지시 메시지: Run 버튼 및 상태 표시 */}
@@ -5449,8 +5875,47 @@ export default function AgentProfilePage() {
                     </div>
                   ))
                 )}
+                {/* 음성 말하기 표시 - 음성통화 중 에이전트가 말할 때 */}
+                {isAgentSpeaking && (
+                  <div className="flex justify-start">
+                    <div
+                      className={cn(
+                        'rounded-2xl px-4 py-3',
+                        isDark ? 'bg-zinc-800' : 'bg-white border border-zinc-200'
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        {getRandomEmotionGif('talking') || getRandomEmotionGif('happy') ? (
+                          <img
+                            src={getRandomEmotionGif('talking') || getRandomEmotionGif('happy') || ''}
+                            alt="말하는 중"
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : agent?.avatar_url ? (
+                          <img
+                            src={agent.avatar_url}
+                            alt={agent?.name}
+                            className="w-10 h-10 rounded-full object-cover animate-pulse"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center animate-pulse">
+                            <Volume2 className="w-5 h-5 text-accent" />
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-600')}>
+                            🎤 말하는 중...
+                          </span>
+                          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                            음성으로 답변 중
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {/* 읽음/입력중 표시 - 자연스러운 딜레이 적용 */}
-                {chatTypingStatus !== 'none' && (
+                {chatTypingStatus !== 'none' && !isAgentSpeaking && (
                   <div className="flex justify-start">
                     <div
                       className={cn(
@@ -6139,6 +6604,7 @@ export default function AgentProfilePage() {
                   </button>
                 </div>
               </div>
+
             </div>
           )}
 
@@ -7984,30 +8450,6 @@ export default function AgentProfilePage() {
         </div>
       )}
 
-      {/* 음성 통화 모달 */}
-      {showVoiceCall && agent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowVoiceCall(false)}>
-          <div
-            className="w-full max-w-md mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GrokVoiceChat
-              agentName={agent.name}
-              agentInstructions={agent.system_prompt || `You are ${agent.name}, a helpful AI assistant. Respond naturally in Korean.`}
-              voice="Eve"
-              onTranscript={(text, role) => {
-                console.log(`[${role}] ${text}`)
-              }}
-            />
-            <button
-              onClick={() => setShowVoiceCall(false)}
-              className="w-full mt-4 py-3 rounded-xl bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors font-medium"
-            >
-              닫기
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

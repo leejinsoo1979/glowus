@@ -192,10 +192,15 @@ export function ProjectRunner({
   }
 
   const startProject = useCallback(async () => {
-    if (!folderPath || !isElectron || !window.electron?.projectRunner) return
+    console.log('[ProjectRunner] startProject called', { folderPath, isElectron, config })
+
+    if (!folderPath || !isElectron || !window.electron?.projectRunner) {
+      console.log('[ProjectRunner] Early return:', { folderPath, isElectron, hasRunner: !!window.electron?.projectRunner })
+      return
+    }
 
     setStatus("starting")
-    setOutput([`> Starting ${projectName}...`, `> Working directory: ${folderPath}`, ""])
+    setOutput([`> Starting ${projectName}...`, `> Working directory: ${folderPath}`, `> Project type: ${config?.type || 'unknown'}`, ""])
 
     try {
       // Setup output listener
@@ -243,10 +248,13 @@ export function ProjectRunner({
       if (config?.type === "static") {
         // Open index.html in Electron popup window
         const indexPath = `${folderPath}/index.html`
+        console.log('[ProjectRunner] Opening static project:', indexPath)
+        console.log('[ProjectRunner] projectPreview available:', !!window.electron?.projectPreview?.open)
         setOutput((prev) => [...prev, `> Opening ${indexPath}`, ""])
 
         try {
           const result = await window.electron?.projectPreview?.open?.(indexPath, projectName)
+          console.log('[ProjectRunner] Preview result:', result)
           if (result?.success) {
             setOutput((prev) => [...prev, "> Opened in popup window"])
           } else {

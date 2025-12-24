@@ -1905,98 +1905,10 @@ app.on('before-quit', () => {
     });
     terminals.clear();
     // 프로젝트 러너 프로세스 정리
-    runningProjects.forEach((proc) => {
+    runningProcesses.forEach((proc) => {
         proc.kill();
     });
-    runningProjects.clear();
-});
-
-// ============================================
-// 16. Project Runner - 프로젝트 실행 (child_process 사용)
-// ============================================
-
-// 실행 중인 프로젝트 프로세스 저장소
-const runningProjects: Map<string, ChildProcess> = new Map();
-
-// 프로젝트 스크립트 실행
-ipcMain.handle('project:run', async (_event, id: string, cwd: string, command: string) => {
-    try {
-        // 이미 실행 중이면 중지
-        if (runningProjects.has(id)) {
-            const oldProc = runningProjects.get(id);
-            oldProc?.kill();
-            runningProjects.delete(id);
-        }
-
-        // 명령어 파싱 (npm run dev -> ['npm', ['run', 'dev']])
-        const parts = command.split(' ');
-        const cmd = parts[0];
-        const args = parts.slice(1);
-
-        // 프로세스 생성
-        const proc = spawn(cmd, args, {
-            cwd,
-            shell: true,
-            env: { ...process.env, FORCE_COLOR: '1' }
-        });
-
-        runningProjects.set(id, proc);
-
-        // stdout 전달
-        proc.stdout?.on('data', (data: Buffer) => {
-            if (mainWindow) {
-                mainWindow.webContents.send('project:output', id, data.toString());
-            }
-        });
-
-        // stderr 전달
-        proc.stderr?.on('data', (data: Buffer) => {
-            if (mainWindow) {
-                mainWindow.webContents.send('project:output', id, data.toString());
-            }
-        });
-
-        // 프로세스 종료
-        proc.on('exit', (code: number | null) => {
-            runningProjects.delete(id);
-            if (mainWindow) {
-                mainWindow.webContents.send('project:exit', id, code ?? 0);
-            }
-        });
-
-        proc.on('error', (err: Error) => {
-            runningProjects.delete(id);
-            if (mainWindow) {
-                mainWindow.webContents.send('project:error', id, err.message);
-            }
-        });
-
-        return { success: true, pid: proc.pid };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-});
-
-// 프로젝트 중지
-ipcMain.handle('project:stop', async (_event, id: string) => {
-    const proc = runningProjects.get(id);
-    if (proc) {
-        proc.kill('SIGTERM');
-        // 3초 후에도 실행 중이면 강제 종료
-        setTimeout(() => {
-            if (runningProjects.has(id)) {
-                proc.kill('SIGKILL');
-                runningProjects.delete(id);
-            }
-        }, 3000);
-        return { success: true };
-    }
-    return { success: false, error: 'Process not found' };
-});
-
-// 프로젝트 실행 상태 확인
-ipcMain.handle('project:status', async (_event, id: string) => {
-    return { running: runningProjects.has(id) };
+    runningProcesses.clear();
 });
 
 // ============================================

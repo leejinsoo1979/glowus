@@ -1,6 +1,6 @@
 "use client"
 
-import { Flame, TrendingUp, Users, Clock, Zap } from "lucide-react"
+import { Flame, TrendingUp, Users, Clock, Zap, Sparkles, ThermometerSun, Minus } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
 
@@ -55,9 +55,21 @@ export function EngagementOverview({
   const currentAccent = accentColors.find(c => c.id === accentColor) || accentColors[0]
 
   const getHeatLevel = (heat: number) => {
-    if (heat >= 0.8) return { label: "🔥핫", color: "bg-red-500/20 text-red-400" }
-    if (heat >= 0.6) return { label: "🌡️따뜻", color: "bg-orange-500/20 text-orange-400" }
-    return { label: "😐보통", color: "bg-zinc-500/20 text-zinc-400" }
+    if (heat >= 0.8) return {
+      label: "HOT",
+      color: "bg-red-500/20 text-red-400",
+      icon: <Flame className="w-3 h-3" />
+    }
+    if (heat >= 0.6) return {
+      label: "WARM",
+      color: "bg-orange-500/20 text-orange-400",
+      icon: <ThermometerSun className="w-3 h-3" />
+    }
+    return {
+      label: "NORMAL",
+      color: "bg-zinc-500/20 text-zinc-400",
+      icon: <Minus className="w-3 h-3" />
+    }
   }
 
   const overallHeatLevel = getHeatLevel(data.overallHeat)
@@ -74,7 +86,8 @@ export function EngagementOverview({
           </div>
           <div className="text-xl font-bold text-zinc-900 dark:text-zinc-100">{Math.round(data.overallHeat * 100)}%</div>
           <div className="flex items-center gap-1 mt-1">
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${overallHeatLevel.color}`}>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 ${overallHeatLevel.color}`}>
+              {overallHeatLevel.icon}
               {overallHeatLevel.label}
             </span>
             {data.heatTrend === "up" && <TrendingUp className="h-3 w-3 text-green-500" />}
@@ -111,8 +124,8 @@ export function EngagementOverview({
       {/* Hot Tasks */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex items-center gap-2 mb-2">
-          <Zap className="h-4 w-4 text-accent" />
-          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-100">🔥 핫 태스크</span>
+          <Sparkles className="h-4 w-4 text-accent" />
+          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-100">Trending Tasks</span>
         </div>
         <p className="text-xs text-zinc-500 mb-2">팀원 활동 및 상호작용 기반 가장 활발한 태스크</p>
         <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
@@ -123,7 +136,8 @@ export function EngagementOverview({
                   {index + 1}
                 </div>
                 <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{task.title}</span>
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${getHeatLevel(task.heat).color}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-0.5 ${getHeatLevel(task.heat).color}`}>
+                  {getHeatLevel(task.heat).icon}
                   {getHeatLevel(task.heat).label}
                 </span>
               </div>

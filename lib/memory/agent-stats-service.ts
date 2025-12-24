@@ -13,7 +13,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // Types
 // ============================================
 
-export type StatName = 'analysis' | 'communication' | 'creativity' | 'leadership'
+export type StatName = 'analysis' | 'communication' | 'creativity' | 'leadership' | 'execution' | 'adaptability'
 
 export interface AgentStats {
   id: string
@@ -23,6 +23,8 @@ export interface AgentStats {
   communication: number  // 소통력
   creativity: number     // 창의성
   leadership: number     // 리더십
+  execution: number      // 실행력
+  adaptability: number   // 적응력
   // 도메인 전문성
   expertise: Record<string, ExpertiseLevel>
   // 통계
@@ -122,6 +124,8 @@ export async function getOrCreateStats(agentId: string): Promise<AgentStats | nu
         communication: 20,
         creativity: 20,
         leadership: 10,
+        execution: 20,      // 실행력
+        adaptability: 20,   // 적응력
         expertise: {},
         total_interactions: 0,
         total_meetings: 0,
@@ -280,6 +284,8 @@ export async function addExperience(
       updates.communication = Math.min(100, stats.communication + 1)
       updates.creativity = Math.min(100, stats.creativity + 1)
       updates.leadership = Math.min(100, stats.leadership + 1)
+      updates.execution = Math.min(100, (stats.execution || 0) + 1)
+      updates.adaptability = Math.min(100, (stats.adaptability || 0) + 1)
 
       // 성장 로그에 레벨업 기록
       const growthEntry: GrowthLogEntry = {
@@ -389,6 +395,7 @@ export async function onConversationComplete(
   metrics?: {
     wasHelpful?: boolean
     topicDomain?: string
+    isNewTopic?: boolean
   }
 ): Promise<void> {
   // 상호작용 카운트 증가
@@ -411,6 +418,14 @@ export async function onConversationComplete(
   // 특정 도메인 전문성 증가
   if (metrics?.topicDomain) {
     await increaseExpertise(agentId, metrics.topicDomain, 1, '대화 중 도메인 언급')
+  }
+
+  // 새로운 주제에 대한 대화면 적응력 증가
+  if (metrics?.isNewTopic && Math.random() < 0.2) {
+    await increaseStat(agentId, 'adaptability', 1, {
+      type: 'conversation',
+      description: '새로운 주제 적응',
+    })
   }
 }
 
@@ -464,9 +479,23 @@ export async function onTaskComplete(
       type: 'task',
       description: `태스크 완료: ${taskType || 'unknown'}`,
     })
+
+    // 실행력 증가 (태스크 완료 = 실행력)
+    await increaseStat(agentId, 'execution', 2, {
+      type: 'task',
+      description: `태스크 실행 완료`,
+    })
   } else {
     // 실패 시 신뢰도 약간 감소
     await updateTrustScore(agentId, -1, '태스크 실패')
+
+    // 실패해도 적응력은 증가 (실패에서 배움)
+    if (Math.random() < 0.3) {
+      await increaseStat(agentId, 'adaptability', 1, {
+        type: 'task',
+        description: '실패에서 학습',
+      })
+    }
   }
 }
 
@@ -508,6 +537,8 @@ export function formatStatsForPrompt(stats: AgentStats): string {
   context += `- 소통력: ${stats.communication}/100\n`
   context += `- 창의성: ${stats.creativity}/100\n`
   context += `- 리더십: ${stats.leadership}/100\n`
+  context += `- 실행력: ${stats.execution || 0}/100\n`
+  context += `- 적응력: ${stats.adaptability || 0}/100\n`
 
   // 주요 전문성 (상위 3개)
   const expertiseEntries = Object.entries(stats.expertise || {})
@@ -532,6 +563,12 @@ export function formatStatsForPrompt(stats: AgentStats): string {
   if (stats.leadership >= 70) {
     context += `- 리더십이 높음: 회의 진행 및 의사결정 주도 가능\n`
   }
+  if ((stats.execution || 0) >= 70) {
+    context += `- 실행력이 높음: 업무 완수 능력이 뛰어남, 구체적 행동 계획 제시\n`
+  }
+  if ((stats.adaptability || 0) >= 70) {
+    context += `- 적응력이 높음: 새로운 상황에 유연하게 대응, 빠른 학습 가능\n`
+  }
 
   return context.trim()
 }
@@ -555,6 +592,8 @@ export function analyzeGrowthTrend(
     communication: 0,
     creativity: 0,
     leadership: 0,
+    execution: 0,
+    adaptability: 0,
   }
 
   for (const log of recentLogs) {

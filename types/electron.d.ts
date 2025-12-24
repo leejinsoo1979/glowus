@@ -156,6 +156,11 @@ declare global {
         onError?: (callback: (id: string, error: string) => void) => () => void
       }
 
+      // Project Preview - HTML 파일 팝업 미리보기
+      projectPreview?: {
+        open?: (filePath: string, title?: string) => Promise<{ success: boolean; error?: string }>
+      }
+
       // DevTools helper
       openWebviewDevTools?: (id?: number) => Promise<void>
 

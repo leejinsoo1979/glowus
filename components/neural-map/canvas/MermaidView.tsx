@@ -248,34 +248,76 @@ export function MermaidView({ className }: MermaidViewProps) {
           break
 
         case 'pie':
-          // Fetch file statistics
+          // Fetch file statistics and aggregate by extension
           if (window.electron?.fs?.fileStats) {
-            const stats = await window.electron.fs.fileStats!(projectPath)
-            if (stats?.length) {
-              generatedCode = generatePieChart(stats, { title: 'Codebase File Distribution', showData: true })
-              source = `File Stats (${stats.reduce((a: number, b: any) => a + b.count, 0)} files)`
+            const rawStats = await window.electron.fs.fileStats!(projectPath)
+            if (rawStats?.length) {
+              // Aggregate by extension: convert individual files to extension counts
+              const extMap = new Map<string, { count: number; size: number }>()
+              rawStats.forEach((file: any) => {
+                const ext = file.extension || 'no-ext'
+                const existing = extMap.get(ext) || { count: 0, size: 0 }
+                extMap.set(ext, {
+                  count: existing.count + 1,
+                  size: existing.size + (file.size || 0)
+                })
+              })
+              const aggregatedStats = Array.from(extMap.entries()).map(([extension, data]) => ({
+                extension,
+                count: data.count,
+                size: data.size
+              }))
+              generatedCode = generatePieChart(aggregatedStats, { title: 'Codebase File Distribution', showData: true })
+              source = `File Stats (${rawStats.length} files)`
             }
           }
           break
 
         case 'class':
-          // Scan TypeScript types
+          // Scan TypeScript types and transform to expected format
           if (window.electron?.fs?.scanTypes) {
-            const types = await window.electron.fs.scanTypes!(projectPath)
-            if (types?.length) {
-              generatedCode = generateClassDiagram(types.slice(0, 20)) // Limit for readability
-              source = `TypeScript (${types.length} types)`
+            const rawTypes = await window.electron.fs.scanTypes!(projectPath)
+            if (rawTypes?.length) {
+              // Transform to TypeInfo format expected by generateClassDiagram
+              const transformedTypes = rawTypes.slice(0, 20).map((t: any) => ({
+                name: t.name,
+                kind: t.kind as 'class' | 'interface' | 'type' | 'enum',
+                properties: (t.properties || []).map((p: any) => ({
+                  name: p.name,
+                  type: p.type,
+                  visibility: '+' as const // Default to public
+                })),
+                methods: [], // Electron API doesn't scan methods yet
+                extends: Array.isArray(t.extends) ? t.extends[0] : t.extends,
+                implements: []
+              }))
+              generatedCode = generateClassDiagram(transformedTypes)
+              source = `TypeScript (${rawTypes.length} types)`
             }
           }
           break
 
         case 'er':
-          // Scan database schema
+          // Scan database schema and transform to expected format
           if (window.electron?.fs?.scanSchema) {
-            const tables = await window.electron.fs.scanSchema!(projectPath)
-            if (tables?.length) {
-              generatedCode = generateERDiagram(tables)
-              source = `Database Schema (${tables.length} tables)`
+            const rawTables = await window.electron.fs.scanSchema!(projectPath)
+            if (rawTables?.length) {
+              // Transform to TableInfo format expected by generateERDiagram
+              const transformedTables = rawTables.map((t: any) => ({
+                name: t.name,
+                columns: (t.columns || []).map((c: any) => ({
+                  name: c.name,
+                  type: c.type,
+                  isPrimary: c.isPrimary,
+                  isForeign: c.isForeign,
+                  // Convert string reference to { table, column } object
+                  references: typeof c.references === 'string'
+                    ? { table: c.references.split('.')[0] || c.references, column: c.references.split('.')[1] || 'id' }
+                    : c.references
+                }))
+              }))
+              generatedCode = generateERDiagram(transformedTables)
+              source = `Database Schema (${rawTables.length} tables)`
             }
           }
           break

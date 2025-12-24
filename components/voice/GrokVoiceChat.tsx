@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button"
 interface GrokVoiceChatProps {
   agentName?: string
   agentInstructions?: string
-  voice?: "Sal" | "Rex" | "Eve" | "Leo" | "Mika" | "Valentin"
+  voice?: "sol" | "tara" | "cove" | "puck" | "charon" | "vale"
+  avatarUrl?: string
   onTranscript?: (text: string, role: "user" | "assistant") => void
 }
 
@@ -17,7 +18,8 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error"
 export function GrokVoiceChat({
   agentName = "에이미",
   agentInstructions = "You are Amy (에이미), a friendly Korean AI assistant. Speak naturally in Korean with a warm, cheerful tone. Keep responses concise and helpful.",
-  voice = "Eve",
+  voice = "tara",
+  avatarUrl,
   onTranscript,
 }: GrokVoiceChatProps) {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected")
@@ -32,6 +34,34 @@ export function GrokVoiceChat({
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const audioQueueRef = useRef<Float32Array[]>([])
   const isPlayingRef = useRef(false)
+
+  // 연결 사운드 재생
+  const playConnectionSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext()
+      const oscillator = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(ctx.destination)
+
+      // 상승하는 2음 멜로디 (연결 성공 느낌)
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(523.25, ctx.currentTime) // C5
+      oscillator.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15) // E5
+
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
+
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + 0.4)
+
+      // 정리
+      setTimeout(() => ctx.close(), 500)
+    } catch (e) {
+      console.log('[GrokVoice] Connection sound skipped')
+    }
+  }, [])
 
   // 오디오 재생
   const playAudioChunk = useCallback((base64Audio: string) => {
@@ -98,18 +128,24 @@ export function GrokVoiceChat({
       }
 
       const tokenData = await tokenRes.json()
-      const token = tokenData.client_secret?.value || tokenData.token
+      const token = tokenData.client_secret
 
       if (!token) {
-        // 직접 API 키 사용 (개발용)
-        console.warn("[GrokVoice] No ephemeral token, using direct connection")
+        console.error("[GrokVoice] No ephemeral token received")
+        setStatus("error")
+        return
       }
+
+      console.log("[GrokVoice] Token received:", token.substring(0, 30) + "...")
 
       // AudioContext 생성
       audioContextRef.current = new AudioContext({ sampleRate: 24000 })
 
-      // WebSocket 연결
-      const ws = new WebSocket("wss://api.x.ai/v1/realtime")
+      // WebSocket 연결 - OpenAI 호환 형식으로 토큰 전달
+      const ws = new WebSocket(
+        "wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime",
+        ["realtime", `openai-insecure-api-key.${token}`, "openai-beta.realtime-v1"]
+      )
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -137,7 +173,26 @@ export function GrokVoiceChat({
         }))
 
         setStatus("connected")
-        startMicrophone()
+        playConnectionSound()
+
+        // 🔥 에이전트가 먼저 인사
+        setTimeout(() => {
+          console.log("[GrokVoice] Requesting agent greeting...")
+          ws.send(JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "(통화가 연결되었습니다. 자연스럽게 인사해주세요.)" }]
+            }
+          }))
+          ws.send(JSON.stringify({
+            type: "response.create",
+            response: { modalities: ["text", "audio"] }
+          }))
+          // 인사 후 마이크 시작
+          setTimeout(() => startMicrophone(), 500)
+        }, 300)
       }
 
       ws.onmessage = (event) => {
@@ -164,7 +219,7 @@ export function GrokVoiceChat({
       console.error("[GrokVoice] Connection error:", error)
       setStatus("error")
     }
-  }, [status, agentInstructions, voice])
+  }, [status, agentInstructions, voice, playConnectionSound])
 
   // 서버 이벤트 처리
   const handleServerEvent = useCallback((data: any) => {
@@ -187,17 +242,18 @@ export function GrokVoiceChat({
         onTranscript?.(userText, "user")
         break
 
-      case "response.audio.delta":
+      // xAI API: response.output_audio.delta 형식
+      case "response.output_audio.delta":
         if (data.delta) {
           playAudioChunk(data.delta)
         }
         break
 
-      case "response.audio_transcript.delta":
+      case "response.output_audio_transcript.delta":
         setResponse(prev => prev + (data.delta || ""))
         break
 
-      case "response.audio_transcript.done":
+      case "response.output_audio_transcript.done":
         const fullText = data.transcript || response
         onTranscript?.(fullText, "assistant")
         setResponse("")
@@ -314,7 +370,7 @@ export function GrokVoiceChat({
 
   const statusColors: Record<ConnectionStatus, string> = {
     disconnected: "bg-zinc-600",
-    connecting: "bg-amber-500 animate-pulse",
+    connecting: "bg-cyan-500 animate-pulse",
     connected: "bg-emerald-500",
     error: "bg-red-500",
   }
@@ -327,133 +383,181 @@ export function GrokVoiceChat({
   }
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg">
-              {agentName.charAt(0)}
-            </div>
-            <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-zinc-900 ${statusColors[status]}`} />
-          </div>
-          <div>
-            <h3 className="font-semibold text-white">{agentName}</h3>
-            <p className="text-xs text-zinc-500">{statusLabels[status]}</p>
-          </div>
-        </div>
-
-        {/* Voice indicator */}
-        <AnimatePresence>
-          {isListening && (
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 rounded-full"
-            >
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-xs text-emerald-400">듣는 중...</span>
-            </motion.div>
+    <div className="flex flex-col h-full bg-gradient-to-b from-zinc-900 via-zinc-900 to-zinc-950">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
+        {/* Agent Avatar with Voice Waves */}
+        <div className="relative mb-8">
+          {/* Animated rings when connected */}
+          {status === "connected" && (
+            <>
+              <motion.div
+                className="absolute inset-0 rounded-full border-2 border-emerald-500/30"
+                animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+                style={{ width: 160, height: 160, top: -20, left: -20 }}
+              />
+              <motion.div
+                className="absolute inset-0 rounded-full border-2 border-emerald-500/20"
+                animate={{ scale: [1, 1.8, 1.8], opacity: [0.3, 0, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeOut", delay: 0.5 }}
+                style={{ width: 160, height: 160, top: -20, left: -20 }}
+              />
+            </>
           )}
-        </AnimatePresence>
-      </div>
 
-      {/* Transcript display */}
-      <div className="min-h-[100px] mb-6 space-y-3">
-        {transcript && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-end"
-          >
-            <div className="max-w-[80%] px-4 py-2 bg-blue-600 rounded-2xl rounded-br-md">
-              <p className="text-sm text-white">{transcript}</p>
-            </div>
-          </motion.div>
-        )}
+          {/* Avatar */}
+          <div className="relative w-[120px] h-[120px]">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={agentName}
+                className={`w-full h-full rounded-full object-cover shadow-2xl shadow-purple-500/25 ${status === "connected" ? "ring-4 ring-emerald-500/50" : ""}`}
+              />
+            ) : (
+              <div className={`w-full h-full rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-4xl shadow-2xl shadow-purple-500/25 ${status === "connected" ? "ring-4 ring-emerald-500/50" : ""}`}>
+                {agentName.charAt(0)}
+              </div>
+            )}
 
-        {response && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start"
-          >
-            <div className="max-w-[80%] px-4 py-2 bg-zinc-800 rounded-2xl rounded-bl-md">
-              <p className="text-sm text-zinc-200">{response}</p>
-            </div>
-          </motion.div>
-        )}
+            {/* Status indicator */}
+            <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-zinc-900 ${statusColors[status]}`} />
+          </div>
+        </div>
 
-        {status === "connected" && !transcript && !response && (
-          <div className="flex items-center justify-center h-[100px]">
-            <p className="text-zinc-600 text-sm">말씀해 주세요...</p>
+        {/* Agent Name & Status */}
+        <h2 className="text-2xl font-bold text-white mb-1">{agentName}</h2>
+        <p className={`text-sm mb-8 ${status === "connected" ? "text-emerald-400" : "text-zinc-500"}`}>
+          {statusLabels[status]}
+        </p>
+
+        {/* Voice Activity Visualization */}
+        {status === "connected" && (
+          <div className="flex items-center gap-1 mb-8 h-12">
+            {[...Array(5)].map((_, i) => (
+              <motion.div
+                key={i}
+                className={`w-1.5 rounded-full ${isListening ? "bg-emerald-500" : "bg-zinc-700"}`}
+                animate={isListening ? {
+                  height: [12, 32, 12],
+                } : { height: 12 }}
+                transition={{
+                  duration: 0.5,
+                  repeat: Infinity,
+                  delay: i * 0.1,
+                  ease: "easeInOut"
+                }}
+              />
+            ))}
           </div>
         )}
 
-        {status === "disconnected" && (
-          <div className="flex items-center justify-center h-[100px]">
-            <p className="text-zinc-600 text-sm">통화 버튼을 눌러 {agentName}와 대화하세요</p>
-          </div>
-        )}
-      </div>
+        {/* Transcript Area */}
+        <div className="w-full max-w-md min-h-[80px] mb-4">
+          <AnimatePresence mode="wait">
+            {transcript && (
+              <motion.div
+                key="transcript"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="text-right mb-3"
+              >
+                <span className="inline-block px-4 py-2 bg-blue-600 rounded-2xl rounded-br-sm text-white text-sm">
+                  {transcript}
+                </span>
+              </motion.div>
+            )}
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-4">
-        {/* Mute button */}
-        <Button
-          size="lg"
-          variant="ghost"
-          onClick={() => setIsMuted(!isMuted)}
-          disabled={status !== "connected"}
-          className={`w-14 h-14 rounded-full ${
-            isMuted ? "bg-red-500/20 text-red-400" : "bg-zinc-800 text-zinc-400"
-          }`}
-        >
-          {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-        </Button>
+            {response && (
+              <motion.div
+                key="response"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="text-left"
+              >
+                <span className="inline-block px-4 py-2 bg-zinc-800 rounded-2xl rounded-bl-sm text-zinc-200 text-sm">
+                  {response}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {/* Call button */}
-        {status === "disconnected" || status === "error" ? (
-          <Button
-            size="lg"
-            onClick={connect}
-            className="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white"
-          >
-            <Phone className="w-7 h-7" />
-          </Button>
-        ) : status === "connecting" ? (
-          <Button
-            size="lg"
-            disabled
-            className="w-16 h-16 rounded-full bg-amber-600 text-white"
-          >
-            <Loader2 className="w-7 h-7 animate-spin" />
-          </Button>
-        ) : (
-          <Button
-            size="lg"
-            onClick={disconnect}
-            className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white"
-          >
-            <PhoneOff className="w-7 h-7" />
-          </Button>
-        )}
+          {status === "connected" && !transcript && !response && (
+            <p className="text-center text-zinc-600 text-sm">말씀해 주세요...</p>
+          )}
 
-        {/* Speaker indicator */}
-        <div className={`w-14 h-14 rounded-full flex items-center justify-center ${
-          isPlayingRef.current ? "bg-purple-500/20 text-purple-400" : "bg-zinc-800 text-zinc-600"
-        }`}>
-          <Volume2 className="w-6 h-6" />
+          {status === "disconnected" && (
+            <p className="text-center text-zinc-600 text-sm">
+              아래 버튼을 눌러 음성 대화를 시작하세요
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Status bar */}
-      <div className="mt-4 pt-4 border-t border-zinc-800 flex items-center justify-center gap-2">
-        <div className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
-        <span className="text-xs text-zinc-500">
-          {status === "connected" ? "Grok Voice API 연결됨 ($0.05/분)" : "음성 통화 준비"}
-        </span>
+      {/* Bottom Controls */}
+      <div className="p-6 bg-zinc-900/80 backdrop-blur-lg border-t border-zinc-800">
+        <div className="flex items-center justify-center gap-6">
+          {/* Mute button */}
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            disabled={status !== "connected"}
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+              status !== "connected"
+                ? "bg-zinc-800/50 text-zinc-600 cursor-not-allowed"
+                : isMuted
+                  ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                  : "bg-zinc-800 text-white hover:bg-zinc-700"
+            }`}
+          >
+            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+          </button>
+
+          {/* Call button */}
+          {status === "disconnected" || status === "error" ? (
+            <button
+              onClick={connect}
+              className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+            >
+              <Phone className="w-8 h-8" />
+            </button>
+          ) : status === "connecting" ? (
+            <button
+              disabled
+              className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30 flex items-center justify-center"
+            >
+              <Loader2 className="w-8 h-8 animate-spin" />
+            </button>
+          ) : (
+            <button
+              onClick={disconnect}
+              className="w-20 h-20 rounded-full bg-gradient-to-br from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white shadow-lg shadow-red-500/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+            >
+              <PhoneOff className="w-8 h-8" />
+            </button>
+          )}
+
+          {/* Speaker/Volume button */}
+          <button
+            disabled={status !== "connected"}
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+              status !== "connected"
+                ? "bg-zinc-800/50 text-zinc-600 cursor-not-allowed"
+                : "bg-zinc-800 text-white hover:bg-zinc-700"
+            }`}
+          >
+            <Volume2 className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Status text */}
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
+          <span className="text-xs text-zinc-500">
+            {status === "connected" ? "음성 통화 중 • $0.05/분" : "Grok Voice API"}
+          </span>
+        </div>
       </div>
     </div>
   )

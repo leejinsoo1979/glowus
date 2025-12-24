@@ -37,8 +37,8 @@ interface AgentStats {
   communication: number
   creativity: number
   leadership: number
-  execution: number
-  adaptability: number
+  execution?: number   // DB에 없을 수 있음 (마이그레이션 전)
+  adaptability?: number // DB에 없을 수 있음 (마이그레이션 전)
   expertise: Record<string, { level: string; experience: number }>
   total_conversations: number
   total_tasks_completed: number
@@ -288,7 +288,7 @@ export function AgentOSPanel({ agentId, isDark }: AgentOSPanelProps) {
             </div>
             <div className="flex-1">
               <h4 className={cn('font-semibold', isDark ? 'text-white' : 'text-zinc-900')}>
-                에이전트 성장
+                에이전트 레벨
               </h4>
               <p className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
                 경험치 {stats.experience_points} XP
@@ -340,8 +340,8 @@ export function AgentOSPanel({ agentId, isDark }: AgentOSPanelProps) {
                   communication: stats.communication,
                   creativity: stats.creativity,
                   leadership: stats.leadership,
-                  execution: stats.execution,
-                  adaptability: stats.adaptability,
+                  execution: stats.execution ?? 20,      // DB에 없으면 기본값 20
+                  adaptability: stats.adaptability ?? 20, // DB에 없으면 기본값 20
                   level: stats.level,
                 }}
                 isDark={isDark}
@@ -353,8 +353,8 @@ export function AgentOSPanel({ agentId, isDark }: AgentOSPanelProps) {
                   communication: stats.communication,
                   creativity: stats.creativity,
                   leadership: stats.leadership,
-                  execution: stats.execution,
-                  adaptability: stats.adaptability,
+                  execution: stats.execution ?? 20,
+                  adaptability: stats.adaptability ?? 20,
                 }}
                 isDark={isDark}
               />
@@ -385,14 +385,14 @@ export function AgentOSPanel({ agentId, isDark }: AgentOSPanelProps) {
               />
               <StatBar
                 label="실행력"
-                value={stats.execution}
+                value={stats.execution ?? 20}
                 color="#ef4444"
                 icon={Target}
                 isDark={isDark}
               />
               <StatBar
                 label="적응력"
-                value={stats.adaptability}
+                value={stats.adaptability ?? 20}
                 color="#06b6d4"
                 icon={Zap}
                 isDark={isDark}
