@@ -3275,21 +3275,9 @@ export default function AgentProfilePage() {
         break
 
       case 'response.audio.delta':
-        if (event.delta) {
-          const binaryString = atob(event.delta)
-          const bytes = new Uint8Array(binaryString.length)
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-          }
-          const pcm16Data = new Int16Array(bytes.buffer)
-
-          if (isPlayingRef.current) {
-            audioQueueRef.current.push(pcm16Data)
-          } else {
-            isPlayingRef.current = true
-            playAudioChunk(pcm16Data)
-          }
-        }
+        // 🔥 OpenAI 형식 - xAI는 response.output_audio.delta 사용
+        // xAI에서 이 이벤트도 보내면 중복 재생 방지를 위해 무시
+        console.log('[VoiceEvent] ⚠️ OpenAI format audio.delta ignored (using xAI format)')
         break
 
       case 'response.audio_transcript.delta':
@@ -3313,28 +3301,9 @@ export default function AgentProfilePage() {
         break
 
       case 'response.content_part.delta':
-        // 🔥 xAI: content part delta - 오디오 데이터가 여기에 있을 수 있음
-        console.log('[VoiceEvent] 🎵 Content part delta:', event.delta ? 'has delta' : 'no delta')
-        if (event.delta) {
-          // 오디오 데이터 처리
-          try {
-            const binaryString = atob(event.delta)
-            const bytes = new Uint8Array(binaryString.length)
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i)
-            }
-            const pcm16Data = new Int16Array(bytes.buffer)
-
-            if (isPlayingRef.current) {
-              audioQueueRef.current.push(pcm16Data)
-            } else {
-              isPlayingRef.current = true
-              playAudioChunk(pcm16Data)
-            }
-          } catch (e) {
-            console.error('[VoiceEvent] Audio decode error:', e)
-          }
-        }
+        // 🔥 content_part.delta도 무시 - xAI는 response.output_audio.delta 사용
+        // 중복 재생 방지
+        console.log('[VoiceEvent] ⚠️ content_part.delta ignored (using xAI output_audio format)')
         break
 
       case 'response.content_part.done':
@@ -3460,51 +3429,9 @@ export default function AgentProfilePage() {
         break
 
       case 'response.output_audio.done':
-        // 🎵 xAI 오디오 전송 완료 - 전체 오디오가 여기 있을 수 있음!
-        console.log('[VoiceEvent] 🔊 xAI Audio done, checking for audio data...')
-        // xAI는 done 이벤트에 전체 오디오를 보낼 수 있음
-        if (event.audio) {
-          console.log('[VoiceEvent] 🔊 Found audio in done event, length:', event.audio.length)
-          try {
-            const binaryString = atob(event.audio)
-            const bytes = new Uint8Array(binaryString.length)
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i)
-            }
-            const pcm16Data = new Int16Array(bytes.buffer)
-
-            if (isPlayingRef.current) {
-              audioQueueRef.current.push(pcm16Data)
-            } else {
-              isPlayingRef.current = true
-              playAudioChunk(pcm16Data)
-            }
-          } catch (e) {
-            console.error('[VoiceEvent] xAI Audio done decode error:', e)
-          }
-        } else if (event.data) {
-          // 혹시 data 필드에 있을 수도
-          console.log('[VoiceEvent] 🔊 Found data in done event, length:', event.data.length)
-          try {
-            const binaryString = atob(event.data)
-            const bytes = new Uint8Array(binaryString.length)
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i)
-            }
-            const pcm16Data = new Int16Array(bytes.buffer)
-
-            if (isPlayingRef.current) {
-              audioQueueRef.current.push(pcm16Data)
-            } else {
-              isPlayingRef.current = true
-              playAudioChunk(pcm16Data)
-            }
-          } catch (e) {
-            console.error('[VoiceEvent] xAI Audio data decode error:', e)
-          }
-        } else {
-          console.log('[VoiceEvent] 🔊 Audio done event keys:', Object.keys(event))
-        }
+        // 🎵 xAI 오디오 전송 완료 - delta에서 이미 재생했으므로 여기선 재생 안 함
+        // 중복 재생 방지!
+        console.log('[VoiceEvent] 🔊 xAI Audio done (already played via delta)')
         break
 
       case 'response.output_audio_transcript.delta':
@@ -3715,8 +3642,8 @@ export default function AgentProfilePage() {
             turn_detection: {
               type: 'server_vad',
               threshold: vadThreshold,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500
+              prefix_padding_ms: 200,  // 🔥 300→200ms 더 빠른 음성 감지
+              silence_duration_ms: 300  // 🔥 500→300ms 더 빠른 턴 전환
             }
           }
         }))
