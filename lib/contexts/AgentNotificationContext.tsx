@@ -1,6 +1,40 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback, useRef } from "react"
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react"
+
+// 알림 사운드 재생 함수
+function playNotificationSound() {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+    // 첫 번째 톤 (높은 음)
+    const oscillator1 = audioContext.createOscillator()
+    const gainNode1 = audioContext.createGain()
+    oscillator1.connect(gainNode1)
+    gainNode1.connect(audioContext.destination)
+    oscillator1.frequency.value = 880 // A5
+    oscillator1.type = "sine"
+    gainNode1.gain.setValueAtTime(0.3, audioContext.currentTime)
+    gainNode1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+    oscillator1.start(audioContext.currentTime)
+    oscillator1.stop(audioContext.currentTime + 0.3)
+
+    // 두 번째 톤 (더 높은 음) - 0.15초 후
+    const oscillator2 = audioContext.createOscillator()
+    const gainNode2 = audioContext.createGain()
+    oscillator2.connect(gainNode2)
+    gainNode2.connect(audioContext.destination)
+    oscillator2.frequency.value = 1108.73 // C#6
+    oscillator2.type = "sine"
+    gainNode2.gain.setValueAtTime(0, audioContext.currentTime + 0.15)
+    gainNode2.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.16)
+    gainNode2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.45)
+    oscillator2.start(audioContext.currentTime + 0.15)
+    oscillator2.stop(audioContext.currentTime + 0.45)
+  } catch (e) {
+    console.warn("Could not play notification sound:", e)
+  }
+}
 
 export interface AgentInfo {
   id: string
@@ -93,6 +127,9 @@ export function AgentNotificationProvider({ children }: { children: React.ReactN
       createdAt: new Date(),
       actions: options?.actions,
     }
+
+    // 알림 사운드 재생
+    playNotificationSound()
 
     setNotifications(prev => {
       // 최대 개수 초과 시 가장 오래된 것 제거
