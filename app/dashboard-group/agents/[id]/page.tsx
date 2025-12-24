@@ -58,6 +58,15 @@ import {
   XCircle,
   LogOut,
   Mic,
+  MicOff,
+  Phone,
+  PhoneOff,
+  Volume2,
+  Play,
+  Square,
+  Waves,
+  UserCircle,
+  Gauge,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -67,6 +76,7 @@ import type { DeployedAgent, AgentStatus } from '@/types/database'
 import { getAppLogo } from '@/components/icons/app-logos'
 import { AgentOSPanel } from '@/components/agent/AgentOSPanel'
 import { BrainMapLayout } from '@/components/brain-map/BrainMapLayout'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 
 type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'brainmap' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
 
@@ -83,12 +93,13 @@ const tabs = [
   { id: 'settings' as TabType, label: '설정', icon: Settings },
 ]
 
-const statusConfig: Record<AgentStatus, { label: string; color: string; bgColor: string }> = {
-  ACTIVE: { label: '활성', color: '#22c55e', bgColor: '#22c55e20' },
+// 사용자 테마 색상 기반 상태 설정 (동적)
+const getStatusConfig = (accentColor: string) => ({
+  ACTIVE: { label: '활성', color: accentColor, bgColor: `${accentColor}20` },
   INACTIVE: { label: '비활성', color: '#64748b', bgColor: '#64748b20' },
-  BUSY: { label: '작업 중', color: '#f59e0b', bgColor: '#f59e0b20' },
+  BUSY: { label: '작업 중', color: accentColor, bgColor: `${accentColor}20` },
   ERROR: { label: '오류', color: '#ef4444', bgColor: '#ef444420' },
-}
+})
 
 const logTypeLabels: Record<string, { label: string; icon: any; color: string }> = {
   conversation: { label: '대화', icon: MessageSquare, color: '#3b82f6' },
@@ -110,6 +121,32 @@ const knowledgeTypeLabels: Record<string, string> = {
   decision_rule: '결정 규칙',
   lesson_learned: '교훈',
 }
+
+// Grok Voice API 음성 옵션
+const VOICE_OPTIONS = [
+  { id: 'sol', name: 'Sol', description: '차분하고 전문적인 여성 음성', gender: 'female' },
+  { id: 'tara', name: 'Tara', description: '밝고 활기찬 여성 음성', gender: 'female' },
+  { id: 'cove', name: 'Cove', description: '따뜻하고 친근한 남성 음성', gender: 'male' },
+  { id: 'puck', name: 'Puck', description: '유쾌하고 에너지 넘치는 남성 음성', gender: 'male' },
+  { id: 'charon', name: 'Charon', description: '깊고 신뢰감 있는 남성 음성', gender: 'male' },
+  { id: 'vale', name: 'Vale', description: '부드럽고 차분한 중성 음성', gender: 'neutral' },
+] as const
+
+// 대화 스타일 옵션
+const CONVERSATION_STYLES = [
+  { id: 'professional', name: '전문적', description: '비즈니스 환경에 적합한 격식 있는 대화' },
+  { id: 'friendly', name: '친근함', description: '편안하고 친근한 일상 대화 스타일' },
+  { id: 'casual', name: '캐주얼', description: '자유롭고 가벼운 대화 스타일' },
+  { id: 'empathetic', name: '공감형', description: '감정에 공감하고 배려하는 대화 스타일' },
+  { id: 'concise', name: '간결함', description: '핵심만 전달하는 짧고 명확한 대화' },
+] as const
+
+// VAD 감도 옵션
+const VAD_SENSITIVITY_OPTIONS = [
+  { id: 'low', name: '낮음', threshold: 0.7, description: '조용한 환경에서 사용' },
+  { id: 'medium', name: '보통', threshold: 0.5, description: '일반적인 환경에서 사용' },
+  { id: 'high', name: '높음', threshold: 0.3, description: '시끄러운 환경에서 사용' },
+] as const
 
 // 8섹션 프롬프트 정의
 const PROMPT_SECTIONS = [
@@ -2047,8 +2084,13 @@ export default function AgentProfilePage() {
   const params = useParams()
   const router = useRouter()
   const { resolvedTheme } = useTheme()
+  const { accentColor: accentColorId } = useThemeStore()
   const [mounted, setMounted] = useState(false)
   const agentId = params.id as string
+
+  // 사용자가 선택한 테마 색상
+  const userAccentColor = accentColors.find(c => c.id === accentColorId)?.color || '#3b82f6'
+  const statusConfig = getStatusConfig(userAccentColor)
 
   // Prevent hydration mismatch by waiting for client mount
   useEffect(() => {
@@ -2108,6 +2150,26 @@ export default function AgentProfilePage() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatFileInputRef = useRef<HTMLInputElement>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
+
+  // Voice call states
+  const [isVoiceCallActive, setIsVoiceCallActive] = useState(false)
+  const [isVoiceConnecting, setIsVoiceConnecting] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const audioQueueRef = useRef<Int16Array[]>([])
+  const isPlayingRef = useRef(false)
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null)
+
+  // Voice preview state
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null)
+  const previewWsRef = useRef<WebSocket | null>(null)
+  const previewAudioContextRef = useRef<AudioContext | null>(null)
+  const previewAudioQueueRef = useRef<Int16Array[]>([])
+  const previewIsPlayingRef = useRef(false)
 
   // 감정 아바타 상태
   const [emotionAvatars, setEmotionAvatars] = useState<EmotionAvatars>({})
@@ -3132,6 +3194,414 @@ export default function AgentProfilePage() {
     setActionFormData(prev => ({ ...prev, [fieldName]: value }))
   }
 
+  // ========== Voice Call Functions ==========
+
+  // Play audio chunk from queue
+  const playAudioChunk = (pcm16Data: Int16Array) => {
+    if (!audioContextRef.current) return
+
+    const ctx = audioContextRef.current
+    const float32Data = new Float32Array(pcm16Data.length)
+    for (let i = 0; i < pcm16Data.length; i++) {
+      float32Data[i] = pcm16Data[i] / 32768.0
+    }
+
+    const audioBuffer = ctx.createBuffer(1, float32Data.length, 24000)
+    audioBuffer.getChannelData(0).set(float32Data)
+
+    const source = ctx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(ctx.destination)
+    source.onended = () => {
+      playNextChunk()
+    }
+    sourceNodeRef.current = source
+    source.start()
+  }
+
+  // Play next chunk in queue
+  const playNextChunk = () => {
+    if (audioQueueRef.current.length > 0) {
+      const nextChunk = audioQueueRef.current.shift()!
+      playAudioChunk(nextChunk)
+    } else {
+      isPlayingRef.current = false
+    }
+  }
+
+  // Handle voice server events
+  const handleVoiceServerEvent = (event: any) => {
+    switch (event.type) {
+      case 'session.created':
+        console.log('Voice session created')
+        break
+
+      case 'input_audio_buffer.speech_started':
+        setIsListening(true)
+        break
+
+      case 'input_audio_buffer.speech_stopped':
+        setIsListening(false)
+        break
+
+      case 'response.audio.delta':
+        if (event.delta) {
+          const binaryString = atob(event.delta)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          const pcm16Data = new Int16Array(bytes.buffer)
+
+          if (isPlayingRef.current) {
+            audioQueueRef.current.push(pcm16Data)
+          } else {
+            isPlayingRef.current = true
+            playAudioChunk(pcm16Data)
+          }
+        }
+        break
+
+      case 'response.audio_transcript.delta':
+        // AI transcript - could display this
+        break
+
+      case 'error':
+        console.error('Voice error:', event.error)
+        break
+    }
+  }
+
+  // Start microphone
+  const startMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 24000, channelCount: 1 }
+      })
+      streamRef.current = stream
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext({ sampleRate: 24000 })
+      }
+
+      const ctx = audioContextRef.current
+      const source = ctx.createMediaStreamSource(stream)
+      const processor = ctx.createScriptProcessor(4096, 1, 1)
+
+      processor.onaudioprocess = (e) => {
+        if (isMuted || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+
+        const inputData = e.inputBuffer.getChannelData(0)
+        const pcm16 = new Int16Array(inputData.length)
+        for (let i = 0; i < inputData.length; i++) {
+          pcm16[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)))
+        }
+
+        const bytes = new Uint8Array(pcm16.buffer)
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i])
+        }
+        const base64 = btoa(binary)
+
+        wsRef.current.send(JSON.stringify({
+          type: 'input_audio_buffer.append',
+          audio: base64
+        }))
+      }
+
+      source.connect(processor)
+      processor.connect(ctx.destination)
+      processorRef.current = processor
+    } catch (err) {
+      console.error('Microphone error:', err)
+      alert('마이크 접근 권한이 필요합니다.')
+    }
+  }
+
+  // Stop microphone
+  const stopMicrophone = () => {
+    if (processorRef.current) {
+      processorRef.current.disconnect()
+      processorRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+  }
+
+  // Start voice call
+  const startVoiceCall = async () => {
+    if (!agent) return
+
+    setIsVoiceConnecting(true)
+
+    try {
+      // Get voice settings from agent
+      const voiceSettings = (agent as any).voice_settings || {}
+      const selectedVoice = voiceSettings.voice || 'sol'
+      const conversationStyle = voiceSettings.conversation_style || 'friendly'
+      const vadSensitivity = voiceSettings.vad_sensitivity || 'medium'
+
+      // Get VAD threshold based on sensitivity
+      const vadThreshold = VAD_SENSITIVITY_OPTIONS.find(v => v.id === vadSensitivity)?.threshold || 0.5
+
+      // Build conversation style instructions
+      const styleInstructions: Record<string, string> = {
+        professional: '비즈니스 환경에 적합하게 격식을 갖추어 대화하세요. 명확하고 간결하게 답변하세요.',
+        friendly: '친근하고 편안한 어조로 대화하세요. 자연스럽고 따뜻한 느낌으로 응답하세요.',
+        casual: '가볍고 자유로운 어조로 대화하세요. 구어체를 사용해도 좋습니다.',
+        empathetic: '상대방의 감정에 공감하며 배려하는 어조로 대화하세요. 경청하고 이해하는 태도를 보여주세요.',
+        concise: '핵심만 간결하게 전달하세요. 불필요한 말을 줄이고 명확하게 답변하세요.',
+      }
+
+      const baseInstructions = agent.system_prompt || `You are ${agent.name}. ${agent.description || ''}`
+      const styleInstruction = styleInstructions[conversationStyle] || styleInstructions.friendly
+      const fullInstructions = `${baseInstructions}\n\n대화 스타일: ${styleInstruction}`
+
+      // Get ephemeral token
+      const tokenRes = await fetch('/api/grok-voice/token', { method: 'POST' })
+      if (!tokenRes.ok) {
+        throw new Error('Failed to get voice token')
+      }
+      const tokenData = await tokenRes.json()
+
+      // Connect to Grok Realtime API
+      const ws = new WebSocket('wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime', [
+        'realtime',
+        `client-secret.${tokenData.client_secret}`
+      ])
+
+      ws.onopen = () => {
+        console.log('Voice WebSocket connected')
+
+        // Configure session with agent's voice settings
+        ws.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            modalities: ['text', 'audio'],
+            instructions: fullInstructions,
+            voice: selectedVoice,
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
+            input_audio_transcription: { model: 'grok-2-public' },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: vadThreshold,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500
+            }
+          }
+        }))
+
+        setIsVoiceCallActive(true)
+        setIsVoiceConnecting(false)
+        startMicrophone()
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          handleVoiceServerEvent(data)
+        } catch (err) {
+          console.error('Failed to parse voice message:', err)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('Voice WebSocket error:', error)
+        setIsVoiceConnecting(false)
+      }
+
+      ws.onclose = () => {
+        console.log('Voice WebSocket closed')
+        setIsVoiceCallActive(false)
+        setIsVoiceConnecting(false)
+        stopMicrophone()
+      }
+
+      wsRef.current = ws
+    } catch (err) {
+      console.error('Voice call error:', err)
+      alert('음성 통화 연결에 실패했습니다.')
+      setIsVoiceConnecting(false)
+    }
+  }
+
+  // End voice call
+  const endVoiceCall = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    stopMicrophone()
+    audioQueueRef.current = []
+    isPlayingRef.current = false
+    setIsVoiceCallActive(false)
+    setIsVoiceConnecting(false)
+    setIsListening(false)
+  }
+
+  // Play preview audio chunk
+  const playPreviewAudioChunk = (pcm16Data: Int16Array) => {
+    if (!previewAudioContextRef.current) return
+
+    const ctx = previewAudioContextRef.current
+    const float32Data = new Float32Array(pcm16Data.length)
+    for (let i = 0; i < pcm16Data.length; i++) {
+      float32Data[i] = pcm16Data[i] / 32768.0
+    }
+
+    const audioBuffer = ctx.createBuffer(1, float32Data.length, 24000)
+    audioBuffer.getChannelData(0).set(float32Data)
+
+    const source = ctx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(ctx.destination)
+    source.onended = () => {
+      playNextPreviewChunk()
+    }
+    source.start()
+  }
+
+  // Play next preview chunk in queue
+  const playNextPreviewChunk = () => {
+    if (previewAudioQueueRef.current.length > 0) {
+      const nextChunk = previewAudioQueueRef.current.shift()!
+      playPreviewAudioChunk(nextChunk)
+    } else {
+      previewIsPlayingRef.current = false
+    }
+  }
+
+  // Stop voice preview
+  const stopVoicePreview = () => {
+    if (previewWsRef.current) {
+      previewWsRef.current.close()
+      previewWsRef.current = null
+    }
+    previewAudioQueueRef.current = []
+    previewIsPlayingRef.current = false
+    setPreviewingVoice(null)
+  }
+
+  // Preview voice
+  const previewVoice = async (voiceId: string) => {
+    // If already previewing this voice, stop it
+    if (previewingVoice === voiceId) {
+      stopVoicePreview()
+      return
+    }
+
+    // Stop any existing preview
+    stopVoicePreview()
+    setPreviewingVoice(voiceId)
+
+    try {
+      // Get preview session
+      const res = await fetch('/api/grok-voice/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voice: voiceId, text: '반갑습니다. 주인님' }),
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to get preview session')
+      }
+
+      const data = await res.json()
+
+      // Create audio context
+      if (!previewAudioContextRef.current) {
+        previewAudioContextRef.current = new AudioContext({ sampleRate: 24000 })
+      }
+
+      // Connect to WebSocket
+      const ws = new WebSocket('wss://api.x.ai/v1/realtime?model=grok-3-fast-realtime', [
+        'realtime',
+        `client-secret.${data.client_secret}`
+      ])
+
+      ws.onopen = () => {
+        // Configure session
+        ws.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            modalities: ['text', 'audio'],
+            voice: voiceId,
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
+          }
+        }))
+
+        // Send text to speak
+        setTimeout(() => {
+          ws.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'input_text', text: '인사해줘' }]
+            }
+          }))
+          ws.send(JSON.stringify({ type: 'response.create' }))
+        }, 100)
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data)
+
+          if (msg.type === 'response.audio.delta' && msg.delta) {
+            const binaryString = atob(msg.delta)
+            const bytes = new Uint8Array(binaryString.length)
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
+            }
+            const pcm16Data = new Int16Array(bytes.buffer)
+
+            if (previewIsPlayingRef.current) {
+              previewAudioQueueRef.current.push(pcm16Data)
+            } else {
+              previewIsPlayingRef.current = true
+              playPreviewAudioChunk(pcm16Data)
+            }
+          }
+
+          if (msg.type === 'response.done') {
+            // Close after a short delay to ensure all audio is played
+            setTimeout(() => {
+              ws.close()
+            }, 500)
+          }
+        } catch (err) {
+          console.error('Preview message error:', err)
+        }
+      }
+
+      ws.onerror = () => {
+        setPreviewingVoice(null)
+      }
+
+      ws.onclose = () => {
+        // Wait for audio queue to finish
+        setTimeout(() => {
+          if (!previewIsPlayingRef.current) {
+            setPreviewingVoice(null)
+          }
+        }, 1000)
+      }
+
+      previewWsRef.current = ws
+    } catch (err) {
+      console.error('Voice preview error:', err)
+      setPreviewingVoice(null)
+    }
+  }
+
+  // ========== End Voice Call Functions ==========
+
   // 채팅 메시지 전송
   const handleSendChat = async () => {
     if ((!chatInput.trim() && !chatImage) || !agent || chatLoading) return
@@ -3354,6 +3824,15 @@ export default function AgentProfilePage() {
         case 'capabilities':
           updateData = {
             capabilities: editForm.capabilities || [],
+          }
+          break
+        case 'voice_settings':
+          updateData = {
+            voice_settings: {
+              voice: editForm.voice || 'sol',
+              conversation_style: editForm.conversation_style || 'friendly',
+              vad_sensitivity: editForm.vad_sensitivity || 'medium',
+            },
           }
           break
       }
@@ -3579,31 +4058,47 @@ export default function AgentProfilePage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-white dark:bg-zinc-950 z-50">
-        {/* Animated Bot Icon */}
-        <div className="relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full blur-xl opacity-30 animate-pulse" />
-          <div className="relative w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-2xl">
-            <Bot className="w-12 h-12 text-white animate-bounce" />
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-8 bg-zinc-950 z-50">
+        {/* Neural Network Loading Animation */}
+        <div className="relative w-32 h-32">
+          {/* Outer rotating ring */}
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-500 border-r-purple-500 animate-spin" style={{ animationDuration: '2s' }} />
+
+          {/* Middle pulsing ring */}
+          <div className="absolute inset-2 rounded-full border border-cyan-500/30 animate-pulse" />
+
+          {/* Inner core */}
+          <div className="absolute inset-4 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-600/20 backdrop-blur-sm flex items-center justify-center">
+            {/* Central Brain Icon */}
+            <div className="relative">
+              <Brain className="w-10 h-10 text-cyan-400 animate-pulse" />
+              {/* Sparkle effects */}
+              <Sparkles className="absolute -top-2 -right-2 w-4 h-4 text-purple-400 animate-ping" style={{ animationDuration: '1.5s' }} />
+              <Zap className="absolute -bottom-1 -left-2 w-3 h-3 text-cyan-300 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }} />
+            </div>
           </div>
-          {/* Orbiting dots */}
-          <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s' }}>
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-3 h-3 bg-blue-400 rounded-full" />
+
+          {/* Floating particles */}
+          <div className="absolute inset-0 animate-spin" style={{ animationDuration: '4s' }}>
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_10px_cyan]" />
           </div>
-          <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s', animationDelay: '1s' }}>
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-3 h-3 bg-purple-400 rounded-full" />
+          <div className="absolute inset-0 animate-spin" style={{ animationDuration: '4s', animationDelay: '1.3s', animationDirection: 'reverse' }}>
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-purple-400 rounded-full shadow-[0_0_10px_purple]" />
           </div>
-          <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s', animationDelay: '2s' }}>
-            <div className="absolute top-1/2 right-0 translate-x-1 -translate-y-1/2 w-3 h-3 bg-pink-400 rounded-full" />
+          <div className="absolute inset-0 animate-spin" style={{ animationDuration: '4s', animationDelay: '2.6s' }}>
+            <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1.5 h-1.5 bg-pink-400 rounded-full shadow-[0_0_10px_pink]" />
           </div>
         </div>
+
         {/* Loading text */}
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-lg font-medium text-zinc-700 dark:text-zinc-300">에이전트 불러오는 중...</p>
-          <div className="flex gap-1">
-            <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-base font-medium bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            에이전트 로딩 중
+          </p>
+          <div className="flex gap-1.5">
+            <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-bounce shadow-[0_0_8px_cyan]" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce shadow-[0_0_8px_purple]" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-bounce shadow-[0_0_8px_pink]" style={{ animationDelay: '300ms' }} />
           </div>
         </div>
       </div>
@@ -3936,22 +4431,39 @@ export default function AgentProfilePage() {
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2 mt-6">
-          <button
-            onClick={() => router.push(`/dashboard-group/messenger?invite=${agentId}`)}
-            className="w-full h-10 rounded-xl bg-accent hover:bg-accent/90 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
-          >
-            <MessageSquare className="w-4 h-4" />
-            대화하기
-          </button>
+          {/* 채팅 / 보이스 버튼 */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => router.push(`/dashboard-group/messenger?invite=${agentId}`)}
+              className="flex-1 h-10 rounded-xl text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              style={{ backgroundColor: userAccentColor }}
+            >
+              <MessageSquare className="w-4 h-4" />
+              채팅
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard-group/messenger?invite=${agentId}&mode=voice`)}
+              className="flex-1 h-10 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: `${userAccentColor}20`,
+                color: userAccentColor,
+              }}
+            >
+              <Phone className="w-4 h-4" />
+              보이스
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleToggleStatus}
               className={cn(
                 'flex-1 h-10 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-colors',
-                agent.status === 'ACTIVE'
-                  ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'
-                  : isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600'
+                agent.status !== 'ACTIVE' && (isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600')
               )}
+              style={agent.status === 'ACTIVE' ? {
+                backgroundColor: `${userAccentColor}15`,
+                color: userAccentColor,
+              } : undefined}
             >
               {agent.status === 'ACTIVE' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               {agent.status === 'ACTIVE' ? '중지' : '시작'}
@@ -5547,10 +6059,66 @@ export default function AgentProfilePage() {
                       <Send className="w-4 h-4" />
                     )}
                   </button>
+                  {/* Voice Call Button */}
+                  <button
+                    onClick={() => {
+                      if (isVoiceCallActive) {
+                        endVoiceCall()
+                      } else if (!isVoiceConnecting) {
+                        startVoiceCall()
+                      }
+                    }}
+                    disabled={chatLoading || isAnalyzingTask || !!pendingTask}
+                    className={cn(
+                      'w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0',
+                      isVoiceCallActive
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : isVoiceConnecting
+                          ? 'bg-accent/50 text-white'
+                          : isDark
+                            ? 'hover:bg-zinc-800 text-zinc-400 hover:text-accent'
+                            : 'hover:bg-zinc-100 text-zinc-500 hover:text-accent'
+                    )}
+                    title={isVoiceCallActive ? '통화 종료' : isVoiceConnecting ? '연결 중...' : '음성 통화'}
+                  >
+                    {isVoiceConnecting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : isVoiceCallActive ? (
+                      <PhoneOff className="w-4 h-4" />
+                    ) : (
+                      <Phone className="w-4 h-4" />
+                    )}
+                  </button>
+                  {/* Mute Button (only show during voice call) */}
+                  {isVoiceCallActive && (
+                    <button
+                      onClick={() => setIsMuted(!isMuted)}
+                      className={cn(
+                        'w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0',
+                        isMuted
+                          ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                          : isListening
+                            ? 'bg-green-500 text-white'
+                            : isDark
+                              ? 'hover:bg-zinc-800 text-zinc-400'
+                              : 'hover:bg-zinc-100 text-zinc-500'
+                      )}
+                      title={isMuted ? '음소거 해제' : '음소거'}
+                    >
+                      {isMuted ? (
+                        <MicOff className="w-4 h-4" />
+                      ) : (
+                        <Mic className={cn('w-4 h-4', isListening && 'animate-pulse')} />
+                      )}
+                    </button>
+                  )}
                   {/* Exit Button - Moved from header */}
                   <button
                     onClick={() => {
                       // 채팅방 나가기
+                      if (isVoiceCallActive) {
+                        endVoiceCall()
+                      }
                       setChatMessages([])
                       setHistoryLoaded(false)
                       setActiveTab('about')
@@ -6588,6 +7156,202 @@ export default function AgentProfilePage() {
                     ✨ <strong>커스텀 감정:</strong> 키워드를 추가하면 대화에서 해당 단어가 감지될 때 자동으로 표정이 바뀝니다.
                   </p>
                 </div>
+              </div>
+
+              {/* 음성 통화 설정 */}
+              <div
+                className={cn(
+                  'p-4 md:p-6 rounded-xl md:rounded-2xl border',
+                  isDark ? 'bg-zinc-800/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={cn('font-semibold flex items-center gap-2', isDark ? 'text-white' : 'text-zinc-900')}>
+                    <Phone className="w-5 h-5 text-green-500" />
+                    음성 통화 설정
+                  </h3>
+                  {editingSection !== 'voice_settings' && (
+                    <button
+                      onClick={() => {
+                        const voiceSettings = (agent as any).voice_settings || {}
+                        startEditing('voice_settings', {
+                          voice: voiceSettings.voice || 'sol',
+                          conversation_style: voiceSettings.conversation_style || 'friendly',
+                          vad_sensitivity: voiceSettings.vad_sensitivity || 'medium',
+                        })
+                      }}
+                      className={cn(
+                        'flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm',
+                        isDark ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-zinc-200 hover:bg-zinc-300'
+                      )}
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      편집
+                    </button>
+                  )}
+                </div>
+                <p className={cn('text-sm mb-4', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
+                  음성 통화 시 에이전트의 목소리와 대화 스타일을 설정합니다.
+                </p>
+
+                {editingSection === 'voice_settings' ? (
+                  <div className="space-y-6">
+                    {/* 음성 선택 */}
+                    <div>
+                      <label className={cn('text-sm font-medium block mb-3', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                        🎤 음성 선택
+                      </label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {VOICE_OPTIONS.map((voice) => (
+                          <button
+                            key={voice.id}
+                            onClick={() => setEditForm({ ...editForm, voice: voice.id })}
+                            className={cn(
+                              'p-3 rounded-xl border-2 text-left transition-all',
+                              editForm.voice === voice.id
+                                ? 'border-accent bg-accent/10'
+                                : isDark
+                                  ? 'border-zinc-700 hover:border-zinc-600 bg-zinc-900'
+                                  : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                            )}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg">
+                                {voice.gender === 'female' ? '👩' : voice.gender === 'male' ? '👨' : '🧑'}
+                              </span>
+                              <span className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>
+                                {voice.name}
+                              </span>
+                            </div>
+                            <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+                              {voice.description}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 대화 스타일 */}
+                    <div>
+                      <label className={cn('text-sm font-medium block mb-3', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                        💬 대화 스타일
+                      </label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {CONVERSATION_STYLES.map((style) => (
+                          <button
+                            key={style.id}
+                            onClick={() => setEditForm({ ...editForm, conversation_style: style.id })}
+                            className={cn(
+                              'p-3 rounded-xl border-2 text-left transition-all',
+                              editForm.conversation_style === style.id
+                                ? 'border-accent bg-accent/10'
+                                : isDark
+                                  ? 'border-zinc-700 hover:border-zinc-600 bg-zinc-900'
+                                  : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                            )}
+                          >
+                            <span className={cn('font-medium block mb-1', isDark ? 'text-white' : 'text-zinc-900')}>
+                              {style.name}
+                            </span>
+                            <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+                              {style.description}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* VAD 감도 */}
+                    <div>
+                      <label className={cn('text-sm font-medium block mb-3', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+                        🎚️ 음성 인식 감도
+                      </label>
+                      <div className="flex gap-3">
+                        {VAD_SENSITIVITY_OPTIONS.map((option) => (
+                          <button
+                            key={option.id}
+                            onClick={() => setEditForm({ ...editForm, vad_sensitivity: option.id })}
+                            className={cn(
+                              'flex-1 p-3 rounded-xl border-2 text-center transition-all',
+                              editForm.vad_sensitivity === option.id
+                                ? 'border-accent bg-accent/10'
+                                : isDark
+                                  ? 'border-zinc-700 hover:border-zinc-600 bg-zinc-900'
+                                  : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                            )}
+                          >
+                            <span className={cn('font-medium block', isDark ? 'text-white' : 'text-zinc-900')}>
+                              {option.name}
+                            </span>
+                            <p className={cn('text-xs mt-1', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+                              {option.description}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4">
+                      <button
+                        onClick={cancelEditing}
+                        className={cn(
+                          'px-4 py-2 rounded-lg text-sm',
+                          isDark ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-zinc-200 hover:bg-zinc-300'
+                        )}
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={() => saveSection('voice_settings')}
+                        disabled={saving}
+                        className="px-4 py-2 rounded-lg text-sm bg-accent text-white hover:bg-accent/90 flex items-center gap-1"
+                      >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4">
+                    {(() => {
+                      const voiceSettings = (agent as any).voice_settings || {}
+                      const selectedVoice = VOICE_OPTIONS.find(v => v.id === (voiceSettings.voice || 'sol'))
+                      const selectedStyle = CONVERSATION_STYLES.find(s => s.id === (voiceSettings.conversation_style || 'friendly'))
+                      const selectedVad = VAD_SENSITIVITY_OPTIONS.find(v => v.id === (voiceSettings.vad_sensitivity || 'medium'))
+                      return (
+                        <>
+                          <div className={cn('p-4 rounded-lg', isDark ? 'bg-zinc-900' : 'bg-white')}>
+                            <p className={cn('text-xs uppercase mb-1', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                              음성
+                            </p>
+                            <p className={cn('font-medium flex items-center gap-2', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
+                              <span>
+                                {selectedVoice?.gender === 'female' ? '👩' : selectedVoice?.gender === 'male' ? '👨' : '🧑'}
+                              </span>
+                              {selectedVoice?.name || 'Sol'}
+                            </p>
+                          </div>
+                          <div className={cn('p-4 rounded-lg', isDark ? 'bg-zinc-900' : 'bg-white')}>
+                            <p className={cn('text-xs uppercase mb-1', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                              대화 스타일
+                            </p>
+                            <p className={cn('font-medium', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
+                              {selectedStyle?.name || '친근함'}
+                            </p>
+                          </div>
+                          <div className={cn('p-4 rounded-lg', isDark ? 'bg-zinc-900' : 'bg-white')}>
+                            <p className={cn('text-xs uppercase mb-1', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                              인식 감도
+                            </p>
+                            <p className={cn('font-medium', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
+                              {selectedVad?.name || '보통'}
+                            </p>
+                          </div>
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
 
               {/* Metadata */}
