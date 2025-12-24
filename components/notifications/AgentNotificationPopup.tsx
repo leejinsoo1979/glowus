@@ -6,6 +6,9 @@ import { X, Bell, AlertTriangle, CheckCircle, Sparkles, Send, Loader2, Mic, MicO
 import { useAgentNotification, AgentNotification } from "@/lib/contexts/AgentNotificationContext"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
 
+// 여성 에이전트 이름 목록
+const FEMALE_AGENTS = ['레이첼', 'rachel', '애니', '에니', 'ani', 'annie', '소피아', 'sophia', '엠마', 'emma', '올리비아', 'olivia']
+
 type ReplyMode = "none" | "chat" | "voice"
 
 // Web Speech API 타입
@@ -386,10 +389,17 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
   const themeColorData = accentColors.find(c => c.id === themeAccent)
   const themeColor = themeColorData?.color || "#3b82f6"
 
-  // 아바타 URL 결정
+  // 아바타 URL 결정 (여성 에이전트 감지)
+  const getDefaultAvatarUrl = () => {
+    const nameLower = agent.name.toLowerCase()
+    const isFemale = FEMALE_AGENTS.some(n => nameLower.includes(n))
+    const seed = isFemale ? `${agent.name}-female` : agent.name
+    return `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(seed)}`
+  }
+
   const avatarUrl = emotion && agent.emotion_avatars?.[emotion]
     ? agent.emotion_avatars[emotion]
-    : agent.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${agent.name}`
+    : agent.avatar_url || getDefaultAvatarUrl()
 
   const Icon = typeIcons[type]
   // 테마 색상 사용 (에이전트 색상 대신)
