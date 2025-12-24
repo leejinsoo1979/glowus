@@ -42,7 +42,7 @@ interface AgentNotificationContextType {
 const AgentNotificationContext = createContext<AgentNotificationContextType | null>(null)
 
 const MAX_NOTIFICATIONS = 3
-const DEFAULT_DURATION = 8000 // 8초
+const DEFAULT_DURATION = 0 // 0 = 자동 닫힘 없음 (사용자가 직접 닫아야 함)
 
 // 에이전트별 액센트 컬러
 const agentColors: Record<string, string> = {

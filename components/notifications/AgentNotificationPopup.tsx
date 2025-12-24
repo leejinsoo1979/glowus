@@ -185,16 +185,6 @@ function NotificationItem({ notification, index }: { notification: AgentNotifica
             )}
           </motion.div>
 
-          {/* 하단 진행 바 */}
-          <div className="h-1 bg-zinc-800">
-            <motion.div
-              initial={{ scaleX: 1 }}
-              animate={{ scaleX: 0 }}
-              transition={{ duration: 8, ease: "linear" }}
-              className="h-full origin-left"
-              style={{ backgroundColor: accentColor }}
-            />
-          </div>
         </div>
         </motion.div>
       </motion.div>
