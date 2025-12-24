@@ -3237,7 +3237,11 @@ export default function AgentProfilePage() {
       const nextChunk = audioQueueRef.current.shift()!
       playAudioChunk(nextChunk)
     } else {
-      isPlayingRef.current = false
+      // 🔥 재생 끝난 후 500ms 딜레이 - 잔향/에코 방지
+      setTimeout(() => {
+        isPlayingRef.current = false
+        console.log('[VoiceAudio] 🔇 Playback ended, mic resumed after delay')
+      }, 500)
     }
   }
 
@@ -3560,7 +3564,8 @@ export default function AgentProfilePage() {
       const processor = ctx.createScriptProcessor(4096, 1, 1)
 
       processor.onaudioprocess = (e) => {
-        if (isMuted || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+        // 🔥 에이전트가 말하는 중이면 마이크 입력 차단 (에코 방지)
+        if (isMuted || isPlayingRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
 
         const inputData = e.inputBuffer.getChannelData(0)
         const pcm16 = new Int16Array(inputData.length)
