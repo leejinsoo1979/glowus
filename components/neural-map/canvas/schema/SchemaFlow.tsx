@@ -39,9 +39,9 @@ const nodeTypes = {
 
 // Convert parsed schema to React Flow nodes/edges
 function schemaToFlow(schema: ParsedSchema): { nodes: Node<TableNodeData>[]; edges: Edge[] } {
-    const SPACING_X = 350
-    const SPACING_Y = 250
-    const COLS = 4
+    const SPACING_X = 450  // 넓은 가로 간격
+    const SPACING_Y = 350  // 넓은 세로 간격
+    const COLS = 3         // 한 줄에 3개만
 
     // 테이블 노드 생성
     const nodes: Node<TableNodeData>[] = schema.tables.map((table, idx) => {
@@ -58,7 +58,7 @@ function schemaToFlow(schema: ParsedSchema): { nodes: Node<TableNodeData>[]; edg
         return {
             id: table.name,
             type: 'table',
-            position: { x: 100 + col * SPACING_X, y: 100 + row * SPACING_Y },
+            position: { x: 150 + col * SPACING_X, y: 150 + row * SPACING_Y },
             data: {
                 label: table.name,
                 columns,
@@ -86,7 +86,7 @@ function schemaToFlow(schema: ParsedSchema): { nodes: Node<TableNodeData>[]; edg
             stubNodes.push({
                 id: tableName,
                 type: 'table',
-                position: { x: 100 + col * SPACING_X, y: 100 + row * SPACING_Y },
+                position: { x: 150 + col * SPACING_X, y: 150 + row * SPACING_Y },
                 data: {
                     label: `${tableName} (ref)`,
                     columns: [{ name: 'id', type: 'string', isPrimaryKey: true }],

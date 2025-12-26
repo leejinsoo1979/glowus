@@ -538,8 +538,8 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     const isConnected = connectedNodeIds.has(node.id)
     const isDimmed = hasSelection && !isConnected && !isSelected && !isHovered
 
-    // 🌌 은하 효과: 줌아웃 시 반짝이는 별처럼 보이게
-    const isGalaxyMode = globalScale < 1.2
+    // 🌌 은하 효과: 줌아웃 시 반짝이는 별처럼 보이게 (더 멀리 줌아웃해야 활성화)
+    const isGalaxyMode = globalScale < 0.6 // 0.6 미만에서만 은하 모드 (더 멀리 줌아웃 필요)
     const time = Date.now() / 1000
     // 각 노드마다 고유한 반짝임 패턴 (노드 ID 해시 기반)
     const nodeHash = node.id.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)
@@ -565,12 +565,16 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       fillColor = FILE_TYPE_COLORS[node.fileType.toLowerCase()] || '#6b7280'
     }
 
-    // 연결되지 않은 노드는 매우 흐리게 처리
+    // 투명도 설정: 기본 1.0, 조건에 따라 변경
     if (isDimmed) {
+      // 선택된 노드와 연결되지 않은 노드는 매우 흐리게
       ctx.globalAlpha = 0.08
     } else if (isGalaxyMode && !isSelected && !isHovered) {
-      // 은하 모드: 반짝임에 따라 투명도 변화
-      ctx.globalAlpha = 0.5 + twinkle * 0.5 // 0.5~1.0
+      // 은하 모드 (줌 < 0.6): 반짝임에 따라 투명도 변화
+      ctx.globalAlpha = 0.6 + twinkle * 0.4 // 0.6~1.0 (더 밝게)
+    } else {
+      // 기본 상태: 완전 불투명
+      ctx.globalAlpha = 1.0
     }
 
     // 그림자/글로우 효과
@@ -1088,7 +1092,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       if (currentTime - lastTime >= 1000 / fps) {
         // 줌 레벨 체크하여 은하 모드일 때만 리렌더
         const currentZoom = graphInstanceRef.current?.zoom?.() || 1
-        if (currentZoom < 1.2) {
+        if (currentZoom < 0.6) {
           // 강제 리렌더링으로 반짝임 효과 적용
           graphInstanceRef.current?.refresh?.()
         }
