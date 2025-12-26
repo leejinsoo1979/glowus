@@ -17,8 +17,9 @@ import ReactFlow, {
     ReactFlowProvider,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
+import dagre from 'dagre'
 import { useTheme } from 'next-themes'
-import { Plus, FileCode, AlertCircle, Play } from 'lucide-react'
+import { Plus, FileCode, AlertCircle, Play, LayoutGrid, GitBranch } from 'lucide-react'
 
 import TableNode, { TableNodeData, SchemaColumn as TableColumn } from './TableNode'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
@@ -31,6 +32,47 @@ import {
 } from './simulation'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+
+// 레이아웃 타입
+type LayoutType = 'grid' | 'topdown'
+
+// Dagre 레이아웃 적용 함수
+function applyDagreLayout(nodes: Node[], edges: Edge[], direction: 'TB' | 'LR' = 'TB'): Node[] {
+    const dagreGraph = new dagre.graphlib.Graph()
+    dagreGraph.setDefaultEdgeLabel(() => ({}))
+
+    const nodeWidth = 280
+    const nodeHeight = 200
+
+    dagreGraph.setGraph({
+        rankdir: direction,
+        nodesep: 80,
+        ranksep: 120,
+        marginx: 50,
+        marginy: 50,
+    })
+
+    nodes.forEach((node) => {
+        dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight })
+    })
+
+    edges.forEach((edge) => {
+        dagreGraph.setEdge(edge.source, edge.target)
+    })
+
+    dagre.layout(dagreGraph)
+
+    return nodes.map((node) => {
+        const nodeWithPosition = dagreGraph.node(node.id)
+        return {
+            ...node,
+            position: {
+                x: nodeWithPosition.x - nodeWidth / 2,
+                y: nodeWithPosition.y - nodeHeight / 2,
+            },
+        }
+    })
+}
 
 // Node Types Registration
 const nodeTypes = {
@@ -151,6 +193,9 @@ function SchemaFlowInner({ className }: { className?: string }) {
 
     // 시뮬레이션 컨트롤러 표시 상태
     const [showSimulation, setShowSimulation] = useState(false)
+
+    // 레이아웃 타입 상태
+    const [layoutType, setLayoutType] = useState<LayoutType>('grid')
 
     // 카메라 이동 함수 - 시네마틱 애니메이션
     const moveCameraToNodes = useCallback((nodeIds: string[]) => {
@@ -279,11 +324,33 @@ function SchemaFlowInner({ className }: { className?: string }) {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-    // 스키마 변경시 동기화
+    // 스키마 변경시 동기화 + 레이아웃 적용
     useEffect(() => {
-        setNodes(initialNodes)
+        if (initialNodes.length === 0) {
+            setNodes([])
+            setEdges([])
+            return
+        }
+
+        // 레이아웃 타입에 따라 노드 위치 계산
+        let layoutedNodes = initialNodes
+        if (layoutType === 'topdown') {
+            layoutedNodes = applyDagreLayout(initialNodes, initialEdges, 'TB')
+        }
+
+        setNodes(layoutedNodes)
         setEdges(initialEdges)
-    }, [initialNodes, initialEdges, setNodes, setEdges])
+
+        // 레이아웃 변경 후 전체 뷰 맞추기
+        setTimeout(() => {
+            reactFlowInstance.fitView({ padding: 0.2, duration: 800 })
+        }, 100)
+    }, [initialNodes, initialEdges, setNodes, setEdges, layoutType, reactFlowInstance])
+
+    // 레이아웃 토글 함수
+    const toggleLayout = useCallback(() => {
+        setLayoutType(prev => prev === 'grid' ? 'topdown' : 'grid')
+    }, [])
 
     // 시뮬레이션 하이라이트 상태
     const [simulationHighlight, setSimulationHighlight] = useState<{
@@ -566,19 +633,50 @@ function SchemaFlowInner({ className }: { className?: string }) {
 
                 {/* 상단 정보 패널 */}
                 <Panel position="top-left">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/90 text-white rounded-md shadow-lg text-sm">
-                        {typeInfo.icon}
-                        <span className="font-medium">{typeInfo.label}</span>
-                        <span className="text-zinc-500">|</span>
-                        <span>{parsedSchema?.tables.length || 0} tables</span>
-                        <span className="text-zinc-500">|</span>
-                        <span>{parsedSchema?.relations.length || 0} relations</span>
-                        {schemaFileInfo.count > 0 && (
-                            <>
-                                <span className="text-zinc-500">|</span>
-                                <span className="text-zinc-400">{schemaFileInfo.count} files</span>
-                            </>
-                        )}
+                    <div className="flex flex-col gap-2">
+                        {/* 스키마 정보 */}
+                        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/90 text-white rounded-md shadow-lg text-sm">
+                            {typeInfo.icon}
+                            <span className="font-medium">{typeInfo.label}</span>
+                            <span className="text-zinc-500">|</span>
+                            <span>{parsedSchema?.tables.length || 0} tables</span>
+                            <span className="text-zinc-500">|</span>
+                            <span>{parsedSchema?.relations.length || 0} relations</span>
+                            {schemaFileInfo.count > 0 && (
+                                <>
+                                    <span className="text-zinc-500">|</span>
+                                    <span className="text-zinc-400">{schemaFileInfo.count} files</span>
+                                </>
+                            )}
+                        </div>
+
+                        {/* 레이아웃 토글 버튼 */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={toggleLayout}
+                                className={cn(
+                                    'flex items-center gap-2 px-3 py-2 rounded-md shadow-lg text-sm font-medium transition-all',
+                                    layoutType === 'grid'
+                                        ? 'bg-zinc-700 hover:bg-zinc-600 text-white'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                )}
+                            >
+                                {layoutType === 'grid' ? (
+                                    <>
+                                        <LayoutGrid className="w-4 h-4" />
+                                        <span>그리드</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <GitBranch className="w-4 h-4" />
+                                        <span>탑다운</span>
+                                    </>
+                                )}
+                            </button>
+                            <span className="text-xs text-zinc-400 bg-zinc-800/70 px-2 py-1 rounded">
+                                {layoutType === 'topdown' ? '계층 구조 (FK 흐름)' : '격자 배치'}
+                            </span>
+                        </div>
                     </div>
                 </Panel>
 

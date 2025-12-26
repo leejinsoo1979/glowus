@@ -431,15 +431,36 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   // 디버그: graphData 내용 출력
   console.log('[Graph2DView] graphData nodes:', graphData.nodes.map(n => ({ id: n.id, name: n.name, x: n.x, y: n.y, type: n.type })))
 
-  // 노드 클릭 핸들러 - 선택 + 코드 미리보기
+  // 노드 클릭 핸들러 - 선택 + 코드 미리보기 + 카메라 이동
   const handleNodeClick = useCallback((node: any) => {
     if (node?.id) {
       setSelectedNodes([node.id])
+
+      // 🎯 선택한 노드를 화면 중심으로 부드럽게 이동
+      if (graphInstanceRef.current && typeof node.x === 'number' && typeof node.y === 'number') {
+        graphInstanceRef.current.centerAt(node.x, node.y, 500)
+        // 적당한 줌 레벨로 조정 (라벨이 보이도록)
+        const currentZoom = graphInstanceRef.current.zoom() || 1
+        if (currentZoom < 1.5) {
+          graphInstanceRef.current.zoom(2.0, 400)
+        }
+      }
 
       // 폴더 노드는 파일을 열지 않음
       if (node.type === 'folder' || node.type === 'self') {
         return
       }
+
+      // 🔍 디버그 로그: 노드와 파일 배열 정보
+      console.log('[Graph2DView] 🎯 Node click:', {
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeTitle: node.title,
+        nodeType: node.type,
+        sourceRef: node.sourceRef,
+        filesCount: files.length,
+        filesIds: files.slice(0, 5).map(f => ({ id: f.id, name: f.name }))
+      })
 
       // 다양한 방법으로 파일 매칭 시도
       let targetFile = null
@@ -488,10 +509,22 @@ export function Graph2DView({ className }: Graph2DViewProps) {
       }
 
       if (targetFile) {
-        console.log('[Graph2DView] Opening file:', targetFile.name, targetFile.id)
+        console.log('[Graph2DView] ✅ Opening file:', {
+          fileName: targetFile.name,
+          fileId: targetFile.id,
+          filePath: targetFile.path,
+          nodeId: node.id,
+          sourceRefFileId: node.sourceRef?.fileId
+        })
         openCodePreview(targetFile)
       } else {
-        console.log('[Graph2DView] No file found for node:', node.id, node.name, node.title)
+        console.warn('[Graph2DView] ❌ No file found for node:', {
+          nodeId: node.id,
+          nodeName: node.name,
+          nodeTitle: node.title,
+          sourceRef: node.sourceRef,
+          availableFiles: files.map(f => ({ id: f.id, name: f.name }))
+        })
       }
     }
   }, [setSelectedNodes, files, openCodePreview])
