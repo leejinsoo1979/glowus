@@ -342,8 +342,10 @@ export function MarkdownEditorPanel({
 
       if (pendingFileUpdate) {
         const fileToAdd = pendingFileUpdate
-        setTimeout(() => {
+        setTimeout(async () => {
           setFiles([...files, fileToAdd])
+          // 그래프 재빌드하여 방사형 맵에 새 노드 표시
+          await buildGraphFromFilesAsync()
         }, 300)
       }
     } catch (err) {
@@ -351,7 +353,7 @@ export function MarkdownEditorPanel({
     } finally {
       setIsSaving(false)
     }
-  }, [title, content, mapId, projectPath, linkedProjectId, graph, files, extractedTags, createNode, createEdge, setFiles, resetEditor, onClose])
+  }, [title, content, mapId, projectPath, linkedProjectId, graph, files, extractedTags, createNode, createEdge, setFiles, buildGraphFromFilesAsync, resetEditor, onClose])
 
   // 키보드 단축키
   useEffect(() => {

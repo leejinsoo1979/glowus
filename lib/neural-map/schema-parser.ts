@@ -47,7 +47,7 @@ export interface SchemaRelation {
   sourceColumn: string
   targetTable: string
   targetColumn: string
-  type: 'one-to-one' | 'one-to-many' | 'many-to-many'
+  type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many'
   onDelete?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION'
 }
 
@@ -1163,6 +1163,38 @@ export function parseTypeScriptFile(content: string): ParsedSchema {
   const relations: SchemaRelation[] = []
   const errors: string[] = []
 
+  // 기본 타입 목록 (이런 타입들은 FK 관계로 인식하지 않음)
+  const primitiveTypes = new Set([
+    'string', 'number', 'boolean', 'null', 'undefined', 'any', 'unknown', 'void', 'never',
+    'String', 'Number', 'Boolean', 'Date', 'Object', 'Array', 'Function', 'Symbol', 'BigInt',
+    'Record', 'Map', 'Set', 'Promise', 'Partial', 'Required', 'Readonly', 'Pick', 'Omit',
+  ])
+
+  // 타입이 다른 테이블/인터페이스 참조인지 확인하는 함수
+  const isTypeReference = (typeStr: string): string | null => {
+    // 배열 타입에서 요소 타입 추출: "Item[]" -> "Item"
+    const arrayMatch = typeStr.match(/^([A-Z][a-zA-Z0-9]*)\[\]$/)
+    if (arrayMatch) {
+      const elementType = arrayMatch[1]
+      if (!primitiveTypes.has(elementType)) {
+        return elementType
+      }
+    }
+
+    // 단일 타입 참조: "Material" (PascalCase이고 primitive가 아닌 경우)
+    if (/^[A-Z][a-zA-Z0-9]*$/.test(typeStr) && !primitiveTypes.has(typeStr)) {
+      return typeStr
+    }
+
+    // 유니온 타입에서 타입 참조 추출: "Material | null" -> "Material"
+    const unionMatch = typeStr.match(/^([A-Z][a-zA-Z0-9]*)\s*\|/)
+    if (unionMatch && !primitiveTypes.has(unionMatch[1])) {
+      return unionMatch[1]
+    }
+
+    return null
+  }
+
   try {
     const ast = babelParser.parse(content, {
       sourceType: 'module',
@@ -1192,17 +1224,22 @@ export function parseTypeScriptFile(content: string): ParsedSchema {
           const isOptional = member.optional ?? false
           const typeStr = getTSType(member.typeAnnotation)
 
+          // 타입 참조 확인 (FK 관계)
+          const referencedType = isTypeReference(typeStr)
+          const isFkByName = propName.endsWith('Id') || propName.endsWith('_id')
+          const isFkByType = referencedType !== null
+
           columns.push({
             name: propName,
             type: typeStr,
             isPrimaryKey: propName === 'id',
-            isForeignKey: propName.endsWith('Id') || propName.endsWith('_id'),
+            isForeignKey: isFkByName || isFkByType,
             isNullable: isOptional,
           })
 
-          // FK 관계 추론
-          if (propName.endsWith('Id')) {
-            const targetTable = propName.replace(/Id$/, '')
+          // FK 관계 추론 - 이름 기반 (userId -> User)
+          if (isFkByName) {
+            const targetTable = propName.replace(/Id$|_id$/, '')
             const capitalizedTarget = targetTable.charAt(0).toUpperCase() + targetTable.slice(1)
             relations.push({
               sourceTable: interfaceName,
@@ -1210,6 +1247,16 @@ export function parseTypeScriptFile(content: string): ParsedSchema {
               targetTable: capitalizedTarget,
               targetColumn: 'id',
               type: 'one-to-many'
+            })
+          }
+          // FK 관계 추론 - 타입 참조 기반 (material: Material -> Material)
+          else if (referencedType) {
+            relations.push({
+              sourceTable: interfaceName,
+              sourceColumn: propName,
+              targetTable: referencedType,
+              targetColumn: 'id',
+              type: typeStr.endsWith('[]') ? 'one-to-many' : 'many-to-one'
             })
           }
         }
@@ -1237,13 +1284,41 @@ export function parseTypeScriptFile(content: string): ParsedSchema {
           const isOptional = member.optional ?? false
           const typeStr = getTSType(member.typeAnnotation)
 
+          // 타입 참조 확인 (FK 관계)
+          const referencedType = isTypeReference(typeStr)
+          const isFkByName = propName.endsWith('Id') || propName.endsWith('_id')
+          const isFkByType = referencedType !== null
+
           columns.push({
             name: propName,
             type: typeStr,
             isPrimaryKey: propName === 'id',
-            isForeignKey: propName.endsWith('Id') || propName.endsWith('_id'),
+            isForeignKey: isFkByName || isFkByType,
             isNullable: isOptional,
           })
+
+          // FK 관계 추론 - 이름 기반 (userId -> User)
+          if (isFkByName) {
+            const targetTable = propName.replace(/Id$|_id$/, '')
+            const capitalizedTarget = targetTable.charAt(0).toUpperCase() + targetTable.slice(1)
+            relations.push({
+              sourceTable: typeName,
+              sourceColumn: propName,
+              targetTable: capitalizedTarget,
+              targetColumn: 'id',
+              type: 'one-to-many'
+            })
+          }
+          // FK 관계 추론 - 타입 참조 기반 (material: Material -> Material)
+          else if (referencedType) {
+            relations.push({
+              sourceTable: typeName,
+              sourceColumn: propName,
+              targetTable: referencedType,
+              targetColumn: 'id',
+              type: typeStr.endsWith('[]') ? 'one-to-many' : 'many-to-one'
+            })
+          }
         }
 
         if (columns.length >= 2) {

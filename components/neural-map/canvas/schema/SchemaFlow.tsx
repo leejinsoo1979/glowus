@@ -66,7 +66,44 @@ function schemaToFlow(schema: ParsedSchema): { nodes: Node<TableNodeData>[]; edg
         }
     })
 
-    // FK 관계를 Edge로 변환
+    // 노드 ID Set 생성 (엣지 유효성 검사용)
+    const nodeIds = new Set(nodes.map(n => n.id))
+
+    // relation에서 참조되는 모든 테이블 이름 수집
+    const referencedTables = new Set<string>()
+    schema.relations.forEach(rel => {
+        referencedTables.add(rel.sourceTable)
+        referencedTables.add(rel.targetTable)
+    })
+
+    // 누락된 타입에 대한 스텁 노드 생성
+    const stubNodes: Node<TableNodeData>[] = []
+    let stubIdx = nodes.length
+    referencedTables.forEach(tableName => {
+        if (!nodeIds.has(tableName)) {
+            const row = Math.floor(stubIdx / COLS)
+            const col = stubIdx % COLS
+            stubNodes.push({
+                id: tableName,
+                type: 'table',
+                position: { x: 100 + col * SPACING_X, y: 100 + row * SPACING_Y },
+                data: {
+                    label: `${tableName} (ref)`,
+                    columns: [{ name: 'id', type: 'string', isPrimaryKey: true }],
+                },
+            })
+            nodeIds.add(tableName)
+            stubIdx++
+        }
+    })
+
+    // 스텁 노드 추가
+    if (stubNodes.length > 0) {
+        console.log('[SchemaFlow] 📦 Created stub nodes for missing types:', stubNodes.map(n => n.id))
+        nodes.push(...stubNodes)
+    }
+
+    // FK 관계를 Edge로 변환 (이제 모든 노드가 존재함)
     const edges: Edge[] = schema.relations.map((rel, idx) => ({
         id: `edge-${idx}-${rel.sourceTable}-${rel.targetTable}`,
         source: rel.targetTable,  // FK가 참조하는 테이블에서
@@ -80,8 +117,17 @@ function schemaToFlow(schema: ParsedSchema): { nodes: Node<TableNodeData>[]; edg
             width: 16,
             height: 16,
         },
-        style: { stroke: '#6366f1' },
+        style: { stroke: '#6366f1', strokeWidth: 2 },
     }))
+
+    // 디버그 로그
+    console.log('[SchemaFlow] 📊 Edge creation:', {
+        totalRelations: schema.relations.length,
+        edgesCreated: edges.length,
+        nodeCount: nodes.length,
+        stubNodeCount: stubNodes.length,
+        sampleNodeIds: Array.from(nodeIds).slice(0, 10),
+    })
 
     return { nodes, edges }
 }
