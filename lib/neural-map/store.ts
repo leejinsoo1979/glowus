@@ -126,6 +126,9 @@ interface NeuralMapState {
   graphExpanded: boolean // 그래프 펼침 상태 (트리 접힘과 연동)
   layoutMode: LayoutMode // 레이아웃 모드 (원형/유기적)
 
+  // Focus Node (for 2D graph camera movement)
+  focusNodeId: string | null // 검색 시 포커스할 노드 ID
+
   // Terminal
   terminalOpen: boolean
   terminalHeight: number
@@ -248,6 +251,7 @@ interface NeuralMapActions {
   setRadialDistance: (distance: number) => void
   setGraphExpanded: (expanded: boolean) => void
   setLayoutMode: (mode: LayoutMode) => void
+  setFocusNodeId: (nodeId: string | null) => void
 
   // Terminal
   toggleTerminal: () => void
@@ -340,6 +344,7 @@ const initialState: NeuralMapState = {
   radialDistance: 150, // 기본 방사 거리
   graphExpanded: true, // 기본 펼침 상태
   layoutMode: 'organic',
+  focusNodeId: null, // 검색 시 포커스할 노드 ID
 
   // Terminal
   terminalOpen: true, // DEBUG: 기본으로 열어서 테스트
@@ -860,6 +865,15 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             // 레이아웃 변경 시 시뮬레이션 재가열
             state.isSimulationRunning = true
             state.simulationAlpha = 1
+          }),
+
+        setFocusNodeId: (nodeId: string | null) =>
+          set((state) => {
+            state.focusNodeId = nodeId
+            // 노드 포커스 시 선택 상태도 업데이트
+            if (nodeId) {
+              state.selectedNodeIds = [nodeId]
+            }
           }),
 
         // ========== Build logic ==========

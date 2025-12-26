@@ -33,6 +33,39 @@ export function Toolbar() {
   const openModal = useNeuralMapStore((s) => s.openModal)
   const headerCollapsed = useNeuralMapStore((s) => s.headerCollapsed)
   const toggleHeader = useNeuralMapStore((s) => s.toggleHeader)
+  const files = useNeuralMapStore((s) => s.files)
+  const graph = useNeuralMapStore((s) => s.graph)
+  const setFocusNodeId = useNeuralMapStore((s) => s.setFocusNodeId)
+
+  // 검색어로 노드 찾기 및 카메라 이동
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+
+      // 1. 파일에서 검색
+      const matchedFile = files.find(f =>
+        f.name.toLowerCase().includes(query) ||
+        f.path?.toLowerCase().includes(query)
+      )
+
+      if (matchedFile) {
+        console.log('[Toolbar] Found file:', matchedFile.name)
+        setFocusNodeId(matchedFile.id)
+        return
+      }
+
+      // 2. 그래프 노드에서 검색
+      const matchedNode = graph?.nodes.find(n =>
+        n.title.toLowerCase().includes(query) ||
+        n.id.toLowerCase().includes(query)
+      )
+
+      if (matchedNode) {
+        console.log('[Toolbar] Found node:', matchedNode.title)
+        setFocusNodeId(matchedNode.id)
+      }
+    }
+  }
 
   // User theme accent color
   const { accentColor } = useThemeStore()
@@ -111,9 +144,10 @@ export function Toolbar() {
           />
           <input
             type="text"
-            placeholder="노드 검색... (Ctrl+F)"
+            placeholder="노드 검색... (Enter로 이동)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className={cn(
               'no-focus-ring w-64 pl-9 pr-3 py-1.5 text-sm rounded-lg border outline-none transition-colors',
               isDark

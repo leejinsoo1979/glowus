@@ -339,20 +339,24 @@ function SchemaFlowInner({ className }: { className?: string }) {
                 return {
                     ...edge,
                     animated: isActive,
+                    className: isActive ? 'schema-flow-active' : '',
                     style: {
                         ...edge.style,
                         stroke: isActive
-                            ? SIMULATION_COLORS.edge
+                            ? '#22c55e' // 활성: 밝은 그린
                             : isVisited
-                                ? '#94a3b8' // 방문한 엣지는 연한 색
+                                ? '#60a5fa' // 방문: 밝은 블루
                                 : showSimulation
-                                    ? '#374151' // 미방문 엣지는 어둡게
+                                    ? '#374151' // 미방문: 어둡게
                                     : '#6366f1',
-                        strokeWidth: isActive ? 3 : isVisited ? 2 : 1,
-                        opacity: showSimulation ? (isVisited || isActive ? 1 : 0.2) : 1,
+                        strokeWidth: isActive ? 4 : isVisited ? 2.5 : 1.5,
+                        opacity: showSimulation ? (isVisited || isActive ? 1 : 0.15) : 1,
                         filter: isActive
-                            ? `drop-shadow(0 0 6px ${SIMULATION_COLORS.edgeGlow})`
-                            : undefined,
+                            ? `drop-shadow(0 0 8px rgba(34, 197, 94, 0.8)) drop-shadow(0 0 16px rgba(34, 197, 94, 0.5))`
+                            : isVisited
+                                ? `drop-shadow(0 0 4px rgba(96, 165, 250, 0.5))`
+                                : undefined,
+                        transition: 'all 0.5s ease-out',
                     },
                 }
             })

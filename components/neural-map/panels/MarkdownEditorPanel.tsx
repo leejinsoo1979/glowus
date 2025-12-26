@@ -92,6 +92,7 @@ export function MarkdownEditorPanel({
   const files = useNeuralMapStore((s) => s.files)
   const setFiles = useNeuralMapStore((s) => s.setFiles)
   const buildGraphFromFilesAsync = useNeuralMapStore((s) => s.buildGraphFromFilesAsync)
+  const setFocusNodeId = useNeuralMapStore((s) => s.setFocusNodeId)
   const { createNode, createEdge } = useNeuralMapApi(mapId)
 
   // 콘텐츠에서 태그 추출
@@ -534,6 +535,7 @@ export function MarkdownEditorPanel({
         onSelectFile={handleSearchSelectFile}
         onSelectTag={handleSearchSelectTag}
         onCreateNote={handleSearchCreateNote}
+        onFocusNode={setFocusNodeId}
         isDark={isDark}
         recentFiles={recentFiles}
       />

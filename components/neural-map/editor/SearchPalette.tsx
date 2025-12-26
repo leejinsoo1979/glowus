@@ -30,6 +30,7 @@ interface SearchPaletteProps {
   onSelectFile: (file: NoteFile) => void
   onSelectTag: (tag: string) => void
   onCreateNote: (title: string) => void
+  onFocusNode?: (fileId: string) => void // 노드로 카메라 이동
   isDark?: boolean
   recentFiles?: string[] // Recent file IDs
 }
@@ -96,6 +97,7 @@ export function SearchPalette({
   onSelectFile,
   onSelectTag,
   onCreateNote,
+  onFocusNode,
   isDark = true,
   recentFiles = [],
 }: SearchPaletteProps) {
@@ -243,6 +245,8 @@ export function SearchPalette({
         const file = files.find(f => f.id === result.id)
         if (file) {
           onSelectFile(file)
+          // 🎯 그래프에서 해당 노드로 카메라 이동
+          onFocusNode?.(file.id)
         }
         break
       case 'tag':
@@ -250,7 +254,7 @@ export function SearchPalette({
         break
     }
     onClose()
-  }, [files, onSelectFile, onSelectTag, onClose])
+  }, [files, onSelectFile, onSelectTag, onFocusNode, onClose])
 
   // 글로벌 키보드 단축키
   useEffect(() => {

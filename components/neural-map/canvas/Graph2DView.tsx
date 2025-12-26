@@ -224,6 +224,8 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
   const currentTheme = useNeuralMapStore((s) => s.currentTheme)
+  const focusNodeId = useNeuralMapStore((s) => s.focusNodeId)
+  const setFocusNodeId = useNeuralMapStore((s) => s.setFocusNodeId)
 
   // 컨테이너 크기 감지
   useEffect(() => {
@@ -1074,6 +1076,34 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     }
   }, []) // 빈 의존성 - 한 번만 마운트
 
+  // 🌌 은하 효과 애니메이션 루프 (줌아웃 시 반짝임)
+  useEffect(() => {
+    if (!graphInstanceRef.current || !isGraphReadyRef.current) return
+
+    let animationId: number
+    let lastTime = 0
+    const fps = 30 // 30fps로 제한하여 성능 최적화
+
+    const animate = (currentTime: number) => {
+      if (currentTime - lastTime >= 1000 / fps) {
+        // 줌 레벨 체크하여 은하 모드일 때만 리렌더
+        const currentZoom = graphInstanceRef.current?.zoom?.() || 1
+        if (currentZoom < 1.2) {
+          // 강제 리렌더링으로 반짝임 효과 적용
+          graphInstanceRef.current?.refresh?.()
+        }
+        lastTime = currentTime
+      }
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animationId = requestAnimationFrame(animate)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+    }
+  }, [graphData.nodes.length]) // 노드가 있을 때만 애니메이션
+
   // graphData 변경 시 업데이트 (imperative)
   useEffect(() => {
     console.log('[Graph2DView] 🔄 graphData useEffect triggered:', {
@@ -1118,6 +1148,52 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         .height(dimensions.height)
     }
   }, [dimensions])
+
+  // 🎯 검색 시 노드로 카메라 이동
+  useEffect(() => {
+    if (!focusNodeId || !graphInstanceRef.current || !isGraphReadyRef.current) return
+
+    // graphData에서 해당 노드 찾기
+    const targetNode = graphData.nodes.find(n => n.id === focusNodeId)
+
+    if (targetNode && typeof targetNode.x === 'number' && typeof targetNode.y === 'number') {
+      console.log('[Graph2DView] 🎯 Focusing on node:', focusNodeId, targetNode.x, targetNode.y)
+
+      // 부드러운 카메라 이동 애니메이션
+      graphInstanceRef.current.centerAt(targetNode.x, targetNode.y, 800)
+
+      // 적당한 줌 레벨로 확대 (라벨이 보이는 정도)
+      setTimeout(() => {
+        graphInstanceRef.current?.zoom(2.5, 600)
+      }, 200)
+
+      // 포커스 상태 초기화 (한 번만 실행되도록)
+      setTimeout(() => {
+        setFocusNodeId(null)
+      }, 1500)
+    } else {
+      // 노드를 찾지 못한 경우 - 파일명으로 재시도
+      const file = files.find(f => f.id === focusNodeId)
+      if (file) {
+        const nodeByName = graphData.nodes.find(n =>
+          n.name === file.name ||
+          n.name === file.name.replace('.md', '') ||
+          n.id.includes(file.id)
+        )
+        if (nodeByName && typeof nodeByName.x === 'number') {
+          console.log('[Graph2DView] 🎯 Focusing on node by name:', nodeByName.name)
+          graphInstanceRef.current.centerAt(nodeByName.x, nodeByName.y, 800)
+          setTimeout(() => {
+            graphInstanceRef.current?.zoom(2.5, 600)
+          }, 200)
+        }
+      }
+      // 포커스 상태 초기화
+      setTimeout(() => {
+        setFocusNodeId(null)
+      }, 1000)
+    }
+  }, [focusNodeId, graphData.nodes, files, setFocusNodeId])
 
   return (
     <div

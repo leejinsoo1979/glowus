@@ -89,7 +89,8 @@ const TableNode = ({ data, selected }: NodeProps<TableNodeData>) => {
                 'min-w-[240px] rounded-lg border bg-white shadow-sm dark:bg-zinc-900',
                 selected ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-zinc-200 dark:border-zinc-800',
                 isHighlighted && 'z-10',
-                isActive && 'ring-2',
+                isActive && 'schema-node-active ring-2 ring-green-500/50',
+                isVisited && !isActive && simulationMode && 'schema-node-visited',
                 isAppearing && 'animate-pulse'
             )}
             style={mergedStyle}
