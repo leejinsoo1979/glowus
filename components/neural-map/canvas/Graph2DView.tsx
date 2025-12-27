@@ -221,6 +221,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
   const setSelectedNodes = useNeuralMapStore((s) => s.setSelectedNodes)
   const openModal = useNeuralMapStore((s) => s.openModal)
   const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
+  const openEditorWithFile = useNeuralMapStore((s) => s.openEditorWithFile)
   const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
   const radialDistance = useNeuralMapStore((s) => s.radialDistance)
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
@@ -516,7 +517,13 @@ export function Graph2DView({ className }: Graph2DViewProps) {
           nodeId: node.id,
           sourceRefFileId: node.sourceRef?.fileId
         })
-        openCodePreview(targetFile)
+        // 🎯 MD 파일은 마크다운 에디터로, 그 외는 코드 미리보기로 열기
+        const isMarkdown = targetFile.name.toLowerCase().endsWith('.md')
+        if (isMarkdown) {
+          openEditorWithFile(targetFile)
+        } else {
+          openCodePreview(targetFile)
+        }
       } else {
         console.warn('[Graph2DView] ❌ No file found for node:', {
           nodeId: node.id,
@@ -527,7 +534,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         })
       }
     }
-  }, [setSelectedNodes, files, openCodePreview])
+  }, [setSelectedNodes, files, openCodePreview, openEditorWithFile])
 
   // 노드 더블클릭 - 편집 모달
   const handleNodeDoubleClick = useCallback((node: any) => {
@@ -584,8 +591,17 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     // 노드 크기 (고정 크기, 줌에 따라 자연스럽게 스케일)
     const baseSize = node.val || 4
-    // 연결된 노드는 약간 크게 표시
-    let sizeMultiplier = isSelected ? 1.3 : (isConnected && hasSelection) ? 1.15 : 1
+    // 선택된 노드는 더 크게, 연결된 노드는 약간 크게 표시
+    let sizeMultiplier = isSelected ? 1.8 : (isConnected && hasSelection) ? 1.15 : 1
+
+    // 테마 액센트 색상
+    const accentColor = currentTheme?.ui?.accentColor || '#3b82f6'
+
+    // 🫀 선택된 노드: 맥박 효과 (심장 박동처럼)
+    const pulse = Math.sin(time * 5) * 0.5 + 0.5 // 0~1, 빠른 맥박
+    if (isSelected) {
+      sizeMultiplier *= 1 + pulse * 0.15 // 1.0~1.15 크기 변화 (맥박)
+    }
 
     // 은하 모드: 반짝임에 따라 크기 변화
     if (isGalaxyMode && !isSelected && !isHovered) {
@@ -614,9 +630,9 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     // 그림자/글로우 효과
     if (isSelected) {
-      // 선택된 노드: 강한 글로우
-      ctx.shadowColor = '#ffffff'
-      ctx.shadowBlur = 20 / globalScale
+      // 선택된 노드: 테마색 강한 글로우 + 맥박 효과
+      ctx.shadowColor = accentColor
+      ctx.shadowBlur = (25 + pulse * 15) / globalScale // 25~40 맥박에 따라 변화
     } else if (isHovered) {
       ctx.shadowColor = fillColor
       ctx.shadowBlur = 15 / globalScale
@@ -665,9 +681,25 @@ export function Graph2DView({ className }: Graph2DViewProps) {
 
     // 테두리 (선택/호버/연결 시)
     if (isSelected) {
-      // 선택된 노드: 두꺼운 흰색 테두리
-      ctx.strokeStyle = '#ffffff'
+      // 선택된 노드: 테마색 두꺼운 테두리 + 이중 글로우 + 맥박 효과
+      ctx.save()
+      // 외부 글로우 링 (맥박에 따라 확장)
+      ctx.beginPath()
+      ctx.arc(node.x, node.y, actualSize + (4 + pulse * 3) / globalScale, 0, 2 * Math.PI)
+      ctx.strokeStyle = accentColor
+      ctx.lineWidth = (2 + pulse) / globalScale
+      ctx.globalAlpha = 0.3 + pulse * 0.3 // 0.3~0.6 맥박
+      ctx.shadowColor = accentColor
+      ctx.shadowBlur = (20 + pulse * 15) / globalScale
+      ctx.stroke()
+      ctx.restore()
+      // 내부 테두리
+      ctx.beginPath()
+      ctx.arc(node.x, node.y, actualSize, 0, 2 * Math.PI)
+      ctx.strokeStyle = accentColor
       ctx.lineWidth = 3 / globalScale
+      ctx.shadowColor = accentColor
+      ctx.shadowBlur = (15 + pulse * 10) / globalScale
       ctx.stroke()
     } else if (isConnected && hasSelection) {
       // 연결된 노드: 얇은 흰색 테두리로 강조
@@ -924,11 +956,12 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     }
   }, [graphData.nodes.length])
 
-  // radialDistance 변경 시 시뮬레이션 재시작
+  // radialDistance 변경 시 시뮬레이션 부드럽게 재시작
   useEffect(() => {
     if (graphRef.current && radialDistance) {
-      // d3 시뮬레이션 재가열로 노드 재배치
-      graphRef.current.d3ReheatSimulation?.()
+      // 부드러운 재시작 (낮은 에너지)
+      graphRef.current.d3AlphaTarget?.(0.05)
+      setTimeout(() => graphRef.current?.d3AlphaTarget?.(0), 300)
     }
   }, [radialDistance])
 
@@ -985,7 +1018,7 @@ export function Graph2DView({ className }: Graph2DViewProps) {
         fg.d3Force('y', null)
       }
 
-      // Restart simulation
+      // Restart simulation - 부드럽게 재시작
       fg.d3ReheatSimulation()
     }
 
@@ -1069,21 +1102,21 @@ export function Graph2DView({ className }: Graph2DViewProps) {
           .linkDirectionalParticleWidth(3)
           .linkDirectionalParticleSpeed(0.01)
           .linkDirectionalParticleColor(() => currentTheme.ui.accentColor)
-          .d3VelocityDecay(0.4)
-          .d3AlphaDecay(0.01)
-          .cooldownTicks(200)
-          .warmupTicks(200)
+          .d3VelocityDecay(0.7)  // 노드가 빨리 멈춤 (높을수록 빨리 감속)
+          .d3AlphaDecay(0.08)   // 시뮬레이션이 빨리 안정됨
+          .cooldownTicks(50)    // 시뮬레이션 빨리 종료
+          .warmupTicks(30)      // 초기 준비 단계 짧게
           .enableNodeDrag(true)
           .enableZoomPanInteraction(true)
           .minZoom(0.1)
           .maxZoom(15)
           .onBackgroundClick(() => callbacksRef.current.handleBackgroundClick())
 
-        // Force 설정 (노드 간 거리 축소)
-        graph.d3Force('collide')?.radius(35).strength(0.8).iterations(3)
-        graph.d3Force('center')?.strength(0.08)
-        graph.d3Force('charge')?.strength(-200).distanceMax(200).distanceMin(20)
-        graph.d3Force('link')?.distance(50).strength(0.6)
+        // Force 설정 - 안정적인 배치
+        graph.d3Force('collide')?.radius(40).strength(1).iterations(4)  // 겹침 방지 강화
+        graph.d3Force('center')?.strength(0.05)  // 중심으로 약하게 끌림
+        graph.d3Force('charge')?.strength(-150).distanceMax(300).distanceMin(30)  // 반발력 조정
+        graph.d3Force('link')?.distance(60).strength(0.8)  // 링크 거리 및 강도
 
         graphInstanceRef.current = graph
         graphRef.current = graph
@@ -1165,6 +1198,12 @@ export function Graph2DView({ className }: Graph2DViewProps) {
     try {
       console.log('[Graph2DView] ✅ Updating graph with:', graphData.nodes.length, 'nodes')
       graphInstanceRef.current.graphData(graphData)
+
+      // 시뮬레이션을 낮은 에너지로 시작 (산만한 움직임 방지)
+      graphInstanceRef.current.d3AlphaTarget?.(0.15)
+      setTimeout(() => {
+        graphInstanceRef.current?.d3AlphaTarget?.(0)
+      }, 800)
 
       // 첫 데이터 로드 시 줌 조정
       setTimeout(() => {

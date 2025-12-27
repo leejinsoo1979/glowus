@@ -17,59 +17,155 @@ export function MarkdownPreview({ content, isDark = true, className }: MarkdownP
   return (
     <div
       className={cn(
-        'h-full overflow-auto p-6',
-        isDark ? 'bg-[#09090b]' : 'bg-gray-50',
+        'h-full overflow-auto',
+        isDark ? 'bg-[#09090b]' : 'bg-white',
         className
       )}
     >
       <article
         className={cn(
-          'prose max-w-none',
+          'prose max-w-none px-8 py-6',
           isDark ? 'prose-invert' : '',
-          'prose-headings:font-semibold',
-          'prose-h1:text-2xl prose-h1:border-b prose-h1:pb-2',
-          isDark ? 'prose-h1:border-zinc-700' : 'prose-h1:border-zinc-300',
-          'prose-h2:text-xl prose-h3:text-lg',
-          'prose-p:leading-relaxed',
-          'prose-a:text-purple-500 prose-a:no-underline hover:prose-a:underline',
-          'prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm',
-          isDark ? 'prose-code:bg-zinc-800' : 'prose-code:bg-zinc-200',
-          'prose-pre:rounded-lg prose-pre:p-4',
-          isDark ? 'prose-pre:bg-zinc-900' : 'prose-pre:bg-zinc-100',
-          'prose-blockquote:border-l-purple-500 prose-blockquote:italic',
-          isDark ? 'prose-blockquote:text-zinc-400' : 'prose-blockquote:text-zinc-600',
-          'prose-ul:list-disc prose-ol:list-decimal',
-          'prose-li:my-1',
-          'prose-table:border-collapse',
-          'prose-th:border prose-th:p-2 prose-th:text-left',
-          isDark ? 'prose-th:border-zinc-700 prose-th:bg-zinc-800' : 'prose-th:border-zinc-300 prose-th:bg-zinc-100',
-          'prose-td:border prose-td:p-2',
-          isDark ? 'prose-td:border-zinc-700' : 'prose-td:border-zinc-300',
-          'prose-img:rounded-lg prose-img:max-w-full',
-          'prose-hr:border-t',
-          isDark ? 'prose-hr:border-zinc-700' : 'prose-hr:border-zinc-300',
+          // Obsidian-like typography
+          'prose-headings:font-semibold prose-headings:tracking-tight',
+          // H1 - large with subtle bottom border
+          'prose-h1:text-[1.8em] prose-h1:font-bold prose-h1:mb-4 prose-h1:mt-6',
+          'prose-h1:border-b prose-h1:pb-3',
+          isDark ? 'prose-h1:border-zinc-800 prose-h1:text-zinc-100' : 'prose-h1:border-zinc-200 prose-h1:text-zinc-900',
+          // H2 - clear section headers
+          'prose-h2:text-[1.5em] prose-h2:font-semibold prose-h2:mb-3 prose-h2:mt-8',
+          isDark ? 'prose-h2:text-zinc-200' : 'prose-h2:text-zinc-800',
+          // H3-H6 - compact headers
+          'prose-h3:text-[1.25em] prose-h3:font-semibold prose-h3:mb-2 prose-h3:mt-6',
+          'prose-h4:text-[1.1em] prose-h4:font-medium prose-h4:mb-2 prose-h4:mt-4',
+          'prose-h5:text-[1em] prose-h5:font-medium prose-h5:mb-1 prose-h5:mt-3',
+          'prose-h6:text-[0.95em] prose-h6:font-medium prose-h6:mb-1 prose-h6:mt-3',
+          isDark ? 'prose-h3:text-zinc-200 prose-h4:text-zinc-300 prose-h5:text-zinc-300 prose-h6:text-zinc-400' : 'prose-h3:text-zinc-800 prose-h4:text-zinc-700 prose-h5:text-zinc-700 prose-h6:text-zinc-600',
+          // Paragraphs - comfortable reading
+          'prose-p:leading-[1.75] prose-p:mb-4',
+          isDark ? 'prose-p:text-zinc-300' : 'prose-p:text-zinc-700',
+          // Links - purple accent
+          'prose-a:no-underline hover:prose-a:underline prose-a:transition-colors',
+          isDark ? 'prose-a:text-purple-400 hover:prose-a:text-purple-300' : 'prose-a:text-purple-600 hover:prose-a:text-purple-700',
+          // Inline code - subtle background
+          'prose-code:text-[0.9em] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:before:content-none prose-code:after:content-none',
+          isDark ? 'prose-code:bg-zinc-800 prose-code:text-emerald-400' : 'prose-code:bg-zinc-100 prose-code:text-emerald-700',
+          // Code blocks - clean styling
+          'prose-pre:rounded-lg prose-pre:p-4 prose-pre:text-sm prose-pre:leading-relaxed prose-pre:overflow-x-auto',
+          isDark ? 'prose-pre:bg-[#0d0d0f] prose-pre:border prose-pre:border-zinc-800' : 'prose-pre:bg-zinc-50 prose-pre:border prose-pre:border-zinc-200',
+          // Blockquotes - elegant left border
+          'prose-blockquote:border-l-4 prose-blockquote:pl-4 prose-blockquote:not-italic prose-blockquote:font-normal',
+          isDark ? 'prose-blockquote:border-purple-500/50 prose-blockquote:text-zinc-400 prose-blockquote:bg-zinc-900/30' : 'prose-blockquote:border-purple-400 prose-blockquote:text-zinc-600 prose-blockquote:bg-zinc-50',
+          // Lists - clean spacing
+          'prose-ul:list-disc prose-ol:list-decimal prose-ul:pl-6 prose-ol:pl-6',
+          'prose-li:my-1.5 prose-li:leading-relaxed',
+          isDark ? 'prose-li:text-zinc-300' : 'prose-li:text-zinc-700',
+          // Tables - clean modern look
+          'prose-table:border-collapse prose-table:w-full',
+          'prose-th:p-3 prose-th:text-left prose-th:font-semibold',
+          isDark ? 'prose-th:border-zinc-700 prose-th:bg-zinc-800/50 prose-th:text-zinc-200' : 'prose-th:border-zinc-200 prose-th:bg-zinc-50 prose-th:text-zinc-800',
+          'prose-td:p-3',
+          isDark ? 'prose-td:border-zinc-800 prose-td:text-zinc-300' : 'prose-td:border-zinc-200 prose-td:text-zinc-700',
+          // Images - rounded with shadow
+          'prose-img:rounded-lg prose-img:max-w-full prose-img:my-4',
+          isDark ? 'prose-img:shadow-lg prose-img:shadow-black/20' : 'prose-img:shadow-md prose-img:shadow-black/10',
+          // Horizontal rule
+          isDark ? 'prose-hr:border-zinc-800' : 'prose-hr:border-zinc-200',
+          // Strong & emphasis
+          isDark ? 'prose-strong:text-zinc-100 prose-em:text-zinc-200' : 'prose-strong:text-zinc-900 prose-em:text-zinc-800',
         )}
         dangerouslySetInnerHTML={{ __html: html }}
       />
       <style jsx global>{`
+        /* Force heading sizes - Tailwind prose wasn't working */
+        .prose h1 {
+          font-size: 2em !important;
+          font-weight: 700 !important;
+          margin-top: 1.5rem !important;
+          margin-bottom: 1rem !important;
+          line-height: 1.2 !important;
+          border-bottom: 1px solid ${isDark ? '#27272a' : '#e4e4e7'};
+          padding-bottom: 0.5rem;
+        }
+        .prose h2 {
+          font-size: 1.5em !important;
+          font-weight: 600 !important;
+          margin-top: 1.5rem !important;
+          margin-bottom: 0.75rem !important;
+          line-height: 1.3 !important;
+        }
+        .prose h3 {
+          font-size: 1.25em !important;
+          font-weight: 600 !important;
+          margin-top: 1.25rem !important;
+          margin-bottom: 0.5rem !important;
+          line-height: 1.4 !important;
+        }
+        .prose h4 {
+          font-size: 1.1em !important;
+          font-weight: 600 !important;
+          margin-top: 1rem !important;
+          margin-bottom: 0.5rem !important;
+        }
+        .prose h5 {
+          font-size: 1em !important;
+          font-weight: 600 !important;
+          margin-top: 0.75rem !important;
+          margin-bottom: 0.25rem !important;
+        }
+        .prose h6 {
+          font-size: 0.9em !important;
+          font-weight: 600 !important;
+          margin-top: 0.75rem !important;
+          margin-bottom: 0.25rem !important;
+          color: ${isDark ? '#a1a1aa' : '#71717a'};
+        }
+        /* Obsidian-like wiki links */
         .md-wikilink {
-          color: ${isDark ? '#7f6df2' : '#705dcf'};
+          color: ${isDark ? '#a78bfa' : '#7c3aed'};
           cursor: pointer;
           text-decoration: none;
+          font-weight: 500;
+          transition: color 0.15s ease;
         }
         .md-wikilink:hover {
+          color: ${isDark ? '#c4b5fd' : '#6d28d9'};
           text-decoration: underline;
         }
+        /* Obsidian-like tags */
         .md-tag {
-          color: ${isDark ? '#8db4d6' : '#4a8bc2'};
+          color: ${isDark ? '#93c5fd' : '#2563eb'};
+          font-size: 0.9em;
+          transition: color 0.15s ease;
         }
+        .md-tag:hover {
+          color: ${isDark ? '#bfdbfe' : '#1d4ed8'};
+        }
+        /* Checkboxes */
         .md-checkbox {
-          margin-right: 6px;
-          accent-color: ${isDark ? '#7f6df2' : '#705dcf'};
+          margin-right: 8px;
+          width: 16px;
+          height: 16px;
+          accent-color: ${isDark ? '#a78bfa' : '#7c3aed'};
+          cursor: pointer;
         }
         .md-checkbox-checked {
           text-decoration: line-through;
-          opacity: 0.5;
+          opacity: 0.6;
+        }
+        /* Smooth scrollbar */
+        .prose::-webkit-scrollbar {
+          width: 8px;
+        }
+        .prose::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .prose::-webkit-scrollbar-thumb {
+          background: ${isDark ? '#3f3f46' : '#d4d4d8'};
+          border-radius: 4px;
+        }
+        .prose::-webkit-scrollbar-thumb:hover {
+          background: ${isDark ? '#52525b' : '#a1a1aa'};
         }
       `}</style>
     </div>

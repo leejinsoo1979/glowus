@@ -34,7 +34,8 @@ import {
   TasksChart,
   ProductivityChart,
   CalendarWidget,
-  TodoWidget
+  TodoWidget,
+  CodingTeamWidget
 } from '@/components/dashboard'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
@@ -502,75 +503,10 @@ export default function DashboardPage() {
           </TiltCard>
         </motion.div>
 
-        {/* Row 3: AI Agents + Charts */}
+        {/* Row 3: Coding Team Agents + Charts */}
         <motion.div variants={item} className="col-span-12 md:col-span-3 h-[400px]">
-          <TiltCard
-            className="h-full p-5 flex flex-col cursor-pointer group hover:border-accent/50 transition-all"
-            onClick={() => router.push('/dashboard-group/agents')}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2">
-                <div className={cn(
-                  "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                  "bg-accent/10 group-hover:bg-accent/20"
-                )}>
-                  <Bot className={cn("w-4 h-4", getAccentText())} />
-                </div>
-                <span className="font-medium tracking-tight text-zinc-700 dark:text-white">AI 에이전트</span>
-              </div>
-              <span className="text-xs font-mono text-zinc-400 dark:text-white/40">
-                {loading ? '...' : `${agents.filter(a => a.status === 'ACTIVE').length} ACTIVE`}
-              </span>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-3">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
-                  <span className="text-sm text-zinc-400">로딩 중...</span>
-                </div>
-              ) : agents.length > 0 ? (
-                agents.slice(0, 5).map((agent) => (
-                  <div
-                    key={agent.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-white/10 flex items-center justify-center overflow-hidden">
-                      {agent.avatar_url ? (
-                        <img src={agent.avatar_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <Bot className="w-4 h-4 text-zinc-400" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-800 dark:text-white truncate">{agent.name}</p>
-                      <div className="flex items-center gap-1">
-                        <div className={cn(
-                          "w-1.5 h-1.5 rounded-full",
-                          agent.status === 'ACTIVE' ? "bg-green-500" : "bg-zinc-400"
-                        )} />
-                        <span className="text-xs text-zinc-400">
-                          {agent.status === 'ACTIVE' ? '활성' : '비활성'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <Bot className="w-8 h-8 text-zinc-300 dark:text-white/20 mb-2" />
-                  <p className="text-sm text-zinc-400 dark:text-white/40">에이전트 없음</p>
-                  <p className="text-xs text-zinc-300 dark:text-white/20 mt-1">새 에이전트를 생성하세요</p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-white/5">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-500 dark:text-white/50">+ 에이전트 관리</span>
-                <ArrowUpRight className="w-4 h-4 text-zinc-400 dark:text-white/30 group-hover:text-accent transition-colors" />
-              </div>
-            </div>
+          <TiltCard className="h-full p-5">
+            <CodingTeamWidget />
           </TiltCard>
         </motion.div>
 

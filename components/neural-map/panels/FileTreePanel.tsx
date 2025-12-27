@@ -262,8 +262,13 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const focusOnNode = useNeuralMapStore((s) => s.focusOnNode)
   const setFocusNodeId = useNeuralMapStore((s) => s.setFocusNodeId)
   const openEditor = useNeuralMapStore((s) => s.openEditor)
+  const openEditorWithFile = useNeuralMapStore((s) => s.openEditorWithFile)
+  const editingFile = useNeuralMapStore((s) => s.editingFile)
+  const editorOpen = useNeuralMapStore((s) => s.editorOpen)
   const buildGraphFromFilesAsync = useNeuralMapStore((s) => s.buildGraphFromFilesAsync)
   const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
+  const codePreviewFile = useNeuralMapStore((s) => s.codePreviewFile)
+  const codePreviewOpen = useNeuralMapStore((s) => s.codePreviewOpen)
 
   // Node Expansion Store
   const expandedNodeIds = useNeuralMapStore((s) => s.expandedNodeIds)
@@ -310,6 +315,49 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const [isGitHubConnected, setIsGitHubConnected] = useState(false)
   const projectNameInputRef = useRef<HTMLInputElement>(null)
 
+  // 최근 프로젝트 상태
+  interface RecentProject {
+    path: string
+    name: string
+    lastOpened: number
+  }
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
+  const RECENT_PROJECTS_KEY = 'neural-map-recent-projects'
+  const MAX_RECENT_PROJECTS = 10
+
+  // 최근 프로젝트 localStorage에서 로드
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(RECENT_PROJECTS_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as RecentProject[]
+        setRecentProjects(parsed.sort((a, b) => b.lastOpened - a.lastOpened))
+      }
+    } catch (err) {
+      console.error('[FileTree] Failed to load recent projects:', err)
+    }
+  }, [])
+
+  // 최근 프로젝트에 추가하는 함수
+  const addToRecentProjects = useCallback((path: string) => {
+    if (!path) return
+    const name = path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || path
+
+    setRecentProjects(prev => {
+      // 이미 있으면 제거
+      const filtered = prev.filter(p => p.path !== path)
+      // 맨 앞에 추가
+      const updated = [{ path, name, lastOpened: Date.now() }, ...filtered].slice(0, MAX_RECENT_PROJECTS)
+      // localStorage에 저장
+      try {
+        localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(updated))
+      } catch (err) {
+        console.error('[FileTree] Failed to save recent projects:', err)
+      }
+      return updated
+    })
+  }, [])
+
   // GitHub 연결 상태 확인 - 연결되어 있으면 자동으로 레포 생성 ON
   useEffect(() => {
     const checkGitHubConnection = async () => {
@@ -351,10 +399,10 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     return parts[parts.length - 1] || parts[parts.length - 2] || ''
   }
 
-  // 맵 제목: 프로젝트가 있을 때만 표시
+  // 맵 제목: 프로젝트 이름 → 폴더 이름 → 그래프 제목 순서
   const folderName = getFolderName(projectPath)
   const hasProject = linkedProjectName || projectPath
-  const mapTitle = linkedProjectName || graph?.title || folderName || ''
+  const mapTitle = linkedProjectName || folderName || ''  // 🔥 graph.title 제거 - 프로젝트/폴더 이름만 표시
 
   // 파일 확장자로 타입 결정 (VS Code 스타일)
   const getFileTypeFromExt = useCallback((fileName: string): NeuralFile['type'] => {
@@ -1186,10 +1234,38 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     return graph?.nodes.find(n => n.title === fileName)
   }
 
-  // 파일 클릭 핸들러 - 코드 미리보기 열기
+  // 파일 클릭 핸들러 - md는 에디터, 그 외는 코드 미리보기
   const handleFileClick = (file: NeuralFile) => {
     console.log('[FileTree] File clicked:', file.name, 'id:', file.id, 'hasContent:', !!(file as any).content)
     setSelectedFileId(file.id)
+
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    const isMdFile = ext === 'md' || ext === 'markdown' || ext === 'mdx'
+
+    // 중복 열림 방지: 이미 같은 파일이 열려있으면 패널만 선택하고 다시 열지 않음
+    if (isMdFile) {
+      if (editorOpen && editingFile?.id === file.id) {
+        console.log('[FileTree] File already open in editor, skipping:', file.name)
+        // 그래프 노드 선택은 계속 진행
+        const node = findNodeByFileName(file.name)
+        if (node) {
+          setSelectedNodes([node.id])
+          setFocusNodeId(node.id)
+        }
+        return
+      }
+    } else {
+      if (codePreviewOpen && codePreviewFile?.id === file.id) {
+        console.log('[FileTree] File already open in code preview, skipping:', file.name)
+        // 그래프 노드 선택은 계속 진행
+        const node = findNodeByFileName(file.name)
+        if (node) {
+          setSelectedNodes([node.id])
+          setFocusNodeId(node.id)
+        }
+        return
+      }
+    }
 
     // 파일 객체에 이미 content가 있으면 그대로 사용
     // 없으면 새 객체 생성해서 전달 (zustand 객체는 frozen됨)
@@ -1199,8 +1275,12 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
     console.log('[FileTree] Opening file:', file.name, 'content length:', (fileToOpen as any).content?.length || 0)
 
-    // 파일 클릭 시 바로 코드 미리보기 열기
-    openCodePreview(fileToOpen)
+    // md 파일은 마크다운 에디터로 열기, 그 외는 코드 미리보기
+    if (isMdFile) {
+      openEditorWithFile(fileToOpen)
+    } else {
+      openCodePreview(fileToOpen)
+    }
 
     const node = findNodeByFileName(file.name)
     if (node) {
@@ -1497,6 +1577,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     // 이렇게 해야 이전 프로젝트(예: 테트리스)의 파일이 새 프로젝트에서 열리지 않음
     console.log('[FileTree] 🔄 Clearing previous linked project before loading new folder')
     clearLinkedProject()
+    setSelectedNodes([])  // 이전 선택 초기화 (노드 흐림 방지)
 
     // Web 모드: GCS에서 파일 로드
     if (isWeb()) {
@@ -1504,6 +1585,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         setIsUploading(true)
         setIsExpanded(true)
         setProjectPath(dirPath)
+        addToRecentProjects(dirPath)  // 최근 프로젝트에 추가
         console.log('[FileTree] 🌐 Web mode - loading from GCS:', dirPath)
 
         const response = await fetch(`/api/gcs/tree?projectId=${encodeURIComponent(dirPath)}`)
@@ -1567,6 +1649,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       setIsUploading(true)
       setIsExpanded(true)
       setProjectPath(dirPath)
+      addToRecentProjects(dirPath)  // 최근 프로젝트에 추가
       console.log('[FileTree] ✅ Set projectPath:', dirPath)
 
       // 🔄 Start file system watcher for external changes (Claude Code, etc.)
@@ -1645,7 +1728,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       alert('폴더 로딩 실패: ' + (err as Error).message)
       setIsUploading(false)
     }
-  }, [showHiddenFiles, mapId, setProjectPath, setFiles, buildGraphFromFilesAsync, clearLinkedProject])
+  }, [showHiddenFiles, mapId, setProjectPath, setFiles, buildGraphFromFilesAsync, clearLinkedProject, addToRecentProjects, setSelectedNodes])
 
   // ref로 최신 함수 참조 유지 (useEffect에서 사용)
   const loadFolderFromPathRef = useRef(loadFolderFromPath)
@@ -1847,6 +1930,105 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // 🔥 projectPath 변경 감지 → 자동 파일 로드 (Cursor/VSCode 스타일)
+  // 프로젝트 페이지에서 프로젝트를 선택하면 setProjectPath가 호출되고
+  // 이 useEffect가 파일을 자동으로 로드함
+  const lastLoadedPathRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    // 이미 같은 경로를 로드했으면 스킵 (중복 로드 방지)
+    if (!projectPath || projectPath === lastLoadedPathRef.current) return
+
+    // files가 이미 있으면 스킵 (neural-map page에서 이미 로드한 경우)
+    const currentFiles = useNeuralMapStore.getState().files
+    if (currentFiles && currentFiles.length > 0) {
+      console.log('[FileTree] Files already loaded, skipping auto-load for:', projectPath)
+      lastLoadedPathRef.current = projectPath
+      return
+    }
+
+    console.log('[FileTree] 🔄 Auto-loading folder for projectPath:', projectPath)
+    lastLoadedPathRef.current = projectPath
+
+    // Electron 환경에서만 실행
+    const electron = (window as any).electron
+    if (!electron?.fs?.scanTree) return
+
+    // 🔥 linkedProjectId가 있으면 loadFolderFromPath 대신 직접 scanTree 호출
+    // (loadFolderFromPath는 clearLinkedProject를 호출해서 프로젝트 연결이 끊어지므로)
+    const currentLinkedProjectId = useNeuralMapStore.getState().linkedProjectId
+    if (currentLinkedProjectId) {
+      console.log('[FileTree] 🔗 Loading files for linked project (without clearing):', currentLinkedProjectId)
+
+      // 직접 scanTree 호출 (clearLinkedProject 없이)
+      const scanAndLoad = async () => {
+        try {
+          setIsUploading(true)
+          setIsExpanded(true)
+          addToRecentProjects(projectPath)
+
+          const scanResult = await electron.fs.scanTree(projectPath, {
+            includeSystemFiles: showHiddenFiles,
+            includeContent: true,
+            contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs', '.sql', '.prisma', '.graphql', '.gql', '.yaml', '.yml']
+          })
+
+          if (scanResult?.tree) {
+            const timestamp = Date.now()
+            const neuralFiles: NeuralFile[] = []
+
+            const getFileType = (ext: string): 'image' | 'markdown' | 'code' | 'text' => {
+              const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+              const mdExts = ['md', 'markdown', 'mdx']
+              const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go', 'sql', 'prisma', 'graphql', 'gql', 'yaml', 'yml']
+              if (imageExts.includes(ext)) return 'image'
+              if (mdExts.includes(ext)) return 'markdown'
+              if (codeExts.includes(ext)) return 'code'
+              return 'text'
+            }
+
+            const flattenTree = (node: any) => {
+              if (node.kind === 'file') {
+                const ext = node.name.split('.').pop()?.toLowerCase() || ''
+                neuralFiles.push({
+                  id: `local-${timestamp}-${neuralFiles.length}`,
+                  name: node.name,
+                  path: node.relativePath,
+                  type: getFileType(ext),
+                  content: node.content || '',
+                  size: node.size || 0,
+                  createdAt: new Date().toISOString(),
+                  mapId: mapId || '',
+                  url: '',
+                })
+              }
+              if (node.children) {
+                for (const child of node.children) {
+                  flattenTree(child)
+                }
+              }
+            }
+
+            flattenTree(scanResult.tree)
+            console.log(`[FileTree] ✅ Loaded ${neuralFiles.length} files for linked project`)
+
+            setFiles(neuralFiles)
+            await buildGraphFromFilesAsync()
+          }
+        } catch (err) {
+          console.error('[FileTree] Failed to load files for linked project:', err)
+        } finally {
+          setIsUploading(false)
+        }
+      }
+
+      scanAndLoad()
+    } else {
+      // linkedProjectId가 없으면 일반 loadFolderFromPath 호출
+      loadFolderFromPathRef.current(projectPath)
+    }
+  }, [projectPath, showHiddenFiles, mapId, setFiles, buildGraphFromFilesAsync, addToRecentProjects])
+
   // Electron 메뉴 이벤트 리스너
   useEffect(() => {
     const electron = (window as any).electron
@@ -1869,6 +2051,13 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       fileInputRef.current?.click()
     })
 
+    const unsubNewProject = electron.onMenuEvent('menu:new-project', () => {
+      console.log('[Menu] New Project triggered')
+      setIsCreatingProject(true)
+      setNewProjectName('')
+      setTimeout(() => projectNameInputRef.current?.focus(), 100)
+    })
+
     // Listen for file system changes (Agent actions)
     const unsubFsChanged = electron.fs?.onChanged?.(async (data: { path: string }) => {
       console.log('[FileTree] File changed by Agent:', data.path)
@@ -1884,6 +2073,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       unsubFolderSelected?.()
       unsubNewNote?.()
       unsubNewFile?.()
+      unsubNewProject?.()
       unsubFsChanged?.()
       // Stop file system watcher
       electron.fs?.watchStop?.()
@@ -1956,6 +2146,23 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                 {/* 구분선 */}
                 <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />
 
+                {/* New Project */}
+                <button
+                  onClick={() => {
+                    setIsCreatingProject(true)
+                    setNewProjectName('')
+                    setShowFileMenu(false)
+                    setTimeout(() => projectNameInputRef.current?.focus(), 100)
+                  }}
+                  className={cn(
+                    'w-full px-4 py-2 text-left flex items-center justify-between',
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
+                  )}
+                >
+                  <span>New Project...</span>
+                  <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⇧⌘N</span>
+                </button>
+
                 {/* Open Folder */}
                 <button
                   onClick={() => {
@@ -1975,6 +2182,37 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                   <span>Open Folder...</span>
                   <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘O</span>
                 </button>
+
+                {/* 최근 프로젝트 */}
+                {recentProjects.length > 0 && (
+                  <>
+                    <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />
+                    <div className={cn(
+                      'px-4 py-1.5 text-[11px] font-medium',
+                      isDark ? 'text-[#6e6e6e]' : 'text-zinc-400'
+                    )}>
+                      최근 프로젝트
+                    </div>
+                    <div className="max-h-[200px] overflow-y-auto">
+                      {recentProjects.slice(0, 5).map((project) => (
+                        <button
+                          key={project.path}
+                          onClick={() => {
+                            loadFolderFromPath(project.path)
+                            setShowFileMenu(false)
+                          }}
+                          className={cn(
+                            'w-full px-4 py-1.5 text-left flex items-center gap-2 text-[13px]',
+                            isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
+                          )}
+                        >
+                          <FolderOpen className="w-3.5 h-3.5 opacity-60 flex-shrink-0" />
+                          <span className="truncate" title={project.path}>{project.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 {/* 구분선 */}
                 <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />

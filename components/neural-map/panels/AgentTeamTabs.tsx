@@ -36,6 +36,7 @@ import {
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useChatStore } from '@/stores/chatStore'
 import { getModelList, type ChatModelId } from '@/lib/ai/models'
+import { executeSuperAgentActions, formatActionResultsForChat, type ToolAction } from '@/lib/ai/agent-actions'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -255,20 +256,20 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
 
   // 각 에이전트별 모델 설정 저장
   const [agentModels, setAgentModels] = useState<Record<AgentRole, ChatModelId>>({
-    orchestrator: 'grok-3-fast',
-    planner: 'grok-3-fast',
-    implementer: 'grok-3-fast',
-    tester: 'grok-3-fast',
-    reviewer: 'grok-3-fast',
+    orchestrator: 'gemini-3-flash',
+    planner: 'gemini-3-flash',
+    implementer: 'gemini-3-flash',
+    tester: 'gemini-3-flash',
+    reviewer: 'gemini-3-flash',
   })
 
-  // 각 에이전트별 Agent 모드 on/off
+  // 각 에이전트별 Agent 모드 on/off - 🔥 모두 기본 true!
   const [agentModes, setAgentModes] = useState<Record<AgentRole, boolean>>({
-    orchestrator: false,
-    planner: false,
-    implementer: true, // Implementer는 기본 Agent 모드
-    tester: true, // Tester도 기본 Agent 모드
-    reviewer: false,
+    orchestrator: true, // 🔥 도구 사용!
+    planner: true,      // 🔥 도구 사용!
+    implementer: true,
+    tester: true,
+    reviewer: true,     // 🔥 도구 사용!
   })
 
   const currentAgent = AGENT_TEAM.find((a) => a.id === activeAgent)!
@@ -337,10 +338,21 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
 
       const data = await response.json()
 
+      // 🔥 액션 실행 (Neural Editor 제어 등)
+      let actionResultsText = ''
+      if (data.actions && data.actions.length > 0) {
+        console.log('[AgentTeam] Executing actions:', data.actions)
+        const results = await executeSuperAgentActions(data.actions as ToolAction[])
+        actionResultsText = formatActionResultsForChat(results)
+        console.log('[AgentTeam] Action results:', results)
+      }
+
       const assistantMessage: AgentMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.response || data.message,
+        content: actionResultsText
+          ? `${data.response || data.message}\n\n---\n\n**실행 결과:**\n${actionResultsText}`
+          : data.response || data.message,
         agentRole: activeAgent,
         timestamp: Date.now(),
         status: 'complete',
@@ -404,7 +416,6 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
       {/* Agent Info */}
       <div
         className={cn('px-3 py-2 border-b text-xs', isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50')}
-        style={{ borderLeftColor: currentAgent.color, borderLeftWidth: 3 }}
       >
         <div className="flex items-center gap-2">
           <currentAgent.icon className="w-4 h-4" style={{ color: currentAgent.color }} />
@@ -449,10 +460,6 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
                       ? 'bg-zinc-900 border border-zinc-800'
                       : 'bg-white border border-zinc-200'
                 )}
-                style={{
-                  borderLeftColor: msg.role === 'assistant' ? currentAgent.color : undefined,
-                  borderLeftWidth: msg.role === 'assistant' ? 3 : undefined,
-                }}
               >
                 {msg.role === 'assistant' && (
                   <div className="flex items-center gap-1.5 mb-2 text-xs">

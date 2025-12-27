@@ -7,6 +7,16 @@ import * as util from 'util';
 import { fork, ChildProcess, exec, spawn } from 'child_process';
 import * as chokidar from 'chokidar';
 
+// EPIPE 에러 핸들러 - 앱 종료 시 파이프 에러 무시
+process.stdout.on('error', (err: any) => {
+    if (err.code === 'EPIPE') return;
+    throw err;
+});
+process.stderr.on('error', (err: any) => {
+    if (err.code === 'EPIPE') return;
+    throw err;
+});
+
 // electron-updater는 지연 로딩 (app.whenReady() 이후 사용)
 let autoUpdater: any = null;
 
@@ -288,6 +298,13 @@ app.whenReady().then(() => {
                 },
                 { type: 'separator' },
                 {
+                    label: 'New Project...',
+                    accelerator: 'Shift+CmdOrCtrl+N',
+                    click: () => {
+                        mainWindow?.webContents.send('menu:new-project');
+                    }
+                },
+                {
                     label: 'Open Folder...',
                     accelerator: 'CmdOrCtrl+O',
                     click: async () => {
@@ -540,7 +557,7 @@ ipcMain.handle('fs:scan-tree', async (_, rootPath: string, options: {
         includeSystemFiles = false,
         maxDepth = Infinity,
         includeContent = false,
-        contentExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html']
+        contentExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs', '.sql', '.prisma', '.graphql', '.gql', '.yaml', '.yml']
     } = options;
 
     const startTime = Date.now();
@@ -2850,7 +2867,7 @@ const MODEL_API_MAP: Record<string, { provider: 'openai' | 'anthropic' | 'google
     'gpt-4o': { provider: 'openai', apiModel: 'gpt-4o' },
     // Google
     'gemini-1.5-pro': { provider: 'google', apiModel: 'gemini-1.5-pro' },
-    'gemini-3-flash': { provider: 'google', apiModel: 'gemini-2.0-flash-exp' },
+    'gemini-3-flash': { provider: 'google', apiModel: 'gemini-3-flash-preview' },
     // xAI
     'grok-4.1-fast': { provider: 'xai', apiModel: 'grok-3-fast' },
 };

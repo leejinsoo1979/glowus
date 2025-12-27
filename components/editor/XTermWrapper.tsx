@@ -144,12 +144,6 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
 
   useEffect(() => {
     isMountedRef.current = true
-    console.log(`[XTerm] useEffect triggered for tab: ${tabId}, isInitialized: ${isInitializedRef.current}`)
-
-    // Debug: Test if we can reach the terminal server
-    fetch('http://localhost:3001')
-      .then(r => console.log('[XTerm] Terminal server reachable:', r.status))
-      .catch(e => console.error('[XTerm] Terminal server NOT reachable:', e.message))
 
     let intervalId: NodeJS.Timeout | null = null
 

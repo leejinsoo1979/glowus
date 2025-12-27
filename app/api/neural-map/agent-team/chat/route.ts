@@ -5,12 +5,62 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
 import { generateSuperAgentResponse, SuperAgentMessage } from '@/lib/ai/super-agent-chat'
+import { getApiModelId } from '@/lib/ai/models'
 
 /**
  * Agent Team Chat API
  * 5개 전문 에이전트 (Orchestrator, Planner, Implementer, Tester, Reviewer)
  * 각 에이전트는 고유한 시스템 프롬프트와 역할을 가짐
  */
+
+// 활동 로깅 헬퍼
+async function logCodingTeamActivity(
+  adminClient: any,
+  data: {
+    userId: string
+    agentRole: string
+    mapId?: string
+    message: string
+    response?: string
+    toolsUsed?: string[]
+    actions?: any[]
+    model?: string
+    success: boolean
+    errorMessage?: string
+  }
+) {
+  const actions = data.actions || []
+
+  // 액션에서 메트릭 추출
+  const filesCreated = actions.filter(a =>
+    a.type === 'create_file_with_node' || a.type === 'write_file'
+  ).length
+  const filesModified = actions.filter(a => a.type === 'edit_file').length
+  const nodesCreated = actions.filter(a =>
+    a.type === 'create_node' || a.type === 'create_file_with_node'
+  ).length
+  const testsRun = actions.filter(a =>
+    a.type === 'run_terminal' &&
+    (a.data?.command?.includes('test') || a.data?.command?.includes('jest'))
+  ).length
+
+  await adminClient.from('coding_team_activity').insert({
+    user_id: data.userId,
+    agent_role: data.agentRole,
+    map_id: data.mapId || null,
+    message: data.message.substring(0, 1000), // 1000자 제한
+    response: data.response?.substring(0, 2000), // 2000자 제한
+    tools_used: data.toolsUsed || [],
+    actions_count: actions.length,
+    files_created: filesCreated,
+    files_modified: filesModified,
+    nodes_created: nodesCreated,
+    tests_run: testsRun,
+    model: data.model,
+    success: data.success,
+    error_message: data.errorMessage,
+  })
+}
 
 // 에이전트 역할별 추가 설정
 const AGENT_CONFIGS: Record<string, {
@@ -19,14 +69,14 @@ const AGENT_CONFIGS: Record<string, {
   forceToolUse: boolean
 }> = {
   orchestrator: {
-    capabilities: ['management', 'planning', 'routing'],
+    capabilities: ['management', 'planning', 'routing', 'development'],
     temperature: 0.7,
-    forceToolUse: false, // 오케스트레이터는 분석/계획이 주 역할
+    forceToolUse: true, // 🔥 모든 에이전트는 도구 사용!
   },
   planner: {
-    capabilities: ['architecture', 'design', 'planning'],
+    capabilities: ['architecture', 'design', 'planning', 'development'],
     temperature: 0.5,
-    forceToolUse: false, // 플래너는 설계가 주 역할
+    forceToolUse: true, // 🔥 플래너도 노드 생성 가능
   },
   implementer: {
     capabilities: ['development', 'coding', 'programming'],
@@ -39,9 +89,9 @@ const AGENT_CONFIGS: Record<string, {
     forceToolUse: true, // 테스터도 테스트 코드 작성
   },
   reviewer: {
-    capabilities: ['review', 'security', 'quality'],
+    capabilities: ['review', 'security', 'quality', 'development'],
     temperature: 0.6,
-    forceToolUse: false, // 리뷰어는 분석이 주 역할
+    forceToolUse: true, // 🔥 리뷰어도 수정 제안 시 도구 사용
   },
 }
 
@@ -75,7 +125,8 @@ export async function POST(request: NextRequest) {
     const agentConfig = AGENT_CONFIGS[agentRole]
 
     // 사용자가 선택한 모델 또는 기본값 사용
-    const selectedModel = model || 'grok-3-fast'
+    // 내부 모델 ID → 실제 API 모델명 변환
+    const selectedModel = getApiModelId(model || 'gemini-3-flash')
 
     // Agent 모드: 사용자 선택 또는 에이전트 설정 기본값
     const useToolCalling = agentMode !== undefined ? agentMode : agentConfig.forceToolUse
@@ -139,6 +190,19 @@ export async function POST(request: NextRequest) {
         )
 
         console.log(`[AgentTeam] ${agentRole} tools used: ${superAgentResult.toolsUsed.join(', ') || 'none'}`)
+
+        // 🔥 활동 로깅 (비동기, 실패해도 응답에 영향 없음)
+        logCodingTeamActivity(adminClient, {
+          userId: user.id,
+          agentRole,
+          mapId,
+          message,
+          response: superAgentResult.message,
+          toolsUsed: superAgentResult.toolsUsed,
+          actions: superAgentResult.actions,
+          model: selectedModel,
+          success: true,
+        }).catch(err => console.error('[AgentTeam] Activity log failed:', err))
 
         return NextResponse.json({
           response: superAgentResult.message,

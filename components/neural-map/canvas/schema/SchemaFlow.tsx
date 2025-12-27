@@ -445,14 +445,22 @@ function SchemaFlowInner({ className }: { className?: string }) {
     // 프로젝트 파일에서 스키마 파싱
     useEffect(() => {
         if (!files || files.length === 0) {
+            console.log('[SchemaFlow] No files provided')
             setParsedSchema(null)
             setSchemaFileInfo({ type: null, count: 0 })
             return
         }
 
+        console.log('[SchemaFlow] Total files:', files.length)
+
         try {
             // 스키마 관련 파일 카운트
-            const sqlFiles = files.filter(f => f.name.endsWith('.sql') && f.content)
+            const allSqlFiles = files.filter(f => f.name.endsWith('.sql'))
+            const sqlFiles = allSqlFiles.filter(f => f.content)
+            console.log('[SchemaFlow] SQL files:', allSqlFiles.length, 'with content:', sqlFiles.length)
+            if (allSqlFiles.length > 0 && sqlFiles.length === 0) {
+                console.warn('[SchemaFlow] SQL files found but no content loaded:', allSqlFiles.map(f => f.path || f.name))
+            }
             const prismaFile = files.find(f =>
                 (f.name === 'schema.prisma' || f.path?.includes('prisma/schema.prisma')) && f.content
             )
@@ -941,16 +949,32 @@ function SchemaFlowInner({ className }: { className?: string }) {
     }
 
     if (parsingError && !parsedSchema) {
+        // 스키마 파일이 없는 경우 친근한 빈 상태 표시
+        const isNoSchemaProject = parsingError.includes('스키마 파일을 찾을 수 없습니다')
         return (
             <div className={className}>
                 <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
-                    <AlertCircle className="w-16 h-16 opacity-50 text-amber-500" />
-                    <div className="text-center">
-                        <p className="text-lg font-medium">{parsingError}</p>
-                        <p className="text-sm mt-1 max-w-md">
-                            지원 형식: SQL migrations, Prisma schema, Drizzle schema, TypeScript types
-                        </p>
-                    </div>
+                    {isNoSchemaProject ? (
+                        <>
+                            <Database className="w-16 h-16 opacity-30" />
+                            <div className="text-center">
+                                <p className="text-lg font-medium opacity-70">데이터베이스 스키마 없음</p>
+                                <p className="text-sm mt-1 opacity-50">
+                                    이 프로젝트에는 감지된 스키마 파일이 없습니다
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <AlertCircle className="w-16 h-16 opacity-50 text-amber-500" />
+                            <div className="text-center">
+                                <p className="text-lg font-medium">{parsingError}</p>
+                                <p className="text-sm mt-1 max-w-md">
+                                    지원 형식: SQL migrations, Prisma schema, Drizzle schema, TypeScript types
+                                </p>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         )

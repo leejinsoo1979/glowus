@@ -33,8 +33,26 @@ import {
   Link2,
   ChevronDown,
   ChevronUp,
+  Send,
+  Sparkles,
+  MessageSquare,
+  Bot,
+  ArrowUp,
+  Globe,
+  AtSign,
+  Mic,
+  Image as ImageIcon2,
 } from 'lucide-react'
 import { BacklinksPanel } from './BacklinksPanel'
+import { getModelList, type ChatModelId } from '@/lib/ai/models'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+const MODELS = getModelList()
 
 // Monaco Editor 동적 import
 const MonacoCodeEditor = dynamic(
@@ -166,6 +184,19 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
   const [showBacklinks, setShowBacklinks] = useState(true) // 백링크 패널 토글
 
+  // AI Chat State
+  const [showAIChat, setShowAIChat] = useState(true)
+  const [chatInput, setChatInput] = useState('')
+  const [isChatLoading, setIsChatLoading] = useState(false)
+  const [chatResponse, setChatResponse] = useState<string | null>(null)
+  const [chatModel, setChatModel] = useState<ChatModelId>('gemini-3-flash')
+  const [isAgentMode, setIsAgentMode] = useState(false)
+  const [chatPanelHeight, setChatPanelHeight] = useState(200)
+  const [isChatResizing, setIsChatResizing] = useState(false)
+  const chatResizeRef = useRef<{ startY: number; startHeight: number } | null>(null)
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const currentModelInfo = MODELS.find((m) => m.id === chatModel) || MODELS[0]
+
   // Resizing State
   const [panelWidth, setPanelWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
@@ -235,6 +266,45 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
       }
     }
   }, [isResizing, isExpanded])
+
+  // Chat Panel Vertical Resize
+  const startChatResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsChatResizing(true)
+    chatResizeRef.current = {
+      startY: e.clientY,
+      startHeight: chatPanelHeight
+    }
+  }, [chatPanelHeight])
+
+  useEffect(() => {
+    if (!isChatResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!chatResizeRef.current) return
+      const delta = chatResizeRef.current.startY - e.clientY
+      const newHeight = Math.max(100, Math.min(chatResizeRef.current.startHeight + delta, 500))
+      setChatPanelHeight(newHeight)
+    }
+
+    const handleMouseUp = () => {
+      setIsChatResizing(false)
+      chatResizeRef.current = null
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isChatResizing])
 
   // Fetch file content
   useEffect(() => {
@@ -449,6 +519,58 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
     setEditedContent(value)
     setDirty(value !== content)
   }, [content, setDirty])
+
+  // Handle AI chat send
+  const handleChatSend = useCallback(async () => {
+    if (!chatInput.trim() || isChatLoading) return
+
+    const message = chatInput.trim()
+    setChatInput('')
+    setIsChatLoading(true)
+    setChatResponse(null)
+
+    try {
+      // 현재 코드 컨텍스트 포함
+      const codeContext = codePreviewFile ? `
+현재 열린 파일: ${codePreviewFile.name}
+파일 경로: ${codePreviewFile.path || codePreviewFile.id}
+${editedContent ? `\n현재 코드:\n\`\`\`\n${editedContent.slice(0, 3000)}${editedContent.length > 3000 ? '\n... (truncated)' : ''}\n\`\`\`` : ''}
+` : ''
+
+      const response = await fetch('/api/neural-map/agent-team/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `${message}\n\n${codeContext}`,
+          agentRole: 'implementer',
+          model: chatModel,
+          systemPrompt: `당신은 코드 에디터 내장 AI 어시스턴트입니다.
+사용자가 현재 열어본 코드에 대해 질문하거나 수정을 요청하면 도움을 제공합니다.
+코드 설명, 버그 수정, 리팩토링 제안, 새 기능 구현 등을 도와주세요.
+응답은 간결하고 실용적으로 작성하세요.`,
+          agentMode: false,
+        }),
+      })
+
+      if (!response.ok) throw new Error('API 호출 실패')
+
+      const data = await response.json()
+      setChatResponse(data.response || data.message || '응답을 받지 못했습니다.')
+    } catch (err) {
+      console.error('[CodePreview Chat] Error:', err)
+      setChatResponse('오류가 발생했습니다. 다시 시도해주세요.')
+    } finally {
+      setIsChatLoading(false)
+    }
+  }, [chatInput, isChatLoading, codePreviewFile, editedContent, chatModel])
+
+  // Handle chat keyboard
+  const handleChatKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleChatSend()
+    }
+  }, [handleChatSend])
 
   // Handle close with unsaved changes
   const handleClose = useCallback(() => {
@@ -749,6 +871,7 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
                   readOnly={false}
                   minimap={true}
                   lineNumbers={true}
+                  fileName={codePreviewFile.name}
                 />
               </div>
             ) : displayMode === 'markdown' ? (
@@ -766,6 +889,7 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
                     readOnly={false}
                     minimap={false}
                     lineNumbers={true}
+                    fileName={codePreviewFile.name}
                   />
                 </div>
 
@@ -808,6 +932,7 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
                   readOnly={false}
                   minimap={false}
                   lineNumbers={true}
+                  fileName={codePreviewFile.name}
                 />
               </div>
             ) : content ? (
@@ -818,6 +943,270 @@ export function CodePreviewPanel({ className }: CodePreviewPanelProps) {
                 {content}
               </pre>
             ) : null}
+          </div>
+
+          {/* AI Chat Section */}
+          <div className={cn(
+            'flex-shrink-0 border-t flex flex-col',
+            isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50/50'
+          )}>
+            {/* Resize Handle */}
+            {showAIChat && (
+              <div
+                onMouseDown={startChatResizing}
+                className={cn(
+                  'h-2 cursor-row-resize flex items-center justify-center group transition-colors',
+                  isDark ? 'hover:bg-blue-500/20 bg-zinc-800/50' : 'hover:bg-blue-500/20 bg-zinc-100/50',
+                  isChatResizing && 'bg-blue-500/40'
+                )}
+              >
+                <div className={cn(
+                  'w-12 h-1 rounded-full transition-colors',
+                  isDark ? 'bg-zinc-600 group-hover:bg-blue-400' : 'bg-zinc-400 group-hover:bg-blue-500',
+                  isChatResizing && 'bg-blue-500'
+                )} />
+              </div>
+            )}
+
+            {/* Chat Toggle Header */}
+            <button
+              onClick={() => setShowAIChat(!showAIChat)}
+              className={cn(
+                'w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium transition-colors',
+                isDark
+                  ? 'hover:bg-zinc-800/50 text-zinc-400'
+                  : 'hover:bg-zinc-100 text-zinc-600'
+              )}
+            >
+              <span className="flex items-center gap-1.5">
+                <Bot className="w-3.5 h-3.5 text-blue-500" />
+                <span>AI 어시스턴트</span>
+              </span>
+              {showAIChat ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronUp className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            {/* Chat Content */}
+            <AnimatePresence>
+              {showAIChat && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: chatPanelHeight, opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: isChatResizing ? 0 : 0.2 }}
+                  style={{ height: chatPanelHeight }}
+                  className="overflow-hidden flex flex-col"
+                >
+                  {/* Chat Response */}
+                  <div className={cn(
+                    'flex-1 px-3 py-2 overflow-y-auto text-xs',
+                    isDark ? 'bg-zinc-900' : 'bg-white'
+                  )}>
+                      {isChatLoading ? (
+                        <div className="flex items-center gap-2 text-zinc-500">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>생각 중...</span>
+                        </div>
+                      ) : chatResponse ? (
+                        <div className={cn(
+                          'prose prose-sm max-w-none',
+                          isDark ? 'prose-invert' : ''
+                        )}>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              code({ className, children, ...props }) {
+                                const match = /language-(\w+)/.exec(className || '')
+                                const codeString = String(children).replace(/\n$/, '')
+                                return match ? (
+                                  <SyntaxHighlighter
+                                    style={isDark ? oneDark : oneLight}
+                                    language={match[1]}
+                                    PreTag="div"
+                                    customStyle={{
+                                      fontSize: '11px',
+                                      padding: '8px',
+                                      borderRadius: '4px',
+                                      margin: '4px 0'
+                                    }}
+                                  >
+                                    {codeString}
+                                  </SyntaxHighlighter>
+                                ) : (
+                                  <code className={cn(
+                                    'px-1 py-0.5 rounded text-[11px]',
+                                    isDark ? 'bg-zinc-800' : 'bg-zinc-200'
+                                  )} {...props}>
+                                    {children}
+                                  </code>
+                                )
+                              },
+                            }}
+                          >
+                            {chatResponse}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className={cn(
+                          'flex items-center justify-center h-full text-zinc-500',
+                          isDark ? 'text-zinc-600' : 'text-zinc-400'
+                        )}>
+                          <span className="text-xs">코드에 대해 질문하세요</span>
+                        </div>
+                      )}
+                    </div>
+
+                  {/* Chat Input - Consistent Style */}
+                  <div className={cn(
+                    'flex-shrink-0 mx-2 mb-2 border rounded-xl shadow-sm',
+                    isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                  )}>
+                    {/* Textarea Area */}
+                    <div className="px-3 pt-2 pb-1">
+                      <textarea
+                        ref={chatInputRef}
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={handleChatKeyDown}
+                        placeholder="코드에 대해 질문하세요..."
+                        disabled={isChatLoading}
+                        className={cn(
+                          'no-focus-ring w-full bg-transparent border-none outline-none resize-none text-sm leading-snug placeholder:text-zinc-400 min-h-[24px] max-h-[100px]',
+                          isDark ? 'text-zinc-100' : 'text-zinc-900',
+                          isChatLoading && 'opacity-50'
+                        )}
+                        rows={1}
+                      />
+                    </div>
+
+                    {/* Bottom Toolbar */}
+                    <div className="flex items-center justify-between px-2 pb-2">
+                      <div className="flex items-center gap-1">
+                        {/* Agent/Model Toggle Group */}
+                        <div className={cn(
+                          'flex items-center rounded-lg p-0.5 mr-2',
+                          isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+                        )}>
+                          <button
+                            onClick={() => setIsAgentMode(!isAgentMode)}
+                            className={cn(
+                              'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
+                              isAgentMode
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : isDark
+                                  ? 'text-zinc-400 hover:text-zinc-200'
+                                  : 'text-zinc-500 hover:text-zinc-700'
+                            )}
+                          >
+                            <Bot className="w-3.5 h-3.5" />
+                            <span>Agent</span>
+                          </button>
+
+                          <div className={cn('w-[1px] h-3 mx-0.5', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className={cn(
+                                'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
+                                isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-700'
+                              )}>
+                                <span>{currentModelInfo.name}</span>
+                                <ChevronDown className="w-3 h-3 opacity-50" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="start"
+                              className={cn(
+                                'w-[200px] shadow-xl',
+                                isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'
+                              )}
+                            >
+                              {MODELS.map((model) => (
+                                <DropdownMenuItem
+                                  key={model.id}
+                                  onClick={() => setChatModel(model.id as ChatModelId)}
+                                  className="gap-2"
+                                >
+                                  <Sparkles className={cn(
+                                    'w-4 h-4',
+                                    model.id.includes('claude') ? 'text-orange-500' :
+                                    model.id.includes('gpt') ? 'text-green-500' :
+                                    model.id.includes('gemini') ? 'text-blue-500' :
+                                    'text-zinc-500'
+                                  )} />
+                                  {model.name}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <button
+                          className={cn(
+                            'p-1.5 rounded-md transition-colors',
+                            isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
+                          )}
+                          title="컨텍스트 추가 (@)"
+                        >
+                          <AtSign className="w-4 h-4" />
+                        </button>
+                        <button
+                          className={cn(
+                            'p-1.5 rounded-md transition-colors',
+                            isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
+                          )}
+                          title="웹 검색"
+                        >
+                          <Globe className="w-4 h-4" />
+                        </button>
+                        <button
+                          className={cn(
+                            'p-1.5 rounded-md transition-colors',
+                            isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
+                          )}
+                          title="이미지 추가"
+                        >
+                          <ImageIcon2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          className={cn(
+                            'p-1.5 rounded-md transition-colors',
+                            isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
+                          )}
+                          title="음성 입력"
+                        >
+                          <Mic className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Submit Button */}
+                      <button
+                        onClick={handleChatSend}
+                        disabled={!chatInput.trim() || isChatLoading}
+                        className={cn(
+                          'p-1.5 rounded-lg transition-all duration-200',
+                          chatInput.trim() && !isChatLoading
+                            ? 'bg-blue-600 text-white shadow-md hover:bg-blue-500'
+                            : isDark
+                              ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
+                              : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                        )}
+                      >
+                        {isChatLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <ArrowUp className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Footer */}

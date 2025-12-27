@@ -9,6 +9,7 @@ import type { ViewTab, MermaidDiagramType } from '@/lib/neural-map/types'
 import {
   Network, // Map
   Activity, // Life Stream
+  Bot, // Agent Builder
   Database, // Data
   GitBranch, // Logic
   FlaskConical, // Test
@@ -27,6 +28,7 @@ import {
 const viewTabs: { id: ViewTab; label: string; icon: typeof Network; description: string }[] = [
   { id: 'map', label: 'Map', icon: Network, description: '전체 노드 탐색 (2D/3D)' },
   { id: 'life-stream', label: 'Blueprint', icon: Activity, description: '전체 개발 현황 및 순서 (Blueprint)' },
+  { id: 'agent-builder', label: 'Agent', icon: Bot, description: 'AI 에이전트 워크플로우 빌더' },
   { id: 'data', label: 'Data', icon: Database, description: '데이터 구조 및 스키마' },
   { id: 'logic', label: 'Logic', icon: GitBranch, description: '로직 흐름 및 파일 구조' },
   { id: 'test', label: 'Test', icon: FlaskConical, description: '품질 검증 및 테스트' },

@@ -27,6 +27,7 @@ if (typeof window !== 'undefined' && typeof Node !== 'undefined') {
 }
 
 import { useEffect, useState, Suspense, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
@@ -130,6 +131,24 @@ const CytoscapeView = dynamic(
   }
 )
 
+// Dynamically import Mermaid View (architecture flowcharts with diverse shapes)
+const MermaidView = dynamic(
+  () => import('@/components/neural-map/canvas/MermaidView').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+// Dynamically import Agent Builder (n8n-style workflow builder)
+const AgentBuilder = dynamic(
+  () => import('@/components/agent/AgentBuilder').then((mod) => mod.AgentBuilder),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
 // Dynamically import interactive diagram views
 const SequenceDiagramView = dynamic(
   () => import('@/components/neural-map/canvas/SequenceDiagramView').then((mod) => mod.default),
@@ -219,7 +238,8 @@ export default function NeuralMapPage() {
     setActiveTab,
     closeModal,
     setFiles,
-
+    setGraph,
+    clearGraph,
     toggleRightPanel,
     updateNode,
     terminalOpen,
@@ -234,6 +254,18 @@ export default function NeuralMapPage() {
   const { setPendingImage } = useChatStore()
   const setNeuralMapRightPanelTab = useNeuralMapStore((s) => s.setRightPanelTab)
   const setProjectPath = useNeuralMapStore((s) => s.setProjectPath)
+  const setMapId = useNeuralMapStore((s) => s.setMapId)
+
+  // URL 파라미터에서 mapId 처리
+  const searchParams = useSearchParams()
+  const urlMapId = searchParams.get('mapId')
+
+  // URL에서 mapId가 있으면 store에 설정
+  useEffect(() => {
+    if (urlMapId && urlMapId !== mapId) {
+      setMapId(urlMapId)
+    }
+  }, [urlMapId, mapId, setMapId])
 
   // MCP Bridge for Claude Code CLI control
   const { isConnected: mcpConnected } = useMcpBridge()
@@ -734,38 +766,74 @@ export default function NeuralMapPage() {
     }
   }, [isResizing, setRightPanelWidth])
 
-  // Load or create neural map
+  // Load or create neural map - 프로젝트 변경 시에도 다시 실행
+  const prevProjectIdRef = useRef<string | null>(null)
+
   useEffect(() => {
     const loadOrCreateMap = async () => {
+      console.log('[NeuralMap] loadOrCreateMap called, projectId:', linkedProjectId)
+
+      // 🔥 프로젝트가 변경되었을 때만 클리어 (첫 로드는 제외)
+      const isFirstLoad = prevProjectIdRef.current === null
+      const projectChanged = !isFirstLoad && prevProjectIdRef.current !== linkedProjectId
+      prevProjectIdRef.current = linkedProjectId
+
+      if (projectChanged) {
+        console.log('[NeuralMap] Project changed, clearing graph')
+        clearGraph()
+        setFiles([])
+        setMapId(null)
+      }
+
       setLoading(true)
       try {
-        // 1. 기존 맵 목록 조회
-        const listRes = await fetch('/api/neural-map')
-        const maps = await listRes.json()
+        let targetMapId: string | null = null
 
-        let targetMapId: string
+        // 🔥 1. 해당 프로젝트의 맵이 있는지 조회
+        if (linkedProjectId) {
+          const listRes = await fetch(`/api/neural-map?project_id=${linkedProjectId}`)
+          if (listRes.ok) {
+            const maps = await listRes.json()
+            if (Array.isArray(maps) && maps.length > 0) {
+              targetMapId = maps[0].id
+              console.log('[NeuralMap] Found existing map for project:', targetMapId)
+            }
+          }
+        }
 
-        if (Array.isArray(maps) && maps.length > 0) {
-          // 가장 최근 맵 사용
-          targetMapId = maps[0].id
-        } else {
-          // 2. 맵이 없으면 새로 생성
+        // 🔥 2. 없으면 새 맵 생성
+        if (!targetMapId) {
           const createRes = await fetch('/api/neural-map', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: 'My Neural Map' }),
+            body: JSON.stringify({
+              title: linkedProjectName || 'My Neural Map',
+              project_id: linkedProjectId || null
+            }),
           })
 
-          if (!createRes.ok) {
-            throw new Error('Failed to create neural map')
+          if (createRes.ok) {
+            const newMap = await createRes.json()
+            targetMapId = newMap.id
+            console.log('[NeuralMap] Created new map:', targetMapId)
           }
-
-          const newMap = await createRes.json()
-          targetMapId = newMap.id
         }
 
-        // 3. 맵 로드
-        // await loadGraph(targetMapId) // TODO: Implement graph loading action
+        // 🔥 3. 맵 데이터 로드
+        if (targetMapId) {
+          const graphRes = await fetch(`/api/neural-map/${targetMapId}`)
+          if (graphRes.ok) {
+            const { graph: loadedGraph, files: loadedFiles } = await graphRes.json()
+            setMapId(targetMapId)
+            if (loadedGraph?.nodes?.length > 0) {
+              setGraph(loadedGraph)
+            }
+            if (loadedFiles?.length > 0) {
+              setFiles(loadedFiles)
+            }
+            console.log('[NeuralMap] Graph loaded:', { nodes: loadedGraph?.nodes?.length || 0 })
+          }
+        }
 
       } catch (error) {
         console.error('Failed to init map:', error)
@@ -775,7 +843,7 @@ export default function NeuralMapPage() {
     }
 
     loadOrCreateMap()
-  }, []) // run once
+  }, [linkedProjectId]) // 🔥 프로젝트 변경 시 재실행
 
 
   if (!mounted) return null
@@ -872,6 +940,10 @@ export default function NeuralMapPage() {
               </div>
             ) : activeTab === 'life-stream' ? (
               <LifeStreamView className="absolute inset-0" />
+            ) : activeTab === 'agent-builder' ? (
+              <div className="absolute inset-0 overflow-hidden">
+                <AgentBuilder />
+              </div>
             ) : activeTab === 'data' ? (
               <SchemaView className="absolute inset-0" />
             ) : activeTab === 'logic' ? (
@@ -888,7 +960,7 @@ export default function NeuralMapPage() {
             ) : activeTab === 'mermaid' ? (
               // Interactive diagram views based on type
               mermaidDiagramType === 'flowchart' ? (
-                <CytoscapeView projectPath={projectPath ?? undefined} mapId={mapId ?? undefined} />
+                <MermaidView className="absolute inset-0" />
               ) : mermaidDiagramType === 'sequence' ? (
                 <SequenceDiagramView projectPath={projectPath ?? undefined} className="absolute inset-0" />
               ) : mermaidDiagramType === 'class' ? (

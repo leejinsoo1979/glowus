@@ -120,7 +120,8 @@ export async function POST(request: NextRequest) {
         progress: 0,
         // 로컬 폴더 불러오기 지원
         folder_path: (body as any).folder_path || null,
-        metadata: (body as any).metadata || null,
+        // metadata 컬럼은 DB에 없을 수 있음 - 필요시 마이그레이션 실행
+        // metadata: (body as any).metadata || null,
       })
       .select()
       .single()

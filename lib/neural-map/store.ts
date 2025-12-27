@@ -114,6 +114,7 @@ interface NeuralMapState {
   // Editor
   editorOpen: boolean
   editorCollapsed: boolean
+  editingFile: NeuralFile | null  // 편집 중인 파일 (기존 파일 열기)
 
   // Code Preview
   codePreviewFile: NeuralFile | null
@@ -237,6 +238,7 @@ interface NeuralMapActions {
 
   // Editor
   openEditor: () => void
+  openEditorWithFile: (file: NeuralFile) => void  // 기존 파일 편집
   closeEditor: () => void
   toggleEditorCollapse: () => void
 
@@ -333,6 +335,7 @@ const initialState: NeuralMapState = {
 
   editorOpen: false,
   editorCollapsed: false,
+  editingFile: null,
 
   // Code Preview
   codePreviewFile: null,
@@ -347,7 +350,7 @@ const initialState: NeuralMapState = {
   focusNodeId: null, // 검색 시 포커스할 노드 ID
 
   // Terminal
-  terminalOpen: true, // DEBUG: 기본으로 열어서 테스트
+  terminalOpen: false, // 기본 닫힘 상태
   terminalHeight: 250,
   terminals: [],
   activeTerminalId: null,
@@ -799,14 +802,57 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           }),
 
         // ========== Editor ==========
-        openEditor: () =>
+        openEditor: () => {
+          // untitled 파일명 생성 (untitled, untitled1, untitled2, ...)
+          const state = get()
+          const existingUntitled = state.files
+            .filter(f => f.name.match(/^untitled\d*\.md$/i))
+            .map(f => {
+              const match = f.name.match(/^untitled(\d*)\.md$/i)
+              return match?.[1] ? parseInt(match[1]) : 0
+            })
+
+          let suffix = ''
+          if (existingUntitled.length > 0) {
+            const maxNum = Math.max(...existingUntitled)
+            suffix = String(maxNum + 1)
+          }
+
+          const fileName = `untitled${suffix}.md`
+          const newFile: NeuralFile = {
+            id: `untitled-${Date.now()}`,
+            mapId: state.mapId || '',
+            name: fileName,
+            path: fileName,
+            url: '',
+            size: 0,
+            content: '',
+            type: 'markdown',
+            createdAt: new Date().toISOString(),
+          }
+
+          set((s) => {
+            // 파일 추가
+            s.files.push(newFile)
+            // 에디터 열기
+            s.editorOpen = true
+            s.editorCollapsed = false
+            s.editingFile = newFile
+          })
+
+          // 그래프 업데이트
+          get().buildGraphFromFilesAsync()
+        },
+        openEditorWithFile: (file: NeuralFile) =>
           set((state) => {
             state.editorOpen = true
             state.editorCollapsed = false
+            state.editingFile = file  // 기존 파일 편집 모드
           }),
         closeEditor: () =>
           set((state) => {
             state.editorOpen = false
+            state.editingFile = null
           }),
         toggleEditorCollapse: () =>
           set((state) => {
@@ -1139,12 +1185,13 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             } else {
               state.graph = graphData
             }
-            // PERFORMANCE: Only expand root and first-level folders by default
-            // Users can click to expand deeper levels (rootNode already defined above)
-            const firstLevelFolders = nodes.filter((n) => n.type === 'folder' && n.parentId === rootNode.id)
+            // 모든 폴더 노드를 기본적으로 펼침 (방사형 그래프에서 모든 노드 표시)
+            const allFolderIds = nodes
+              .filter((n) => n.type === 'folder' || n.type === 'self')
+              .map((n) => n.id)
             state.expandedNodeIds = new Set([
               rootNode.id,
-              ...firstLevelFolders.map((n) => n.id)
+              ...allFolderIds
             ])
           }),
 
@@ -1248,15 +1295,17 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
               } else {
                 s.graph = result.graph
               }
-              // PERFORMANCE: Only expand root and first-level folders by default
-              const firstLevelFolders = result.graph.nodes.filter((n) => n.type === 'folder' && n.parentId === rootNode?.id)
+              // 모든 폴더 노드를 기본적으로 펼침 (방사형 그래프에서 모든 노드 표시)
+              const allFolderIds = result.graph.nodes
+                .filter((n) => n.type === 'folder' || n.type === 'self')
+                .map((n) => n.id)
               const expandedIds = [
                 rootNode?.id,
-                ...firstLevelFolders.map((n) => n.id)
+                ...allFolderIds
               ].filter(Boolean) as string[]
 
               s.expandedNodeIds = new Set(expandedIds)
-              console.log('[buildGraphFromFilesAsync] ✅ expandedNodeIds set:', expandedIds)
+              console.log('[buildGraphFromFilesAsync] ✅ expandedNodeIds set (all folders):', expandedIds.length, 'nodes')
               s.isLoading = false
             })
           } catch (error) {
@@ -1389,21 +1438,19 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         // Linked Database Project
         setLinkedProject: (projectId, projectName = null) =>
           set((state) => {
+            // 🔥 프로젝트가 변경되면 기존 그래프만 클리어 (projectPath는 유지!)
+            const isProjectChanged = state.linkedProjectId !== projectId
+            if (isProjectChanged && state.linkedProjectId !== null) {
+              console.log('[NeuralMap Store] Project changed, clearing graph:', state.linkedProjectId, '->', projectId)
+              state.graph = null
+              state.files = []
+              state.mapId = null
+              // 🔥 projectPath는 클리어하지 않음 - setProjectPath에서 별도로 설정됨
+            }
+
             state.linkedProjectId = projectId
             state.linkedProjectName = projectName ?? null
-            // 저장된 프로젝트-폴더 매핑 로드
-            if (projectId && typeof window !== 'undefined') {
-              try {
-                const mappings = JSON.parse(localStorage.getItem('project-folder-mappings') || '{}')
-                const savedPath = mappings[projectId]
-                if (savedPath) {
-                  state.projectPath = savedPath
-                  console.log('[NeuralMap Store] Loaded saved folder path for project:', savedPath)
-                }
-              } catch (e) {
-                console.error('[NeuralMap Store] Failed to load folder mapping:', e)
-              }
-            }
+            console.log('[NeuralMap Store] Project linked:', projectId, projectName)
           }),
 
         clearLinkedProject: () =>
@@ -1419,16 +1466,18 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
       {
         name: 'neural-map-storage',
         partialize: (state: any) => ({
+          // UI 설정
           themeId: state.themeId,
           leftPanelWidth: state.leftPanelWidth,
           rightPanelWidth: state.rightPanelWidth,
           leftPanelCollapsed: state.leftPanelCollapsed,
           rightPanelCollapsed: state.rightPanelCollapsed,
           radialDistance: state.radialDistance,
-          // 프로젝트 연결 정보 persist (새로고침해도 유지)
+          // 🔥 프로젝트 정보 저장 (새로고침해도 유지)
           linkedProjectId: state.linkedProjectId,
           linkedProjectName: state.linkedProjectName,
           projectPath: state.projectPath,
+          // 🔥 mapId는 저장 안 함 - 프로젝트별로 DB에서 조회
         }),
       }
     ),

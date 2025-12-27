@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
+import { useBlueprintSync } from '@/lib/neural-map/useBlueprintSync'
+import type { BlueprintProgress, BlueprintNode as BPNode } from '@/lib/neural-map/blueprint-sync'
 import {
     GitCommit,
     Terminal,
@@ -16,7 +18,11 @@ import {
     Zap,
     ZoomIn,
     ZoomOut,
-    Maximize
+    Maximize,
+    Play,
+    Pause,
+    RotateCcw,
+    Github
 } from 'lucide-react'
 
 // --- Types ---
@@ -36,6 +42,19 @@ export function LifeStreamView({ className }: { className?: string }) {
     const graph = useNeuralMapStore((s) => s.graph)
     const mapId = useNeuralMapStore((s) => s.mapId)
 
+    // Blueprint Sync
+    const {
+        nodes: blueprintNodes,
+        progress,
+        isLoading: blueprintLoading,
+        fetchBlueprint,
+        updateNodeStatus,
+        subscribeToUpdates,
+    } = useBlueprintSync()
+
+    // Agent 실행 상태
+    const [isAgentRunning, setIsAgentRunning] = useState(false)
+
     // Zoom & Pan State
     const [scale, setScale] = useState(1)
     const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -43,8 +62,35 @@ export function LifeStreamView({ className }: { className?: string }) {
     const isDragging = useRef(false)
     const lastMousePos = useRef({ x: 0, y: 0 })
 
-    // Real Data Integration
+    // 실시간 업데이트 구독
+    useEffect(() => {
+        if (mapId) {
+            const unsubscribe = subscribeToUpdates()
+            return () => unsubscribe()
+        }
+    }, [mapId, subscribeToUpdates])
+
+    // Real Data Integration - Blueprint 노드 우선 사용
     const streamData = useMemo(() => {
+        // Blueprint 노드가 있으면 우선 사용
+        if (blueprintNodes.length > 0) {
+            return blueprintNodes
+                .sort((a, b) => a.position - b.position)
+                .map(n => ({
+                    id: n.id,
+                    type: n.type as StreamNode['type'],
+                    title: n.title,
+                    date: new Date().toLocaleDateString(),
+                    status: n.status,
+                    description: n.description || 'No description provided.',
+                    codeSnippet: n.status === 'doing' ? '> Executing task...\n> Processing...\n> Building...' : undefined,
+                    taskId: n.taskId,
+                    files: n.files,
+                    gitCommit: n.gitCommit,
+                }))
+        }
+
+        // 없으면 기존 graph.nodes 사용
         if (!graph?.nodes) return []
 
         const sortedNodes = [...graph.nodes]
@@ -65,7 +111,7 @@ export function LifeStreamView({ className }: { className?: string }) {
             description: n.summary || 'No description provided.',
             codeSnippet: n.tags?.includes('doing') ? '> System initializing...\n> Loading dependencies...\n> Building modules...' : undefined
         }))
-    }, [graph])
+    }, [graph, blueprintNodes])
 
     // Seeder Logic
     const [isSeeding, setIsSeeding] = useState(false)
@@ -133,14 +179,90 @@ export function LifeStreamView({ className }: { className?: string }) {
                 }}
             />
 
-            {/* Title */}
-            <div className="absolute top-6 left-8 z-10 pointer-events-none">
-                <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-tight">
+            {/* Title + Progress */}
+            <div className="absolute top-6 left-8 z-10">
+                <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-tight pointer-events-none">
                     THE BLUEPRINT
                 </h1>
-                <div className="flex items-center gap-2 mt-1">
-                    <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                    <span className="text-xs font-mono text-cyan-500/80">LIVE AGENT NAVIGATION SYSTEM</span>
+                <div className="flex items-center gap-2 mt-1 pointer-events-none">
+                    <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        isAgentRunning ? "bg-green-500 animate-pulse" : "bg-cyan-500 animate-pulse"
+                    )} />
+                    <span className="text-xs font-mono text-cyan-500/80">
+                        {isAgentRunning ? 'AGENT EXECUTING' : 'LIVE AGENT NAVIGATION SYSTEM'}
+                    </span>
+                </div>
+
+                {/* Progress Bar */}
+                {progress && (
+                    <div className="mt-4 w-80 pointer-events-auto">
+                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                            <span>Progress</span>
+                            <span className="font-mono">{progress.percentage}%</span>
+                        </div>
+                        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                            <motion.div
+                                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${progress.percentage}%` }}
+                                transition={{ duration: 0.5 }}
+                            />
+                        </div>
+                        <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
+                            <span className="flex items-center gap-1">
+                                <CheckCircle2 size={10} className="text-emerald-500" />
+                                {progress.done} done
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <Zap size={10} className="text-cyan-500" />
+                                {progress.doing} doing
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <Circle size={10} className="text-zinc-600" />
+                                {progress.todo} todo
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Agent Controls */}
+                <div className="flex items-center gap-2 mt-4 pointer-events-auto">
+                    <button
+                        onClick={() => setIsAgentRunning(!isAgentRunning)}
+                        className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                            isAgentRunning
+                                ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
+                                : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
+                        )}
+                    >
+                        {isAgentRunning ? (
+                            <>
+                                <Pause size={12} />
+                                Stop Agent
+                            </>
+                        ) : (
+                            <>
+                                <Play size={12} />
+                                Run Agent
+                            </>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => fetchBlueprint()}
+                        disabled={blueprintLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 hover:bg-zinc-700 transition-all"
+                    >
+                        <RotateCcw size={12} className={blueprintLoading ? 'animate-spin' : ''} />
+                        Refresh
+                    </button>
+                    <button
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 hover:bg-zinc-700 transition-all"
+                    >
+                        <Github size={12} />
+                        Sync
+                    </button>
                 </div>
             </div>
 

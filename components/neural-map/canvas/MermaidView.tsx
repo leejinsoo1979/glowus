@@ -1,766 +1,1185 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import mermaid from 'mermaid'
+import { useEffect, useState, useCallback, useRef, DragEvent } from 'react'
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Connection,
+  ConnectionLineType,
+  MarkerType,
+  Handle,
+  Position,
+  ReactFlowProvider,
+  useReactFlow,
+} from 'reactflow'
+import 'reactflow/dist/style.css'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
-import type { MermaidDiagramType } from '@/lib/neural-map/types'
-import {
-  generateFlowchartFromNodes,
-  generateGitGraph,
-  parseGitLog,
-  generatePieChart,
-  generateClassDiagram,
-  generateERDiagram,
-  generateStateDiagram,
-  generateSequenceDiagram,
-  generateGanttChart,
-  type FileStats,
-  type TypeInfo,
-  type TableInfo,
-  type APIRoute,
-} from '@/lib/neural-map/mermaid-generators'
-import {
-  Play,
-  Copy,
-  Download,
-  RotateCcw,
-  Maximize2,
-  Minimize2,
-  Code,
-  Eye,
-  Zap,
-  RefreshCw,
-  FolderOpen,
-  AlertCircle,
-} from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { Trash2, Save, Download, FileJson, RotateCcw, Loader2, Eye, EyeOff } from 'lucide-react'
 
-// Default diagram templates for manual mode
-const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, string> = {
-  flowchart: `flowchart TD
-    A[Start] --> B{Is it working?}
-    B -->|Yes| C[Great!]
-    B -->|No| D[Debug]
-    D --> B
-    C --> E[Deploy]`,
+// ===== 노드 컴포넌트들 =====
 
-  sequence: `sequenceDiagram
-    participant U as User
-    participant C as Client
-    participant S as Server
-    U->>C: Click Button
-    C->>S: API Request
-    S-->>C: JSON Response
-    C-->>U: Display Data`,
+// 원 (Circle)
+const CircleNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900 rounded-full')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <div className="w-24 h-24 rounded-full flex items-center justify-center text-white font-semibold text-center shadow-lg bg-gradient-to-br from-zinc-600 to-zinc-800 border-2 border-zinc-500 p-2">
+      <span className="text-sm leading-tight">{data.label || 'Circle'}</span>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <Handle type="source" position={Position.Left} id="left" className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <Handle type="source" position={Position.Right} id="right" className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+  </div>
+)
 
-  class: `classDiagram
-    class Animal {
-        +String name
-        +makeSound()
+// 텍스트 (Text) - 직접 편집 가능
+const TextNode = ({ data, selected, id }: { data: { label: string }; selected: boolean; id: string }) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [text, setText] = useState(data.label || 'Text')
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
     }
-    class Dog {
-        +bark()
+  }, [isEditing])
+
+  useEffect(() => {
+    setText(data.label || 'Text')
+  }, [data.label])
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsEditing(true)
+  }
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    if (text !== data.label) {
+      data.label = text
     }
-    Animal <|-- Dog`,
+  }
 
-  er: `erDiagram
-    USER ||--o{ POST : creates
-    USER {
-        int id PK
-        string username
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setText(data.label || 'Text')
+      setIsEditing(false)
     }
-    POST {
-        int id PK
-        int user_id FK
-        string title
-    }`,
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      setIsEditing(false)
+    }
+  }
 
-  gantt: `gantt
-    title Project Timeline
-    dateFormat YYYY-MM-DD
-    section Development
-    Feature A :a1, 2024-01-01, 7d
-    Feature B :a2, after a1, 14d`,
-
-  pie: `pie showData
-    title File Distribution
-    "TypeScript" : 45
-    "JavaScript" : 25
-    "CSS" : 20
-    "Other" : 10`,
-
-  state: `stateDiagram-v2
-    [*] --> Idle
-    Idle --> Loading : fetch()
-    Loading --> Success : done
-    Loading --> Error : fail
-    Success --> Idle : reset`,
-
-  gitgraph: `gitGraph
-    commit id: "Initial"
-    branch develop
-    commit id: "Feature"
-    checkout main
-    merge develop`,
+  return (
+    <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+      <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+      {isEditing ? (
+        <textarea
+          ref={inputRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          className="px-4 py-2 text-zinc-200 text-sm min-w-[120px] min-h-[60px] border-2 border-blue-500 rounded bg-zinc-800 resize-none outline-none"
+          style={{ width: Math.max(120, text.length * 8) }}
+        />
+      ) : (
+        <div
+          onDoubleClick={handleDoubleClick}
+          className="px-4 py-2 text-zinc-300 text-sm min-w-[120px] min-h-[40px] border-2 border-dashed border-zinc-600 rounded bg-transparent cursor-text whitespace-pre-wrap"
+        >
+          {text || 'Double-click to edit'}
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    </div>
+  )
 }
+
+// 커넥터 (작은 원)
+const ConnectorNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900 rounded-full')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-2 !h-2 !border !border-zinc-400" />
+    <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-lg bg-gradient-to-br from-zinc-600 to-zinc-800 border-2 border-zinc-500">
+      {data.label || 'A'}
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-2 !h-2 !border !border-zinc-400" />
+  </div>
+)
+
+// 서브루틴
+const SubroutineNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900 rounded')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <div className="relative px-8 py-4 text-white font-semibold text-center min-w-[140px] shadow-lg bg-gradient-to-br from-zinc-600 to-zinc-800 border-2 border-zinc-500 rounded">
+      <div className="absolute left-2 top-0 bottom-0 w-px bg-zinc-500" />
+      <div className="absolute right-2 top-0 bottom-0 w-px bg-zinc-500" />
+      {data.label || 'Subroutine'}
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+  </div>
+)
+
+// 스토리지
+const StorageNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <svg width="130" height="60" viewBox="0 0 130 60" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="storageGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#52525b" />
+          <stop offset="100%" stopColor="#3f3f46" />
+        </linearGradient>
+      </defs>
+      <path d="M20,5 Q5,30 20,55 L125,55 L125,5 Z" fill="url(#storageGrad)" stroke="#71717a" strokeWidth="2" />
+      <text x="72" y="35" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Storage'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+  </div>
+)
+
+// 딜레이
+const DelayNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <svg width="130" height="60" viewBox="0 0 130 60" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="delayNodeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#52525b" />
+          <stop offset="100%" stopColor="#3f3f46" />
+        </linearGradient>
+      </defs>
+      <path d="M5,5 L90,5 Q125,30 90,55 L5,55 Z" fill="url(#delayNodeGrad)" stroke="#71717a" strokeWidth="2" />
+      <text x="55" y="35" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Delay'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+  </div>
+)
+
+// 코멘트/주석
+const CommentNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <div className="flex">
+      <div className="w-1 bg-zinc-500 rounded-l" />
+      <div className="px-4 py-3 text-zinc-400 text-sm border-t border-b border-r border-dashed border-zinc-600 bg-zinc-900/50 min-w-[120px]">
+        {data.label || 'Comment'}
+      </div>
+    </div>
+    <Handle type="target" position={Position.Left} className="!bg-zinc-500 !w-2 !h-2 !border !border-zinc-400" />
+  </div>
+)
+
+// OR 게이트
+const OrNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900 rounded-full')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <svg width="60" height="60" viewBox="0 0 60 60" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="orNodeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#52525b" />
+          <stop offset="100%" stopColor="#3f3f46" />
+        </linearGradient>
+      </defs>
+      <circle cx="30" cy="30" r="26" fill="url(#orNodeGrad)" stroke="#71717a" strokeWidth="2" />
+      <line x1="30" y1="8" x2="30" y2="52" stroke="#71717a" strokeWidth="2" />
+      <line x1="8" y1="30" x2="52" y2="30" stroke="#71717a" strokeWidth="2" />
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <Handle type="source" position={Position.Left} id="left" className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <Handle type="source" position={Position.Right} id="right" className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+  </div>
+)
+
+// Merge (역삼각형)
+const MergeNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <Handle type="target" position={Position.Left} id="left" className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <Handle type="target" position={Position.Right} id="right" className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+    <svg width="100" height="70" viewBox="0 0 100 70" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="mergeNodeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#52525b" />
+          <stop offset="100%" stopColor="#3f3f46" />
+        </linearGradient>
+      </defs>
+      <polygon points="50,65 5,5 95,5" fill="url(#mergeNodeGrad)" stroke="#71717a" strokeWidth="2" />
+      <text x="50" y="30" textAnchor="middle" fill="white" fontSize="11" fontWeight="600">{data.label || 'Merge'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-3 !h-3 !border-2 !border-zinc-400" />
+  </div>
+)
+
+// 시작/종료 (타원)
+const TerminalNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900 rounded-full')}>
+    <Handle type="target" position={Position.Top} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-emerald-300" />
+    <div className="px-8 py-4 rounded-full text-white font-semibold text-center min-w-[120px] shadow-lg bg-gradient-to-br from-emerald-500 to-emerald-700 border-2 border-emerald-400">
+      {data.label || 'Start'}
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-emerald-300" />
+  </div>
+)
+
+// 프로세스 (사각형)
+const ProcessNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900 rounded-lg')}>
+    <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3 !border-2 !border-blue-300" />
+    <div className="px-6 py-4 rounded-lg text-white font-semibold text-center min-w-[140px] shadow-lg bg-gradient-to-br from-blue-500 to-blue-700 border-2 border-blue-400">
+      {data.label || 'Process'}
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!bg-blue-500 !w-3 !h-3 !border-2 !border-blue-300" />
+  </div>
+)
+
+// 결정 (다이아몬드)
+const DecisionNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-amber-500 !w-3 !h-3 !-top-1 !border-2 !border-amber-300" />
+    <svg width="140" height="100" viewBox="0 0 140 100" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="decisionGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#f59e0b" />
+          <stop offset="100%" stopColor="#b45309" />
+        </linearGradient>
+      </defs>
+      <polygon points="70,5 135,50 70,95 5,50" fill="url(#decisionGrad)" stroke="#fbbf24" strokeWidth="3" />
+      <text x="70" y="55" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Decision'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-amber-500 !w-3 !h-3 !-bottom-1 !border-2 !border-amber-300" />
+    <Handle type="source" position={Position.Left} id="left" className="!bg-amber-500 !w-3 !h-3 !border-2 !border-amber-300" />
+    <Handle type="source" position={Position.Right} id="right" className="!bg-amber-500 !w-3 !h-3 !border-2 !border-amber-300" />
+  </div>
+)
+
+// 데이터 (평행사변형)
+const DataNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-purple-500 !w-3 !h-3 !border-2 !border-purple-300" />
+    <svg width="150" height="60" viewBox="0 0 150 60" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="dataGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#7c3aed" />
+        </linearGradient>
+      </defs>
+      <polygon points="20,5 145,5 130,55 5,55" fill="url(#dataGrad)" stroke="#c084fc" strokeWidth="3" />
+      <text x="75" y="35" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Data'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-purple-500 !w-3 !h-3 !border-2 !border-purple-300" />
+  </div>
+)
+
+// 문서 (물결 하단)
+const DocumentNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-pink-500 !w-3 !h-3 !border-2 !border-pink-300" />
+    <svg width="130" height="80" viewBox="0 0 130 80" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="docGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ec4899" />
+          <stop offset="100%" stopColor="#be185d" />
+        </linearGradient>
+      </defs>
+      <path d="M5,5 L125,5 L125,60 Q97,75 65,60 Q33,45 5,60 Z" fill="url(#docGrad)" stroke="#f472b6" strokeWidth="3" />
+      <text x="65" y="38" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Document'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-pink-500 !w-3 !h-3 !border-2 !border-pink-300" />
+  </div>
+)
+
+// 데이터베이스 (실린더)
+const DatabaseNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-cyan-500 !w-3 !h-3 !-top-1 !border-2 !border-cyan-300" />
+    <svg width="100" height="80" viewBox="0 0 100 80" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="dbGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#06b6d4" />
+          <stop offset="100%" stopColor="#0891b2" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="50" cy="15" rx="45" ry="12" fill="url(#dbGrad)" stroke="#22d3ee" strokeWidth="2" />
+      <rect x="5" y="15" width="90" height="50" fill="url(#dbGrad)" />
+      <line x1="5" y1="15" x2="5" y2="65" stroke="#22d3ee" strokeWidth="2" />
+      <line x1="95" y1="15" x2="95" y2="65" stroke="#22d3ee" strokeWidth="2" />
+      <ellipse cx="50" cy="65" rx="45" ry="12" fill="url(#dbGrad)" stroke="#22d3ee" strokeWidth="2" />
+      <text x="50" y="45" textAnchor="middle" fill="white" fontSize="12" fontWeight="600">{data.label || 'Database'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-cyan-500 !w-3 !h-3 !-bottom-1 !border-2 !border-cyan-300" />
+  </div>
+)
+
+// 수동 입력 (사다리꼴)
+const InputNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-rose-500 !w-3 !h-3 !border-2 !border-rose-300" />
+    <svg width="140" height="60" viewBox="0 0 140 60" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="inputGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#f43f5e" />
+          <stop offset="100%" stopColor="#be123c" />
+        </linearGradient>
+      </defs>
+      <polygon points="15,5 125,5 135,55 5,55" fill="url(#inputGrad)" stroke="#fb7185" strokeWidth="3" />
+      <text x="70" y="35" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Input'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-rose-500 !w-3 !h-3 !border-2 !border-rose-300" />
+  </div>
+)
+
+// 준비 (육각형)
+const PrepareNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-indigo-500 !w-3 !h-3 !border-2 !border-indigo-300" />
+    <svg width="150" height="70" viewBox="0 0 150 70" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="prepGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#6366f1" />
+          <stop offset="100%" stopColor="#4f46e5" />
+        </linearGradient>
+      </defs>
+      <polygon points="25,0 125,0 150,35 125,70 25,70 0,35" fill="url(#prepGrad)" stroke="#818cf8" strokeWidth="3" />
+      <text x="75" y="40" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Prepare'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-indigo-500 !w-3 !h-3 !border-2 !border-indigo-300" />
+  </div>
+)
+
+// 디스플레이 (물결 양쪽)
+const DisplayNode = ({ data, selected }: { data: { label: string }; selected: boolean }) => (
+  <div className={cn('relative', selected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900')}>
+    <Handle type="target" position={Position.Top} className="!bg-teal-500 !w-3 !h-3 !border-2 !border-teal-300" />
+    <svg width="140" height="60" viewBox="0 0 140 60" className="drop-shadow-lg">
+      <defs>
+        <linearGradient id="dispGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#14b8a6" />
+          <stop offset="100%" stopColor="#0d9488" />
+        </linearGradient>
+      </defs>
+      <path d="M15,5 Q0,30 15,55 L125,55 Q140,30 125,5 Z" fill="url(#dispGrad)" stroke="#2dd4bf" strokeWidth="3" />
+      <text x="70" y="35" textAnchor="middle" fill="white" fontSize="13" fontWeight="600">{data.label || 'Display'}</text>
+    </svg>
+    <Handle type="source" position={Position.Bottom} className="!bg-teal-500 !w-3 !h-3 !border-2 !border-teal-300" />
+  </div>
+)
+
+const nodeTypes = {
+  // 기본 도형
+  circle: CircleNode,
+  text: TextNode,
+  connector: ConnectorNode,
+  // 플로우차트 기본
+  terminal: TerminalNode,
+  process: ProcessNode,
+  decision: DecisionNode,
+  subroutine: SubroutineNode,
+  // 데이터 관련
+  data: DataNode,
+  document: DocumentNode,
+  database: DatabaseNode,
+  storage: StorageNode,
+  // 입출력
+  input: InputNode,
+  display: DisplayNode,
+  // 기타
+  prepare: PrepareNode,
+  delay: DelayNode,
+  comment: CommentNode,
+  or: OrNode,
+  merge: MergeNode,
+}
+
+// 도형 라이브러리 - 모노톤 프로페셔널 디자인
+const shapeLibrary = [
+  // ===== 기본 도형 =====
+  {
+    type: 'circle',
+    label: 'Circle',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 48 48" className="w-full h-full">
+        <defs>
+          <linearGradient id="circleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="21" fill="url(#circleGrad)" />
+        <circle cx="24" cy="24" r="21" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <ellipse cx="24" cy="16" rx="14" ry="6" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'text',
+    label: 'Text',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <rect x="3" y="3" width="66" height="30" fill="transparent" stroke="#71717a" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="36" y="22" textAnchor="middle" fill="#a1a1aa" fontSize="12" fontWeight="500">Text</text>
+      </svg>
+    ),
+  },
+  {
+    type: 'connector',
+    label: 'Connector',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 36 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="connGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <circle cx="18" cy="18" r="14" fill="url(#connGrad)" />
+        <circle cx="18" cy="18" r="14" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <circle cx="18" cy="14" r="8" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  // ===== 플로우차트 기본 =====
+  {
+    type: 'terminal',
+    label: 'Start/End',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <rect x="3" y="3" width="66" height="30" rx="15" fill="url(#monoGrad1)" />
+        <rect x="3" y="3" width="66" height="30" rx="15" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <rect x="8" y="8" width="56" height="10" rx="5" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'process',
+    label: 'Process',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <rect x="3" y="3" width="66" height="30" rx="4" fill="url(#monoGrad2)" />
+        <rect x="3" y="3" width="66" height="30" rx="4" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <rect x="8" y="8" width="56" height="10" rx="2" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'decision',
+    label: 'Decision',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 48" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad3" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <polygon points="36,4 68,24 36,44 4,24" fill="url(#monoGrad3)" />
+        <polygon points="36,4 68,24 36,44 4,24" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <polygon points="36,10 54,24 36,24 18,24" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'subroutine',
+    label: 'Subroutine',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="subGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <rect x="3" y="3" width="66" height="30" rx="2" fill="url(#subGrad)" />
+        <rect x="3" y="3" width="66" height="30" rx="2" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <line x1="10" y1="3" x2="10" y2="33" stroke="#71717a" strokeWidth="1.5" />
+        <line x1="62" y1="3" x2="62" y2="33" stroke="#71717a" strokeWidth="1.5" />
+        <rect x="12" y="8" width="48" height="8" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  // ===== 데이터 관련 =====
+  {
+    type: 'data',
+    label: 'Data I/O',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad4" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <polygon points="14,3 69,3 58,33 3,33" fill="url(#monoGrad4)" />
+        <polygon points="14,3 69,3 58,33 3,33" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <polygon points="17,8 60,8 55,16 12,16" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'document',
+    label: 'Document',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 44" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad5" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <path d="M3,3 L69,3 L69,32 Q52,42 36,32 Q20,22 3,32 Z" fill="url(#monoGrad5)" />
+        <path d="M3,3 L69,3 L69,32 Q52,42 36,32 Q20,22 3,32 Z" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <rect x="8" y="8" width="56" height="10" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'database',
+    label: 'Database',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 60 48" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad6" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <ellipse cx="30" cy="12" rx="26" ry="9" fill="url(#monoGrad6)" />
+        <rect x="4" y="12" width="52" height="24" fill="#3f3f46" />
+        <ellipse cx="30" cy="36" rx="26" ry="9" fill="url(#monoGrad6)" />
+        <ellipse cx="30" cy="12" rx="26" ry="9" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <line x1="4" y1="12" x2="4" y2="36" stroke="#71717a" strokeWidth="1.5" />
+        <line x1="56" y1="12" x2="56" y2="36" stroke="#71717a" strokeWidth="1.5" />
+        <ellipse cx="30" cy="36" rx="26" ry="9" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <ellipse cx="30" cy="12" rx="20" ry="5" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'storage',
+    label: 'Storage',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="storGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <path d="M12,3 Q3,18 12,33 L69,33 L69,3 Z" fill="url(#storGrad)" />
+        <path d="M12,3 Q3,18 12,33 L69,33 L69,3 Z" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <path d="M14,8 Q8,16 14,16 L65,16 L65,8 Z" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  // ===== 입출력 =====
+  {
+    type: 'input',
+    label: 'Manual Input',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad7" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <polygon points="10,3 62,3 69,33 3,33" fill="url(#monoGrad7)" />
+        <polygon points="10,3 62,3 69,33 3,33" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <polygon points="13,8 58,8 62,16 9,16" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'display',
+    label: 'Display',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad9" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <path d="M12,3 Q2,18 12,33 L60,33 Q70,18 60,3 Z" fill="url(#monoGrad9)" />
+        <path d="M12,3 Q2,18 12,33 L60,33 Q70,18 60,3 Z" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <path d="M14,8 Q6,16 14,16 L58,16 Q66,16 58,8 Z" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  // ===== 기타 =====
+  {
+    type: 'prepare',
+    label: 'Prepare',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 40" className="w-full h-full">
+        <defs>
+          <linearGradient id="monoGrad8" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <polygon points="14,3 58,3 69,20 58,37 14,37 3,20" fill="url(#monoGrad8)" />
+        <polygon points="14,3 58,3 69,20 58,37 14,37 3,20" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <polygon points="17,8 55,8 62,16 55,16 17,16 10,16" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'delay',
+    label: 'Delay',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <defs>
+          <linearGradient id="delayGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <path d="M3,3 L50,3 Q69,18 50,33 L3,33 Z" fill="url(#delayGrad)" />
+        <path d="M3,3 L50,3 Q69,18 50,33 L3,33 Z" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <path d="M8,8 L45,8 Q58,14 45,16 L8,16 Z" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+  {
+    type: 'comment',
+    label: 'Comment',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 36" className="w-full h-full">
+        <line x1="10" y1="3" x2="10" y2="33" stroke="#71717a" strokeWidth="2" />
+        <line x1="10" y1="3" x2="69" y2="3" stroke="#71717a" strokeWidth="1.5" strokeDasharray="4 2" />
+        <line x1="10" y1="33" x2="69" y2="33" stroke="#71717a" strokeWidth="1.5" strokeDasharray="4 2" />
+        <text x="20" y="22" fill="#a1a1aa" fontSize="10">Note</text>
+      </svg>
+    ),
+  },
+  {
+    type: 'or',
+    label: 'OR',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 48 48" className="w-full h-full">
+        <defs>
+          <linearGradient id="orGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="18" fill="url(#orGrad)" />
+        <circle cx="24" cy="24" r="18" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <line x1="24" y1="8" x2="24" y2="40" stroke="#71717a" strokeWidth="1.5" />
+        <line x1="8" y1="24" x2="40" y2="24" stroke="#71717a" strokeWidth="1.5" />
+      </svg>
+    ),
+  },
+  {
+    type: 'merge',
+    label: 'Merge',
+    color: '#71717a',
+    svg: (
+      <svg viewBox="0 0 72 48" className="w-full h-full">
+        <defs>
+          <linearGradient id="mergeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#52525b" />
+            <stop offset="100%" stopColor="#3f3f46" />
+          </linearGradient>
+        </defs>
+        <polygon points="36,44 4,4 68,4" fill="url(#mergeGrad)" />
+        <polygon points="36,44 4,4 68,4" fill="none" stroke="#71717a" strokeWidth="1.5" />
+        <polygon points="36,20 20,6 52,6" fill="rgba(255,255,255,0.08)" />
+      </svg>
+    ),
+  },
+]
 
 interface MermaidViewProps {
   className?: string
 }
 
-export function MermaidView({ className }: MermaidViewProps) {
+let nodeId = Date.now()
+const getNodeId = () => `node_${nodeId++}`
+
+function FlowEditor() {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
-  const mermaidDiagramType = useNeuralMapStore((s) => s.mermaidDiagramType)
+  const reactFlowWrapper = useRef<HTMLDivElement>(null)
+  const { screenToFlowPosition, fitView } = useReactFlow()
   const projectPath = useNeuralMapStore((s) => s.projectPath)
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const renderIdRef = useRef(0) // Prevent stale renders
-  const [mounted, setMounted] = useState(false)
-  const [mermaidReady, setMermaidReady] = useState(false)
-  const [code, setCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [showCode, setShowCode] = useState(true)
-  const [svgContent, setSvgContent] = useState<string>('')
-  const [isRendering, setIsRendering] = useState(false)
-  const [autoMode, setAutoMode] = useState(true) // Start with auto mode by default
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [edgeType, setEdgeType] = useState<'default' | 'straight' | 'step' | 'smoothstep'>('smoothstep')
+  const [edgeAnimated, setEdgeAnimated] = useState(true)
+  const [showMiniMap, setShowMiniMap] = useState(true)
 
-  // Debug logging for store state changes
-  useEffect(() => {
-    console.log('[MermaidView] Store state:', {
-      projectPath,
-      hasElectron: !!window.electron,
-      mermaidDiagramType,
-      autoMode
-    })
-  }, [projectPath, mermaidDiagramType, autoMode])
-  const [dataSource, setDataSource] = useState<string>('Template')
+  // 플로우차트 ID (프로젝트 경로 기반) - 한글 등 비ASCII 문자 지원
+  const flowchartId = projectPath
+    ? btoa(encodeURIComponent(projectPath)).replace(/[^a-zA-Z0-9]/g, '').slice(0, 50)
+    : 'default'
 
-  // Mount check
-  useEffect(() => {
-    setMounted(true)
-    return () => setMounted(false)
-  }, [])
-
-  // Initialize mermaid (only on client) - separate from rendering
-  useEffect(() => {
-    if (!mounted) return
-
-    try {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: isDark ? 'dark' : 'default',
-        themeVariables: isDark ? {
-          primaryColor: '#3b82f6',
-          primaryTextColor: '#f4f4f5',
-          primaryBorderColor: '#52525b',
-          lineColor: '#71717a',
-          secondaryColor: '#27272a',
-          tertiaryColor: '#18181b',
-          background: '#09090b',
-          mainBkg: '#18181b',
-          nodeBorder: '#3f3f46',
-          clusterBkg: '#27272a',
-          titleColor: '#fafafa',
-          edgeLabelBackground: '#27272a',
-        } : {
-          primaryColor: '#3b82f6',
-          primaryTextColor: '#18181b',
-          primaryBorderColor: '#d4d4d8',
-          lineColor: '#71717a',
-          secondaryColor: '#f4f4f5',
-          tertiaryColor: '#fafafa',
-          background: '#ffffff',
-          mainBkg: '#fafafa',
-          nodeBorder: '#d4d4d8',
-          clusterBkg: '#f4f4f5',
-          titleColor: '#09090b',
-          edgeLabelBackground: '#f4f4f5',
-        },
-        flowchart: { curve: 'basis', padding: 20 },
-        sequence: { diagramMarginX: 50, diagramMarginY: 10, actorMargin: 50, width: 150, height: 65 },
-        gantt: { titleTopMargin: 25, barHeight: 20, barGap: 4, topPadding: 50, leftPadding: 75, fontSize: 11 },
-      })
-      setMermaidReady(true)
-    } catch (err) {
-      console.error('Mermaid init error:', err)
-    }
-  }, [mounted, isDark])
-
-  // Set initial code once mounted
-  useEffect(() => {
-    if (mounted && !code) {
-      setCode(DIAGRAM_TEMPLATES[mermaidDiagramType])
-      setDataSource('Template')
-    }
-  }, [mounted, mermaidDiagramType, code])
-
-  // Auto-generate diagram from project data
-  const generateFromProject = useCallback(async () => {
-    if (!autoMode || !mounted) return
-
-    // projectPath 없으면 아무것도 생성하지 않음
-    if (!projectPath) {
-      console.log('[Mermaid] No project path - skipping generation')
-      setCode('')
-      setDataSource('')
-      return
-    }
-
-    console.log('[Mermaid] Generating diagram:', {
-      type: mermaidDiagramType,
-      projectPath,
-      autoMode,
-      hasElectron: !!window.electron
-    })
+  // DB에서 불러오기
+  const loadFromDB = useCallback(async () => {
+    if (!flowchartId) return
 
     setIsLoading(true)
-    setError(null)
-
     try {
-      let generatedCode = ''
-      let source = ''
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('flowcharts')
+        .select('nodes, edges, updated_at')
+        .eq('id', flowchartId)
+        .single()
 
-      // Get current graph from store (avoid dependency issues)
-      const currentGraph = useNeuralMapStore.getState().graph
-
-      switch (mermaidDiagramType) {
-        case 'flowchart':
-          // Use Neural Map nodes/edges
-          if (currentGraph?.nodes?.length) {
-            generatedCode = generateFlowchartFromNodes(currentGraph.nodes, currentGraph.edges || [])
-            source = `Neural Map (${currentGraph.nodes.length} nodes)`
-          }
-          break
-
-        case 'gitgraph':
-          // Fetch git log from Electron IPC
-          if (window.electron?.git?.log) {
-            const gitLog = await window.electron.git.log!(projectPath, { maxCommits: 30 })
-            if (gitLog) {
-              generatedCode = generateGitGraph(parseGitLog(gitLog))
-              source = `Git History (${projectPath.split('/').pop()})`
-            }
-          }
-          break
-
-        case 'pie':
-          // Fetch file statistics and aggregate by extension
-          if (window.electron?.fs?.fileStats) {
-            const rawStats = await window.electron.fs.fileStats!(projectPath)
-            if (rawStats?.length) {
-              // Aggregate by extension: convert individual files to extension counts
-              const extMap = new Map<string, { count: number; size: number }>()
-              rawStats.forEach((file: any) => {
-                const ext = file.extension || 'no-ext'
-                const existing = extMap.get(ext) || { count: 0, size: 0 }
-                extMap.set(ext, {
-                  count: existing.count + 1,
-                  size: existing.size + (file.size || 0)
-                })
-              })
-              const aggregatedStats = Array.from(extMap.entries()).map(([extension, data]) => ({
-                extension,
-                count: data.count,
-                size: data.size
-              }))
-              generatedCode = generatePieChart(aggregatedStats, { title: 'Codebase File Distribution', showData: true })
-              source = `File Stats (${rawStats.length} files)`
-            }
-          }
-          break
-
-        case 'class':
-          // Scan TypeScript types and transform to expected format
-          if (window.electron?.fs?.scanTypes) {
-            const rawTypes = await window.electron.fs.scanTypes!(projectPath)
-            if (rawTypes?.length) {
-              // Transform to TypeInfo format expected by generateClassDiagram
-              const transformedTypes = rawTypes.slice(0, 20).map((t: any) => ({
-                name: t.name,
-                kind: t.kind as 'class' | 'interface' | 'type' | 'enum',
-                properties: (t.properties || []).map((p: any) => ({
-                  name: p.name,
-                  type: p.type,
-                  visibility: '+' as const // Default to public
-                })),
-                methods: [], // Electron API doesn't scan methods yet
-                extends: Array.isArray(t.extends) ? t.extends[0] : t.extends,
-                implements: []
-              }))
-              generatedCode = generateClassDiagram(transformedTypes)
-              source = `TypeScript (${rawTypes.length} types)`
-            }
-          }
-          break
-
-        case 'er':
-          // Scan database schema and transform to expected format
-          if (window.electron?.fs?.scanSchema) {
-            const rawTables = await window.electron.fs.scanSchema!(projectPath)
-            if (rawTables?.length) {
-              // Transform to TableInfo format expected by generateERDiagram
-              const transformedTables = rawTables.map((t: any) => ({
-                name: t.name,
-                columns: (t.columns || []).map((c: any) => ({
-                  name: c.name,
-                  type: c.type,
-                  isPrimary: c.isPrimary,
-                  isForeign: c.isForeign,
-                  // Convert string reference to { table, column } object
-                  references: typeof c.references === 'string'
-                    ? { table: c.references.split('.')[0] || c.references, column: c.references.split('.')[1] || 'id' }
-                    : c.references
-                }))
-              }))
-              generatedCode = generateERDiagram(transformedTables)
-              source = `Database Schema (${rawTables.length} tables)`
-            }
-          }
-          break
-
-        case 'sequence':
-          // Scan API routes
-          if (window.electron?.fs?.scanApiRoutes) {
-            const routes = await window.electron.fs.scanApiRoutes!(projectPath)
-            if (routes?.length) {
-              const apiRoutes: APIRoute[] = routes.map(r => ({
-                path: r.path,
-                method: r.method as any,
-                handlers: []
-              }))
-              generatedCode = generateSequenceDiagram(apiRoutes)
-              source = `API Routes (${routes.length} endpoints)`
-            }
-          }
-          break
-
-        case 'state':
-          // Scan Zustand stores
-          if (window.electron?.fs?.scanTree) {
-            const files = await window.electron.fs.scanTree!(projectPath)
-            const storeFiles = Array.isArray(files) ? files.filter((f: any) =>
-              (f.path?.includes('/store') || f.path?.includes('/stores')) &&
-              (f.path?.endsWith('.ts') || f.path?.endsWith('.tsx'))
-            ) : []
-            if (storeFiles.length > 0) {
-              const storeNames = storeFiles.map((f: any) =>
-                f.path.split('/').pop()?.replace(/\.(ts|tsx)$/, '') || 'store'
-              )
-              generatedCode = generateStateDiagram({
-                name: 'App Stores',
-                states: ['idle', ...storeNames.slice(0, 5), 'active'],
-                actions: storeNames.slice(0, 5).map((name: string) => ({
-                  name: `use${name}`,
-                  from: 'idle',
-                  to: name
-                })),
-                initialState: 'idle'
-              })
-              source = `Zustand Stores (${storeFiles.length} files)`
-            }
-          }
-          break
-
-        case 'gantt':
-          // Git commits as timeline
-          if (window.electron?.git?.log) {
-            const gitLog = await window.electron.git.log!(projectPath, { maxCommits: 10 })
-            if (gitLog) {
-              const commits = parseGitLog(gitLog)
-              if (commits.length) {
-                // Convert commits to TaskInfo format
-                const tasks = commits.slice(0, 10).map((c, i) => ({
-                  id: `t${i}`,
-                  title: c.message.slice(0, 30),
-                  status: 'done' as const,
-                  startDate: c.date?.split('T')[0] || new Date().toISOString().split('T')[0],
-                  duration: 1,
-                  section: 'Commits'
-                }))
-                generatedCode = generateGanttChart(tasks, {
-                  title: 'Recent Development Activity'
-                })
-                source = `Git Commits (${commits.length})`
-              }
-            }
-          }
-          break
-
-        default:
-          break
+      if (data && !error) {
+        const flowchartData = data as { nodes: Node[]; edges: Edge[]; updated_at: string }
+        setNodes(flowchartData.nodes || [])
+        setEdges(flowchartData.edges || [])
+        setLastSaved(new Date(flowchartData.updated_at))
       }
-
-      setCode(generatedCode)
-      setDataSource(source)
-    } catch (err: any) {
-      console.error('Auto-generate error:', err)
-      setError(err.message)
-      setCode('')
-      setDataSource('')
+    } catch (err) {
+      console.error('Failed to load flowchart:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [autoMode, mermaidDiagramType, projectPath, mounted])
+  }, [flowchartId, setNodes, setEdges])
 
-  // Generate when diagram type changes or auto mode is enabled
-  useEffect(() => {
-    if (!mounted) return
+  // DB에 저장
+  const saveToDB = useCallback(async () => {
+    if (!flowchartId) return
 
-    if (autoMode) {
-      generateFromProject()
-    } else {
-      setCode(DIAGRAM_TEMPLATES[mermaidDiagramType])
-      setDataSource('Template')
-    }
-  }, [mermaidDiagramType, autoMode, projectPath, mounted, generateFromProject])
-
-  // Render diagram - stable function that reads current state
-  const renderDiagram = useCallback(async () => {
-    if (!mermaidReady) return
-
-    const currentCode = code
-    if (!currentCode.trim()) return
-
-    const currentRenderId = ++renderIdRef.current
-    setIsRendering(true)
-    setError(null)
-
+    setIsSaving(true)
     try {
-      const id = `mermaid-${currentRenderId}-${Date.now()}`
-      await mermaid.parse(currentCode)
-      const { svg } = await mermaid.render(id, currentCode)
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('flowcharts')
+        .upsert({
+          id: flowchartId,
+          project_path: projectPath,
+          nodes: nodes as unknown,
+          edges: edges as unknown,
+          updated_at: new Date().toISOString(),
+        } as never)
 
-      // Only update if this is still the latest render
-      if (renderIdRef.current === currentRenderId) {
-        setSvgContent(svg)
+      if (!error) {
+        setLastSaved(new Date())
       }
-    } catch (err: any) {
-      if (renderIdRef.current === currentRenderId) {
-        console.error('Mermaid render error:', err)
-        setError(err.message || 'Failed to render diagram')
-        setSvgContent('')
-      }
+    } catch (err) {
+      console.error('Failed to save flowchart:', err)
     } finally {
-      if (renderIdRef.current === currentRenderId) {
-        setIsRendering(false)
-      }
+      setIsSaving(false)
     }
-  }, [code, mermaidReady])
+  }, [flowchartId, projectPath, nodes, edges])
 
-  // Auto-render on code change (debounced) - only after mermaid is ready
+  // 초기 로드
   useEffect(() => {
-    if (!mermaidReady || !code) return
+    loadFromDB()
+  }, [loadFromDB])
+
+  // 🔥 Supabase Realtime 구독 - 에이전트 업데이트 시 자동 동기화
+  useEffect(() => {
+    if (!flowchartId) return
+
+    const supabase = createClient()
+
+    // Realtime 채널 구독
+    const channel = supabase
+      .channel(`flowchart-${flowchartId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'flowcharts',
+          filter: `id=eq.${flowchartId}`,
+        },
+        (payload) => {
+          console.log('[MermaidView] Realtime update received:', payload)
+          // 다른 소스에서 변경된 경우에만 리로드 (자신이 저장한 것은 무시)
+          if (payload.new) {
+            const newData = payload.new as { nodes: Node[]; edges: Edge[]; updated_at: string }
+            const serverTime = new Date(newData.updated_at).getTime()
+            const localTime = lastSaved?.getTime() || 0
+
+            // 서버 데이터가 로컬보다 새로운 경우에만 업데이트
+            if (serverTime > localTime + 1000) {
+              setNodes(newData.nodes || [])
+              setEdges(newData.edges || [])
+              setLastSaved(new Date(newData.updated_at))
+              console.log('[MermaidView] Synced from server')
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [flowchartId, lastSaved, setNodes, setEdges])
+
+  // 자동 저장 (변경 후 2초)
+  useEffect(() => {
+    if (nodes.length === 0 && edges.length === 0) return
 
     const timer = setTimeout(() => {
-      renderDiagram()
-    }, 300)
+      saveToDB()
+    }, 2000)
 
     return () => clearTimeout(timer)
-  }, [code, mermaidReady]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, edges, saveToDB])
 
-  // Re-render when theme changes (after mermaid re-initializes)
-  useEffect(() => {
-    if (!mermaidReady || !code) return
-    renderDiagram()
-  }, [isDark, mermaidReady]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 연결 생성
+  const onConnect = useCallback(
+    (params: Connection) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            type: edgeType,
+            animated: edgeAnimated,
+            style: { stroke: '#60a5fa', strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#60a5fa' },
+          },
+          eds
+        )
+      )
+    },
+    [setEdges, edgeType, edgeAnimated]
+  )
 
-  // Copy to clipboard
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(code)
-    } catch (err) {
-      console.error('Failed to copy:', err)
+  // 드래그 앤 드롭
+  const onDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault()
+      const type = event.dataTransfer.getData('application/reactflow')
+      if (!type) return
+
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const shape = shapeLibrary.find((s) => s.type === type)
+
+      const newNode: Node = {
+        id: getNodeId(),
+        type,
+        position,
+        data: { label: shape?.label || type },
+      }
+
+      setNodes((nds) => nds.concat(newNode))
+    },
+    [screenToFlowPosition, setNodes]
+  )
+
+  // 노드 더블클릭 - 라벨 수정
+  const onNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      const newLabel = prompt('노드 이름 입력:', node.data.label)
+      if (newLabel !== null && newLabel !== node.data.label) {
+        setNodes((nds) => nds.map((n) => (n.id === node.id ? { ...n, data: { ...n.data, label: newLabel } } : n)))
+      }
+    },
+    [setNodes]
+  )
+
+  // 선택 변경
+  const onSelectionChange = useCallback(({ nodes: selectedNodesList }: { nodes: Node[] }) => {
+    setSelectedNodes(selectedNodesList.map((n) => n.id))
+  }, [])
+
+  // 선택된 노드 삭제
+  const deleteSelected = useCallback(() => {
+    if (selectedNodes.length > 0) {
+      setNodes((nds) => nds.filter((n) => !selectedNodes.includes(n.id)))
+      setEdges((eds) => eds.filter((e) => !selectedNodes.includes(e.source) && !selectedNodes.includes(e.target)))
+      setSelectedNodes([])
     }
-  }, [code])
+  }, [selectedNodes, setNodes, setEdges])
 
-  // Download SVG
-  const handleDownload = useCallback(() => {
-    if (!svgContent) return
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' })
+  // 키보드 이벤트
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodes.length > 0) {
+        e.preventDefault()
+        deleteSelected()
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        saveToDB()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [deleteSelected, saveToDB, selectedNodes])
+
+  // 초기화
+  const clearCanvas = useCallback(() => {
+    if (confirm('모든 노드와 연결을 삭제하시겠습니까?')) {
+      setNodes([])
+      setEdges([])
+    }
+  }, [setNodes, setEdges])
+
+  // JSON 내보내기
+  const exportJSON = useCallback(() => {
+    const data = JSON.stringify({ nodes, edges }, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${mermaidDiagramType}-diagram.svg`
+    a.download = `flowchart-${flowchartId}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }, [svgContent, mermaidDiagramType])
-
-  // Reset to template
-  const handleReset = useCallback(() => {
-    setCode(DIAGRAM_TEMPLATES[mermaidDiagramType])
-    setDataSource('Template')
-    setError(null)
-  }, [mermaidDiagramType])
+  }, [nodes, edges, flowchartId])
 
   return (
-    <div
-      className={cn(
-        'flex flex-col h-full w-full overflow-hidden',
-        isFullscreen && 'fixed inset-0 z-50',
-        isDark ? 'bg-zinc-950' : 'bg-zinc-50',
-        className
-      )}
-    >
-      {/* Toolbar */}
-      <div
-        className={cn(
-          'flex items-center justify-between px-4 py-2 border-b shrink-0',
-          isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <span className={cn('text-sm font-medium', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
-            {mermaidDiagramType.charAt(0).toUpperCase() + mermaidDiagramType.slice(1)}
+    <div className="flex h-full w-full overflow-hidden">
+      {/* 좌측 도형 라이브러리 */}
+      <div className={cn('w-48 shrink-0 border-r relative', isDark ? 'bg-zinc-900/95 border-zinc-800' : 'bg-zinc-50 border-zinc-200')}>
+        {/* 헤더 */}
+        <div className={cn('absolute top-0 left-0 right-0 px-3 py-2 border-b font-medium text-sm flex items-center justify-between z-10', isDark ? 'border-zinc-800 text-zinc-200 bg-zinc-900' : 'border-zinc-200 text-zinc-700 bg-zinc-50')}>
+          <span>Shapes</span>
+          <span className={cn('text-xs px-1.5 py-0.5 rounded', isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-200 text-zinc-500')}>
+            {shapeLibrary.length}
           </span>
-
-          {/* Auto/Manual Toggle */}
-          <button
-            onClick={() => setAutoMode(!autoMode)}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
-              autoMode
-                ? isDark
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                : isDark
-                  ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                  : 'bg-zinc-100 text-zinc-600 border border-zinc-200'
-            )}
-          >
-            <Zap className="w-3 h-3" />
-            {autoMode ? 'Auto' : 'Manual'}
-          </button>
-
-          {/* Data Source Info */}
-          {dataSource && (
-            <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-              {dataSource}
-            </span>
-          )}
-
-          {(isRendering || isLoading || !mermaidReady) && (
-            <RefreshCw className={cn('w-3 h-3 animate-spin', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
-          )}
         </div>
 
-        <div className="flex items-center gap-1">
-          {/* Refresh */}
-          {autoMode && (
+        {/* 엣지 타입 선택 - 상단 */}
+        <div className={cn('absolute top-[41px] left-0 right-0 px-2 py-2 border-b space-y-1 z-10', isDark ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-200 bg-zinc-50')}>
+          <div className={cn('text-[10px] font-medium', isDark ? 'text-zinc-400' : 'text-zinc-600')}>Connection</div>
+          <div className="grid grid-cols-4 gap-1">
+            {(['smoothstep', 'default', 'straight', 'step'] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setEdgeType(type)}
+                className={cn(
+                  'px-1 py-1 rounded text-[9px] font-medium transition-colors',
+                  edgeType === type
+                    ? 'bg-blue-600 text-white'
+                    : isDark ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                )}
+              >
+                {type === 'default' ? 'Curve' : type === 'smoothstep' ? 'Smooth' : type === 'straight' ? 'Line' : 'Step'}
+              </button>
+            ))}
+          </div>
+          <label className={cn('flex items-center gap-1.5 text-[10px] cursor-pointer', isDark ? 'text-zinc-400' : 'text-zinc-600')}>
+            <input
+              type="checkbox"
+              checked={edgeAnimated}
+              onChange={(e) => setEdgeAnimated(e.target.checked)}
+              className="w-3 h-3 rounded"
+            />
+            Animated
+          </label>
+        </div>
+
+        {/* 도형 그리드 - 스크롤 가능 */}
+        <div
+          className="absolute left-0 right-0 bottom-[52px] top-[115px] overflow-y-auto p-2"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#52525b #27272a'
+          }}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            {shapeLibrary.map((shape) => (
+              <div
+                key={shape.type}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('application/reactflow', shape.type)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                className={cn(
+                  'flex flex-col items-center p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all hover:scale-105 active:scale-95',
+                  isDark ? 'bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/50' : 'bg-white hover:bg-zinc-100 border border-zinc-200 shadow-sm'
+                )}
+              >
+                <div className="w-14 h-10 mb-2">{shape.svg}</div>
+                <span className={cn('text-[10px] text-center leading-tight', isDark ? 'text-zinc-400' : 'text-zinc-600')}>{shape.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 하단 패널 - 액션 버튼들 */}
+        <div className={cn('absolute bottom-0 left-0 right-0 p-2 border-t space-y-1', isDark ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-200 bg-zinc-50')}>
+          {/* 삭제 버튼 */}
+          {selectedNodes.length > 0 && (
             <button
-              onClick={generateFromProject}
-              disabled={isLoading}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isDark
-                  ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 disabled:opacity-50'
-                  : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700 disabled:opacity-50'
-              )}
-              title="Refresh from project"
+              onClick={deleteSelected}
+              className="w-full flex items-center justify-center gap-1 px-2 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-medium"
             >
-              <RefreshCw className="w-4 h-4" />
+              <Trash2 className="w-3 h-3" />
+              Delete ({selectedNodes.length})
             </button>
           )}
 
-          <button
-            onClick={() => setShowCode(!showCode)}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700',
-              showCode && (isDark ? 'bg-zinc-800 text-zinc-200' : 'bg-zinc-100 text-zinc-700')
-            )}
-            title={showCode ? 'Hide Code' : 'Show Code'}
-          >
-            {showCode ? <Eye className="w-4 h-4" /> : <Code className="w-4 h-4" />}
-          </button>
-
-          <button
-            onClick={renderDiagram}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
-            )}
-            title="Render (Ctrl+Enter)"
-          >
-            <Play className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={handleCopy}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
-            )}
-            title="Copy Code"
-          >
-            <Copy className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={handleDownload}
-            disabled={!svgContent}
-            className={cn(
-              'p-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
-            )}
-            title="Download SVG"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={handleReset}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
-            )}
-            title="Reset to Template"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-
-          <div className={cn('w-px h-4 mx-1', isDark ? 'bg-zinc-700' : 'bg-zinc-300')} />
-
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              isDark
-                ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
-            )}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
+          {/* 액션 버튼들 */}
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={saveToDB}
+              disabled={isSaving}
+              className={cn(
+                'flex items-center justify-center gap-1 px-1 py-1.5 rounded text-[10px] font-medium',
+                isDark ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'
+              )}
+            >
+              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            </button>
+            <button
+              onClick={exportJSON}
+              className={cn(
+                'flex items-center justify-center gap-1 px-1 py-1.5 rounded text-[10px] font-medium',
+                isDark ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300' : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700'
+              )}
+            >
+              <Download className="w-3 h-3" />
+            </button>
+            <button
+              onClick={clearCanvas}
+              className={cn(
+                'flex items-center justify-center gap-1 px-1 py-1.5 rounded text-[10px] font-medium',
+                isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600'
+              )}
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* No Project - Full Screen Message */}
-      {autoMode && !projectPath && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className={cn('text-center', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-            <FolderOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p className="text-sm font-medium">프로젝트 폴더를 먼저 선택하세요</p>
-            <p className="text-xs mt-2">File → Open Folder (Cmd+O)</p>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content - Only show if projectPath exists or manual mode */}
-      {(projectPath || !autoMode) && (
-      <div className="flex-1 flex overflow-hidden">
-        {/* Code Editor */}
-        {showCode && (
-          <div
-            className={cn(
-              'w-1/3 min-w-[300px] max-w-[500px] border-r flex flex-col',
-              isDark ? 'border-zinc-800' : 'border-zinc-200'
-            )}
-          >
-            <div
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium border-b flex items-center justify-between',
-                isDark ? 'bg-zinc-900/50 border-zinc-800 text-zinc-400' : 'bg-zinc-50 border-zinc-200 text-zinc-500'
-              )}
-            >
-              <span>Mermaid Code</span>
-              {!autoMode && (
-                <span className={cn('text-[10px]', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
-                  Editable
-                </span>
-              )}
-            </div>
-            <textarea
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value)
-                if (autoMode) setAutoMode(false) // Switch to manual if user edits
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  e.preventDefault()
-                  renderDiagram()
-                }
-              }}
-              spellCheck={false}
-              className={cn(
-                'flex-1 p-3 font-mono text-sm resize-none focus:outline-none',
-                isDark
-                  ? 'bg-zinc-900 text-zinc-300 placeholder-zinc-600'
-                  : 'bg-white text-zinc-700 placeholder-zinc-400'
-              )}
-              placeholder="Enter your Mermaid diagram code here..."
-            />
+      {/* 캔버스 */}
+      <div className="flex-1 relative" ref={reactFlowWrapper}>
+        {isLoading && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+            <Loader2 className="w-8 h-8 animate-spin text-white" />
           </div>
         )}
-
-        {/* Diagram Preview */}
-        <div
-          ref={containerRef}
-          className={cn(
-            'flex-1 overflow-auto p-6 flex items-center justify-center',
-            isDark ? 'bg-zinc-950' : 'bg-zinc-50'
-          )}
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onSelectionChange={onSelectionChange}
+          nodeTypes={nodeTypes}
+          snapToGrid
+          snapGrid={[20, 20]}
+          multiSelectionKeyCode="Shift"
+          selectionOnDrag
+          panOnDrag={[1, 2]}
+          selectNodesOnDrag={false}
+          defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
+          connectionLineStyle={{ stroke: '#60a5fa', strokeWidth: 2 }}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          minZoom={0.1}
+          maxZoom={4}
+          defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+          translateExtent={[[-5000, -5000], [5000, 5000]]}
+          nodeExtent={[[-5000, -5000], [5000, 5000]]}
         >
-          {!mermaidReady ? (
-            <div className="flex flex-col items-center gap-2">
-              <RefreshCw className={cn('w-6 h-6 animate-spin', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
-              <span className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                Initializing diagram renderer...
-              </span>
-            </div>
-          ) : isLoading ? (
-            <div className="flex flex-col items-center gap-2">
-              <RefreshCw className={cn('w-6 h-6 animate-spin', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
-              <span className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                Loading project data...
-              </span>
-            </div>
-          ) : error ? (
-            <div
-              className={cn(
-                'max-w-md p-4 rounded-lg border',
-                isDark
-                  ? 'bg-red-950/50 border-red-900 text-red-400'
-                  : 'bg-red-50 border-red-200 text-red-600'
-              )}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="w-4 h-4" />
-                <span className="font-medium">Syntax Error</span>
-              </div>
-              <p className="text-sm opacity-80 font-mono whitespace-pre-wrap">{error}</p>
-            </div>
-          ) : svgContent ? (
-            <div
-              className={cn(
-                'mermaid-container p-4 rounded-lg max-w-full overflow-auto',
-                isDark ? 'bg-zinc-900' : 'bg-white'
-              )}
-              dangerouslySetInnerHTML={{ __html: svgContent }}
+          <Background color={isDark ? '#27272a' : '#d4d4d8'} gap={20} size={1} />
+          <Controls className={isDark ? '[&>button]:bg-zinc-800 [&>button]:border-zinc-700 [&>button]:text-zinc-300 [&>button:hover]:bg-zinc-700' : ''} />
+          {showMiniMap && (
+            <MiniMap
+              nodeColor={(node) => shapeLibrary.find((s) => s.type === node.type)?.color || '#71717a'}
+              className={isDark ? 'bg-zinc-900/90 border-zinc-700' : ''}
+              maskColor={isDark ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)'}
+              pannable
+              zoomable
             />
-          ) : (
-            <div className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-              {autoMode ? 'Generating diagram...' : 'Enter Mermaid code to see the diagram preview'}
-            </div>
           )}
+        </ReactFlow>
+        {/* 미니맵 토글 버튼 */}
+        <button
+          onClick={() => setShowMiniMap(!showMiniMap)}
+          className={cn(
+            'absolute top-4 right-4 z-10 p-2 rounded-lg shadow-lg transition-all',
+            isDark
+              ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
+              : 'bg-white hover:bg-zinc-100 text-zinc-600 border border-zinc-200'
+          )}
+          title={showMiniMap ? '미니맵 숨기기' : '미니맵 보기'}
+        >
+          {showMiniMap ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function MermaidView({ className }: MermaidViewProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+
+  return (
+    <div className={cn('flex flex-col h-full w-full', className)}>
+      {/* 툴바 */}
+      <div className={cn('flex items-center justify-between px-4 py-2 border-b shrink-0', isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200')}>
+        <div className="flex items-center gap-3">
+          <span className={cn('text-sm font-semibold', isDark ? 'text-zinc-200' : 'text-zinc-800')}>Flowchart Editor</span>
+          <div className={cn('h-4 w-px', isDark ? 'bg-zinc-700' : 'bg-zinc-300')} />
+          <span className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+            Drag shapes • Double-click to rename • Shift+drag to select • Delete key to remove • Cmd+S to save
+          </span>
         </div>
       </div>
-      )}
+
+      {/* 에디터 */}
+      <div className="flex-1">
+        <ReactFlowProvider>
+          <FlowEditor />
+        </ReactFlowProvider>
+      </div>
     </div>
   )
 }
