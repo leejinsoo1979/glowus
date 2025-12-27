@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agent-builder": {
+      "command": "node",
+      "args": ["server/mcp-realtime-server.js"],
+      "env": {}
+    }
+  }
+}
