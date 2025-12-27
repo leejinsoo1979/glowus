@@ -106,34 +106,37 @@ export default function GitPanel() {
 
   // 프로젝트의 실제 Git 경로 가져오기
   const fetchProjectGitPath = useCallback(async () => {
-    if (!linkedProjectId) {
-      setProjectGitPath(null)
-      setIsGitRepo(false)
-      setIsLoading(false)
+    // 1. linkedProjectId가 있으면 DB에서 folder_path 조회
+    if (linkedProjectId) {
+      try {
+        const response = await fetch(`/api/projects/${linkedProjectId}`)
+        if (response.ok) {
+          const project = await response.json()
+          const folderPath = project.folder_path
+
+          if (folderPath) {
+            setProjectGitPath(folderPath)
+            console.log('[GitPanel] Using project folder_path:', folderPath)
+            return
+          }
+        }
+      } catch (err) {
+        console.error('[GitPanel] Failed to fetch project:', err)
+      }
+    }
+
+    // 2. linkedProjectId 없어도 projectPath가 있으면 직접 사용
+    if (projectPath) {
+      setProjectGitPath(projectPath)
+      console.log('[GitPanel] Using direct projectPath:', projectPath)
       return
     }
 
-    try {
-      const response = await fetch(`/api/projects/${linkedProjectId}`)
-      if (response.ok) {
-        const project = await response.json()
-        const folderPath = project.folder_path
-
-        if (folderPath) {
-          setProjectGitPath(folderPath)
-          console.log('[GitPanel] Using project folder_path:', folderPath)
-        } else {
-          setProjectGitPath(null)
-          setError('프로젝트에 연결된 폴더가 없습니다. 먼저 폴더를 연결하세요.')
-          setIsLoading(false)
-        }
-      }
-    } catch (err) {
-      console.error('[GitPanel] Failed to fetch project:', err)
-      setProjectGitPath(null)
-      setIsLoading(false)
-    }
-  }, [linkedProjectId])
+    // 둘 다 없으면 비활성화
+    setProjectGitPath(null)
+    setIsGitRepo(false)
+    setIsLoading(false)
+  }, [linkedProjectId, projectPath])
 
   // linkedProjectId 변경 시 프로젝트 정보 가져오기
   useEffect(() => {
@@ -141,18 +144,13 @@ export default function GitPanel() {
   }, [fetchProjectGitPath])
 
   const checkGitRepo = useCallback(async () => {
-    // linkedProjectId가 없으면 Git 패널 비활성화
-    if (!linkedProjectId) {
-      setIsGitRepo(false)
-      setIsLoading(false)
-      setError('프로젝트를 먼저 선택하세요.')
-      return
-    }
-
-    // projectGitPath가 없으면 대기
+    // projectGitPath가 없으면 대기 (linkedProjectId나 projectPath 둘 다 없는 경우)
     if (!projectGitPath || !window.electron?.git) {
       setIsGitRepo(false)
       setIsLoading(false)
+      if (!linkedProjectId && !projectPath) {
+        setError('프로젝트를 먼저 선택하세요.')
+      }
       return
     }
 
@@ -587,8 +585,8 @@ export default function GitPanel() {
     )
   }
 
-  // 프로젝트가 선택되지 않은 경우
-  if (!linkedProjectId) {
+  // 프로젝트가 선택되지 않은 경우 (linkedProjectId도 없고 projectPath도 없음)
+  if (!linkedProjectId && !projectPath) {
     return (
       <div className={`h-full flex flex-col items-center justify-center p-6 ${isDark ? 'bg-zinc-900' : 'bg-white'}`}>
         <GitBranch className={`w-12 h-12 mb-4 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
@@ -596,7 +594,7 @@ export default function GitPanel() {
           프로젝트를 먼저 선택해주세요
         </p>
         <p className={`text-center text-sm mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>
-          Neural Map에서 프로젝트를 연결하면<br />해당 프로젝트의 Git을 사용할 수 있습니다
+          Neural Map에서 프로젝트를 연결하거나<br />로컬 폴더를 열면 Git을 사용할 수 있습니다
         </p>
       </div>
     )
