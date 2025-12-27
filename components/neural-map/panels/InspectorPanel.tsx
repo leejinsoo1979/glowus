@@ -30,13 +30,21 @@ import {
   Image as ImageIcon,
   Send,
 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { useChatStore } from '@/stores/chatStore'
+import { AgentTeamTabs } from './AgentTeamTabs'
 
 const tabs: { id: RightPanelTab; label: string; icon: typeof Info }[] = [
   { id: 'inspector', label: 'Inspector', icon: Info },
   { id: 'actions', label: 'Actions', icon: Zap },
-  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'chat', label: 'Agents', icon: MessageSquare },  // Chat → Agents로 변경
   { id: 'settings', label: 'Settings', icon: Settings2 },
 ]
 
@@ -170,28 +178,40 @@ function InspectorTab({ isDark, currentAccent }: { isDark: boolean; currentAccen
         </label>
         <div className="flex items-center gap-2">
           <div
-            className="w-3 h-3 rounded-full"
+            className="w-3 h-3 rounded-full shrink-0"
             style={{ backgroundColor: NODE_COLORS[selectedNode.type] }}
           />
-          <select
+          <Select
             value={selectedNode.type}
-            onChange={(e) => updateNode(selectedNode.id, { type: e.target.value as NodeType })}
+            onValueChange={(value) => updateNode(selectedNode.id, { type: value as NodeType })}
             disabled={selectedNode.type === 'self'}
-            className={cn(
-              'no-focus-ring flex-1 px-3 py-2 text-sm rounded-lg border outline-none transition-colors',
+          >
+            <SelectTrigger className={cn(
+              'flex-1 h-9',
               isDark
                 ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
                 : 'bg-zinc-50 border-zinc-200 text-zinc-800',
               selectedNode.type === 'self' && 'opacity-50 cursor-not-allowed'
-            )}
-          >
-            {selectedNode.type === 'self' && <option value="self">Self (중심)</option>}
-            {nodeTypes.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
+            )}>
+              <SelectValue placeholder="타입 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectedNode.type === 'self' && (
+                <SelectItem value="self">Self (중심)</SelectItem>
+              )}
+              {nodeTypes.map((type) => (
+                <SelectItem key={type.value} value={type.value}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: NODE_COLORS[type.value] }}
+                    />
+                    {type.label}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -877,7 +897,7 @@ export function InspectorPanel() {
       <div className="flex-1 overflow-hidden">
         {rightPanelTab === 'inspector' && <InspectorTab isDark={isDark} currentAccent={currentAccent} />}
         {rightPanelTab === 'actions' && <ActionsTab isDark={isDark} />}
-        {rightPanelTab === 'chat' && <ChatTab isDark={isDark} currentAccent={currentAccent} />}
+        {rightPanelTab === 'chat' && <AgentTeamTabs isDark={isDark} />}
         {rightPanelTab === 'settings' && <SettingsTab isDark={isDark} currentAccent={currentAccent} />}
       </div>
     </div>
