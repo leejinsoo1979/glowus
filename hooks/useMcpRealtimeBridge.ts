@@ -37,6 +37,7 @@ export function useMcpRealtimeBridge({
 }: McpBridgeOptions) {
   const bridgeRef = useRef<McpRealtimeBridge | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [isMcpServerConnected, setIsMcpServerConnected] = useState(false) // MCP Server(Claude Code) 연결 상태
   const [sessionId, setSessionId] = useState<string>('')
   const mountedRef = useRef(true)
 
@@ -338,6 +339,7 @@ export function useMcpRealtimeBridge({
 
       case 'mcp-connect':
         log('MCP 서버가 연결되었습니다')
+        setIsMcpServerConnected(true)
         sendCanvasState()
         break
     }
@@ -372,6 +374,7 @@ export function useMcpRealtimeBridge({
         if (mountedRef.current) {
           console.log('[MCP Realtime] ❌ 연결 해제됨 - 자동 재연결 대기 중...')
           setIsConnected(false)
+          setIsMcpServerConnected(false)
         }
       },
       onError: (error) => {
@@ -437,6 +440,7 @@ export function useMcpRealtimeBridge({
 
   return {
     isConnected,
+    isMcpServerConnected, // MCP Server(Claude Code) 실제 연결 여부
     sessionId,
     sendCanvasState,
     reconnect,

@@ -1,0 +1,29 @@
+{
+  "name": "@glowus/agent-builder-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for controlling GlowUS Agent Builder via Claude Code",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "agent-builder-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@supabase/supabase-js": "^2.47.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["mcp", "claude", "agent-builder", "glowus"],
+  "license": "MIT"
+}

@@ -366,6 +366,7 @@ export function generateSessionId(): string {
 
 /**
  * Local Storage에서 세션 ID 가져오기 또는 생성
+ * 또한 /tmp/glow-mcp-session.txt 파일에 저장하여 MCP 서버가 읽을 수 있게 함
  */
 export function getOrCreateSessionId(): string {
   if (typeof window === 'undefined') {
@@ -374,10 +375,29 @@ export function getOrCreateSessionId(): string {
 
   const stored = localStorage.getItem('mcp-session-id')
   if (stored) {
+    // 기존 세션 ID를 서버에 알림 (자동 연결용)
+    notifySessionToServer(stored)
     return stored
   }
 
   const newId = generateSessionId()
   localStorage.setItem('mcp-session-id', newId)
+  notifySessionToServer(newId)
   return newId
+}
+
+/**
+ * 세션 ID를 서버에 알리기 위해 API 호출
+ * MCP 서버가 읽을 수 있는 파일에 저장
+ */
+async function notifySessionToServer(sessionId: string): Promise<void> {
+  try {
+    await fetch('/api/mcp-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })
+  } catch (error) {
+    console.warn('[MCP] Failed to notify session to server:', error)
+  }
 }

@@ -64,8 +64,47 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 // Supabase 클라이언트
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 세션 ID (localStorage의 값과 일치해야 함)
-let sessionId = process.env.MCP_SESSION_ID || null;
+// 세션 파일 경로
+const SESSION_FILE_PATH = '/tmp/glow-mcp-session.txt';
+const PROJECT_SESSION_PATH = path.join(process.cwd(), '.mcp-session');
+
+/**
+ * 세션 파일에서 세션 ID 읽기
+ */
+function readSessionFromFile() {
+  // 프로젝트 루트에서 먼저 시도
+  if (fs.existsSync(PROJECT_SESSION_PATH)) {
+    try {
+      const data = fs.readFileSync(PROJECT_SESSION_PATH, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (parsed.sessionId) {
+        console.error(`[MCP] Session ID loaded from project file: ${parsed.sessionId}`);
+        return parsed.sessionId;
+      }
+    } catch (e) {
+      console.error('[MCP] Failed to read project session file:', e.message);
+    }
+  }
+
+  // /tmp에서 시도
+  if (fs.existsSync(SESSION_FILE_PATH)) {
+    try {
+      const data = fs.readFileSync(SESSION_FILE_PATH, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (parsed.sessionId) {
+        console.error(`[MCP] Session ID loaded from temp file: ${parsed.sessionId}`);
+        return parsed.sessionId;
+      }
+    } catch (e) {
+      console.error('[MCP] Failed to read temp session file:', e.message);
+    }
+  }
+
+  return null;
+}
+
+// 세션 ID (파일에서 자동 로드 또는 환경변수)
+let sessionId = process.env.MCP_SESSION_ID || readSessionFromFile();
 
 // 캔버스 상태
 let canvasState = {
@@ -620,14 +659,79 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 });
 
 /**
+ * 세션 파일 감시 및 자동 재연결
+ */
+function watchSessionFile() {
+  const watchPaths = [PROJECT_SESSION_PATH, SESSION_FILE_PATH];
+
+  for (const watchPath of watchPaths) {
+    try {
+      // 파일 변경 감시
+      fs.watchFile(watchPath, { interval: 1000 }, async (curr, prev) => {
+        if (curr.mtime > prev.mtime) {
+          console.error(`[MCP] Session file changed: ${watchPath}`);
+          const newSessionId = readSessionFromFile();
+
+          if (newSessionId && newSessionId !== sessionId) {
+            console.error(`[MCP] New session detected: ${newSessionId}`);
+            sessionId = newSessionId;
+
+            // 기존 채널 연결 해제
+            if (channel) {
+              try {
+                await channel.unsubscribe();
+                supabase.removeChannel(channel);
+              } catch (e) {
+                // 무시
+              }
+              channel = null;
+            }
+
+            // 새 세션으로 연결
+            await connectRealtime();
+          }
+        }
+      });
+      console.error(`[MCP] Watching session file: ${watchPath}`);
+    } catch (e) {
+      // 파일이 없으면 무시
+    }
+  }
+}
+
+/**
+ * 세션 파일이 생성될 때까지 주기적 확인
+ */
+function pollForSession() {
+  if (sessionId) return;
+
+  const checkInterval = setInterval(async () => {
+    const newSessionId = readSessionFromFile();
+    if (newSessionId) {
+      console.error(`[MCP] Session found: ${newSessionId}`);
+      sessionId = newSessionId;
+      clearInterval(checkInterval);
+      await connectRealtime();
+    }
+  }, 2000); // 2초마다 확인
+
+  console.error('[MCP] Polling for session file...');
+}
+
+/**
  * 서버 시작
  */
 async function main() {
+  // 세션 파일 감시 시작
+  watchSessionFile();
+
   // 세션 ID가 있으면 Realtime 연결 시작
   if (sessionId) {
     await connectRealtime();
   } else {
-    console.error('[MCP] Waiting for session ID. Use set_session tool to connect.');
+    console.error('[MCP] No session found. Waiting for Agent Builder to start...');
+    console.error('[MCP] 브라우저에서 Agent Builder를 열면 자동으로 연결됩니다.');
+    pollForSession();
   }
 
   // MCP 서버 시작
@@ -635,6 +739,7 @@ async function main() {
   await server.connect(transport);
 
   console.error('[MCP] Agent Builder MCP Server (Realtime) started');
+  console.error('[MCP] 자동 연결 모드 활성화됨 - 브라우저에서 Agent Builder를 열어주세요.');
 }
 
 main().catch((error) => {

@@ -141,6 +141,9 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
   const [isLoadingAgent, setIsLoadingAgent] = useState(false)
   const terminalRef = useRef<TerminalPanelRef>(null)
+  // showTerminal의 최신 값을 참조하기 위한 ref (useCallback 내에서 사용)
+  const showTerminalRef = useRef(showTerminal)
+  showTerminalRef.current = showTerminal
   // 🆕 현재 편집 중인 에이전트 폴더 정보 (파일 생성용)
   const [currentAgentFolder, setCurrentAgentFolder] = useState<string | null>(null)
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
@@ -328,15 +331,16 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
       setCurrentAgentFolder(folderName)
       setCurrentProjectPath(projectPathParam || null)
 
-      // 🆕 터미널이 열려있으면 에이전트 폴더로 cd
-      if (showTerminal && projectPathParam) {
+      // 🆕 에이전트 로드 시 무조건 터미널에 cd 명령 전송 (터미널 상태 무관)
+      if (projectPathParam) {
         const agentPath = `${projectPathParam}/agents/${folderName}`
         const electronApi = (window as any).electron?.terminal
         if (electronApi) {
+          // 1.5초 후 cd 명령 전송 (터미널 초기화 대기)
           setTimeout(() => {
             electronApi.write('1', `cd "${agentPath}" && clear\n`)
-            console.log('[AgentBuilder] Sent cd command to terminal:', agentPath)
-          }, 500)
+            console.log('[AgentBuilder] Agent loaded, sent cd:', agentPath)
+          }, 1500)
         }
       }
 
