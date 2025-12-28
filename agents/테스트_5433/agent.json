@@ -1,0 +1,82 @@
+{
+  "name": "테스트_5433",
+  "description": "4노드 연결 테스트",
+  "version": "1.0.0",
+  "createdAt": "2025-12-28T09:29:23.212Z",
+  "updatedAt": "2025-12-28T09:29:23.212Z",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "file": "시작.ts",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "config": {
+        "label": "시작",
+        "description": "Workflow entry point"
+      }
+    },
+    {
+      "id": "prompt",
+      "type": "prompt",
+      "file": "프롬프트.ts",
+      "position": {
+        "x": 200,
+        "y": 0
+      },
+      "config": {
+        "label": "프롬프트",
+        "description": "Input text or prompt"
+      }
+    },
+    {
+      "id": "llm",
+      "type": "llm",
+      "file": "llm.ts",
+      "position": {
+        "x": 400,
+        "y": 0
+      },
+      "config": {
+        "label": "LLM",
+        "description": "Generate text with LLM"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "file": "종료.ts",
+      "position": {
+        "x": 600,
+        "y": 0
+      },
+      "config": {
+        "label": "종료",
+        "description": "Workflow output"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-prompt-1766914160853",
+      "source": "start",
+      "target": "prompt"
+    },
+    {
+      "id": "e-prompt-llm-1766914160853",
+      "source": "prompt",
+      "target": "llm"
+    },
+    {
+      "id": "e-llm-end-1766914160853",
+      "source": "llm",
+      "target": "end"
+    }
+  ],
+  "metadata": {
+    "nodeCount": 4,
+    "edgeCount": 3
+  }
+}

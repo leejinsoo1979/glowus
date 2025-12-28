@@ -1,0 +1,78 @@
+{
+  "name": "테스트_6414",
+  "description": "start→prompt→llm→end 4노드 연결",
+  "version": "1.0.0",
+  "createdAt": "2025-12-28T09:48:18.057Z",
+  "updatedAt": "2025-12-28T09:48:18.057Z",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "file": "시작.ts",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "config": {
+        "label": "시작"
+      }
+    },
+    {
+      "id": "prompt",
+      "type": "prompt",
+      "file": "프롬프트.ts",
+      "position": {
+        "x": 300,
+        "y": 100
+      },
+      "config": {
+        "label": "프롬프트"
+      }
+    },
+    {
+      "id": "llm",
+      "type": "llm",
+      "file": "llm.ts",
+      "position": {
+        "x": 500,
+        "y": 100
+      },
+      "config": {
+        "label": "LLM"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "file": "종료.ts",
+      "position": {
+        "x": 700,
+        "y": 100
+      },
+      "config": {
+        "label": "종료"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-prompt",
+      "source": "start",
+      "target": "prompt"
+    },
+    {
+      "id": "edge-prompt-llm",
+      "source": "prompt",
+      "target": "llm"
+    },
+    {
+      "id": "edge-llm-end",
+      "source": "llm",
+      "target": "end"
+    }
+  ],
+  "metadata": {
+    "nodeCount": 4,
+    "edgeCount": 3
+  }
+}

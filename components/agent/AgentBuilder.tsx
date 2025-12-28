@@ -112,18 +112,57 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
   // 🆕 Neural Map 프로젝트 연결
   const linkedProjectId = useNeuralMapStore((state) => state.linkedProjectId)
   const projectPath = useNeuralMapStore((state) => state.projectPath)  // 🆕 프로젝트 경로
+  const setProjectPath = useNeuralMapStore((state) => state.setProjectPath)  // 🆕 프로젝트 경로 설정
+  const setFiles = useNeuralMapStore((state) => state.setFiles)  // 🆕 파일 목록 설정
   const activeTerminalId = useNeuralMapStore((state) => state.activeTerminalId) // 터미널 ID
   const setStoreAgentFolder = useNeuralMapStore((state) => state.setCurrentAgentFolder)
   const storeAgentFolder = useNeuralMapStore((state) => state.currentAgentFolder)
+  // 🔥 Store에서 워크플로우 데이터 가져오기 (컴포넌트 재마운트 시에도 유지)
+  const setAgentWorkflow = useNeuralMapStore((state) => state.setAgentWorkflow)
+  const clearAgentWorkflow = useNeuralMapStore((state) => state.clearAgentWorkflow)
+  const storedWorkflowNodes = useNeuralMapStore((state) => state.agentWorkflowNodes)
+  const storedWorkflowEdges = useNeuralMapStore((state) => state.agentWorkflowEdges)
+  const storedWorkflowName = useNeuralMapStore((state) => state.agentWorkflowName)
 
   // 🔍 DEBUG: Store 값 모니터링
   useEffect(() => {
     console.log('[AgentBuilder] 🔍 Store values:', {
       storeAgentFolder,
       projectPath,
-      linkedProjectId
+      linkedProjectId,
+      storedWorkflowName,
+      storedWorkflowNodesCount: storedWorkflowNodes?.length || 0,
     })
-  }, [storeAgentFolder, projectPath, linkedProjectId])
+  }, [storeAgentFolder, projectPath, linkedProjectId, storedWorkflowName, storedWorkflowNodes])
+
+  // 🔥 컴포넌트 마운트 시 store에서 워크플로우 복원
+  useEffect(() => {
+    if (storedWorkflowNodes && storedWorkflowNodes.length > 0 && storedWorkflowName) {
+      console.log('[AgentBuilder] 🔄 Store에서 워크플로우 복원:', {
+        name: storedWorkflowName,
+        nodesCount: storedWorkflowNodes.length,
+        edgesCount: storedWorkflowEdges?.length || 0,
+      })
+
+      setNodes(storedWorkflowNodes)
+      setEdges(storedWorkflowEdges || [])
+      setAgentName(storedWorkflowName)
+
+      // 복원 후 store 클리어 (한 번만 복원)
+      clearAgentWorkflow()
+
+      // fitView 실행
+      setTimeout(() => {
+        fitView({
+          padding: 0.3,
+          duration: 500,
+          includeHiddenNodes: true,
+          minZoom: 0.5,
+          maxZoom: 1.5,
+        })
+      }, 100)
+    }
+  }, []) // 마운트 시 한 번만 실행
 
   const [selectedNode, setSelectedNode] = useState<Node<AgentNodeData> | null>(null)
   const [validationResult, setValidationResult] = useState<{
@@ -163,7 +202,9 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
   // 에이전트 목록 새로고침 트리거
   const [agentListRefresh, setAgentListRefresh] = useState(0)
-  const { project, fitView, zoomIn, zoomOut } = useReactFlow()
+  // 🔥 BroadcastChannel에서 받은 워크플로우 (useEffect에서 처리)
+  const [pendingWorkflow, setPendingWorkflow] = useState<any>(null)
+  const { project, fitView, zoomIn, zoomOut, setNodes: setReactFlowNodes, setEdges: setReactFlowEdges } = useReactFlow()
 
   // MCP 로그 콜백 (memoized - 재연결 방지)
   const handleMcpLog = useCallback((message: string) => {
@@ -173,6 +214,187 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
     }
   }, [])
   const { theme, setTheme } = useTheme()
+
+  // 🔥 pendingWorkflow 처리 - BroadcastChannel에서 받은 워크플로우를 React 상태 업데이트 사이클에서 처리
+  useEffect(() => {
+    if (!pendingWorkflow) return
+
+    // 현재 payload를 로컬 변수에 저장하고 즉시 state 초기화
+    const payload = pendingWorkflow
+    setPendingWorkflow(null) // 먼저 초기화해서 재실행 방지
+
+    const processWorkflow = async () => {
+      const workflowName = payload.name || `workflow-${Date.now()}`
+
+      console.log('[AgentBuilder] 🔥 pendingWorkflow 처리 시작:', {
+        name: workflowName,
+        nodesCount: payload.nodes?.length || 0,
+        edgesCount: payload.edges?.length || 0,
+      })
+
+      // ============================================
+      // 1단계: 노드/엣지 먼저 생성 및 배치 (UI 즉시 반영)
+      // ============================================
+      console.log('[AgentBuilder] 1단계: 노드 배치 시작...')
+
+      const newNodes: Node<AgentNodeData>[] = (payload.nodes || []).map((n: any, index: number) => {
+        const defaultPosition = { x: 100 + index * 200, y: 250 }
+        const position = n.position && n.position.y !== 0
+          ? n.position
+          : { x: n.position?.x || defaultPosition.x, y: defaultPosition.y }
+
+        console.log(`[AgentBuilder] 노드 생성 ${index}:`, n.type, position)
+        const createdNode = createAgentNode({
+          type: n.type,
+          position,
+        })
+        return {
+          ...createdNode,
+          id: n.id || createdNode.id,
+          data: {
+            ...createdNode.data,
+            label: n.label,
+            ...(n.config || {}),
+          },
+        }
+      })
+
+      const newEdges: Edge[] = (payload.edges || []).map((e: any) => ({
+        id: `e-${e.source}-${e.target}-${Date.now()}`,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        type: 'default',
+        animated: false,
+        style: { stroke: 'var(--edge-color)', strokeWidth: 1.5 },
+        label: e.label,
+      }))
+
+      console.log('[AgentBuilder] 🔥 노드 배치:', newNodes.length, '개, 엣지:', newEdges.length, '개')
+
+      // 🔥 Store에 먼저 저장 (컴포넌트 재마운트 시 복원용)
+      setAgentWorkflow(workflowName, newNodes, newEdges)
+
+      // 캔버스에 노드/엣지 설정
+      setNodes(newNodes)
+      setEdges(newEdges)
+      setAgentName(workflowName)
+
+      // fitView 실행
+      setTimeout(() => {
+        console.log('[AgentBuilder] ✅ fitView 호출')
+        fitView({
+          padding: 0.3,
+          duration: 500,
+          includeHiddenNodes: true,
+          minZoom: 0.5,
+          maxZoom: 1.5,
+        })
+      }, 100)
+
+      // ============================================
+      // 2단계: 프로젝트 폴더 생성 (비동기, 백그라운드)
+      // ============================================
+      try {
+        const apiNodes = newNodes.map((n: Node<AgentNodeData>) => ({
+          id: n.id,
+          type: n.data?.type || n.type,
+          data: n.data,
+          position: n.position,
+        }))
+
+        const apiEdges = newEdges.map((e: Edge) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
+        }))
+
+        console.log('[AgentBuilder] 2단계: API 호출 - 프로젝트 폴더 생성...')
+        const response = await fetch('/api/agents/folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: workflowName,
+            description: payload.description || '',
+            nodes: apiNodes,
+            edges: apiEdges,
+            projectPath: projectPath || undefined,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          console.error('[AgentBuilder] ❌ 프로젝트 생성 실패:', error)
+          return
+        }
+
+        const result = await response.json()
+        console.log('[AgentBuilder] ✅ 프로젝트 생성 완료:', result)
+
+        // ============================================
+        // 3단계: projectPath 설정 + 파일트리 업데이트
+        // ============================================
+        const folderName = result.folderName || workflowName.replace(/\s+/g, '-')
+        setCurrentAgentFolder(folderName)
+        setCurrentProjectPath(result.projectPath || projectPath || null)
+
+        if (result.absolutePath) {
+          console.log('[AgentBuilder] 3단계: projectPath 설정:', result.absolutePath)
+          setProjectPath(result.absolutePath)
+          setStoreAgentFolder(folderName)
+
+          // 파일 목록 직접 설정 (웹 환경용)
+          if (result.files && result.files.length > 0) {
+            const timestamp = Date.now()
+            const neuralFiles = result.files.map((filePath: string, index: number) => {
+              const fileName = filePath.split('/').pop() || filePath
+              const ext = fileName.split('.').pop()?.toLowerCase() || ''
+              const getFileType = (ext: string): 'code' | 'text' | 'markdown' => {
+                const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'py', 'java', 'css', 'html']
+                const mdExts = ['md', 'markdown', 'mdx']
+                if (codeExts.includes(ext)) return 'code'
+                if (mdExts.includes(ext)) return 'markdown'
+                return 'text'
+              }
+              const relativePath = filePath.replace(/^agents\/[^/]+\//, '')
+              return {
+                id: `agent-${timestamp}-${index}`,
+                mapId: '',
+                name: fileName,
+                path: relativePath,
+                type: getFileType(ext),
+                url: '',
+                size: 0,
+                createdAt: new Date().toISOString(),
+              }
+            })
+            console.log('[AgentBuilder] 파일트리 설정:', neuralFiles.length, 'files')
+            setFiles(neuralFiles)
+          }
+        }
+
+        // 파일트리 리스캔 트리거
+        const rescanChannel = new BroadcastChannel('neural-map-rescan')
+        rescanChannel.postMessage({ type: 'RESCAN_FILES' })
+        rescanChannel.close()
+
+        // 터미널에 알림
+        if (terminalRef.current) {
+          terminalRef.current.write(`\r\n\x1b[32m[Agent]\x1b[0m 워크플로우 "${workflowName}" 생성됨: agents/${folderName}`)
+        }
+
+        // 에이전트 목록 새로고침
+        setAgentListRefresh(prev => prev + 1)
+
+      } catch (error) {
+        console.error('[AgentBuilder] pendingWorkflow 처리 에러:', error)
+      }
+    }
+
+    processWorkflow()
+  }, [pendingWorkflow]) // dependency를 pendingWorkflow만으로 최소화
 
   // 에이전트 ID가 있으면 에이전트 데이터 로드
   useEffect(() => {
@@ -470,105 +692,9 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
         }
 
         case 'GENERATE_WORKFLOW': {
-          // 🔥 새 워크플로우 생성 - 에이전트 폴더 + 파일 저장 + 캔버스 반영
-          const workflowName = payload.name || `workflow-${Date.now()}`
-
-          // 1. 캔버스에 노드/엣지 생성 (먼저 UI 반영)
-          const newNodes = payload.nodes.map((n: any) =>
-            createAgentNode({
-              type: n.type,
-              position: n.position,
-            })
-          ).map((node: Node, i: number) => {
-            const originalNode = payload.nodes[i]
-            return {
-              ...node,
-              id: originalNode.id,
-              data: {
-                ...node.data,
-                label: originalNode.label,
-                ...(originalNode.config || {}),
-              },
-            }
-          })
-
-          const newEdges = payload.edges.map((e: any) => ({
-            id: `e-${e.source}-${e.target}-${Date.now()}`,
-            source: e.source,
-            target: e.target,
-            sourceHandle: e.sourceHandle,
-            type: 'default',
-            animated: false,
-            style: { stroke: 'var(--edge-color)', strokeWidth: 1.5 },
-            label: e.label,
-          }))
-
-          setAgentName(workflowName)
-          setNodes(newNodes)
-          setEdges(newEdges)
-          setTimeout(() => fitView({ padding: 0.2 }), 100)
-
-          // 2. 에이전트 폴더 + 파일 저장 (비동기)
-          try {
-            console.log('[AgentBuilder] Creating agent folder with workflow:', workflowName)
-
-            // ReactFlow 형태로 변환된 노드/엣지 사용
-            const apiNodes = newNodes.map((n: Node<AgentNodeData>) => ({
-              id: n.id,
-              type: n.data?.type || n.type,
-              data: n.data,
-              position: n.position,
-            }))
-
-            const apiEdges = newEdges.map((e: Edge) => ({
-              id: e.id,
-              source: e.source,
-              target: e.target,
-              sourceHandle: e.sourceHandle,
-              targetHandle: e.targetHandle,
-            }))
-
-            // /api/agents/folder POST로 전체 폴더 구조 생성
-            const response = await fetch('/api/agents/folder', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: workflowName,
-                description: payload.description || '',
-                nodes: apiNodes,
-                edges: apiEdges,
-                projectPath: projectPath || undefined,
-              }),
-            })
-
-            if (response.ok) {
-              const result = await response.json()
-              console.log('[AgentBuilder] Workflow saved:', result)
-
-              // 현재 폴더 설정
-              const folderName = result.folderName || workflowName.replace(/\s+/g, '-')
-              setCurrentAgentFolder(folderName)
-              setCurrentProjectPath(result.projectPath || projectPath || null)
-
-              // 터미널에 알림
-              if (terminalRef.current) {
-                terminalRef.current.write(`\r\n\x1b[32m[Agent]\x1b[0m 워크플로우 "${workflowName}" 생성됨: agents/${folderName}`)
-              }
-
-              // 파일트리 리스캔 트리거
-              const rescanChannel = new BroadcastChannel('neural-map-rescan')
-              rescanChannel.postMessage({ type: 'RESCAN_FILES' })
-              rescanChannel.close()
-
-              // 에이전트 목록 새로고침
-              setAgentListRefresh(prev => prev + 1)
-            } else {
-              const error = await response.json()
-              console.error('[AgentBuilder] Failed to save workflow:', error)
-            }
-          } catch (error) {
-            console.error('[AgentBuilder] GENERATE_WORKFLOW error:', error)
-          }
+          // 🔥 BroadcastChannel에서는 상태만 설정, 실제 처리는 useEffect에서
+          console.log('[AgentBuilder] 🔥 GENERATE_WORKFLOW 수신 → pendingWorkflow 설정')
+          setPendingWorkflow(payload)
           break
         }
 

@@ -1,0 +1,44 @@
+{
+  "name": "ㅅㅅㅅㅅ",
+  "description": "",
+  "version": "1.0.0",
+  "createdAt": "2025-12-28T09:42:44.723Z",
+  "updatedAt": "2025-12-28T09:42:44.723Z",
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "start",
+      "file": "start.ts",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "config": {
+        "label": "Start"
+      }
+    },
+    {
+      "id": "n2",
+      "type": "end",
+      "file": "end.ts",
+      "position": {
+        "x": 200,
+        "y": 0
+      },
+      "config": {
+        "label": "End"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "n1",
+      "target": "n2"
+    }
+  ],
+  "metadata": {
+    "nodeCount": 2,
+    "edgeCount": 1
+  }
+}

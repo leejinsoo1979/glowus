@@ -106,10 +106,13 @@ export async function POST(request: NextRequest) {
 
     // 🆕 프로젝트 기준 상대 경로 반환
     const relativeFolderPath = path.relative(projectPath || GLOWUS_ROOT, finalFolderPath)
+    const folderName = path.basename(finalFolderPath)
 
     return NextResponse.json({
       success: true,
       folderPath: relativeFolderPath,
+      folderName: folderName,  // 🆕 폴더 이름 반환
+      absolutePath: finalFolderPath,  // 🆕 전체 경로 반환 (파일트리용)
       files: createdFiles,
       agentConfig: folderStructure.agentJson,
       projectPath: projectPath || null,

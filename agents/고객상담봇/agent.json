@@ -1,0 +1,82 @@
+{
+  "name": "고객상담봇",
+  "description": "고객의 문의에 자동으로 응답하는 챗봇",
+  "version": "1.0.0",
+  "createdAt": "2025-12-28T09:09:34.160Z",
+  "updatedAt": "2025-12-28T09:09:34.160Z",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "file": "시작.ts",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "config": {
+        "label": "시작",
+        "description": "Workflow entry point"
+      }
+    },
+    {
+      "id": "prompt",
+      "type": "prompt",
+      "file": "프롬프트.ts",
+      "position": {
+        "x": 300,
+        "y": 100
+      },
+      "config": {
+        "label": "프롬프트",
+        "description": "Input text or prompt"
+      }
+    },
+    {
+      "id": "llm",
+      "type": "llm",
+      "file": "llm.ts",
+      "position": {
+        "x": 500,
+        "y": 100
+      },
+      "config": {
+        "label": "LLM",
+        "description": "Generate text with LLM"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "file": "종료.ts",
+      "position": {
+        "x": 700,
+        "y": 100
+      },
+      "config": {
+        "label": "종료",
+        "description": "Workflow output"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-prompt-1766912971671",
+      "source": "start",
+      "target": "prompt"
+    },
+    {
+      "id": "e-prompt-llm-1766912971671",
+      "source": "prompt",
+      "target": "llm"
+    },
+    {
+      "id": "e-llm-end-1766912971671",
+      "source": "llm",
+      "target": "end"
+    }
+  ],
+  "metadata": {
+    "nodeCount": 4,
+    "edgeCount": 3
+  }
+}

@@ -106,6 +106,10 @@ interface NeuralMapState {
 
   // Agent Builder
   currentAgentFolder: string | null
+  // 🔥 Agent Workflow (컴포넌트 재마운트 시에도 유지)
+  agentWorkflowNodes: any[]
+  agentWorkflowEdges: any[]
+  agentWorkflowName: string | null
 
   // Simulation
   isSimulationRunning: boolean
@@ -231,6 +235,9 @@ interface NeuralMapActions {
 
   // Agent Builder
   setCurrentAgentFolder: (folder: string | null) => void
+  // 🔥 Agent Workflow
+  setAgentWorkflow: (name: string, nodes: any[], edges: any[]) => void
+  clearAgentWorkflow: () => void
 
   // Simulation
   setSimulationRunning: (running: boolean) => void
@@ -335,6 +342,10 @@ const initialState: NeuralMapState = {
   files: [],
 
   currentAgentFolder: null,
+  // 🔥 Agent Workflow
+  agentWorkflowNodes: [],
+  agentWorkflowEdges: [],
+  agentWorkflowName: null,
 
   isSimulationRunning: true,
   simulationAlpha: 1,
@@ -765,6 +776,22 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         setCurrentAgentFolder: (folder) =>
           set((state) => {
             state.currentAgentFolder = folder
+          }),
+
+        // 🔥 Agent Workflow
+        setAgentWorkflow: (name, nodes, edges) =>
+          set((state) => {
+            state.agentWorkflowName = name
+            state.agentWorkflowNodes = nodes
+            state.agentWorkflowEdges = edges
+            console.log('[Store] setAgentWorkflow:', { name, nodesCount: nodes.length, edgesCount: edges.length })
+          }),
+
+        clearAgentWorkflow: () =>
+          set((state) => {
+            state.agentWorkflowName = null
+            state.agentWorkflowNodes = []
+            state.agentWorkflowEdges = []
           }),
 
         // ========== Simulation ==========
