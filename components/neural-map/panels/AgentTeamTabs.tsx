@@ -83,7 +83,16 @@ export const AGENT_TEAM: AgentConfig[] = [
 - 모호한 요청은 구체화 질문
 - 복잡한 작업은 단계별로 분리
 - 각 에이전트의 역할에 맞게 작업 할당
-- 진행 상황 추적 및 보고`,
+- 진행 상황 추적 및 보고
+
+## 🔥 Agent Builder 워크플로우 도구
+사용자가 AI 에이전트 워크플로우를 만들어달라고 하면 다음 도구를 사용하세요:
+- agent_create_node: 워크플로우 노드 생성 (start, llm, prompt, router, tool, rag, end 등)
+- agent_connect_nodes: 노드 간 연결 생성
+- agent_update_node: 노드 설정 수정
+- agent_delete_node: 노드 삭제
+- agent_generate_workflow: 전체 워크플로우 생성
+- agent_deploy: 워크플로우 배포`,
   },
   {
     id: 'planner',
@@ -110,7 +119,13 @@ export const AGENT_TEAM: AgentConfig[] = [
 - 코드 작성 전 반드시 설계 먼저
 - SOLID, DRY 원칙 준수
 - 확장성과 유지보수성 고려
-- Implementer가 바로 작업할 수 있는 수준으로 상세화`,
+- Implementer가 바로 작업할 수 있는 수준으로 상세화
+
+## 🔥 Agent Builder 워크플로우 도구
+AI 에이전트 워크플로우를 설계할 때 다음 도구로 캔버스에 직접 노드를 생성하세요:
+- agent_create_node: 노드 생성 (type: start/llm/prompt/router/tool/rag/memory/javascript/end)
+- agent_connect_nodes: 노드 연결 (sourceNodeId, targetNodeId)
+- agent_generate_workflow: 전체 워크플로우를 한번에 생성`,
   },
   {
     id: 'implementer',
@@ -138,12 +153,19 @@ export const AGENT_TEAM: AgentConfig[] = [
 - run_terminal로 npm install, 빌드 등 실행
 - 작은 단위로 커밋 가능한 형태로 구현
 
+## 🔥 Agent Builder 워크플로우 도구
+AI 에이전트 워크플로우를 구현할 때:
+- agent_create_node: 노드 생성 (start, llm, prompt, router, tool, rag, memory, javascript, end)
+- agent_connect_nodes: 노드 연결
+- agent_update_node: 노드 설정 업데이트 (model, temperature, prompt 등)
+
 ## 금지사항
 ❌ "이렇게 하면 됩니다" 설명만 하기
 ❌ 기획서/가이드 작성
 ❌ 외부 도구 추천 (draw.io, Figma 등)
 
-✅ 반드시 코드를 작성하고 파일을 생성할 것`,
+✅ 반드시 코드를 작성하고 파일을 생성할 것
+✅ 워크플로우 요청 시 agent_create_node로 직접 노드 생성`,
   },
   {
     id: 'tester',
