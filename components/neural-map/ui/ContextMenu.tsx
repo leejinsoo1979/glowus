@@ -22,6 +22,7 @@ import {
   CheckSquare,
   User,
   Zap,
+  Bot,
 } from 'lucide-react'
 
 // ============================================
@@ -68,6 +69,7 @@ const NODE_TYPE_ICONS: Record<NodeType, React.ReactNode> = {
   insight: <Zap className="w-4 h-4" />,
   folder: <Folder className="w-4 h-4" />,
   file: <FileText className="w-4 h-4" />,
+  agent: <Bot className="w-4 h-4" />,
 }
 
 const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -83,6 +85,7 @@ const NODE_TYPE_LABELS: Record<NodeType, string> = {
   insight: '인사이트',
   folder: '폴더',
   file: '파일',
+  agent: '에이전트',
 }
 
 // ============================================

@@ -10,6 +10,7 @@ import path from 'path'
 import { generateAgentFolder } from '@/lib/agent/code-generator'
 
 const GLOWUS_ROOT = process.cwd()
+const AGENTS_DIR = path.join(GLOWUS_ROOT, 'agents')
 
 interface AgentFolderRequest {
   name: string

@@ -69,6 +69,7 @@ import { AVAILABLE_MODELS, PROVIDER_INFO, LLMProvider, getDefaultModel } from "@
 import type { AgentNodeData, AgentType } from "@/lib/agent"
 import { TerminalPanel, TerminalPanelRef } from "@/components/editor"
 import { useMcpRealtimeBridge } from "@/hooks/useMcpRealtimeBridge"
+import { useMcpBridge } from "@/hooks/useMcpBridge"
 import { Logo } from "@/components/ui"
 import { Clipboard, Check, Wifi, WifiOff, X } from "lucide-react"
 
@@ -112,6 +113,18 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
   const linkedProjectId = useNeuralMapStore((state) => state.linkedProjectId)
   const projectPath = useNeuralMapStore((state) => state.projectPath)  // 🆕 프로젝트 경로
   const activeTerminalId = useNeuralMapStore((state) => state.activeTerminalId) // 터미널 ID
+  const setStoreAgentFolder = useNeuralMapStore((state) => state.setCurrentAgentFolder)
+  const storeAgentFolder = useNeuralMapStore((state) => state.currentAgentFolder)
+
+  // 🔍 DEBUG: Store 값 모니터링
+  useEffect(() => {
+    console.log('[AgentBuilder] 🔍 Store values:', {
+      storeAgentFolder,
+      projectPath,
+      linkedProjectId
+    })
+  }, [storeAgentFolder, projectPath, linkedProjectId])
+
   const [selectedNode, setSelectedNode] = useState<Node<AgentNodeData> | null>(null)
   const [validationResult, setValidationResult] = useState<{
     valid: boolean
@@ -217,6 +230,16 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
 
   // MCP Bridge - Claude Code에서 노드 조작 가능하게 함 (Supabase Realtime 사용)
   const { isConnected: isMcpConnected, isMcpServerConnected, sessionId: mcpSessionId } = useMcpRealtimeBridge({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    fitView,
+    onLog: handleMcpLog,
+  })
+
+  // 🔥 WebSocket MCP Bridge - 로컬 터미널에서 Claude Code가 노드 제어 가능하게 함
+  const { isConnected: isWsMcpConnected } = useMcpBridge({
     nodes,
     edges,
     setNodes,
@@ -332,6 +355,8 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
       // 🆕 현재 에이전트 폴더 정보 저장 (노드 추가 시 파일 생성용)
       setCurrentAgentFolder(folderName)
       setCurrentProjectPath(projectPathParam || null)
+      // store에도 저장 (persist됨)
+      setStoreAgentFolder(folderName)
 
       // 🆕 에이전트 로드 시 무조건 터미널에 cd 명령 전송
       if (projectPathParam) {
@@ -645,6 +670,45 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
     [project, setNodes, currentAgentFolder, currentProjectPath]
   )
 
+  // 🆕 노드 삭제 시 파일도 삭제
+  const onNodesDelete = useCallback(
+    async (deletedNodes: Node[]) => {
+      if (!currentAgentFolder || !currentProjectPath) return
+
+      for (const node of deletedNodes) {
+        try {
+          const response = await fetch('/api/agents/delete-node', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              folderName: currentAgentFolder,
+              projectPath: currentProjectPath,
+              nodeId: node.id
+            })
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            console.log('[AgentBuilder] Node file deleted:', data.deletedFile)
+
+            // 터미널에 알림
+            if (terminalRef.current) {
+              terminalRef.current.write(`\r\n\x1b[33m[Agent]\x1b[0m 노드 삭제됨: ${node.data?.label || node.id} → ${data.deletedFile}`)
+            }
+          }
+        } catch (error) {
+          console.error('[AgentBuilder] Error deleting node file:', error)
+        }
+      }
+
+      // 파일트리 리스캔 트리거
+      const rescanChannel = new BroadcastChannel('neural-map-rescan')
+      rescanChannel.postMessage({ type: 'RESCAN_FILES' })
+      rescanChannel.close()
+    },
+    [currentAgentFolder, currentProjectPath]
+  )
+
   const onDragStart = useCallback((event: React.DragEvent, nodeType: AgentType) => {
     event.dataTransfer.setData("application/agentflow", nodeType)
     event.dataTransfer.effectAllowed = "move"
@@ -834,6 +898,10 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
       setEditingAgentId(null)
       setShowCreateModal(false)
       setNewAgentName("")
+
+      // 🔧 FIX: 노드 배치 시 파일 생성되도록 폴더/경로 설정
+      setCurrentAgentFolder(result.folderName || folderName)
+      setCurrentProjectPath(result.projectPath || projectPath || null)
 
       setTimeout(() => fitView({ padding: 0.2 }), 100)
 
@@ -1105,6 +1173,19 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
           <Button variant="outline" size="sm" onClick={handleCopyJson} className="bg-white dark:bg-zinc-900 border-zinc-300/50 dark:border-zinc-700/50 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 h-8 text-xs !rounded-md">
             <span className="mr-2">&lt;/&gt;</span> Export Code
           </Button>
+          {/* WebSocket MCP 연결 상태 - 로컬 터미널 Claude Code 연결 */}
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border transition-all ${
+            isWsMcpConnected
+              ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+              : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700'
+          }`} title={isWsMcpConnected ? 'WebSocket MCP 연결됨 (localhost:3001)' : 'WebSocket MCP 연결 대기 중'}>
+            {isWsMcpConnected ? (
+              <Wifi className="w-3 h-3 text-blue-500 animate-pulse" />
+            ) : (
+              <WifiOff className="w-3 h-3 text-zinc-400" />
+            )}
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">WS</span>
+          </div>
           {/* MCP 세션 정보 - Claude Code MCP Server 연결 시 초록불 */}
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border transition-all ${
             isMcpServerConnected
@@ -1144,9 +1225,27 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
             onClick={() => {
               const newShowTerminal = !showTerminal
               setShowTerminal(newShowTerminal)
-              // 터미널을 열 때 에이전트 폴더로 cd
-              const agentFolder = currentAgentFolder || agentName
-              const agentProjectPath = currentProjectPath || projectPath
+              // 터미널을 열 때 에이전트 폴더로 cd (store 값 우선 + localStorage fallback)
+              let agentFolder = currentAgentFolder || storeAgentFolder || agentName
+              let agentProjectPath = currentProjectPath || projectPath
+
+              // 🔥 localStorage fallback
+              if (!agentFolder || !agentProjectPath) {
+                try {
+                  const stored = localStorage.getItem('neural-map-storage')
+                  if (stored) {
+                    const parsed = JSON.parse(stored)
+                    const state = parsed?.state || {}
+                    if (!agentFolder && state.currentAgentFolder) {
+                      agentFolder = state.currentAgentFolder
+                    }
+                    if (!agentProjectPath && state.projectPath) {
+                      agentProjectPath = state.projectPath
+                    }
+                  }
+                } catch (e) { /* ignore */ }
+              }
+
               if (newShowTerminal && agentFolder && agentProjectPath) {
                 const agentPath = `${agentProjectPath}/agents/${agentFolder}`
                 const electronApi = (window as any).electron?.terminal
@@ -1254,6 +1353,7 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
+              onNodesDelete={onNodesDelete}
               onConnect={onConnect}
               onDrop={onDrop}
               onDragOver={onDragOver}
@@ -1267,6 +1367,7 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
               nodesDraggable={true}
               nodesConnectable={true}
               elementsSelectable={true}
+              deleteKeyCode={['Backspace', 'Delete']}
               panOnDrag={true}
               panOnScroll={true}
               zoomOnScroll={true}
@@ -1453,13 +1554,33 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
 
           {/* Terminal Panel - 캔버스 하단 */}
           {(() => {
-            // store의 projectPath와 agentName 사용 (새로고침해도 유지됨)
-            const agentFolder = currentAgentFolder || agentName
-            const agentProjectPath = currentProjectPath || projectPath
+            // store의 값 우선 사용 + localStorage fallback (hydration 전에도 작동)
+            let agentFolder = currentAgentFolder || storeAgentFolder || agentName
+            let agentProjectPath = currentProjectPath || projectPath
+
+            // 🔥 localStorage fallback - zustand hydration 전에도 작동하도록
+            if (!agentFolder || !agentProjectPath) {
+              try {
+                const stored = localStorage.getItem('neural-map-storage')
+                if (stored) {
+                  const parsed = JSON.parse(stored)
+                  const state = parsed?.state || {}
+                  if (!agentFolder && state.currentAgentFolder) {
+                    agentFolder = state.currentAgentFolder
+                  }
+                  if (!agentProjectPath && state.projectPath) {
+                    agentProjectPath = state.projectPath
+                  }
+                }
+              } catch (e) {
+                // localStorage 읽기 실패 무시
+              }
+            }
+
             const terminalCwd = agentFolder && agentProjectPath
               ? `${agentProjectPath}/agents/${agentFolder}`
               : undefined
-            console.log('[AgentBuilder] Terminal cwd:', terminalCwd, { agentFolder, agentProjectPath, agentName, projectPath })
+            console.log('[AgentBuilder] Terminal cwd:', terminalCwd, { agentFolder, storeAgentFolder, agentProjectPath, agentName, projectPath })
             return (
               <TerminalPanel
                 ref={terminalRef}

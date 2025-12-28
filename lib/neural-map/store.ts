@@ -104,6 +104,9 @@ interface NeuralMapState {
   // Files
   files: NeuralFile[]
 
+  // Agent Builder
+  currentAgentFolder: string | null
+
   // Simulation
   isSimulationRunning: boolean
   simulationAlpha: number
@@ -226,6 +229,9 @@ interface NeuralMapActions {
   addFile: (file: NeuralFile) => void
   removeFile: (id: string) => void
 
+  // Agent Builder
+  setCurrentAgentFolder: (folder: string | null) => void
+
   // Simulation
   setSimulationRunning: (running: boolean) => void
   setSimulationAlpha: (alpha: number) => void
@@ -327,6 +333,8 @@ const initialState: NeuralMapState = {
   historyIndex: -1,
 
   files: [],
+
+  currentAgentFolder: null,
 
   isSimulationRunning: true,
   simulationAlpha: 1,
@@ -751,6 +759,12 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
         removeFile: (id) =>
           set((state) => {
             state.files = state.files.filter((f) => f.id !== id)
+          }),
+
+        // ========== Agent Builder ==========
+        setCurrentAgentFolder: (folder) =>
+          set((state) => {
+            state.currentAgentFolder = folder
           }),
 
         // ========== Simulation ==========
@@ -1532,6 +1546,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           linkedProjectId: state.linkedProjectId,
           linkedProjectName: state.linkedProjectName,
           projectPath: state.projectPath,
+          // 🔥 Agent Builder 에이전트 폴더 (새로고침해도 유지)
+          currentAgentFolder: state.currentAgentFolder,
           // 🔥 mapId는 저장 안 함 - 프로젝트별로 DB에서 조회
         }),
       }

@@ -80,6 +80,9 @@ export interface AgentNodeData {
   integrationApp?: string
   integrationAction?: string
   integrationConfig?: Record<string, unknown>
+
+  // File system properties (에이전트 폴더 내 파일 연결)
+  file?: string
 }
 
 export type AgentNode = Node<AgentNodeData>

@@ -668,8 +668,8 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
 
     if (!graph) return
 
-    // 폴더 노드들만 추출 (project, folder 타입 모두 폴더로 처리)
-    const folderNodes = graph.nodes.filter(n => n.type === 'folder' || n.type === 'project' || n.type === 'project')
+    // 폴더 노드들만 추출
+    const folderNodes = graph.nodes.filter(n => n.type === 'folder' || (n as any).type === 'project')
 
     if (newExpanded) {
       // 전체 펼치기
@@ -692,8 +692,8 @@ function SettingsTab({ isDark, currentAccent }: { isDark: boolean; currentAccent
 
     if (!graph) return
 
-    // 폴더 노드들만 추출하고 계층 구조 정렬 (project, folder 타입 모두 폴더로 처리)
-    const folderNodes = graph.nodes.filter(n => n.type === 'folder' || n.type === 'project' || n.type === 'project')
+    // 폴더 노드들만 추출하고 계층 구조 정렬
+    const folderNodes = graph.nodes.filter(n => n.type === 'folder' || (n as any).type === 'project')
 
     // parentId를 기반으로 depth 계산
     const getDepth = (nodeId: string, nodes: typeof folderNodes, depth = 0): number => {

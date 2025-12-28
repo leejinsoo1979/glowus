@@ -201,7 +201,9 @@ export async function execute(input: EndInput): Promise<EndOutput> {
       success: true,
       path: `agents/${folderName}`,
       name,
-      files: ['index.ts', 'agent.json', 'start.ts', 'end.ts']
+      files: ['index.ts', 'agent.json', 'start.ts', 'end.ts'],
+      projectPath: baseDir,  // 🔧 FIX: 프론트엔드에서 노드 파일 생성에 필요
+      folderName,
     })
   } catch (error: any) {
     console.error('[API] Create agent folder error:', error)

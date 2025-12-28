@@ -357,11 +357,11 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         const { fileName } = event.data.payload
         console.log('[FileTree] Sync request from AgentBuilder:', fileName)
 
-        // 파일 트리에서 해당 파일 찾기
-        const findFileByName = (items: NeuralFile[], targetName: string): NeuralFile | null => {
+        // 파일 트리에서 해당 파일 찾기 (TreeNode 구조)
+        const findFileByName = (items: TreeNode[], targetName: string): NeuralFile | null => {
           for (const item of items) {
-            if (item.name === targetName) return item
-            if (item.children) {
+            if (item.name === targetName && item.file) return item.file
+            if (item.children && item.children.length > 0) {
               const found = findFileByName(item.children, targetName)
               if (found) return found
             }
@@ -369,7 +369,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           return null
         }
 
-        const foundFile = findFileByName(files, fileName)
+        const foundFile = findFileByName(fileTree, fileName)
         if (foundFile) {
           console.log('[FileTree] Found file, selecting:', foundFile.id)
           setSelectedFileId(foundFile.id)
@@ -1397,9 +1397,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           payload: { folderName, projectPath }
         })
         channel.close()
-
-        // Agent Builder 탭으로 전환
-        setRightPanelTab('agent-builder')
+        // Note: Agent Builder is at /agent-builder page, not a right panel tab
       }
     }
 
@@ -1493,9 +1491,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           payload: { folderName, projectPath, selectFile: clickedFileName }
         })
         channel.close()
-
-        // Agent Builder 탭으로 전환
-        setRightPanelTab('agent-builder')
+        // Note: Agent Builder is at /agent-builder page, not a right panel tab
         return
       }
     }

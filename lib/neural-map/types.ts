@@ -191,6 +191,7 @@ export interface NeuralFile {
   content?: string  // 파일 내용 캐시 (편집용)
   linkedNodeCount?: number
   createdAt: string
+  children?: NeuralFile[]  // 폴더 구조를 위한 하위 파일/폴더
 }
 
 // ============================================
@@ -377,7 +378,7 @@ export interface PathfinderResult {
 // UI State Types
 // ============================================
 
-export type RightPanelTab = 'inspector' | 'actions' | 'chat' | 'settings'
+export type RightPanelTab = 'inspector' | 'actions' | 'chat' | 'settings' | 'agent-builder'
 
 export interface PanelState {
   leftPanelWidth: number

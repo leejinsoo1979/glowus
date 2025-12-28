@@ -28,6 +28,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   insight: '#22D3EE',  // 시안라이트
   folder: '#6B7280',  // 그레이
   file: '#9CA3AF',  // 라이트그레이
+  agent: '#8B5CF6',  // 퍼플 (AI 에이전트)
 }
 
 // ============================================

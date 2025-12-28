@@ -77,7 +77,9 @@ const writeFile = util.promisify(fs.writeFile);
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
+let terminalServerProcess: ChildProcess | null = null;
 const SERVER_PORT = 3999;
+const TERMINAL_SERVER_PORT = 3001;
 
 function startServer(): Promise<string> {
     const isDev = !app.isPackaged;
@@ -142,6 +144,57 @@ function stopServer() {
         console.log('Stopping server process...');
         serverProcess.kill('SIGKILL'); // Force kill to prevent hanging
         serverProcess = null;
+    }
+}
+
+// Terminal WebSocket Server 시작
+function startTerminalServer(): void {
+    const isDev = !app.isPackaged;
+    // app.getAppPath()는 패키징 전: 프로젝트 루트, 패키징 후: app.asar
+    const appPath = app.getAppPath();
+    const terminalServerPath = isDev
+        ? path.join(appPath, 'server', 'terminal-server.js')
+        : path.join(process.resourcesPath, 'server', 'terminal-server.js');
+
+    console.log('[Terminal] App path:', appPath);
+    console.log('[Terminal] Server path:', terminalServerPath);
+
+    if (!fs.existsSync(terminalServerPath)) {
+        console.log('[Terminal] Server file not found:', terminalServerPath);
+        return;
+    }
+
+    console.log('[Terminal] Starting server from:', terminalServerPath);
+
+    terminalServerProcess = fork(terminalServerPath, [], {
+        cwd: path.dirname(terminalServerPath),
+        env: { ...process.env },
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc']
+    });
+
+    terminalServerProcess.stdout?.on('data', (data) => {
+        console.log('[Terminal]', data.toString().trim());
+    });
+
+    terminalServerProcess.stderr?.on('data', (data) => {
+        console.error('[Terminal Error]', data.toString().trim());
+    });
+
+    terminalServerProcess.on('error', (err) => {
+        console.error('[Terminal] Failed to start:', err);
+    });
+
+    terminalServerProcess.on('exit', (code) => {
+        console.log('[Terminal] Server exited with code:', code);
+        terminalServerProcess = null;
+    });
+}
+
+function stopTerminalServer(): void {
+    if (terminalServerProcess) {
+        console.log('[Terminal] Stopping server...');
+        terminalServerProcess.kill('SIGTERM');
+        terminalServerProcess = null;
     }
 }
 
@@ -241,6 +294,9 @@ app.whenReady().then(() => {
     } catch (e) {
         console.log('[AutoUpdater] Failed to load:', e);
     }
+
+    // Terminal WebSocket Server 자동 시작
+    startTerminalServer();
 
     createWindow();
 
@@ -457,6 +513,7 @@ app.on('web-contents-created', (event, contents) => {
 
 app.on('window-all-closed', () => {
     stopServer();
+    stopTerminalServer();
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -464,6 +521,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
     stopServer();
+    stopTerminalServer();
 });
 
 // ==========================================
