@@ -330,6 +330,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const graphExpanded = useNeuralMapStore((s) => s.graphExpanded)
   const setProjectPath = useNeuralMapStore((s) => s.setProjectPath)
   const projectPath = useNeuralMapStore((s) => s.projectPath)
+  const searchQuery = useNeuralMapStore((s) => s.searchQuery) // 🔥 검색 필터링용
   const linkedProjectName = useNeuralMapStore((s) => s.linkedProjectName)
   const linkedProjectId = useNeuralMapStore((s) => s.linkedProjectId)
   const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
@@ -1197,10 +1198,23 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   }, [isCreatingNew])
 
   // 파일 트리 구조 생성 - useMemo로 메모이제이션하여 무한 루프 방지
+  // 🔥 searchQuery로 파일 필터링
   const fileTree = useMemo(() => {
-    console.log('[FileTree] Building tree from files:', files.length, files)
-    return buildFileTree(files)
-  }, [files])
+    const query = searchQuery?.toLowerCase().trim() || ''
+    let filteredFiles = files
+
+    if (query) {
+      // 검색어가 있으면 파일명 또는 경로에서 검색
+      filteredFiles = files.filter(f =>
+        f.name.toLowerCase().includes(query) ||
+        f.path?.toLowerCase().includes(query)
+      )
+      console.log('[FileTree] Filtered by search:', query, filteredFiles.length, '/', files.length)
+    }
+
+    console.log('[FileTree] Building tree from files:', filteredFiles.length)
+    return buildFileTree(filteredFiles)
+  }, [files, searchQuery])
 
   // 파일이 변경되면 자동으로 그래프 리빌드 (최초 로드 또는 파일 추가 시)
   const prevFilesLengthRef = useRef(-1) // -1로 초기화해서 첫 렌더링에서 무조건 체크
