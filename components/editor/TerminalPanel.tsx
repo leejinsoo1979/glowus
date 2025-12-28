@@ -100,44 +100,21 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
   // 링크된 프로젝트의 folder_path 사용 (없으면 전역 projectPath 폴백)
   const { projectPath, linkedProjectId } = useLinkedProjectPath()
 
-  // cwd 전송 상태 추적
-  const cwdSentRef = useRef<string | null>(null)
-  const activeTerminalIdRef = useRef(activeTerminalId)
-  activeTerminalIdRef.current = activeTerminalId
-
-  // cwd가 설정된 상태에서 터미널이 열리면 cd 명령 전송
+  // cwd가 있으면 2초마다 체크해서 cd 명령 전송
   useEffect(() => {
-    if (!isOpen || !cwd) {
-      // 닫히면 상태 리셋
-      if (!isOpen) {
-        cwdSentRef.current = null
+    if (!cwd) return
+
+    const intervalId = setInterval(() => {
+      const electronApi = (window as any).electron?.terminal
+      if (electronApi && isOpen) {
+        electronApi.write(activeTerminalId || '1', `cd "${cwd}"\n`)
+        console.log('[TerminalPanel] Force cd to:', cwd)
+        clearInterval(intervalId)
       }
-      return
-    }
+    }, 2000)
 
-    // 이미 같은 경로로 cd 했으면 스킵
-    if (cwdSentRef.current === cwd) {
-      console.log('[TerminalPanel] Already sent cd to:', cwd)
-      return
-    }
-
-    console.log('[TerminalPanel] cwd prop detected, scheduling cd command:', cwd)
-
-    // Electron 터미널인 경우 cd 명령 전송
-    const electronApi = (window as any).electron?.terminal
-    if (electronApi) {
-      // 터미널 초기화 완료까지 충분히 대기 (1초)
-      const timeoutId = setTimeout(() => {
-        console.log('[TerminalPanel] Executing cd command to:', cwd)
-        // 현재 활성 터미널 또는 기본 터미널에 cd 명령 전송
-        const terminalId = activeTerminalIdRef.current || '1'
-        electronApi.write(terminalId, `cd "${cwd}" && clear\n`)
-        cwdSentRef.current = cwd
-      }, 1000)
-
-      return () => clearTimeout(timeoutId)
-    }
-  }, [isOpen, cwd])
+    return () => clearInterval(intervalId)
+  }, [cwd, isOpen, activeTerminalId])
 
   const addTerminalAction = useNeuralMapStore(s => s.addTerminal)
   const removeTerminalAction = useNeuralMapStore(s => s.removeTerminal)
