@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import {
     Play,
     Pause,
@@ -78,10 +78,9 @@ export function AgentCard({
     if (viewMode === "list") {
         return (
             <motion.div
-                layoutId={`agent-card-${agent.id}`}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05, duration: 0.3 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.15 }}
                 onClick={() => router.push(`/dashboard-group/agents/${agent.id}`)}
                 className="group relative bg-white dark:bg-zinc-900/40 rounded-xl border border-zinc-200 dark:border-zinc-800/60 p-4 cursor-pointer overflow-hidden transition-all duration-300 hover:shadow-lg hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-white dark:hover:bg-zinc-900/80"
             >
@@ -161,12 +160,11 @@ export function AgentCard({
 
     return (
         <motion.div
-            layoutId={`agent-card-${agent.id}`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05, duration: 0.4, type: "spring", stiffness: 100 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15 }}
             onClick={() => router.push(`/dashboard-group/agents/${agent.id}`)}
-            className="group relative bg-white dark:bg-zinc-900/40 rounded-3xl border border-zinc-200 dark:border-zinc-800/60 p-6 cursor-pointer overflow-hidden transition-all duration-500 hover:shadow-xl hover:bg-white dark:hover:bg-zinc-900/80 hover:-translate-y-1"
+            className="group relative bg-white dark:bg-zinc-900/40 rounded-3xl border border-zinc-200 dark:border-zinc-800/60 p-6 cursor-pointer overflow-hidden transition-all duration-200 hover:shadow-xl hover:bg-white dark:hover:bg-zinc-900/80 hover:-translate-y-1"
             style={{
                 boxShadow: mounted ? `0 0 0 0 transparent` : undefined
             } as any}

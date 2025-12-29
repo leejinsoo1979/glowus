@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import {
   Bot,
   Plus,
@@ -380,29 +380,22 @@ export default function AgentsPage() {
 
         {/* Agents Grid */}
         {activeTab === "agents" && !loading && !error && filteredAgents.length > 0 && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={viewMode}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className={viewMode === "grid"
-                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-                : "space-y-3"
-              }
-            >
-              {filteredAgents.map((agent, index) => (
-                <AgentCard
-                  key={agent.id}
-                  agent={agent}
-                  viewMode={viewMode}
-                  index={index}
-                  onToggleStatus={handleToggleStatus}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </motion.div>
-          </AnimatePresence>
+          <div
+            className={viewMode === "grid"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+              : "space-y-3"
+            }
+          >
+            {filteredAgents.map((agent) => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                viewMode={viewMode}
+                onToggleStatus={handleToggleStatus}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
         )}
 
         {/* Groups Tab */}
