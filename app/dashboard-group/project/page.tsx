@@ -457,9 +457,8 @@ export default function ProjectsPage() {
       .filter((project) => {
         const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase())
         const matchesStatus = statusFilter === "all" || project.status === statusFilter
-        // 카테고리 필터 추가
-        const projectType = (project as any).project_type || 'code'
-        const matchesCategory = !categoryFilter || projectType === categoryFilter
+        // 카테고리 필터 추가 - category_id로 필터링
+        const matchesCategory = !categoryFilter || (project as any).category_id === categoryFilter
         return matchesSearch && matchesStatus && matchesCategory
       })
       .sort((a, b) => {
@@ -684,8 +683,8 @@ export default function ProjectsPage() {
       <div className="p-6">
         {/* 카테고리 카드 뷰 */}
         {!categoryFilter ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
               {categories.map((category, idx) => {
                 const IconComponent = iconMap[category.icon] || Folder
                 const count = categoryStats[category.id] || 0
@@ -694,29 +693,40 @@ export default function ProjectsPage() {
                 return (
                   <motion.div
                     key={category.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ delay: idx * 0.08, type: "spring", stiffness: 200 }}
                     className="group"
                   >
                     <div
-                      className="relative h-36 rounded-2xl p-4 overflow-hidden cursor-pointer transition-all hover:scale-[1.02]"
+                      className="relative h-44 rounded-3xl p-5 overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl"
                       style={{
-                        background: `linear-gradient(135deg, ${category.color} 0%, ${category.color}dd 100%)`,
+                        background: `linear-gradient(145deg, ${category.color}15 0%, ${category.color}08 100%)`,
+                        border: `1px solid ${category.color}30`,
                       }}
                       onClick={() => !isEditing && setCategoryFilter(category.id)}
                     >
+                      {/* 배경 장식 */}
+                      <div
+                        className="absolute -top-10 -right-10 w-32 h-32 rounded-full opacity-20 blur-2xl transition-all duration-500 group-hover:opacity-40 group-hover:scale-125"
+                        style={{ background: category.color }}
+                      />
+                      <div
+                        className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full opacity-10 blur-xl"
+                        style={{ background: category.color }}
+                      />
+
                       {/* 편집/삭제 버튼 */}
-                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             setEditingCategory(category.id)
                             setEditName(category.name)
                           }}
-                          className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all border border-white/10"
                         >
-                          <Pencil className="w-3.5 h-3.5 text-white" />
+                          <Pencil className="w-3.5 h-3.5 text-zinc-300" />
                         </button>
                         {category.user_id && (
                           <button
@@ -724,17 +734,23 @@ export default function ProjectsPage() {
                               e.stopPropagation()
                               handleDeleteCategory(category.id)
                             }}
-                            className="p-1.5 rounded-lg bg-white/20 hover:bg-red-500/50 transition-colors"
+                            className="p-2 rounded-xl bg-white/10 hover:bg-red-500/30 backdrop-blur-sm transition-all border border-white/10"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-white" />
+                            <Trash2 className="w-3.5 h-3.5 text-zinc-300" />
                           </button>
                         )}
                       </div>
 
                       {/* 컨텐츠 */}
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                          <IconComponent className="w-5 h-5 text-white" />
+                      <div className="relative h-full flex flex-col justify-between z-10">
+                        <div
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
+                          style={{
+                            background: `linear-gradient(135deg, ${category.color} 0%, ${category.color}cc 100%)`,
+                            boxShadow: `0 8px 24px ${category.color}40`
+                          }}
+                        >
+                          <IconComponent className="w-6 h-6 text-white" />
                         </div>
 
                         <div>
@@ -744,7 +760,7 @@ export default function ProjectsPage() {
                                 type="text"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="flex-1 bg-white/20 text-white text-lg font-bold px-2 py-1 rounded-lg outline-none placeholder-white/50"
+                                className="flex-1 bg-white/10 text-white text-lg font-bold px-3 py-1.5 rounded-xl outline-none placeholder-white/50 backdrop-blur-sm border border-white/20"
                                 autoFocus
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') handleUpdateCategory(category.id, editName)
@@ -753,24 +769,37 @@ export default function ProjectsPage() {
                               />
                               <button
                                 onClick={() => handleUpdateCategory(category.id, editName)}
-                                className="p-1 rounded bg-white/20 hover:bg-white/30"
+                                className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/30"
                               >
-                                <Check className="w-4 h-4 text-white" />
+                                <Check className="w-4 h-4 text-emerald-400" />
                               </button>
                               <button
                                 onClick={() => setEditingCategory(null)}
-                                className="p-1 rounded bg-white/20 hover:bg-white/30"
+                                className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 border border-red-500/30"
                               >
-                                <X className="w-4 h-4 text-white" />
+                                <X className="w-4 h-4 text-red-400" />
                               </button>
                             </div>
                           ) : (
                             <>
-                              <h3 className="text-white text-lg font-bold">{category.name}</h3>
-                              <p className="text-white/60 text-sm">{count}개 프로젝트</p>
+                              <h3 className="text-zinc-100 text-xl font-bold tracking-tight mb-1">{category.name}</h3>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="text-3xl font-black"
+                                  style={{ color: category.color }}
+                                >
+                                  {count}
+                                </span>
+                                <span className="text-zinc-500 text-sm font-medium">프로젝트</span>
+                              </div>
                             </>
                           )}
                         </div>
+                      </div>
+
+                      {/* 호버 시 화살표 */}
+                      <div className="absolute bottom-5 right-5 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
+                        <ChevronRight className="w-5 h-5 text-zinc-400" />
                       </div>
                     </div>
                   </motion.div>
@@ -782,31 +811,31 @@ export default function ProjectsPage() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="h-36 rounded-2xl p-4 border-2 border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800/50"
+                  className="h-44 rounded-3xl p-5 border border-violet-500/30 bg-violet-500/5 backdrop-blur-sm"
                 >
-                  <div className="h-full flex flex-col justify-center gap-3">
+                  <div className="h-full flex flex-col justify-center gap-4">
                     <input
                       type="text"
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
                       placeholder="카테고리 이름"
-                      className="w-full bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full bg-zinc-900/50 text-white px-4 py-3 rounded-xl border border-zinc-700 outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent placeholder-zinc-500"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') handleAddCategory()
                         if (e.key === 'Escape') setIsAddingCategory(false)
                       }}
                     />
-                    <div className="flex gap-2">
+                    <div className="flex gap-3">
                       <button
                         onClick={handleAddCategory}
-                        className="flex-1 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-sm font-medium transition-colors"
+                        className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-lg shadow-violet-500/25"
                       >
                         추가
                       </button>
                       <button
                         onClick={() => setIsAddingCategory(false)}
-                        className="flex-1 py-1.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 text-sm font-medium transition-colors"
+                        className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold transition-all border border-zinc-700"
                       >
                         취소
                       </button>
@@ -815,15 +844,17 @@ export default function ProjectsPage() {
                 </motion.div>
               ) : (
                 <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: categories.length * 0.05 }}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ delay: categories.length * 0.08, type: "spring", stiffness: 200 }}
                   onClick={() => setIsAddingCategory(true)}
-                  className="h-36 rounded-2xl p-4 border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-all flex items-center justify-center"
+                  className="group h-44 rounded-3xl p-5 border border-dashed border-zinc-700 hover:border-violet-500/50 bg-zinc-900/30 hover:bg-violet-500/5 cursor-pointer transition-all duration-300 flex items-center justify-center"
                 >
-                  <div className="flex flex-col items-center gap-2 text-zinc-400">
-                    <Plus className="w-8 h-8" />
-                    <span className="text-sm font-medium">카테고리 추가</span>
+                  <div className="flex flex-col items-center gap-3 text-zinc-500 group-hover:text-violet-400 transition-colors">
+                    <div className="w-12 h-12 rounded-2xl bg-zinc-800 group-hover:bg-violet-500/20 flex items-center justify-center transition-all duration-300 group-hover:scale-110">
+                      <Plus className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-semibold">카테고리 추가</span>
                   </div>
                 </motion.div>
               )}
@@ -1030,9 +1061,14 @@ export default function ProjectsPage() {
             })}
           </div>
         ) : (
-          /* Grid View - 개선된 카드 디자인 */
+          /* Grid View - 카테고리 테마 적용 */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filteredProjects.map((project, idx) => {
+            {(() => {
+              // 현재 카테고리 색상 가져오기
+              const currentCategory = categoryFilter ? categories.find(c => c.id === categoryFilter) : null
+              const themeColor = currentCategory?.color || '#8b5cf6'
+
+              return filteredProjects.map((project, idx) => {
               const members = (project as any).project_members || project.members || []
               const agents = (project as any).project_agents || project.agents || []
               const memberCount = members.length + agents.length
@@ -1050,14 +1086,27 @@ export default function ProjectsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.04, duration: 0.3 }}
                   whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                  className="group relative bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 overflow-hidden cursor-pointer transition-shadow hover:shadow-xl hover:shadow-zinc-200/50 dark:hover:shadow-zinc-900/50"
+                  className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-2xl"
+                  style={{
+                    background: `linear-gradient(145deg, ${themeColor}08 0%, transparent 100%)`,
+                    border: `1px solid ${themeColor}25`,
+                  }}
                   onClick={() => router.push(`/dashboard-group/project/${project.id}`)}
                 >
-                  {/* 상단 그라데이션 악센트 */}
-                  <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${style.gradient} ${style.dot}`} />
+                  {/* 배경 장식 */}
+                  <div
+                    className="absolute -top-16 -right-16 w-32 h-32 rounded-full opacity-10 blur-2xl"
+                    style={{ background: themeColor }}
+                  />
+
+                  {/* 상단 악센트 라인 */}
+                  <div
+                    className="absolute top-0 left-0 right-0 h-1"
+                    style={{ background: `linear-gradient(90deg, ${themeColor} 0%, ${themeColor}60 100%)` }}
+                  />
 
                   {/* 호버시 Edit 버튼 */}
-                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -1068,7 +1117,8 @@ export default function ProjectsPage() {
                         }
                         router.push("/dashboard-group/neural-map")
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors shadow-lg"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors shadow-lg"
+                      style={{ background: themeColor }}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       Edit
@@ -1121,14 +1171,15 @@ export default function ProjectsPage() {
                     <div className="mb-4">
                       <div className="flex items-center justify-between text-xs mb-1.5">
                         <span className="text-zinc-500">진행률</span>
-                        <span className="font-medium text-zinc-700 dark:text-zinc-300">{progress}%</span>
+                        <span className="font-medium" style={{ color: themeColor }}>{progress}%</span>
                       </div>
-                      <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${progress}%` }}
                           transition={{ duration: 0.8, delay: idx * 0.05 }}
-                          className={`h-full rounded-full ${style.dot}`}
+                          className="h-full rounded-full"
+                          style={{ background: `linear-gradient(90deg, ${themeColor} 0%, ${themeColor}aa 100%)` }}
                         />
                       </div>
                     </div>
@@ -1191,7 +1242,8 @@ export default function ProjectsPage() {
                   </div>
                 </motion.div>
               )
-            })}
+            })
+            })()}
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import type { Node } from "reactflow"
 export interface AgentNodeData {
   label: string
   description?: string
+  type?: string  // 노드 타입 (start, end, llm, prompt 등)
 
   // Agent properties
   agentType?: AgentType
