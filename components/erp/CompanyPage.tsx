@@ -45,34 +45,30 @@ export function CompanyPage() {
     }
   }, [company])
 
-  // Supabase Storage에 파일 업로드
+  // 서버 API를 통한 파일 업로드
   const uploadToStorage = async (file: File | Blob, folder: string, fileName: string): Promise<string | null> => {
     try {
-      const fileExt = fileName.split('.').pop() || 'png'
-      const uniqueName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+      const formData = new FormData()
+      formData.append('file', file, fileName)
+      formData.append('folder', folder)
+      if (company?.id) {
+        formData.append('companyId', company.id)
+      }
 
-      const { data, error } = await supabase.storage
-        .from('company-files')
-        .upload(uniqueName, file, {
-          cacheControl: '3600',
-          upsert: false
-        })
+      const response = await fetch('/api/erp/upload', {
+        method: 'POST',
+        body: formData
+      })
 
-      if (error) {
-        console.error('Upload error:', error)
-        // 버킷이 없으면 생성 시도
-        if (error.message.includes('not found')) {
-          alert('스토리지 버킷이 없습니다. 관리자에게 문의하세요.')
-        }
+      const result = await response.json()
+
+      if (!result.success) {
+        console.error('Upload error:', result.error)
         return null
       }
 
-      // Public URL 가져오기
-      const { data: urlData } = supabase.storage
-        .from('company-files')
-        .getPublicUrl(data.path)
-
-      return urlData.publicUrl
+      console.log('✅ 업로드 성공:', result.url)
+      return result.url
     } catch (error) {
       console.error('Storage upload error:', error)
       return null
