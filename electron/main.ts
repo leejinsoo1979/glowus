@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import * as util from 'util';
 import { fork, ChildProcess, exec, spawn } from 'child_process';
 import * as chokidar from 'chokidar';
+import * as http from 'http';
+import Anthropic from '@anthropic-ai/sdk';
 
 // EPIPE 에러 핸들러 - 앱 종료 시 파이프 에러 무시
 process.stdout.on('error', (err: any) => {
@@ -154,7 +156,7 @@ function startTerminalServer(): void {
     const appPath = app.getAppPath();
     const terminalServerPath = isDev
         ? path.join(appPath, 'server', 'terminal-server.js')
-        : path.join(process.resourcesPath, 'server', 'terminal-server.js');
+        : path.join(process.resourcesPath, 'terminal-server', 'terminal-server.js');
 
     console.log('[Terminal] App path:', appPath);
     console.log('[Terminal] Server path:', terminalServerPath);
@@ -166,9 +168,19 @@ function startTerminalServer(): void {
 
     console.log('[Terminal] Starting server from:', terminalServerPath);
 
+    // 프로덕션에서 node-pty 모듈 경로 설정
+    const nodeModulesPath = isDev
+        ? path.join(appPath, 'node_modules')
+        : path.join(process.resourcesPath, 'node_modules');
+
+    console.log('[Terminal] Node modules path:', nodeModulesPath);
+
     terminalServerProcess = fork(terminalServerPath, [], {
         cwd: path.dirname(terminalServerPath),
-        env: { ...process.env },
+        env: {
+            ...process.env,
+            NODE_PATH: nodeModulesPath
+        },
         stdio: ['ignore', 'pipe', 'pipe', 'ipc']
     });
 
@@ -273,12 +285,12 @@ async function createWindow() {
     }
 }
 
-// GPU/Network 크래시 방지 - app.whenReady() 전에 설정해야 함
-app.disableHardwareAcceleration();
-app.commandLine.appendSwitch('disable-gpu');
-app.commandLine.appendSwitch('disable-gpu-compositing');
-app.commandLine.appendSwitch('disable-gpu-sandbox');
-app.commandLine.appendSwitch('disable-software-rasterizer');
+// GPU 설정 - WebGL/Three.js를 위해 GPU 활성화
+// app.disableHardwareAcceleration();  // WebGL 사용을 위해 비활성화
+// app.commandLine.appendSwitch('disable-gpu');  // WebGL 사용을 위해 비활성화
+app.commandLine.appendSwitch('ignore-gpu-blacklist');  // GPU 블랙리스트 무시
+app.commandLine.appendSwitch('enable-webgl');  // WebGL 강제 활성화
+app.commandLine.appendSwitch('enable-gpu-rasterization');  // GPU 래스터화 활성화
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors,NetworkService');
 
@@ -295,8 +307,10 @@ app.whenReady().then(() => {
         console.log('[AutoUpdater] Failed to load:', e);
     }
 
-    // Terminal WebSocket Server 자동 시작
-    startTerminalServer();
+    // Terminal WebSocket Server 자동 시작 (프로덕션에서만 - 개발모드는 concurrently에서 이미 실행)
+    if (app.isPackaged) {
+        startTerminalServer();
+    }
 
     createWindow();
 
@@ -358,6 +372,13 @@ app.whenReady().then(() => {
                     accelerator: 'Shift+CmdOrCtrl+N',
                     click: () => {
                         mainWindow?.webContents.send('menu:new-project');
+                    }
+                },
+                {
+                    label: 'Open Project...',
+                    accelerator: 'Shift+CmdOrCtrl+O',
+                    click: () => {
+                        mainWindow?.webContents.send('menu:open-project');
                     }
                 },
                 {
@@ -1072,6 +1093,548 @@ ipcMain.handle('app:open-webview-devtools', async (_, webContentsId?: number) =>
 });
 
 // ==========================================
+// 🌐 AI Browser Control System
+// ==========================================
+
+// 등록된 AI 브라우저 webContentsId
+let aiBrowserWebContentsId: number | null = null;
+
+// Claude 클라이언트
+const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY || '',
+});
+
+// 🔍 자동으로 webview 찾기 (fallback)
+function findWebviewWebContents(): number | null {
+    const allContents = webContents.getAllWebContents();
+    console.log('[AI Browser] 🔍 Finding webview... Total webContents:', allContents.length);
+
+    // 1차: webview 타입 찾기
+    for (const wc of allContents) {
+        const type = wc.getType();
+        const url = wc.getURL();
+        console.log(`[AI Browser]   - id:${wc.id} type:${type} url:${url.substring(0, 80)}`);
+
+        if (type === 'webview') {
+            console.log('[AI Browser] ✅ Found webview type:', wc.id);
+            return wc.id;
+        }
+    }
+
+    // 2차: 외부 URL (naver, google 등) 찾기
+    for (const wc of allContents) {
+        const url = wc.getURL();
+        // localhost가 아닌 외부 URL
+        if (url.startsWith('http') && !url.includes('localhost') && !url.includes('devtools')) {
+            console.log('[AI Browser] ✅ Found external URL:', wc.id, url);
+            return wc.id;
+        }
+    }
+
+    // 3차: 어떤 것이든 메인 윈도우가 아닌 것 찾기
+    for (const wc of allContents) {
+        const type = wc.getType();
+        if (type !== 'window' && type !== 'remote') {
+            console.log('[AI Browser] ✅ Found non-window content:', wc.id, type);
+            return wc.id;
+        }
+    }
+
+    console.log('[AI Browser] ❌ No suitable webview found');
+    return null;
+}
+
+// AI 브라우저 등록 (BrowserView 컴포넌트에서 호출)
+ipcMain.handle('ai-browser:register', async (_, webContentsId: number) => {
+    console.log('[AI Browser] 📡 Register called with webContentsId:', webContentsId);
+    aiBrowserWebContentsId = webContentsId;
+    console.log('[AI Browser] ✅ Registered! aiBrowserWebContentsId is now:', aiBrowserWebContentsId);
+    return { success: true, webContentsId };
+});
+
+// AI 브라우저 해제
+ipcMain.handle('ai-browser:unregister', async () => {
+    aiBrowserWebContentsId = null;
+    console.log('[AI Browser] Unregistered');
+    return { success: true };
+});
+
+// 현재 URL 가져오기
+ipcMain.handle('ai-browser:get-url', async () => {
+    if (!aiBrowserWebContentsId) return { success: false, error: 'No browser registered' };
+    try {
+        const wc = webContents.fromId(aiBrowserWebContentsId);
+        if (!wc) return { success: false, error: 'WebContents not found' };
+        return { success: true, url: wc.getURL() };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// URL로 이동
+ipcMain.handle('ai-browser:navigate', async (_, url: string) => {
+    if (!aiBrowserWebContentsId) return { success: false, error: 'No browser registered' };
+    try {
+        const wc = webContents.fromId(aiBrowserWebContentsId);
+        if (!wc) return { success: false, error: 'WebContents not found' };
+        await wc.loadURL(url);
+        return { success: true, message: `Navigated to ${url}` };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// JavaScript 실행 (클릭, 타이핑, 스크롤 등)
+ipcMain.handle('ai-browser:execute', async (_, script: string) => {
+    if (!aiBrowserWebContentsId) return { success: false, error: 'No browser registered' };
+    try {
+        const wc = webContents.fromId(aiBrowserWebContentsId);
+        if (!wc) return { success: false, error: 'WebContents not found' };
+        const result = await wc.executeJavaScript(script);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// 스크린샷 캡처
+ipcMain.handle('ai-browser:screenshot', async () => {
+    if (!aiBrowserWebContentsId) return { success: false, error: 'No browser registered' };
+    try {
+        const wc = webContents.fromId(aiBrowserWebContentsId);
+        if (!wc) return { success: false, error: 'WebContents not found' };
+        const image = await wc.capturePage();
+        const base64 = image.toJPEG(70).toString('base64');
+        return { success: true, screenshot: `data:image/jpeg;base64,${base64}` };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// 클릭 가능한 요소 추출
+ipcMain.handle('ai-browser:get-elements', async () => {
+    if (!aiBrowserWebContentsId) return { success: false, error: 'No browser registered' };
+    try {
+        const wc = webContents.fromId(aiBrowserWebContentsId);
+        if (!wc) return { success: false, error: 'WebContents not found' };
+
+        const elements = await wc.executeJavaScript(`
+            (function() {
+                const elements = [];
+                const selectors = ['a[href]', 'button', 'input', 'textarea', '[role="button"]', '[onclick]'];
+                selectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach((el, i) => {
+                        const text = el.innerText?.trim() || el.value?.trim() ||
+                                    el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
+                        if (text && text.length < 100) {
+                            const tag = el.tagName.toLowerCase();
+                            const id = el.id ? '#' + el.id : '';
+                            elements.push('[' + tag + id + '] "' + text.substring(0, 50) + '"');
+                        }
+                    });
+                });
+                return elements.slice(0, 30).join('\\n');
+            })()
+        `);
+        return { success: true, elements };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// AI 브라우저 Agent Loop 실행
+async function runAIBrowserAgentLoop(task: string, maxSteps: number = 10): Promise<any> {
+    const results: any[] = [];
+    const previousActions: string[] = [];
+    let step = 0;
+    let finalMessage = '';
+
+    while (step < maxSteps) {
+        step++;
+        console.log(`[AI Browser Agent] Step ${step}/${maxSteps}`);
+
+        // 1. webContents 찾기 (등록된 것 또는 자동 탐색)
+        let targetWebContentsId = aiBrowserWebContentsId;
+
+        if (!targetWebContentsId) {
+            console.log('[AI Browser Agent] No registered browser, trying auto-find...');
+            targetWebContentsId = findWebviewWebContents();
+
+            if (targetWebContentsId) {
+                aiBrowserWebContentsId = targetWebContentsId; // 자동으로 등록
+                console.log('[AI Browser Agent] ✅ Auto-registered webview:', targetWebContentsId);
+            }
+        }
+
+        if (!targetWebContentsId) {
+            finalMessage = '브라우저를 찾을 수 없습니다. 브라우저 패널을 열어주세요.';
+            break;
+        }
+
+        const wc = webContents.fromId(targetWebContentsId);
+        if (!wc) {
+            finalMessage = 'WebContents를 찾을 수 없습니다.';
+            aiBrowserWebContentsId = null; // 리셋
+            break;
+        }
+
+        const image = await wc.capturePage();
+        const base64 = image.toJPEG(70).toString('base64');
+        const currentUrl = wc.getURL();
+
+        // 2. 클릭 가능한 요소 추출
+        const elements = await wc.executeJavaScript(`
+            (function() {
+                const elements = [];
+                const selectors = ['a[href]', 'button', 'input', 'textarea', '[role="button"]'];
+                selectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach(el => {
+                        const text = el.innerText?.trim() || el.value?.trim() ||
+                                    el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
+                        if (text && text.length < 100) {
+                            elements.push('[' + el.tagName.toLowerCase() + '] "' + text.substring(0, 50) + '"');
+                        }
+                    });
+                });
+                return elements.slice(0, 30).join('\\n');
+            })()
+        `);
+
+        // 3. Claude Vision에게 다음 액션 요청
+        const previousActionsStr = previousActions.length > 0
+            ? '\n\n이전 수행한 액션들:\n' + previousActions.join('\n')
+            : '';
+
+        // 페이지 텍스트 컨텐츠도 추출 (검색 결과 읽기용)
+        const pageContent = await wc.executeJavaScript(`
+            (function() {
+                // 검색 결과, 리스트 아이템, 카드 등에서 텍스트 추출
+                const selectors = [
+                    '.search-result', '.result-item', '.list-item', '.card',
+                    '[class*="result"]', '[class*="item"]', '[class*="place"]',
+                    'article', 'li', '.title', 'h2', 'h3'
+                ];
+                const texts = [];
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => {
+                        const text = el.innerText?.trim();
+                        if (text && text.length > 10 && text.length < 500 && !texts.includes(text)) {
+                            texts.push(text.substring(0, 200));
+                        }
+                    });
+                });
+                return texts.slice(0, 10).join('\\n---\\n');
+            })()
+        `).catch(() => '');
+
+        const prompt = `당신은 웹 브라우저를 제어하는 AI 에이전트입니다.
+사용자의 목표를 달성하기 위해 브라우저에서 수행할 다음 액션을 결정하세요.
+
+## 사용 가능한 액션:
+1. navigate - URL로 이동 (url 필드 필요)
+2. click - 요소 클릭 (selector 또는 text 필드 필요)
+3. type - 텍스트 입력 (selector와 text 필드 필요)
+4. scroll - 스크롤 (direction: "up" 또는 "down")
+5. extract - 페이지에서 정보 추출 (정보 검색이 목표일 때 사용)
+6. done - 목표 달성 완료 (reason 필드에 **실제 결과 데이터**를 포함해야 함!)
+
+## 중요!!!
+- 검색, 맛집 찾기, 정보 조회 등의 목표일 경우:
+  - 반드시 extract 액션으로 결과를 먼저 읽어야 함
+  - done의 reason에 **구체적인 결과 데이터**(맛집 이름, 평점, 주소 등)를 포함해야 함
+  - "검색 완료"만 쓰면 안 됨!!! 실제 결과를 요약해서 전달해야 함
+
+## 응답 형식 (JSON만):
+{"type": "액션타입", "필드": "값", "reason": "이유"}
+
+## 페이지 텍스트 컨텐츠 (검색 결과 등):
+${pageContent || '(추출된 텍스트 없음)'}
+
+---
+## 사용자 목표: ${task}
+## 현재 URL: ${currentUrl}
+## 클릭 가능한 요소들:
+${elements}
+${previousActionsStr}
+
+위 스크린샷과 페이지 컨텐츠를 보고 목표를 달성하기 위한 다음 액션을 JSON으로 반환하세요.
+정보 검색 목표라면 반드시 실제 결과 데이터를 추출하여 done의 reason에 포함하세요!`;
+
+        try {
+            const response = await anthropic.messages.create({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1024,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+                        { type: 'text', text: prompt }
+                    ]
+                }]
+            });
+
+            const content = response.content[0];
+            if (content.type !== 'text') continue;
+
+            console.log('[AI Browser Agent] Claude response:', content.text);
+
+            const jsonMatch = content.text.match(/\{[\s\S]*?\}/);
+            if (!jsonMatch) continue;
+
+            const action = JSON.parse(jsonMatch[0]);
+
+            // 4. 액션 실행
+            let actionResult = { success: false, message: '' };
+
+            switch (action.type) {
+                case 'navigate':
+                    if (action.url) {
+                        await wc.loadURL(action.url);
+                        actionResult = { success: true, message: `${action.url}로 이동 완료` };
+                    }
+                    break;
+
+                case 'click':
+                    if (action.selector) {
+                        await wc.executeJavaScript(`document.querySelector('${action.selector}')?.click()`);
+                        actionResult = { success: true, message: `${action.selector} 클릭 완료` };
+                    } else if (action.text) {
+                        await wc.executeJavaScript(`
+                            (function() {
+                                const els = Array.from(document.querySelectorAll('a, button, [role="button"]'));
+                                for (const el of els) {
+                                    if (el.innerText?.includes('${action.text}')) { el.click(); return true; }
+                                }
+                                return false;
+                            })()
+                        `);
+                        actionResult = { success: true, message: `"${action.text}" 클릭 완료` };
+                    }
+                    break;
+
+                case 'type':
+                    if (action.text) {
+                        const selector = action.selector || 'input:focus, textarea:focus';
+                        await wc.executeJavaScript(`
+                            const el = document.querySelector('${selector}') || document.activeElement;
+                            if (el) { el.value = '${action.text}'; el.dispatchEvent(new Event('input', {bubbles: true})); }
+                        `);
+                        // Enter 키 처리
+                        if (action.text.includes('검색') || action.reason?.includes('검색')) {
+                            await wc.executeJavaScript(`
+                                const form = document.querySelector('form');
+                                if (form) form.submit();
+                                else document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+                            `);
+                        }
+                        actionResult = { success: true, message: `"${action.text}" 입력 완료` };
+                    }
+                    break;
+
+                case 'scroll':
+                    const amount = action.direction === 'down' ? 500 : -500;
+                    await wc.executeJavaScript(`window.scrollBy(0, ${amount})`);
+                    actionResult = { success: true, message: `${action.direction === 'down' ? '아래로' : '위로'} 스크롤 완료` };
+                    break;
+
+                case 'extract':
+                    // 페이지에서 상세 정보 추출
+                    const extractedData = await wc.executeJavaScript(`
+                        (function() {
+                            const results = [];
+
+                            // 네이버 플레이스 맛집 정보 추출
+                            document.querySelectorAll('[class*="place"], [class*="item"], .list_item, article').forEach(el => {
+                                const title = el.querySelector('a, .title, h3, h2, [class*="name"]')?.innerText?.trim();
+                                const rating = el.querySelector('[class*="rating"], [class*="star"], .score')?.innerText?.trim();
+                                const review = el.querySelector('[class*="review"], [class*="count"]')?.innerText?.trim();
+                                const category = el.querySelector('[class*="category"], [class*="type"]')?.innerText?.trim();
+                                const address = el.querySelector('[class*="addr"], [class*="location"]')?.innerText?.trim();
+
+                                if (title && title.length > 2) {
+                                    results.push({
+                                        이름: title.substring(0, 50),
+                                        평점: rating || '',
+                                        리뷰: review || '',
+                                        카테고리: category || '',
+                                        주소: address || ''
+                                    });
+                                }
+                            });
+
+                            // 일반 검색 결과 추출
+                            if (results.length === 0) {
+                                document.querySelectorAll('.search_result, .result, li, article').forEach(el => {
+                                    const text = el.innerText?.trim();
+                                    if (text && text.length > 20 && text.length < 300) {
+                                        results.push({ 내용: text.substring(0, 200) });
+                                    }
+                                });
+                            }
+
+                            return JSON.stringify(results.slice(0, 8), null, 2);
+                        })()
+                    `).catch(() => '[]');
+
+                    actionResult = {
+                        success: true,
+                        message: `정보 추출 완료:\n${extractedData}`
+                    };
+                    break;
+
+                case 'done':
+                    finalMessage = action.reason || '작업 완료';
+                    results.push({ step, action, result: { success: true, message: finalMessage } });
+                    return {
+                        success: true,
+                        task,
+                        steps: step,
+                        results,
+                        finalMessage,
+                        currentUrl: wc.getURL(),
+                        screenshot: `data:image/jpeg;base64,${base64}`
+                    };
+            }
+
+            previousActions.push(`Step ${step}: ${action.type} - ${actionResult.message}`);
+            results.push({ step, action, result: actionResult });
+
+            // 잠시 대기
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+        } catch (e: any) {
+            console.error('[AI Browser Agent] Error:', e.message);
+            finalMessage = `오류: ${e.message}`;
+            break;
+        }
+    }
+
+    // 최종 스크린샷
+    let finalScreenshot = '';
+    let finalUrl = '';
+    if (aiBrowserWebContentsId) {
+        const wc = webContents.fromId(aiBrowserWebContentsId);
+        if (wc) {
+            const image = await wc.capturePage();
+            finalScreenshot = `data:image/jpeg;base64,${image.toJPEG(70).toString('base64')}`;
+            finalUrl = wc.getURL();
+        }
+    }
+
+    return {
+        success: true,
+        task,
+        steps: step,
+        results,
+        finalMessage: finalMessage || `${step}단계 실행 완료`,
+        currentUrl: finalUrl,
+        screenshot: finalScreenshot
+    };
+}
+
+// AI 브라우저 Agent IPC
+ipcMain.handle('ai-browser:agent', async (_, task: string, maxSteps: number = 10) => {
+    return await runAIBrowserAgentLoop(task, maxSteps);
+});
+
+// HTTP 서버로 Next.js API에서 접근 가능하게 (포트 45678)
+let browserControlServer: http.Server | null = null;
+
+function startBrowserControlServer() {
+    if (browserControlServer) return;
+
+    browserControlServer = http.createServer(async (req, res) => {
+        // CORS 헤더
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Content-Type', 'application/json');
+
+        if (req.method === 'OPTIONS') {
+            res.writeHead(200);
+            res.end();
+            return;
+        }
+
+        if (req.method !== 'POST') {
+            res.writeHead(405);
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                const { task, maxSteps = 10 } = data;
+
+                if (!task) {
+                    res.writeHead(400);
+                    res.end(JSON.stringify({ error: 'task is required' }));
+                    return;
+                }
+
+                // 자동으로 webview 찾기
+                if (!aiBrowserWebContentsId) {
+                    console.log('[Browser Control Server] No browser registered, trying auto-find...');
+                    const foundId = findWebviewWebContents();
+                    if (foundId) {
+                        aiBrowserWebContentsId = foundId;
+                        console.log('[Browser Control Server] ✅ Auto-found webview:', foundId);
+                    }
+                }
+
+                // 브라우저가 없으면 자동으로 패널 열기 요청
+                if (!aiBrowserWebContentsId) {
+                    console.log('[Browser Control Server] 🚀 Requesting browser panel open...');
+
+                    // 렌더러에 브라우저 패널 열기 요청
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('ai-browser:open-panel');
+
+                        // 패널이 열리고 등록될 때까지 대기 (최대 5초)
+                        for (let i = 0; i < 10; i++) {
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            const foundId = findWebviewWebContents();
+                            if (foundId) {
+                                aiBrowserWebContentsId = foundId;
+                                console.log('[Browser Control Server] ✅ Browser panel opened and registered:', foundId);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!aiBrowserWebContentsId) {
+                    res.writeHead(400);
+                    res.end(JSON.stringify({ error: 'No AI browser registered. Open the browser panel first.' }));
+                    return;
+                }
+
+                const result = await runAIBrowserAgentLoop(task, maxSteps);
+                res.writeHead(200);
+                res.end(JSON.stringify(result));
+
+            } catch (e: any) {
+                console.error('[Browser Control Server] Error:', e.message);
+                res.writeHead(500);
+                res.end(JSON.stringify({ error: e.message }));
+            }
+        });
+    });
+
+    browserControlServer.listen(45678, '127.0.0.1', () => {
+        console.log('[AI Browser] Control server running on http://127.0.0.1:45678');
+    });
+}
+
+// 앱 준비 시 서버 시작
+app.whenReady().then(() => {
+    startBrowserControlServer();
+});
+
+// ==========================================
 // Mermaid Data Source Handlers
 // ==========================================
 
@@ -1386,11 +1949,101 @@ ipcMain.handle('git:current-branch', async (_, cwd: string) => {
 });
 
 // ============================================
-// Project Preview - HTML 파일 미리보기 팝업
+// Project Preview - HTML 파일 미리보기 팝업 (로컬 HTTP 서버로 서빙)
 // ============================================
+const previewServers = new Map<string, { server: http.Server; port: number }>();
+
+function findAvailablePort(startPort: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const server = http.createServer();
+        server.listen(startPort, () => {
+            const port = (server.address() as any).port;
+            server.close(() => resolve(port));
+        });
+        server.on('error', () => {
+            resolve(findAvailablePort(startPort + 1));
+        });
+    });
+}
+
+function createStaticServer(projectDir: string, port: number): http.Server {
+    const mimeTypes: Record<string, string> = {
+        '.html': 'text/html',
+        '.js': 'text/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+        '.glb': 'model/gltf-binary',
+        '.gltf': 'model/gltf+json',
+        '.obj': 'text/plain',
+        '.mtl': 'text/plain',
+        '.fbx': 'application/octet-stream',
+        '.hdr': 'application/octet-stream',
+        '.exr': 'application/octet-stream',
+    };
+
+    return http.createServer((req, res) => {
+        let filePath = path.join(projectDir, req.url === '/' ? 'index.html' : req.url || '');
+        filePath = decodeURIComponent(filePath);
+
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                if (err.code === 'ENOENT') {
+                    res.writeHead(404);
+                    res.end('File not found');
+                } else {
+                    res.writeHead(500);
+                    res.end('Server error');
+                }
+            } else {
+                res.writeHead(200, {
+                    'Content-Type': contentType,
+                    'Access-Control-Allow-Origin': '*',
+                });
+                res.end(data);
+            }
+        });
+    });
+}
+
 ipcMain.handle('project:preview', async (_, filePath: string, title?: string) => {
     try {
         console.log('[ProjectPreview] Opening:', filePath);
+
+        // 프로젝트 디렉토리 찾기
+        const projectDir = path.dirname(filePath);
+        const fileName = path.basename(filePath);
+
+        // 기존 서버가 있으면 재사용
+        let serverInfo = previewServers.get(projectDir);
+
+        if (!serverInfo) {
+            // 새 서버 시작
+            const port = await findAvailablePort(8080);
+            const server = createStaticServer(projectDir, port);
+
+            await new Promise<void>((resolve, reject) => {
+                server.listen(port, () => {
+                    console.log(`[ProjectPreview] Static server started on http://localhost:${port}`);
+                    resolve();
+                });
+                server.on('error', reject);
+            });
+
+            serverInfo = { server, port };
+            previewServers.set(projectDir, serverInfo);
+        }
+
+        const previewUrl = `http://localhost:${serverInfo.port}/${fileName}`;
+        console.log('[ProjectPreview] Loading URL:', previewUrl);
 
         const previewWindow = new BrowserWindow({
             width: 1024,
@@ -1399,14 +2052,24 @@ ipcMain.handle('project:preview', async (_, filePath: string, title?: string) =>
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
+                webgl: true,
+                webSecurity: false,  // CORS 완전 비활성화
+                allowRunningInsecureContent: true,
             },
             autoHideMenuBar: true,
         });
 
-        // Load the HTML file directly
-        await previewWindow.loadFile(filePath);
 
-        return { success: true };
+        // HTTP URL로 로드 (Three.js 등 WebGL 프로젝트에서 CORS 문제 해결)
+        await previewWindow.loadURL(previewUrl);
+
+        // 창이 닫히면 서버 정리
+        previewWindow.on('closed', () => {
+            // 다른 창에서도 사용 중일 수 있으므로 서버는 유지
+            console.log('[ProjectPreview] Window closed');
+        });
+
+        return { success: true, url: previewUrl };
     } catch (err: any) {
         console.error('[ProjectPreview] Failed:', err.message);
         return { success: false, error: err.message };
