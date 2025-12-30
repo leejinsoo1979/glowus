@@ -794,7 +794,7 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                     className={cn(
                       'flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
                       type === option.value
-                        ? 'border-blue-500 bg-blue-500/10'
+                        ? 'border-[color:var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.1)]'
                         : isDark
                         ? 'border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50'
                         : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'
@@ -803,13 +803,13 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                     <div className={cn(
                       'transition-colors',
                       type === option.value
-                        ? 'text-blue-400'
+                        ? 'text-[color:var(--accent-color)]'
                         : isDark ? 'text-zinc-400' : 'text-zinc-500'
                     )}>{option.icon}</div>
                     <span className={cn(
                       'text-[10px] font-medium transition-colors',
                       type === option.value
-                        ? 'text-blue-400'
+                        ? 'text-[color:var(--accent-color)]'
                         : isDark ? 'text-zinc-400' : 'text-zinc-600'
                     )}>
                       {option.label}
@@ -826,7 +826,7 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                     className={cn(
                       'flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
                       type === option.value
-                        ? 'border-blue-500 bg-blue-500/10'
+                        ? 'border-[color:var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.1)]'
                         : isDark
                         ? 'border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50'
                         : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'
@@ -835,13 +835,13 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                     <div className={cn(
                       'transition-colors',
                       type === option.value
-                        ? 'text-blue-400'
+                        ? 'text-[color:var(--accent-color)]'
                         : isDark ? 'text-zinc-400' : 'text-zinc-500'
                     )}>{option.icon}</div>
                     <span className={cn(
                       'text-[10px] font-medium transition-colors',
                       type === option.value
-                        ? 'text-blue-400'
+                        ? 'text-[color:var(--accent-color)]'
                         : isDark ? 'text-zinc-400' : 'text-zinc-600'
                     )}>
                       {option.label}
