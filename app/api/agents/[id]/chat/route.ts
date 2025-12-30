@@ -14,6 +14,25 @@ import {
   processAgentConversation,
 } from '@/lib/agent/work-memory'
 import { getLLMConfigForAgent } from '@/lib/llm/user-keys'
+// 🧠 JARVIS Long-term Memory (RAG)
+import {
+  buildJarvisContext,
+  saveConversationMessage,
+  analyzeAndLearn,
+} from '@/lib/memory/jarvis-memory-manager'
+// 🏢 Company Context (기업 정보)
+import { loadAndFormatCompanyContext } from '@/lib/context/company-context'
+// 📚 Knowledge Base (지식베이스 RAG)
+import {
+  buildKnowledgeContext,
+  formatKnowledgeForPrompt,
+} from '@/lib/memory/agent-knowledge-service'
+// 🧠 Neural Map Context Pack (Brain State)
+import {
+  buildContextPackForChat,
+  wrapContextPackForSystemPrompt,
+  extractKeywordsFromMessage,
+} from '@/lib/neural-map/context-pack-service'
 
 // 이모티콘 키워드 매칭 (keywords 필드 또는 name으로 매칭)
 async function findEmoticonForResponse(
@@ -144,6 +163,21 @@ function shouldUseAutonomousAgent(message: string): boolean {
 function shouldUseSuperAgent(message: string, capabilities: string[] = []): boolean {
   // 🔥 핵심: 개발/생성/구현 관련 키워드가 있으면 무조건 Tool Calling
   const MUST_USE_TOOLS = [
+    // 🏢 비즈니스/업무 관련 (실제 DB 조회/수정)
+    /직원/i, /사원/i, /팀원/i, /담당자/i,
+    /employee/i, /staff/i, /member/i,
+    /거래/i, /매출/i, /비용/i, /지출/i, /수입/i, /재무/i, /회계/i,
+    /transaction/i, /revenue/i, /expense/i, /finance/i,
+    /프로젝트/i, /project/i,
+    /태스크/i, /할\s*일/i, /업무/i, /task/i, /todo/i,
+    /일정/i, /캘린더/i, /스케줄/i, /calendar/i, /schedule/i, /event/i,
+    /회사\s*정보/i, /기업\s*정보/i, /company/i,
+    /통계/i, /대시보드/i, /stats/i, /dashboard/i,
+    /부서/i, /팀/i, /조직/i, /department/i, /team/i,
+    /근태/i, /출근/i, /퇴근/i, /휴가/i, /attendance/i,
+    // 조회/검색 동사
+    /조회/i, /찾아/i, /알려/i, /보여/i, /확인/i, /목록/i,
+    /query/i, /show/i, /list/i, /get/i, /fetch/i,
     // 생성/개발 키워드 (질문형도 포함!)
     /개발/i, /구현/i, /만들/i, /생성/i, /작성/i, /추가/i,
     /그려/i, /그리/i, /디자인/i, /설계/i,
@@ -190,6 +224,16 @@ function shouldUseSuperAgent(message: string, capabilities: string[] = []): bool
     // UI/UX
     /UI/i, /UX/i, /인터페이스/i, /레이아웃/i, /스타일/i,
     /interface/i, /layout/i, /style/i, /css/i,
+    // 🌐 브라우저 자동화 (실제 웹 브라우저 제어)
+    /네이버/i, /구글/i, /유튜브/i, /youtube/i, /google/i, /naver/i,
+    /브라우저/i, /browser/i,
+    /열어/i, /열려/i, /가줘/i, /가서/i, /접속/i,
+    /open/i, /visit/i, /go\s*to/i, /navigate/i,
+    /스크롤/i, /클릭/i, /scroll/i, /click/i,
+    /스크린샷/i, /screenshot/i, /캡처/i, /capture/i,
+    /웹\s*사이트/i, /website/i, /사이트/i, /site/i,
+    /인스타/i, /instagram/i, /페이스북/i, /facebook/i, /트위터/i, /twitter/i,
+    /쇼핑/i, /쿠팡/i, /배민/i, /당근/i,
   ]
 
   // 🔥 하나라도 매칭되면 SuperAgent 모드
@@ -389,6 +433,112 @@ export async function POST(
       // 컨텍스트 로드 실패해도 대화는 계속
     }
 
+    // ========================================
+    // 🧠 JARVIS Long-term Memory (RAG) 로드
+    // 사용자별 대화 기억 + 관련 과거 대화 검색
+    // ========================================
+    let jarvisContextPrompt = ''
+    try {
+      const jarvisContext = await buildJarvisContext(agentId, user.id, message, {
+        recentLimit: 10,  // 최근 10개 대화
+        ragLimit: 5,      // RAG 검색 5개
+        includeEpisodes: true,
+      })
+
+      jarvisContextPrompt = jarvisContext.formattedContext
+
+      // 사용자 프로필 정보가 있으면 로그
+      if (jarvisContext.userProfile) {
+        console.log(`[JarvisMemory] User: ${jarvisContext.userProfile.displayName || 'Unknown'}`)
+        console.log(`[JarvisMemory] Relationship: ${jarvisContext.userProfile.relationship}`)
+        console.log(`[JarvisMemory] Total conversations: ${jarvisContext.userProfile.totalConversations}`)
+      }
+
+      console.log(`[JarvisMemory] RAG context loaded: ${jarvisContextPrompt.length} chars`)
+      console.log(`[JarvisMemory] Relevant memories: ${jarvisContext.relevantMemories.length}`)
+      console.log(`[JarvisMemory] Relevant episodes: ${jarvisContext.relevantEpisodes.length}`)
+    } catch (jarvisError) {
+      console.error('[JarvisMemory] Context load error:', jarvisError)
+      // RAG 실패해도 대화는 계속
+    }
+
+    // ========================================
+    // 🏢 Company Context (기업 정보) 로드
+    // 에이전트 소속 회사 정보
+    // ========================================
+    let companyContextPrompt = ''
+    try {
+      companyContextPrompt = await loadAndFormatCompanyContext(agentId)
+      if (companyContextPrompt) {
+        console.log(`[CompanyContext] Company context loaded: ${companyContextPrompt.length} chars`)
+      }
+    } catch (companyError) {
+      console.error('[CompanyContext] Context load error:', companyError)
+      // 회사 정보 로드 실패해도 대화는 계속
+    }
+
+    // ========================================
+    // 📚 Knowledge Base (지식베이스 RAG) 로드
+    // 사용자가 업로드한 문서에서 관련 지식 검색
+    // ========================================
+    let knowledgeContextPrompt = ''
+    let knowledgeSources: Array<{ title: string; similarity: number }> = []
+    try {
+      const { context: knowledgeContext, sources } = await buildKnowledgeContext(
+        agentId,
+        message,
+        {
+          maxResults: 5,      // 최대 5개 문서 청크
+          maxTokens: 3000,    // 최대 3000 토큰
+        }
+      )
+
+      if (knowledgeContext) {
+        knowledgeContextPrompt = formatKnowledgeForPrompt(knowledgeContext, sources)
+        knowledgeSources = sources
+        console.log(`[KnowledgeBase] Context loaded: ${knowledgeContextPrompt.length} chars`)
+        console.log(`[KnowledgeBase] Sources: ${sources.map(s => s.title).join(', ')}`)
+      }
+    } catch (knowledgeError) {
+      console.error('[KnowledgeBase] Context load error:', knowledgeError)
+      // 지식베이스 로드 실패해도 대화는 계속
+    }
+
+    // ========================================
+    // 🧠 Neural Map Context Pack (Brain State) 로드
+    // 사용자의 뇌 상태 (규칙, 결정, 플레이북)
+    // ========================================
+    let brainStatePrompt = ''
+    try {
+      // 메시지에서 키워드 추출
+      const messageKeywords = extractKeywordsFromMessage(message)
+
+      // Context Pack 생성
+      const contextPackResult = await buildContextPackForChat({
+        userId: user.id,
+        keywords: messageKeywords.length > 0 ? messageKeywords : undefined,
+        stage: 'implementing',  // 기본값
+        maxNeurons: 25,  // 토큰 절약을 위해 제한
+      })
+
+      if (contextPackResult.success && contextPackResult.formattedPrompt) {
+        brainStatePrompt = wrapContextPackForSystemPrompt(contextPackResult.formattedPrompt)
+        console.log(`[BrainState] Context Pack loaded: ${contextPackResult.totalNeurons} neurons`)
+      }
+    } catch (brainStateError) {
+      console.error('[BrainState] Context Pack load error:', brainStateError)
+      // Brain State 로드 실패해도 대화는 계속
+    }
+
+    // 전체 컨텍스트 병합 (회사 정보 → 지식베이스 → 뇌 상태 → 업무 컨텍스트 → 대화 기억)
+    const fullContextPrompt = [
+      companyContextPrompt,
+      knowledgeContextPrompt,  // 📚 지식베이스 추가!
+      brainStatePrompt,        // 🧠 뇌 상태 (Context Pack) 추가!
+      workContextPrompt,
+      jarvisContextPrompt,
+    ].filter(Boolean).join('\n\n---\n\n')
+
     // 🔥 사용자의 LLM API 키 가져오기
     let userApiKey: string | undefined
     try {
@@ -455,7 +605,10 @@ export async function POST(
             projectPath: body.projectPath || null,
             userName,
             userRole: userProfile?.job_title,
-            workContext: workContextPrompt,
+            workContext: fullContextPrompt,  // 🧠 RAG 컨텍스트 포함
+            // 🔥 업무 실행을 위한 컨텍스트
+            companyId: agent.company_id || null,
+            userId: user.id,
           }
         )
 
@@ -478,7 +631,7 @@ export async function POST(
             participantNames: [userName],
             userName,
             userRole: userProfile?.job_title,
-            workContext: workContextPrompt,
+            workContext: fullContextPrompt,  // 🧠 RAG 컨텍스트 포함
           },
           validImages
         )
@@ -516,7 +669,7 @@ export async function POST(
               participantNames: [userProfile?.name || '사용자'],
               userName: userProfile?.name || user.email?.split('@')[0] || '사용자',
               userRole: userProfile?.job_title,
-              workContext: workContextPrompt,
+              workContext: fullContextPrompt,  // 🧠 RAG 컨텍스트 포함
             },
             validImages
           )
@@ -551,7 +704,7 @@ export async function POST(
               participantNames: [userProfile?.name || '사용자'],
               userName: userProfile?.name || user.email?.split('@')[0] || '사용자',
               userRole: userProfile?.job_title,
-              workContext: workContextPrompt,
+              workContext: fullContextPrompt,  // 🧠 RAG 컨텍스트 포함
             },
             validImages
           )
@@ -602,10 +755,41 @@ export async function POST(
       topicDomain: 'general',
     }).catch(err => console.error('[AgentOS] Process error:', err))
 
+    // ========================================
+    // 🧠 JARVIS Long-term Memory 저장 (비동기)
+    // 사용자별 대화 기록 + 자동 학습
+    // ========================================
+    Promise.all([
+      // 사용자 메시지 저장
+      saveConversationMessage({
+        agentId,
+        userId: user.id,
+        role: 'user',
+        content: message,
+        importance: 6,
+        metadata: { hasImages: validImages.length > 0 },
+      }),
+      // 에이전트 응답 저장
+      saveConversationMessage({
+        agentId,
+        userId: user.id,
+        role: 'assistant',
+        content: response,
+        importance: 5,
+        metadata: {
+          toolsUsed,
+          superAgentMode: useSuperAgent,
+          autonomousMode: useAutonomousAgent,
+        },
+      }),
+      // 대화에서 자동 학습 (사용자 정보 추출)
+      analyzeAndLearn(agentId, user.id, message, response),
+    ]).catch(err => console.error('[JarvisMemory] Save error:', err))
+
     // 이모티콘 매칭
     const gifUrl = await findEmoticonForResponse(adminClient, user.id, response)
 
-    // 🔥 에이전트 응답: 액션 포함
+    // 🔥 에이전트 응답: 액션 + 지식 출처 포함
     return NextResponse.json({
       response,
       gif_url: gifUrl,
@@ -613,6 +797,8 @@ export async function POST(
       toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
       superAgentMode: useSuperAgent,
       autonomousMode: useAutonomousAgent,
+      // 📚 지식베이스 출처 (어떤 문서에서 정보를 가져왔는지)
+      knowledgeSources: knowledgeSources.length > 0 ? knowledgeSources : undefined,
     })
   } catch (error) {
     console.error('Agent chat error:', error)

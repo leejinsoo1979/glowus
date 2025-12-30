@@ -29,6 +29,11 @@ export const NODE_COLORS: Record<NodeType, string> = {
   folder: '#6B7280',  // 그레이
   file: '#9CA3AF',  // 라이트그레이
   agent: '#8B5CF6',  // 퍼플 (스킬)
+  // === Brain Core Types (NEW) ===
+  rule: '#F97316',       // 오렌지 (규칙 - Identity Core)
+  preference: '#EC4899', // 핑크 (선호)
+  playbook: '#84CC16',   // 라임 (플레이북 - Procedural)
+  identity: '#A855F7',   // 바이올렛 (정체성 - 가치/금기)
 }
 
 // ============================================
