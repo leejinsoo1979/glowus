@@ -587,7 +587,7 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                         ? status === 'done'
                           ? 'bg-green-500/20 text-green-400 border-2 border-green-500'
                           : status === 'doing'
-                          ? 'bg-blue-500/20 text-blue-400 border-2 border-blue-500'
+                          ? 'bg-[rgba(var(--accent-color-rgb),0.2)] text-[color:var(--accent-color)] border-2 border-[color:var(--accent-color)]'
                           : status === 'blocked'
                           ? 'bg-red-500/20 text-red-400 border-2 border-red-500'
                           : 'bg-zinc-500/20 text-zinc-400 border-2 border-zinc-500'
@@ -675,7 +675,7 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                     'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all',
                     identityCategory === cat
                       ? cat === 'value'
-                        ? 'bg-blue-500/20 text-blue-400 border-2 border-blue-500'
+                        ? 'bg-[rgba(var(--accent-color-rgb),0.2)] text-[color:var(--accent-color)] border-2 border-[color:var(--accent-color)]'
                         : cat === 'taboo'
                         ? 'bg-red-500/20 text-red-400 border-2 border-red-500'
                         : 'bg-purple-500/20 text-purple-400 border-2 border-purple-500'
@@ -870,10 +870,10 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                   '핵심 문장을 입력하세요'
                 }
                 className={cn(
-                  'no-focus-ring w-full px-3 py-2.5 rounded-lg border-2 outline-none transition-colors text-sm font-medium',
+                  'no-focus-ring w-full px-3 py-2.5 rounded-lg border-2 outline-none transition-colors text-sm font-medium focus:border-[color:var(--accent-color)]',
                   isDark
-                    ? 'bg-zinc-800 border-zinc-600 text-zinc-100 focus:border-blue-500'
-                    : 'bg-white border-zinc-300 text-zinc-900 focus:border-blue-500'
+                    ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                    : 'bg-white border-zinc-300 text-zinc-900'
                 )}
               />
             </div>
@@ -948,7 +948,8 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                   max={100}
                   value={confidence}
                   onChange={(e) => setConfidence(Number(e.target.value))}
-                  className="w-full accent-blue-500 mt-1"
+                  className="w-full mt-1"
+                  style={{ accentColor: 'var(--accent-color)' }}
                 />
               </div>
             </div>
@@ -1006,7 +1007,7 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                       <div className="flex items-center gap-2">
                         <span className={cn(
                           'px-1.5 py-0.5 rounded text-xs font-medium',
-                          isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'
+                          'bg-[rgba(var(--accent-color-rgb),0.2)] text-[color:var(--accent-color)]'
                         )}>
                           {SYNAPSE_TYPE_OPTIONS.find(s => s.value === rel.edgeType)?.label || rel.edgeType}
                         </span>
@@ -1207,7 +1208,8 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
                       max={10}
                       value={importance}
                       onChange={(e) => setImportance(Number(e.target.value))}
-                      className="w-full accent-blue-500"
+                      className="w-full"
+                      style={{ accentColor: 'var(--accent-color)' }}
                     />
                   </div>
                 </div>
@@ -1237,8 +1239,8 @@ export function NodeEditorModal({ mapId, onClose, editingNode }: NodeEditorModal
               onClick={handleSubmit}
               disabled={!statement.trim() || isSubmitting}
               className={cn(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2',
-                'bg-blue-600 hover:bg-blue-500 text-white',
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 text-white',
+                'bg-[color:var(--accent-color)] hover:bg-[color:var(--accent-color-hover)]',
                 (!statement.trim() || isSubmitting) && 'opacity-50 cursor-not-allowed'
               )}
             >
