@@ -286,10 +286,52 @@ const INITIAL_TOOLS_DATA: ToolItem[] = [
         iconBg: 'bg-emerald-100 dark:bg-emerald-900/20',
         category: '지원사업',
         image: '/thumbnails/work.png'
+    },
+    // === Works 스킬앱들 ===
+    {
+        id: 'ai-docs',
+        title: 'AI 문서',
+        description: 'AI가 문서를 자동으로 작성하고 편집해주는 스킬앱',
+        icon: FileText,
+        iconColor: 'text-emerald-500',
+        iconBg: 'bg-emerald-100 dark:bg-emerald-900/20',
+        category: '업무',
+        image: '/thumbnails/writing.png'
+    },
+    {
+        id: 'ai-slides',
+        title: 'AI 슬라이드',
+        description: 'AI가 프레젠테이션 슬라이드를 자동으로 생성해주는 스킬앱',
+        icon: MonitorPlay,
+        iconColor: 'text-orange-500',
+        iconBg: 'bg-orange-100 dark:bg-orange-900/20',
+        category: '업무',
+        image: '/thumbnails/ppt.png'
+    },
+    {
+        id: 'ai-sheet',
+        title: 'AI 시트',
+        description: 'AI가 스프레드시트 데이터를 분석하고 정리해주는 스킬앱',
+        icon: FileStack,
+        iconColor: 'text-green-500',
+        iconBg: 'bg-green-100 dark:bg-green-900/20',
+        category: '업무',
+        image: '/thumbnails/work.png'
     }
 ]
 
 const CATEGORIES = ["전체", "즐겨찾기", "취업", "부업", "학업", "업무", "지원사업"]
+
+// 구현된 앱 ID 목록
+const IMPLEMENTED_APPS = [
+    'ai-summary-perfect',
+    'image-gen',
+    'blog',
+    'ai-slides',
+    'government-programs',
+    'ai-docs',
+    'ai-sheet'
+]
 
 export default function AppsPage() {
     const router = useRouter()
@@ -297,6 +339,7 @@ export default function AppsPage() {
     const [activeFilter, setActiveFilter] = useState("전체")
     const [editingTool, setEditingTool] = useState<ToolItem | null>(null)
     const [showNewProjectModal, setShowNewProjectModal] = useState(false)
+    const [comingSoonApp, setComingSoonApp] = useState<string | null>(null)
 
     const filteredTools = tools.filter(tool => {
         if (activeFilter === "전체") return true
@@ -363,7 +406,12 @@ export default function AppsPage() {
                         </motion.div>
 
                         {filteredTools.map((tool) => (
-                            <ToolCard key={tool.id} tool={tool} onEdit={() => setEditingTool(tool)} />
+                            <ToolCard
+                                key={tool.id}
+                                tool={tool}
+                                onEdit={() => setEditingTool(tool)}
+                                onComingSoon={() => setComingSoonApp(tool.title)}
+                            />
                         ))}
                     </div>
 
@@ -387,20 +435,35 @@ export default function AppsPage() {
                             />
                         )}
                     </AnimatePresence>
+
+                    {/* Coming Soon Modal */}
+                    <AnimatePresence>
+                        {comingSoonApp && (
+                            <ComingSoonModal
+                                appName={comingSoonApp}
+                                onClose={() => setComingSoonApp(null)}
+                            />
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
         </div>
     )
 }
 
-function ToolCard({ tool, onEdit }: { tool: ToolItem, onEdit: () => void }) {
+function ToolCard({ tool, onEdit, onComingSoon }: { tool: ToolItem, onEdit: () => void, onComingSoon: () => void }) {
     const Icon = tool.icon
     const [isMenuOpen, setIsMenuOpen] = useState(false)
+    const isImplemented = IMPLEMENTED_APPS.includes(tool.id)
 
     return (
         <motion.div
             whileHover={{ y: -4 }}
             onClick={() => {
+                if (!isImplemented) {
+                    onComingSoon()
+                    return
+                }
                 if (tool.id === 'ai-summary-perfect') {
                     window.location.href = '/dashboard-group/apps/ai-summary'
                 } else if (tool.id === 'image-gen') {
@@ -411,6 +474,10 @@ function ToolCard({ tool, onEdit }: { tool: ToolItem, onEdit: () => void }) {
                     window.location.href = '/dashboard-group/apps/ai-slides'
                 } else if (tool.id === 'government-programs') {
                     window.location.href = '/dashboard-group/apps/government-programs'
+                } else if (tool.id === 'ai-docs') {
+                    window.location.href = '/dashboard-group/apps/ai-docs'
+                } else if (tool.id === 'ai-sheet') {
+                    window.location.href = '/dashboard-group/apps/ai-sheet'
                 }
             }}
             onMouseLeave={() => setIsMenuOpen(false)}
@@ -753,6 +820,37 @@ function EditToolModal({ tool, onClose, onSave }: { tool: ToolItem, onClose: () 
                         저장하기
                     </button>
                 </div>
+            </motion.div>
+        </div>
+    )
+}
+
+function ComingSoonModal({ appName, onClose }: { appName: string, onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/50"
+                onClick={onClose}
+            />
+
+            <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="relative w-full max-w-xs bg-zinc-800 rounded-xl p-6 text-center"
+            >
+                <p className="text-white text-base mb-4">
+                    <span className="text-accent font-medium">{appName}</span> 준비중
+                </p>
+                <button
+                    onClick={onClose}
+                    className="px-6 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+                >
+                    닫기
+                </button>
             </motion.div>
         </div>
     )
