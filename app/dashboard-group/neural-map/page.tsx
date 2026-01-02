@@ -267,10 +267,12 @@ export default function NeuralMapPage() {
   const setMapId = useNeuralMapStore((s) => s.setMapId)
   const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
 
-  // URL 파라미터에서 mapId, tab 처리
+  // URL 파라미터에서 mapId, tab, newProject 처리
   const searchParams = useSearchParams()
   const urlMapId = searchParams.get('mapId')
   const urlTab = searchParams.get('tab')
+  const urlNewProject = searchParams.get('newProject')
+  const urlProjectName = searchParams.get('name')
 
   // URL에서 mapId가 있으면 store에 설정
   useEffect(() => {
@@ -286,6 +288,34 @@ export default function NeuralMapPage() {
       setActiveTab('browser')
     }
   }, [urlTab, activeTab, setActiveTab])
+
+  // 🆕 새 프로젝트로 시작 (Apps 페이지에서 진입)
+  const newProjectInitializedRef = useRef(false)
+  useEffect(() => {
+    if (urlNewProject === 'true' && urlProjectName && !newProjectInitializedRef.current) {
+      newProjectInitializedRef.current = true
+      console.log('[NeuralMap] 🆕 Starting new project:', urlProjectName)
+
+      // 기존 데이터 클리어
+      clearGraph()
+      setFiles([])
+      setMapId(null)
+      setProjectPath(null)
+      clearLinkedProject()
+
+      // 새 프로젝트 이름으로 스토어 설정 (linkedProjectName만 설정, ID는 저장 시 생성)
+      useNeuralMapStore.setState({
+        linkedProjectName: urlProjectName,
+        linkedProjectId: null
+      })
+
+      // URL 파라미터 제거 (깔끔한 URL 유지)
+      if (typeof window !== 'undefined') {
+        const newUrl = window.location.pathname
+        window.history.replaceState({}, '', newUrl)
+      }
+    }
+  }, [urlNewProject, urlProjectName, clearGraph, setFiles, setMapId, setProjectPath, clearLinkedProject])
 
   // MCP Bridge for Claude Code CLI control
   const { isConnected: mcpConnected } = useMcpBridge()

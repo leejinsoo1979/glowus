@@ -296,6 +296,7 @@ export default function AppsPage() {
     const [tools, setTools] = useState(INITIAL_TOOLS_DATA)
     const [activeFilter, setActiveFilter] = useState("전체")
     const [editingTool, setEditingTool] = useState<ToolItem | null>(null)
+    const [showNewProjectModal, setShowNewProjectModal] = useState(false)
 
     const filteredTools = tools.filter(tool => {
         if (activeFilter === "전체") return true
@@ -306,6 +307,12 @@ export default function AppsPage() {
     const handleSaveTool = (updatedTool: ToolItem) => {
         setTools(prev => prev.map(t => t.id === updatedTool.id ? updatedTool : t))
         setEditingTool(null)
+    }
+
+    const handleCreateProject = (projectName: string) => {
+        setShowNewProjectModal(false)
+        // Neural Map으로 이동 (빈 프로젝트, 프로젝트명 전달)
+        router.push(`/dashboard-group/neural-map?newProject=true&name=${encodeURIComponent(projectName)}`)
     }
 
     return (
@@ -339,7 +346,7 @@ export default function AppsPage() {
                         {/* Create App Card */}
                         <motion.div
                             whileHover={{ y: -4 }}
-                            onClick={() => router.push('/agent-builder/new')}
+                            onClick={() => setShowNewProjectModal(true)}
                             className="group relative bg-accent/5 border-2 border-dashed border-accent hover:bg-accent/10 rounded-xl transition-all cursor-pointer h-full min-h-[160px]"
                         >
                             <div className="absolute inset-0 flex items-center justify-center pb-6">
@@ -350,7 +357,7 @@ export default function AppsPage() {
 
                             <div className="absolute bottom-5 left-0 right-0 px-4 text-center">
                                 <p className="text-[11px] text-zinc-500 font-medium group-hover:text-accent transition-colors">
-                                    원하는 기능을 에이전트 빌더로 직접 구현해보세요
+                                    새 프로젝트를 시작하고 Neural Map으로 구현해보세요
                                 </p>
                             </div>
                         </motion.div>
@@ -367,6 +374,16 @@ export default function AppsPage() {
                                 tool={editingTool}
                                 onClose={() => setEditingTool(null)}
                                 onSave={handleSaveTool}
+                            />
+                        )}
+                    </AnimatePresence>
+
+                    {/* New Project Modal */}
+                    <AnimatePresence>
+                        {showNewProjectModal && (
+                            <NewProjectModal
+                                onClose={() => setShowNewProjectModal(false)}
+                                onCreate={handleCreateProject}
                             />
                         )}
                     </AnimatePresence>
@@ -491,6 +508,98 @@ function ToolCard({ tool, onEdit }: { tool: ToolItem, onEdit: () => void }) {
                 </div>
             </div>
         </motion.div>
+    )
+}
+
+function NewProjectModal({ onClose, onCreate }: { onClose: () => void, onCreate: (name: string) => void }) {
+    const [projectName, setProjectName] = useState('')
+    const inputRef = useRef<HTMLInputElement>(null)
+
+    // 모달 열리면 입력창에 포커스
+    useState(() => {
+        setTimeout(() => inputRef.current?.focus(), 100)
+    })
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (projectName.trim()) {
+            onCreate(projectName.trim())
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={onClose}
+            />
+
+            <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="relative w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                            <Plus className="w-5 h-5 text-accent" />
+                        </div>
+                        <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">새 프로젝트</h3>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 -mr-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit}>
+                    <div className="p-6 space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                                프로젝트 이름
+                            </label>
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={projectName}
+                                onChange={(e) => setProjectName(e.target.value)}
+                                placeholder="예: 나만의 AI 서비스"
+                                autoFocus
+                                className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-base"
+                            />
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                Neural Map에서 빈 프로젝트로 시작합니다
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/50 flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-5 py-2.5 text-sm font-semibold text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                        >
+                            취소
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={!projectName.trim()}
+                            className="px-5 py-2.5 text-sm font-semibold text-white bg-accent hover:bg-accent/90 rounded-xl shadow-lg shadow-accent/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            프로젝트 시작
+                        </button>
+                    </div>
+                </form>
+            </motion.div>
+        </div>
     )
 }
 
