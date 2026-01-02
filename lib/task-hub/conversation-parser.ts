@@ -87,13 +87,13 @@ const TASK_VERB_PATTERNS = [
 // ============================================
 // 마감일 패턴
 // ============================================
-const DUE_DATE_PATTERNS: Array<{ pattern: RegExp; getDays: () => number }> = [
+const DUE_DATE_PATTERNS: Array<{ pattern: RegExp; getDays: (match?: RegExpMatchArray | null) => number }> = [
   { pattern: /오늘|today/i, getDays: () => 0 },
   { pattern: /내일|tomorrow/i, getDays: () => 1 },
   { pattern: /모레|day after tomorrow/i, getDays: () => 2 },
   { pattern: /이번\s*주|this week/i, getDays: () => 7 - new Date().getDay() },
   { pattern: /다음\s*주|next week/i, getDays: () => 7 + (7 - new Date().getDay()) },
-  { pattern: /(\d+)\s*일\s*(?:안에|이내|내로)/i, getDays: (match) => parseInt(match[1]) },
+  { pattern: /(\d+)\s*일\s*(?:안에|이내|내로)/i, getDays: (match) => match ? parseInt(match[1]) : 0 },
   { pattern: /(\d+)\s*(?:시간|hours?)/i, getDays: () => 0 },  // 같은 날
 ]
 

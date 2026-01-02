@@ -278,21 +278,21 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-white">조직 구성</h2>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white">조직 구성</h2>
                 <p className="text-sm text-zinc-500 mt-1">프로젝트 팀원 및 AI 에이전트 관리</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Team Members */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                  <h3 className="font-semibold text-white flex items-center gap-2">
-                    <Users className="w-5 h-5 text-blue-400" />
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+                  <h3 className="font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-500 dark:text-blue-400" />
                     팀원
                     <span className="text-sm text-zinc-500">({projectMembers.length})</span>
                   </h3>
-                  <Button size="sm" onClick={() => setIsAddMemberOpen(true)}>
+                  <Button size="sm" onClick={() => setIsAddMemberOpen(true)} className="bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200">
                     <UserPlus className="w-4 h-4 mr-2" />
                     추가
                   </Button>
@@ -300,7 +300,7 @@ export default function ProjectDetailPage() {
                 <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
                   {projectMembers.length === 0 ? (
                     <div className="text-center text-zinc-500 py-12">
-                      <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
                       <p>투입된 팀원이 없습니다</p>
                       <Button
                         variant="outline"
@@ -318,32 +318,31 @@ export default function ProjectDetailPage() {
                         key={member.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl group hover:bg-zinc-800 transition-colors"
+                        className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl group hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
                       >
                         <div className="flex items-center gap-4">
                           <img
                             src={member.user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user?.name}`}
                             alt={member.user?.name}
-                            className="w-12 h-12 rounded-full"
+                            className="w-12 h-12 rounded-full bg-white dark:bg-zinc-700 shadow-sm"
                           />
                           <div>
-                            <p className="text-white font-medium">{member.user?.name}</p>
+                            <p className="text-zinc-900 dark:text-white font-medium">{member.user?.name}</p>
                             <p className="text-sm text-zinc-500">{member.user?.email}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <span
-                            className={`text-xs px-3 py-1 rounded-full ${
-                              member.role === "lead"
-                                ? "bg-amber-500/20 text-amber-400"
-                                : "bg-zinc-700 text-zinc-400"
-                            }`}
+                            className={`text-xs px-3 py-1 rounded-full ${member.role === "lead"
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
+                              : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400"
+                              }`}
                           >
                             {member.role === "lead" ? "리드" : "멤버"}
                           </span>
                           <button
                             onClick={() => removeMember(member.id)}
-                            className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-zinc-700 rounded-lg"
+                            className="text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -355,14 +354,14 @@ export default function ProjectDetailPage() {
               </div>
 
               {/* AI Agents */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                  <h3 className="font-semibold text-white flex items-center gap-2">
-                    <Bot className="w-5 h-5 text-purple-400" />
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+                  <h3 className="font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-purple-500 dark:text-purple-400" />
                     AI 에이전트
                     <span className="text-sm text-zinc-500">({projectAgents.length})</span>
                   </h3>
-                  <Button size="sm" onClick={() => setIsAddAgentOpen(true)}>
+                  <Button size="sm" onClick={() => setIsAddAgentOpen(true)} className="bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200">
                     <Plus className="w-4 h-4 mr-2" />
                     추가
                   </Button>
@@ -370,7 +369,7 @@ export default function ProjectDetailPage() {
                 <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
                   {projectAgents.length === 0 ? (
                     <div className="text-center text-zinc-500 py-12">
-                      <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <Bot className="w-12 h-12 mx-auto mb-3 opacity-20" />
                       <p>투입된 AI 에이전트가 없습니다</p>
                       <Button
                         variant="outline"
@@ -388,16 +387,16 @@ export default function ProjectDetailPage() {
                         key={assignment.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl group hover:bg-zinc-800 transition-colors"
+                        className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl group hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
                       >
                         <div className="flex items-center gap-4">
                           <img
                             src={assignment.agent?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${assignment.agent?.name}`}
                             alt={assignment.agent?.name}
-                            className="w-12 h-12 rounded-full"
+                            className="w-12 h-12 rounded-full bg-white dark:bg-zinc-700 shadow-sm"
                           />
                           <div>
-                            <p className="text-white font-medium">{assignment.agent?.name}</p>
+                            <p className="text-zinc-900 dark:text-white font-medium">{assignment.agent?.name}</p>
                             <p className="text-sm text-zinc-500 line-clamp-1">
                               {assignment.agent?.description || assignment.role}
                             </p>
@@ -406,7 +405,7 @@ export default function ProjectDetailPage() {
                                 {assignment.agent.capabilities.slice(0, 3).map((cap: string) => (
                                   <span
                                     key={cap}
-                                    className="text-xs px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded"
+                                    className="text-xs px-1.5 py-0.5 bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400 rounded"
                                   >
                                     {cap}
                                   </span>
@@ -417,11 +416,10 @@ export default function ProjectDetailPage() {
                         </div>
                         <div className="flex items-center gap-3">
                           <span
-                            className={`text-xs px-3 py-1 rounded-full ${
-                              assignment.is_active
-                                ? "bg-green-500/20 text-green-400"
-                                : "bg-zinc-700 text-zinc-400"
-                            }`}
+                            className={`text-xs px-3 py-1 rounded-full ${assignment.is_active
+                              ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400"
+                              : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400"
+                              }`}
                           >
                             {assignment.is_active ? "활성" : "비활성"}
                           </span>
@@ -429,12 +427,13 @@ export default function ProjectDetailPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => router.push(`/dashboard-group/agents/${assignment.agent_id}`)}
+                            className="hover:bg-zinc-200 dark:hover:bg-zinc-700"
                           >
-                            <Play className="w-4 h-4" />
+                            <Play className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                           </Button>
                           <button
                             onClick={() => removeAgent(assignment.id)}
-                            className="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-zinc-700 rounded-lg"
+                            className="text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -510,11 +509,11 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-white">문서 자료</h2>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white">문서 자료</h2>
                 <p className="text-sm text-zinc-500 mt-1">프로젝트 관련 문서 및 자료 관리</p>
               </div>
             </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
               <ProjectDocuments projectId={projectId} />
             </div>
           </div>
@@ -525,10 +524,10 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-white">예산 관리</h2>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white">예산 관리</h2>
                 <p className="text-sm text-zinc-500 mt-1">프로젝트 비용 및 리소스 현황</p>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 shadow-sm">
                 <Plus className="w-4 h-4 mr-2" />
                 비용 추가
               </Button>
@@ -536,40 +535,40 @@ export default function ProjectDetailPage() {
 
             {/* Budget Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-green-400" />
+                  <div className="w-10 h-10 rounded-lg bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5" />
                   </div>
                   <span className="text-sm text-zinc-500">총 예산</span>
                 </div>
-                <div className="text-2xl font-bold text-white">₩50,000,000</div>
+                <div className="text-2xl font-bold text-zinc-900 dark:text-white">₩50,000,000</div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-blue-400" />
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5" />
                   </div>
                   <span className="text-sm text-zinc-500">사용 금액</span>
                 </div>
-                <div className="text-2xl font-bold text-white">₩32,500,000</div>
+                <div className="text-2xl font-bold text-zinc-900 dark:text-white">₩32,500,000</div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-amber-400" />
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5" />
                   </div>
                   <span className="text-sm text-zinc-500">잔액</span>
                 </div>
-                <div className="text-2xl font-bold text-white">₩17,500,000</div>
+                <div className="text-2xl font-bold text-zinc-900 dark:text-white">₩17,500,000</div>
               </div>
             </div>
 
             {/* Budget Details */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-              <h3 className="font-semibold text-white mb-4">비용 내역</h3>
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
+              <h3 className="font-semibold text-zinc-900 dark:text-white mb-4">비용 내역</h3>
               <div className="text-center py-12 text-zinc-500">
-                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-20" />
                 <p>아직 등록된 비용 내역이 없습니다</p>
                 <p className="text-sm mt-2">비용 추가 버튼을 눌러 첫 내역을 등록하세요</p>
               </div>
@@ -585,41 +584,41 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-white">프로젝트 설정</h2>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white">프로젝트 설정</h2>
                 <p className="text-sm text-zinc-500 mt-1">프로젝트 정보 및 권한 관리</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Basic Info */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-                <h3 className="font-semibold text-white mb-4">기본 정보</h3>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-4">기본 정보</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-zinc-400 mb-2">프로젝트 이름</label>
+                    <label className="block text-sm text-zinc-500 dark:text-zinc-400 mb-2">프로젝트 이름</label>
                     <input
                       type="text"
                       value={project.name}
                       onChange={(e) => setProject({ ...project, name: e.target.value })}
-                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-zinc-400 mb-2">설명</label>
+                    <label className="block text-sm text-zinc-500 dark:text-zinc-400 mb-2">설명</label>
                     <textarea
                       value={project.description || ""}
                       onChange={(e) => setProject({ ...project, description: e.target.value })}
                       rows={4}
-                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm text-zinc-400 mb-2">상태</label>
+                      <label className="block text-sm text-zinc-500 dark:text-zinc-400 mb-2">상태</label>
                       <select
                         value={project.status}
                         onChange={(e) => setProject({ ...project, status: e.target.value as any })}
-                        className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="planning">계획중</option>
                         <option value="active">진행중</option>
@@ -629,11 +628,11 @@ export default function ProjectDetailPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-zinc-400 mb-2">우선순위</label>
+                      <label className="block text-sm text-zinc-500 dark:text-zinc-400 mb-2">우선순위</label>
                       <select
                         value={project.priority}
                         onChange={(e) => setProject({ ...project, priority: e.target.value as any })}
-                        className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="low">낮음</option>
                         <option value="medium">보통</option>
@@ -643,12 +642,12 @@ export default function ProjectDetailPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm text-zinc-400 mb-2">마감일</label>
+                    <label className="block text-sm text-zinc-500 dark:text-zinc-400 mb-2">마감일</label>
                     <input
                       type="date"
                       value={project.deadline || ""}
                       onChange={(e) => setProject({ ...project, deadline: e.target.value })}
-                      className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <Button
@@ -662,7 +661,7 @@ export default function ProjectDetailPage() {
                       })
                     }
                     disabled={saving}
-                    className="w-full"
+                    className="w-full shadow-md text-white font-bold"
                     style={{ backgroundColor: currentAccent.color }}
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경사항 저장"}
@@ -672,12 +671,12 @@ export default function ProjectDetailPage() {
 
               {/* Danger Zone */}
               <div className="space-y-6">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-                  <h3 className="font-semibold text-white mb-4">진행률</h3>
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
+                  <h3 className="font-semibold text-zinc-900 dark:text-white mb-4">진행률</h3>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-400">현재 진행률</span>
-                      <span className="text-white font-medium">{project.progress}%</span>
+                      <span className="text-zinc-500">현재 진행률</span>
+                      <span className="text-zinc-900 dark:text-white font-medium">{project.progress}%</span>
                     </div>
                     <input
                       type="range"
@@ -690,15 +689,15 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
-                  <h3 className="font-semibold text-red-400 mb-4">위험 구역</h3>
-                  <p className="text-sm text-zinc-400 mb-4">
+                <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-6">
+                  <h3 className="font-semibold text-red-600 dark:text-red-400 mb-4">위험 구역</h3>
+                  <p className="text-sm text-red-500 dark:text-zinc-400 mb-4">
                     프로젝트를 삭제하면 모든 데이터가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
                   </p>
                   <Button
                     variant="ghost"
                     onClick={deleteProject}
-                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                    className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-500/10"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     프로젝트 삭제
@@ -715,7 +714,7 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-zinc-950">
+    <div className="flex h-full overflow-hidden bg-white dark:bg-zinc-950">
       {/* Sidebar - Fixed, no scroll with page */}
       <ProjectSidebar
         activeSection={activeSection}
@@ -733,18 +732,18 @@ export default function ProjectDetailPage() {
       {/* Main Content - Only this area scrolls */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header - Fixed within content */}
-        <div className="flex-shrink-0 bg-zinc-950 border-b border-zinc-800 px-6 py-3">
+        <div className="flex-shrink-0 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-6 py-3 sticky top-0 z-20">
           <div className="flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <Button variant="ghost" size="sm" onClick={() => router.back()} className="hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
               <ArrowLeft className="w-4 h-4 mr-2" />
               프로젝트 목록
             </Button>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsAddMemberOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => setIsAddMemberOpen(true)} className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200">
                 <UserPlus className="w-4 h-4 mr-2" />
                 팀원 추가
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setIsAddAgentOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => setIsAddAgentOpen(true)} className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200">
                 <Bot className="w-4 h-4 mr-2" />
                 에이전트 추가
               </Button>
@@ -753,7 +752,7 @@ export default function ProjectDetailPage() {
         </div>
 
         {/* Content Area - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 bg-zinc-50/50 dark:bg-black/20">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeSection}
@@ -775,20 +774,20 @@ export default function ProjectDetailPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             onClick={() => setIsAddMemberOpen(false)}
           >
             <motion.div
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.95 }}
-              className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md"
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl w-full max-w-md shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                <h3 className="font-semibold text-white">팀원 추가</h3>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+                <h3 className="font-semibold text-zinc-900 dark:text-white">팀원 추가</h3>
                 <button onClick={() => setIsAddMemberOpen(false)}>
-                  <X className="w-5 h-5 text-zinc-400 hover:text-white" />
+                  <X className="w-5 h-5 text-zinc-400 hover:text-zinc-600 dark:hover:text-white" />
                 </button>
               </div>
               <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
@@ -799,15 +798,15 @@ export default function ProjectDetailPage() {
                     <button
                       key={member.id}
                       onClick={() => addMember(member.id)}
-                      className="w-full flex items-center gap-3 p-4 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors"
+                      className="w-full flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
                     >
                       <img
                         src={member.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.name}`}
                         alt={member.name}
-                        className="w-10 h-10 rounded-full"
+                        className="w-10 h-10 rounded-full bg-white dark:bg-zinc-700"
                       />
                       <div className="text-left">
-                        <p className="text-white font-medium">{member.name}</p>
+                        <p className="text-zinc-900 dark:text-white font-medium">{member.name}</p>
                         <p className="text-sm text-zinc-500">{member.email}</p>
                       </div>
                     </button>
@@ -826,20 +825,20 @@ export default function ProjectDetailPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             onClick={() => setIsAddAgentOpen(false)}
           >
             <motion.div
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.95 }}
-              className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md"
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl w-full max-w-md shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                <h3 className="font-semibold text-white">AI 에이전트 추가</h3>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+                <h3 className="font-semibold text-zinc-900 dark:text-white">AI 에이전트 추가</h3>
                 <button onClick={() => setIsAddAgentOpen(false)}>
-                  <X className="w-5 h-5 text-zinc-400 hover:text-white" />
+                  <X className="w-5 h-5 text-zinc-400 hover:text-zinc-600 dark:hover:text-white" />
                 </button>
               </div>
               <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
@@ -850,25 +849,24 @@ export default function ProjectDetailPage() {
                     <button
                       key={agent.id}
                       onClick={() => addAgent(agent.id)}
-                      className="w-full flex items-center gap-3 p-4 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors"
+                      className="w-full flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
                     >
                       <img
                         src={agent.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${agent.name}`}
                         alt={agent.name}
-                        className="w-10 h-10 rounded-full"
+                        className="w-10 h-10 rounded-full bg-white dark:bg-zinc-700"
                       />
                       <div className="text-left flex-1">
-                        <p className="text-white font-medium">{agent.name}</p>
+                        <p className="text-zinc-900 dark:text-white font-medium">{agent.name}</p>
                         <p className="text-sm text-zinc-500 line-clamp-1">
                           {agent.description || "설명 없음"}
                         </p>
                       </div>
                       <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          agent.status === "ACTIVE"
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-zinc-700 text-zinc-400"
-                        }`}
+                        className={`text-xs px-2 py-1 rounded-full ${agent.status === "ACTIVE"
+                          ? "bg-green-500/20 text-green-600 dark:text-green-400"
+                          : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400"
+                          }`}
                       >
                         {agent.status === "ACTIVE" ? "활성" : "비활성"}
                       </span>

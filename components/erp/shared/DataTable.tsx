@@ -89,20 +89,20 @@ export function DataTable<T extends Record<string, any>>({
     <div className="flex flex-col h-full">
       {/* Search */}
       {onSearchChange && (
-        <div className="p-4 border-b border-zinc-800">
+        <div className="p-4 border-b border-theme">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-muted" />
             <input
               type="text"
               placeholder={searchPlaceholder}
               value={searchValue}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-10 pr-10 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+              className="w-full pl-10 pr-10 py-2 bg-theme-card border border-theme rounded-lg text-sm text-theme placeholder-theme-muted focus:outline-none focus:border-accent"
             />
             {searchValue && (
               <button
                 onClick={() => onSearchChange('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -114,7 +114,7 @@ export function DataTable<T extends Record<string, any>>({
       {/* Table */}
       <div className="flex-1 overflow-auto">
         <table className="w-full">
-          <thead className="bg-zinc-900/50 sticky top-0">
+          <thead className="bg-theme-secondary/50 sticky top-0">
             <tr>
               {selectable && (
                 <th className="w-12 px-4 py-3 text-left">
@@ -122,14 +122,14 @@ export function DataTable<T extends Record<string, any>>({
                     type="checkbox"
                     checked={allSelected}
                     onChange={handleSelectAll}
-                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-purple-500 focus:ring-purple-500"
+                    className="w-4 h-4 rounded border-theme bg-theme-input text-accent focus:ring-accent"
                   />
                 </th>
               )}
               {columns.map((col) => (
                 <th
                   key={String(col.key)}
-                  className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider"
+                  className="px-4 py-3 text-left text-xs font-medium text-theme-muted uppercase tracking-wider"
                   style={{ width: col.width }}
                 >
                   {col.header}
@@ -138,14 +138,14 @@ export function DataTable<T extends Record<string, any>>({
               {rowActions && <th className="w-20 px-4 py-3" />}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800">
+          <tbody className="divide-y divide-theme">
             {loading ? (
               <tr>
                 <td
                   colSpan={columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
                   className="px-4 py-12 text-center"
                 >
-                  <div className="flex items-center justify-center gap-2 text-zinc-500">
+                  <div className="flex items-center justify-center gap-2 text-theme-muted">
                     <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     <span>로딩 중...</span>
                   </div>
@@ -155,7 +155,7 @@ export function DataTable<T extends Record<string, any>>({
               <tr>
                 <td
                   colSpan={columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
-                  className="px-4 py-12 text-center text-zinc-500"
+                  className="px-4 py-12 text-center text-theme-muted"
                 >
                   {emptyMessage}
                 </td>
@@ -164,7 +164,7 @@ export function DataTable<T extends Record<string, any>>({
               data.map((item, index) => (
                 <tr
                   key={getItemId(item)}
-                  className={`hover:bg-zinc-800/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+                  className={`hover:bg-theme-secondary/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
                   onClick={() => onRowClick?.(item)}
                 >
                   {selectable && (
@@ -173,12 +173,12 @@ export function DataTable<T extends Record<string, any>>({
                         type="checkbox"
                         checked={selectedIds.includes(getItemId(item))}
                         onChange={() => handleSelectItem(item)}
-                        className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-purple-500 focus:ring-purple-500"
+                        className="w-4 h-4 rounded border-theme bg-theme-input text-accent focus:ring-accent"
                       />
                     </td>
                   )}
                   {columns.map((col) => (
-                    <td key={String(col.key)} className="px-4 py-3 text-sm text-zinc-300">
+                    <td key={String(col.key)} className="px-4 py-3 text-sm text-theme-secondary">
                       {col.render
                         ? col.render(item, index)
                         : getValue(item, String(col.key)) ?? '-'}
@@ -198,39 +198,39 @@ export function DataTable<T extends Record<string, any>>({
 
       {/* Pagination */}
       {onPageChange && totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800">
-          <div className="text-sm text-zinc-500">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-theme">
+          <div className="text-sm text-theme-muted">
             총 {total.toLocaleString()}개 중 {((page - 1) * limit) + 1} - {Math.min(page * limit, total)}
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => onPageChange(1)}
               disabled={page === 1}
-              className="p-1 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 text-theme-muted hover:text-theme disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronsLeft className="w-5 h-5" />
             </button>
             <button
               onClick={() => onPageChange(page - 1)}
               disabled={page === 1}
-              className="p-1 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 text-theme-muted hover:text-theme disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <span className="px-3 text-sm text-zinc-300">
+            <span className="px-3 text-sm text-theme-secondary">
               {page} / {totalPages}
             </span>
             <button
               onClick={() => onPageChange(page + 1)}
               disabled={page === totalPages}
-              className="p-1 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 text-theme-muted hover:text-theme disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
             <button
               onClick={() => onPageChange(totalPages)}
               disabled={page === totalPages}
-              className="p-1 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 text-theme-muted hover:text-theme disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronsRight className="w-5 h-5" />
             </button>

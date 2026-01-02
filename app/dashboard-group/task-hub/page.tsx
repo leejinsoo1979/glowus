@@ -75,7 +75,7 @@ export default function TaskHubDashboardPage() {
   }, [])
 
   return (
-    <div className="h-[calc(100vh-64px)]">
+    <div className="h-full">
       <TaskHubPage
         companyId={companyId}
         projects={projects}

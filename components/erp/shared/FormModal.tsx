@@ -44,13 +44,13 @@ export function FormModal({
       />
 
       {/* Modal */}
-      <div className={`relative w-full ${sizeClasses[size]} mx-4 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl`}>
+      <div className={`relative w-full ${sizeClasses[size]} mx-4 bg-theme-card border border-theme rounded-xl shadow-2xl`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-theme">
+          <h2 className="text-lg font-semibold text-theme">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-white transition-colors"
+            className="p-1 text-theme-muted hover:text-theme transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -62,12 +62,12 @@ export function FormModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-theme">
           {footer || (
             <>
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm text-theme-muted hover:text-theme transition-colors"
               >
                 취소
               </button>
@@ -75,7 +75,7 @@ export function FormModal({
                 <button
                   onClick={onSubmit}
                   disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/80 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -104,7 +104,7 @@ interface FormFieldProps {
 export function FormField({ label, required, error, children, className = '' }: FormFieldProps) {
   return (
     <div className={`space-y-1 ${className}`}>
-      <label className="block text-sm font-medium text-zinc-300">
+      <label className="block text-sm font-medium text-theme-secondary">
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}
       </label>
@@ -121,7 +121,7 @@ interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 export function FormInput({ error, className = '', ...props }: FormInputProps) {
   return (
     <input
-      className={`w-full px-3 py-2 bg-zinc-800 border ${error ? 'border-red-500' : 'border-zinc-700'} rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 ${className}`}
+      className={`w-full px-3 py-2 bg-theme-input border ${error ? 'border-red-500' : 'border-theme'} rounded-lg text-sm text-theme placeholder-theme-muted focus:outline-none focus:border-accent ${className}`}
       {...props}
     />
   )
@@ -136,7 +136,7 @@ interface FormSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> 
 export function FormSelect({ error, options, placeholder, className = '', ...props }: FormSelectProps) {
   return (
     <select
-      className={`w-full px-3 py-2 bg-zinc-800 border ${error ? 'border-red-500' : 'border-zinc-700'} rounded-lg text-sm text-white focus:outline-none focus:border-purple-500 ${className}`}
+      className={`w-full px-3 py-2 bg-theme-input border ${error ? 'border-red-500' : 'border-theme'} rounded-lg text-sm text-theme focus:outline-none focus:border-accent ${className}`}
       {...props}
     >
       {placeholder && <option value="">{placeholder}</option>}
@@ -156,7 +156,7 @@ interface FormTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaEle
 export function FormTextarea({ error, className = '', ...props }: FormTextareaProps) {
   return (
     <textarea
-      className={`w-full px-3 py-2 bg-zinc-800 border ${error ? 'border-red-500' : 'border-zinc-700'} rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 resize-none ${className}`}
+      className={`w-full px-3 py-2 bg-theme-input border ${error ? 'border-red-500' : 'border-theme'} rounded-lg text-sm text-theme placeholder-theme-muted focus:outline-none focus:border-accent resize-none ${className}`}
       {...props}
     />
   )

@@ -23,6 +23,10 @@ import {
   User,
   Zap,
   Bot,
+  Gavel,
+  Heart,
+  BookOpen,
+  Shield,
 } from 'lucide-react'
 
 // ============================================
@@ -70,6 +74,11 @@ const NODE_TYPE_ICONS: Record<NodeType, React.ReactNode> = {
   folder: <Folder className="w-4 h-4" />,
   file: <FileText className="w-4 h-4" />,
   agent: <Bot className="w-4 h-4" />,
+  // Brain Core Types
+  rule: <Gavel className="w-4 h-4" />,
+  preference: <Heart className="w-4 h-4" />,
+  playbook: <BookOpen className="w-4 h-4" />,
+  identity: <Shield className="w-4 h-4" />,
 }
 
 const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -86,6 +95,11 @@ const NODE_TYPE_LABELS: Record<NodeType, string> = {
   folder: '폴더',
   file: '파일',
   agent: '스킬',
+  // Brain Core Types
+  rule: '규칙',
+  preference: '선호',
+  playbook: '플레이북',
+  identity: '정체성',
 }
 
 // ============================================

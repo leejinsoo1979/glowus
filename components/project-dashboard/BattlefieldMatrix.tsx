@@ -107,7 +107,7 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-white">팀 태스크 보드</h2>
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-white">팀 태스크 보드</h2>
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
           실시간
@@ -115,30 +115,30 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
       </div>
 
       {/* Table Container */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             {/* Header */}
             <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="w-48 min-w-[180px] p-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider bg-zinc-900/80">
+              <tr className="border-b border-zinc-200 dark:border-zinc-800">
+                <th className="w-48 min-w-[180px] p-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider bg-zinc-50/50 dark:bg-zinc-900/80">
                   멤버
                 </th>
                 {statusColumns.map((col) => (
-                  <th key={col.id} className="w-44 min-w-[160px] p-3 text-left">
+                  <th key={col.id} className="w-44 min-w-[160px] p-3 text-left bg-zinc-50/50 dark:bg-transparent">
                     <div className="flex items-center gap-2">
                       <span
                         className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: col.color }}
                       />
-                      <span className="text-xs font-medium text-zinc-400">{col.label}</span>
+                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{col.label}</span>
                     </div>
                   </th>
                 ))}
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-zinc-800/50">
+            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
               {/* Empty State */}
               {members.length === 0 && !loading && (
                 <tr>
@@ -153,16 +153,16 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
 
               {/* Member Rows */}
               {members.map((member) => (
-                <tr key={member.id} className="hover:bg-zinc-800/30 transition-colors">
-                  <td className="p-3 bg-zinc-900/50">
+                <tr key={member.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
+                  <td className="p-3 bg-zinc-50/30 dark:bg-zinc-900/50 border-r border-zinc-100 dark:border-zinc-800/50">
                     <div className="flex items-center gap-3">
                       <img
                         src={member.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${member.name}&backgroundColor=3f3f46`}
                         alt={member.name}
-                        className="w-8 h-8 rounded-full bg-zinc-800"
+                        className="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 shadow-sm"
                       />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-zinc-200 truncate">{member.name}</p>
+                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-200 truncate">{member.name}</p>
                         <p className="text-xs text-zinc-500 truncate">{member.role}</p>
                       </div>
                     </div>
@@ -170,7 +170,7 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
                   {statusColumns.map((col) => {
                     const memberTasks = getTasksForMemberAndStatus(member.id, col.id)
                     return (
-                      <td key={col.id} className="p-2 align-top">
+                      <td key={col.id} className="p-2 align-top border-r border-zinc-100 dark:border-zinc-800/30 last:border-0">
                         <div className="space-y-1.5 min-h-[60px]">
                           {memberTasks.map((task) => (
                             <TaskCard key={task.id} task={task} statusColor={col.color} />
@@ -183,22 +183,22 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
               ))}
 
               {/* AI Agent Row */}
-              <tr className="bg-zinc-800/20">
-                <td className="p-3 bg-zinc-800/30">
+              <tr className="bg-zinc-50/50 dark:bg-zinc-800/20">
+                <td className="p-3 bg-zinc-50/80 dark:bg-zinc-800/30 border-r border-zinc-100 dark:border-zinc-800/50">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-violet-600/20 flex items-center justify-center">
-                      <Bot className="w-4 h-4 text-violet-400" />
+                    <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-600/20 flex items-center justify-center">
+                      <Bot className="w-4 h-4 text-violet-600 dark:text-violet-400" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-zinc-200">AI 에이전트</p>
-                      <p className="text-xs text-violet-400">자동화</p>
+                      <p className="text-sm font-medium text-zinc-900 dark:text-zinc-200">AI 에이전트</p>
+                      <p className="text-xs text-violet-600 dark:text-violet-400">자동화</p>
                     </div>
                   </div>
                 </td>
                 {statusColumns.map((col) => {
                   const aiTasks = getAITasks(col.id)
                   return (
-                    <td key={col.id} className="p-2 align-top">
+                    <td key={col.id} className="p-2 align-top border-r border-zinc-100 dark:border-zinc-800/30 last:border-0">
                       <div className="space-y-1.5 min-h-[60px]">
                         {aiTasks.map((task) => (
                           <TaskCard key={task.id} task={task} statusColor={col.color} isAI />
@@ -220,11 +220,10 @@ export function BattlefieldMatrix({ projectId }: BattlefieldMatrixProps) {
 function TaskCard({ task, statusColor, isAI }: { task: Task; statusColor: string; isAI?: boolean }) {
   return (
     <div
-      className={`group relative p-2.5 rounded-lg cursor-pointer transition-all ${
-        isAI
-          ? "bg-violet-500/10 border border-violet-500/20 hover:border-violet-500/40"
-          : "bg-zinc-800/60 border border-zinc-700/50 hover:border-zinc-600"
-      }`}
+      className={`group relative p-2.5 rounded-lg cursor-pointer transition-all shadow-sm ${isAI
+          ? "bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 hover:border-violet-300 dark:hover:border-violet-500/40"
+          : "bg-white dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/50 hover:border-zinc-300 dark:hover:border-zinc-600"
+        }`}
     >
       {/* Priority indicator */}
       {(task.priority === "HIGH" || task.priority === "URGENT") && (
@@ -234,7 +233,9 @@ function TaskCard({ task, statusColor, isAI }: { task: Task; statusColor: string
         />
       )}
 
-      <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">{task.title}</p>
+      <p className={`text-xs line-clamp-2 leading-relaxed ${isAI ? "text-violet-900 dark:text-violet-100" : "text-zinc-700 dark:text-zinc-300"}`}>
+        {task.title}
+      </p>
 
       {task.evidence_link && (
         <div className="flex items-center gap-1 mt-1.5 text-[10px] text-zinc-500">
@@ -245,13 +246,13 @@ function TaskCard({ task, statusColor, isAI }: { task: Task; statusColor: string
 
       {isAI && (
         <div className="flex items-center gap-1 mt-1.5">
-          <span className="text-[10px] text-violet-400">AI</span>
+          <span className="text-[10px] text-violet-500 dark:text-violet-400 font-medium">AI</span>
         </div>
       )}
 
       {/* Hover action */}
-      <button className="absolute top-1.5 right-1.5 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700/50 transition-all">
-        <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
+      <button className="absolute top-1.5 right-1.5 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700/50 transition-all">
+        <ExternalLink className="w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500" />
       </button>
     </div>
   )

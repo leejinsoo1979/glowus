@@ -5,7 +5,7 @@
 
 import { useCallback, useState } from 'react'
 import { useNeuralMapStore } from './store'
-import type { NeuralNode, NeuralEdge, NeuralFile, NodeType, EdgeType } from './types'
+import type { NeuralNode, NeuralEdge, NeuralFile, NodeType, EdgeType, StorageMode } from './types'
 
 interface CreateNodeParams {
   type: NodeType
@@ -179,28 +179,65 @@ export function useNeuralMapApi(mapId: string | null) {
     }
   }, [mapId, deleteEdge])
 
+  // 🔥 storageMode 가져오기
+  const storageMode = useNeuralMapStore((s) => s.storageMode)
+
   // 파일 업로드 (path: 폴더 내 상대 경로)
-  const uploadFile = useCallback(async (file: File, path?: string): Promise<NeuralFile | null> => {
+  // 🔥 storageMode에 따라 다른 처리:
+  // - local: 파일 업로드 없이 경로 참조만 저장
+  // - supabase: Supabase Storage에 업로드
+  // - gcs: Google Cloud Storage에 업로드
+  const uploadFile = useCallback(async (
+    file: File,
+    path?: string,
+    options?: {
+      localPath?: string  // 🔥 로컬 절대 경로 (Electron에서 제공)
+      overrideStorageMode?: StorageMode  // 🔥 개별 파일 저장 모드 오버라이드
+    }
+  ): Promise<NeuralFile | null> => {
     if (!mapId) return null
+
+    const effectiveStorageMode = options?.overrideStorageMode || storageMode
 
     setIsSubmitting(true)
     try {
       const formData = new FormData()
 
-      // Explicitly check for Electron fakeFile vs real File
-      if (!(file instanceof File) && (file as any).text) {
-        console.log('[uploadFile] Using Electron fakeFile compatibility mode for:', (file as any).name);
-        // We can append the fake object as a Blob/File if it has the right structure
-        formData.append('file', file as any, (file as any).name)
+      // 🔥 LOCAL 모드: 파일 업로드 없이 메타데이터만 전송
+      if (effectiveStorageMode === 'local') {
+        const localPath = options?.localPath || (file as any).path || path
+        if (!localPath) {
+          console.error('[uploadFile] LOCAL mode requires localPath')
+          throw new Error('LOCAL mode requires localPath')
+        }
+
+        formData.append('storageMode', 'local')
+        formData.append('localPath', localPath)
+        formData.append('fileName', file.name)
+        formData.append('fileSize', String(file.size))
+        if (path) {
+          formData.append('path', path)
+        }
+
+        console.log('[uploadFile] LOCAL mode - storing path reference only:', localPath)
       } else {
-        formData.append('file', file)
-      }
+        // 🔥 SUPABASE / GCS 모드: 실제 파일 업로드
+        formData.append('storageMode', effectiveStorageMode)
 
-      if (path) {
-        formData.append('path', path)
-      }
+        // Explicitly check for Electron fakeFile vs real File
+        if (!(file instanceof File) && (file as any).text) {
+          console.log('[uploadFile] Using Electron fakeFile compatibility mode for:', (file as any).name);
+          formData.append('file', file as any, (file as any).name)
+        } else {
+          formData.append('file', file)
+        }
 
-      console.log('[uploadFile] Sending request for:', file.name, 'size:', file.size, 'path:', path)
+        if (path) {
+          formData.append('path', path)
+        }
+
+        console.log('[uploadFile] Sending request for:', file.name, 'size:', file.size, 'mode:', effectiveStorageMode)
+      }
 
       const res = await fetch(`/api/neural-map/${mapId}/files`, {
         method: 'POST',
@@ -223,7 +260,7 @@ export function useNeuralMapApi(mapId: string | null) {
     } finally {
       setIsSubmitting(false)
     }
-  }, [mapId, addFile])
+  }, [mapId, addFile, storageMode])
 
   // 파일 삭제
   const deleteFile = useCallback(async (fileId: string): Promise<boolean> => {

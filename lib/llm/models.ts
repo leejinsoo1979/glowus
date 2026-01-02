@@ -1,6 +1,6 @@
 // LLM Models & Provider Info - Client-safe exports (no OpenAI instances)
 
-export type LLMProvider = 'openai' | 'grok' | 'gemini' | 'qwen' | 'ollama'
+export type LLMProvider = 'anthropic' | 'openai' | 'grok' | 'gemini' | 'qwen' | 'ollama'
 
 export interface LLMConfig {
   provider: LLMProvider
@@ -11,6 +11,12 @@ export interface LLMConfig {
 
 // 사용 가능한 모델 목록
 export const AVAILABLE_MODELS = {
+  anthropic: [
+    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: '최신 소넷 (추천)', costTier: 'medium', inputPrice: 3.00, outputPrice: 15.00, vision: true },
+    { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', description: '균형 잡힌 성능', costTier: 'medium', inputPrice: 3.00, outputPrice: 15.00, vision: true },
+    { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', description: '빠르고 저렴', costTier: 'low', inputPrice: 0.80, outputPrice: 4.00, vision: true },
+    { id: 'claude-3-opus-latest', name: 'Claude 3 Opus', description: '최고 성능', costTier: 'high', inputPrice: 15.00, outputPrice: 75.00, vision: true },
+  ],
   grok: [
     { id: 'grok-3-mini', name: 'Grok 3 Mini', description: '경량 추론 모델 (저렴)', costTier: 'low', inputPrice: 0.30, outputPrice: 0.50, vision: false },
     { id: 'grok-4-1-fast', name: 'Grok 4.1 Fast', description: '가성비 깡패 (추천)', costTier: 'medium', inputPrice: 1.00, outputPrice: 4.00, vision: false },
@@ -49,6 +55,7 @@ export const AVAILABLE_MODELS = {
 
 // Provider 표시 정보
 export const PROVIDER_INFO = {
+  anthropic: { name: 'Claude (Anthropic)', icon: 'A', description: '안전하고 강력함', recommended: true },
   grok: { name: 'Grok (xAI)', icon: 'G', description: '저렴하고 빠름', recommended: true },
   openai: { name: 'OpenAI', icon: 'O', description: '고품질 응답', recommended: false },
   gemini: { name: 'Gemini (Google)', icon: 'Ge', description: '균형 잡힌 성능', recommended: false },
@@ -59,6 +66,8 @@ export const PROVIDER_INFO = {
 // Provider별 기본 모델
 export function getDefaultModel(provider: LLMProvider): string {
   switch (provider) {
+    case 'anthropic':
+      return 'claude-sonnet-4-20250514'
     case 'grok':
       return 'grok-3-mini'
     case 'openai':
@@ -82,6 +91,8 @@ export function isProviderAvailable(provider: LLMProvider): boolean {
   }
 
   switch (provider) {
+    case 'anthropic':
+      return !!process.env.ANTHROPIC_API_KEY
     case 'openai':
       return !!process.env.OPENAI_API_KEY
     case 'grok':
@@ -113,6 +124,7 @@ export function getVisionModel(provider: LLMProvider): string | null {
 
 // Provider별 비전 모델 매핑 (fallback 순서)
 export const VISION_MODEL_FALLBACK: Record<LLMProvider, string> = {
+  anthropic: 'claude-sonnet-4-20250514',
   grok: 'grok-2-vision-latest',
   openai: 'gpt-4o-mini',
   gemini: 'gemini-2.0-flash',

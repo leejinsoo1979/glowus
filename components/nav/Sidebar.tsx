@@ -31,6 +31,7 @@ import {
   MessageSquare,
   Layers,
   Orbit,
+  GanttChart,
 } from 'lucide-react'
 import { TbBrandWechat } from 'react-icons/tb'
 import { GrConnect } from 'react-icons/gr'
@@ -39,6 +40,8 @@ const navigation = [
   { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },
   { name: '스타트업', href: '/dashboard-group/startup', icon: Building2 },
   { name: '태스크', href: '/dashboard-group/tasks', icon: ListTodo },
+  { name: '태스크 허브', href: '/dashboard-group/task-hub', icon: Layers },
+  { name: '간트차트', href: '/dashboard-group/gantt', icon: GanttChart },
   { name: 'KPI', href: '/dashboard-group/kpis', icon: TrendingUp },
   { name: '커밋 기록', href: '/dashboard-group/commits', icon: GitCommit },
   { name: '메신저', href: '/dashboard-group/messenger', icon: TbBrandWechat },

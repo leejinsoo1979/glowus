@@ -960,7 +960,7 @@ export default function MessengerPage() {
       <div className={`flex-1 flex flex-col min-w-0 ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
 
         {/* Chat Header - Enterprise Style */}
-        <div className={`h-14 px-4 border-b flex items-center justify-between flex-shrink-0 ${isDark ? 'border-zinc-800/50 bg-zinc-900' : 'border-zinc-200 bg-white'
+        <div className={`h-16 px-4 border-b flex items-center justify-between flex-shrink-0 ${isDark ? 'border-zinc-800/50 bg-zinc-900' : 'border-zinc-200 bg-white'
           }`}>
           {activeRoom ? (
             <div className="flex items-center gap-3 min-w-0">

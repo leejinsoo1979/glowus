@@ -98,25 +98,35 @@ export function GlobalAgentSidebar({
         setIsLoading(true)
 
         try {
-            const response = await fetch('/api/chat', {
+            // Super Agent API 사용 (browser_automation 등 도구 포함)
+            const response = await fetch('/api/agents/super/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    messages: [...messages, userMessage].map(m => ({
+                    message: userMessage.content,
+                    chatHistory: messages.map(m => ({
                         role: m.role,
                         content: m.content
                     }))
                 })
             })
 
-            if (!response.ok) throw new Error('채팅 응답을 가져오지 못했습니다.')
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}))
+                throw new Error(errorData.error || '채팅 응답을 가져오지 못했습니다.')
+            }
 
             const data = await response.json()
+
+            // 도구 사용 정보 로그
+            if (data.toolsUsed && data.toolsUsed.length > 0) {
+                console.log('[GlobalAgentSidebar] Tools used:', data.toolsUsed)
+            }
 
             const assistantMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: data.content,
+                content: data.response || data.content || '응답을 받지 못했습니다.',
                 timestamp: new Date()
             }
 
@@ -166,8 +176,8 @@ export function GlobalAgentSidebar({
                             <Cpu className="w-5 h-5 text-blue-500" />
                         </div>
                         <div>
-                            <h2 className="text-sm font-bold text-white leading-tight">GlowUS AI</h2>
-                            <p className="text-[10px] text-zinc-500 font-medium">ONLINE · GROK-3-MINI</p>
+                            <h2 className="text-sm font-bold text-white leading-tight">Super Agent</h2>
+                            <p className="text-[10px] text-zinc-500 font-medium">ONLINE · CLAUDE + TOOLS</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -209,7 +219,7 @@ export function GlobalAgentSidebar({
                             </div>
                             <div
                                 className={cn(
-                                    "max-w-[90%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
+                                    "max-w-[90%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text",
                                     msg.role === 'user'
                                         ? "bg-blue-600 text-white shadow-lg shadow-blue-900/10"
                                         : "bg-zinc-900 text-zinc-200 border border-zinc-800"
@@ -280,8 +290,8 @@ export function GlobalAgentSidebar({
                         </div>
                         <div className="absolute bottom-3 left-3">
                             <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800/50 rounded-md">
-                                <Zap className="w-3 h-3 text-yellow-500" />
-                                <span className="text-[10px] font-bold text-zinc-500 text-zinc-400">Grok-3</span>
+                                <Zap className="w-3 h-3 text-purple-500" />
+                                <span className="text-[10px] font-bold text-zinc-400">Claude + Browser</span>
                             </div>
                         </div>
                     </div>

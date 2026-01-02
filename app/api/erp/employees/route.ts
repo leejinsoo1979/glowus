@@ -83,15 +83,25 @@ export async function POST(request: NextRequest) {
       return apiError('회사를 찾을 수 없습니다.', 404)
     }
 
-    const body: CreateEmployeeInput = await request.json()
+    const body = await request.json()
 
     // 필수 필드 검증
     if (!body.name) {
       return apiError('이름은 필수입니다.')
     }
 
+    // 프론트엔드 필드 → DB 필드 매핑
+    const {
+      password,
+      password_confirm,
+      birthday,
+      location,
+      mobile_phone,
+      ...rest
+    } = body
+
     // 사번 자동 생성 (없으면)
-    let employeeNumber = body.employee_number
+    let employeeNumber = rest.employee_number
     if (!employeeNumber) {
       const { count } = await supabase
         .from('employees')
@@ -102,30 +112,40 @@ export async function POST(request: NextRequest) {
       employeeNumber = `${year}${String((count || 0) + 1).padStart(4, '0')}`
     }
 
+    // DB에 저장할 데이터 준비
+    const insertData: Record<string, any> = {
+      ...rest,
+      company_id: companyId,
+      employee_number: employeeNumber,
+      status: rest.status || 'active',
+      hire_type: rest.hire_type || 'regular',
+    }
+
+    // 필드 매핑
+    if (birthday) insertData.birth_date = birthday
+    if (location) insertData.location_name = location
+    if (mobile_phone) insertData.phone = mobile_phone
+
+    // null/undefined UUID 필드 제거 (FK 에러 방지)
+    if (!insertData.department_id) delete insertData.department_id
+    if (!insertData.position_id) delete insertData.position_id
+    if (!insertData.rank_id) delete insertData.rank_id
+    if (!insertData.location_id) delete insertData.location_id
+
     const { data, error } = await supabase
       .from('employees')
-      .insert({
-        ...body,
-        company_id: companyId,
-        employee_number: employeeNumber,
-        status: body.status || 'active',
-        hire_type: body.hire_type || 'regular',
-      })
-      .select(`
-        *,
-        department:departments(id, name),
-        position:positions(id, name)
-      `)
+      .insert(insertData)
+      .select('*')
       .single()
 
     if (error) {
       console.error('[ERP Employees] POST error:', error)
-      return apiError('직원 등록에 실패했습니다.', 500)
+      return apiError(`직원 등록 실패: ${error.message}`, 500)
     }
 
     return apiResponse(data, 201)
-  } catch (error) {
+  } catch (error: any) {
     console.error('[ERP Employees] POST error:', error)
-    return apiError('서버 오류가 발생했습니다.', 500)
+    return apiError(`서버 오류: ${error.message}`, 500)
   }
 }

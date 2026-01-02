@@ -23,6 +23,7 @@ import type {
   NodePosition,
   NeuralMapTheme,
   LayoutMode,
+  StorageMode,
 } from './types'
 import {
   DEFAULT_THEME_ID,
@@ -150,6 +151,12 @@ interface NeuralMapState {
   // Linked Database Project (연결된 워크스페이스 프로젝트)
   linkedProjectId: string | null
   linkedProjectName: string | null
+
+  // Save Modal (Cmd+S에서 모달 열기)
+  showSaveModal: boolean
+
+  // 🔥 파일 저장 전략 (local: 경로 참조만, supabase: 업로드, gcs: Google Cloud)
+  storageMode: StorageMode
 }
 
 // ============================================
@@ -292,6 +299,12 @@ interface NeuralMapActions {
   // Linked Database Project
   setLinkedProject: (projectId: string | null, projectName?: string | null) => void
   clearLinkedProject: () => void
+
+  // Save Modal
+  setShowSaveModal: (show: boolean) => void
+
+  // 🔥 파일 저장 전략
+  setStorageMode: (mode: StorageMode) => void
 }
 
 // ============================================
@@ -380,6 +393,12 @@ const initialState: NeuralMapState = {
   // Linked Database Project
   linkedProjectId: null,
   linkedProjectName: null,
+
+  // Save Modal
+  showSaveModal: false,
+
+  // 🔥 파일 저장 전략: 기본값은 local (Electron에서 경로 참조만)
+  storageMode: 'local' as StorageMode,
 }
 
 // ============================================
@@ -1558,6 +1577,19 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             state.files = []
             console.log('[NeuralMap Store] Cleared linked project and graph')
           }),
+
+        // Save Modal
+        setShowSaveModal: (show) =>
+          set((state) => {
+            state.showSaveModal = show
+          }),
+
+        // 🔥 파일 저장 전략
+        setStorageMode: (mode) =>
+          set((state) => {
+            state.storageMode = mode
+            console.log('[NeuralMap Store] Storage mode changed:', mode)
+          }),
       })),
       {
         name: 'neural-map-storage',
@@ -1575,6 +1607,8 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           projectPath: state.projectPath,
           // 🔥 Agent Builder 에이전트 폴더 (새로고침해도 유지)
           currentAgentFolder: state.currentAgentFolder,
+          // 🔥 파일 저장 전략 (새로고침해도 유지)
+          storageMode: state.storageMode,
           // 🔥 mapId는 저장 안 함 - 프로젝트별로 DB에서 조회
         }),
       }

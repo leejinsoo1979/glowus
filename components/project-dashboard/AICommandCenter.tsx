@@ -11,8 +11,11 @@ import {
   CheckCircle2,
   Clock,
   Target,
+  Shield,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
+import { cn } from "@/lib/utils"
 
 interface AIMetric {
   id: string
@@ -100,7 +103,7 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
           title: "AI 감시견",
           value: overdue > 0 ? `${overdue}건 지연!` : "정상 운영",
           status: overdue > 0 ? "warning" : "success",
-          icon: AlertTriangle,
+          icon: Shield,
         },
         {
           id: "3",
@@ -131,43 +134,66 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
     return `${Math.floor(minutes / 60)}시간 전`
   }
 
+  const getStatusColors = (status?: string) => {
+    switch (status) {
+      case "warning":
+        return {
+          bg: "bg-amber-500/10",
+          border: "border-amber-500/20",
+          icon: "text-amber-400",
+          iconBg: "bg-amber-500/20",
+          glow: "shadow-amber-500/10",
+        }
+      case "danger":
+        return {
+          bg: "bg-red-500/10",
+          border: "border-red-500/20",
+          icon: "text-red-400",
+          iconBg: "bg-red-500/20",
+          glow: "shadow-red-500/10",
+        }
+      default:
+        return {
+          bg: "bg-emerald-500/10",
+          border: "border-emerald-500/20",
+          icon: "text-emerald-400",
+          iconBg: "bg-emerald-500/20",
+          glow: "shadow-emerald-500/10",
+        }
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden"
+      className="relative overflow-hidden rounded-2xl bg-zinc-900/50 backdrop-blur-sm border border-zinc-800"
     >
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-900/20 via-purple-900/20 to-cyan-900/20 rounded-2xl" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-500/10 via-transparent to-transparent" />
+      {/* Subtle gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
 
-      {/* Animated Border */}
-      <div className="absolute inset-0 rounded-2xl p-[1px] bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-cyan-500/50">
-        <div className="absolute inset-0 rounded-2xl bg-zinc-950" />
-      </div>
-
-      <div className="relative z-10 p-6">
+      <div className="relative z-10 p-5">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-5">
           <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <Bot className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+              <Bot className="w-4 h-4 text-white" />
             </div>
             {pulseActive && (
               <motion.div
                 initial={{ scale: 0.8, opacity: 1 }}
-                animate={{ scale: 2, opacity: 0 }}
+                animate={{ scale: 1.8, opacity: 0 }}
                 transition={{ duration: 1.5, repeat: Infinity }}
-                className="absolute inset-0 rounded-xl bg-blue-500/30"
+                className="absolute inset-0 rounded-xl bg-violet-500/40"
               />
             )}
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
               AI 관제탑
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
             </h2>
             <p className="text-xs text-zinc-500">실시간 AI 모니터링</p>
@@ -175,9 +201,10 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {metrics.map((metric, idx) => {
             const Icon = metric.icon || Activity
+            const colors = getStatusColors(metric.status)
 
             return (
               <motion.div
@@ -185,94 +212,79 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.1 }}
-                className={`relative group cursor-pointer overflow-hidden rounded-xl p-4 ${
-                  metric.status === "warning"
-                    ? "bg-gradient-to-br from-amber-500/10 to-orange-500/5 border border-amber-500/30"
-                    : metric.status === "danger"
-                    ? "bg-gradient-to-br from-red-500/10 to-pink-500/5 border border-red-500/30"
-                    : "bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 border border-emerald-500/30"
-                }`}
+                className={cn(
+                  "relative group cursor-pointer overflow-hidden rounded-xl p-4",
+                  "bg-zinc-800/50 border border-zinc-700/50",
+                  "hover:bg-zinc-800/80 hover:border-zinc-600/50 transition-all duration-300"
+                )}
               >
-                {/* Glow Effect */}
-                <div
-                  className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${
-                    metric.status === "warning"
-                      ? "bg-amber-500/5"
-                      : metric.status === "danger"
-                      ? "bg-red-500/5"
-                      : "bg-emerald-500/5"
-                  }`}
-                />
+                {/* Status indicator line */}
+                <div className={cn(
+                  "absolute left-0 top-0 bottom-0 w-0.5",
+                  metric.status === "warning" ? "bg-amber-500" :
+                  metric.status === "danger" ? "bg-red-500" : "bg-emerald-500"
+                )} />
 
                 <div className="relative z-10 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        metric.status === "warning"
-                          ? "bg-amber-500/20"
-                          : metric.status === "danger"
-                          ? "bg-red-500/20"
-                          : "bg-emerald-500/20"
-                      }`}
-                    >
-                      <Icon
-                        className={`w-5 h-5 ${
-                          metric.status === "warning"
-                            ? "text-amber-400"
-                            : metric.status === "danger"
-                            ? "text-red-400"
-                            : "text-emerald-400"
-                        }`}
-                      />
+                    <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", colors.iconBg)}>
+                      <Icon className={cn("w-4 h-4", colors.icon)} />
                     </div>
                     <div>
-                      <p className="text-xs text-zinc-500">{metric.title}</p>
-                      <p className="text-sm font-semibold text-white">{metric.value}</p>
+                      <p className="text-xs text-zinc-500 mb-0.5">{metric.title}</p>
+                      <p className="text-sm font-medium text-zinc-100">{metric.value}</p>
                     </div>
                   </div>
 
                   {/* Trend/Activity Indicator */}
                   {metric.type === "trigger" && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5">
                       {[...Array(5)].map((_, i) => (
                         <motion.div
                           key={i}
                           animate={{
-                            height: [8, 16, 24, 16, 8][i % 5],
+                            height: [6, 14, 20, 14, 6][i % 5],
                           }}
                           transition={{
-                            duration: 0.5,
+                            duration: 0.6,
                             repeat: Infinity,
                             delay: i * 0.1,
                           }}
-                          className="w-1 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-full"
+                          className="w-1 bg-gradient-to-t from-violet-500 to-cyan-400 rounded-full"
                         />
                       ))}
                     </div>
                   )}
 
                   {metric.type === "alert" && (
-                    <Button variant="outline" size="sm" className="text-xs h-7 border-amber-500/50 text-amber-400 hover:bg-amber-500/10">
-                      Resolve
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "text-xs h-7 px-3",
+                        metric.status === "warning"
+                          ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                          : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                      )}
+                    >
+                      {metric.status === "warning" ? "해결" : "확인"}
                     </Button>
                   )}
 
                   {metric.trend && (
                     <div className="flex items-center">
-                      <svg
-                        viewBox="0 0 100 40"
-                        className="w-16 h-8"
-                      >
+                      <svg viewBox="0 0 100 40" className="w-14 h-7">
                         <path
                           d="M0,35 Q25,30 50,20 T100,5"
                           fill="none"
                           stroke={metric.trend === "up" ? "#10b981" : "#ef4444"}
                           strokeWidth="2"
+                          strokeLinecap="round"
                         />
                         <path
                           d="M0,35 Q25,30 50,20 T100,5 L100,40 L0,40 Z"
                           fill={`url(#gradient-${metric.id})`}
-                          opacity="0.3"
+                          opacity="0.2"
                         />
                         <defs>
                           <linearGradient id={`gradient-${metric.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
@@ -290,23 +302,23 @@ export function AICommandCenter({ projectId }: AICommandCenterProps) {
         </div>
 
         {/* Quick Stats Bar */}
-        <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+        <div className="mt-4 pt-4 border-t border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center gap-5">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm text-zinc-400">완료 <span className="text-white font-semibold">{stats.completed}</span></span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-xs text-zinc-500">완료 <span className="text-zinc-300 font-medium">{stats.completed}</span></span>
             </div>
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span className="text-sm text-zinc-400">진행중 <span className="text-white font-semibold">{stats.inProgress}</span></span>
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs text-zinc-500">진행중 <span className="text-zinc-300 font-medium">{stats.inProgress}</span></span>
             </div>
             <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-zinc-400">전체 <span className="text-white font-semibold">{stats.total}</span></span>
+              <Target className="w-3.5 h-3.5 text-violet-400" />
+              <span className="text-xs text-zinc-500">전체 <span className="text-zinc-300 font-medium">{stats.total}</span></span>
             </div>
           </div>
-          <div className="text-xs text-zinc-500">
-            마지막 동기화: <span className="text-zinc-400">{formatLastSync()}</span>
+          <div className="text-xs text-zinc-600">
+            동기화: <span className="text-zinc-500">{formatLastSync()}</span>
           </div>
         </div>
       </div>

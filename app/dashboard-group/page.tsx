@@ -36,7 +36,8 @@ import {
   CalendarWidget,
   TodoWidget,
   CodingTeamWidget,
-  GitCommitsWidget
+  GitCommitsWidget,
+  GanttWidget
 } from '@/components/dashboard'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
@@ -426,6 +427,13 @@ export default function DashboardPage() {
               </div>
             </TiltCard>
           </div>
+        </motion.div>
+
+        {/* Row 1.5: Gantt Timeline */}
+        <motion.div variants={item} className="col-span-12 h-[350px]">
+          <TiltCard className="h-full p-5">
+            <GanttWidget />
+          </TiltCard>
         </motion.div>
 
         {/* Row 2: Recent Pushes + Commit Heatmap */}

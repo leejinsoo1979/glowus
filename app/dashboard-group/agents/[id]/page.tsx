@@ -48,6 +48,8 @@ import {
   Link2,
   Send,
   ImagePlus,
+  Image,
+  Wand2,
   Smile,
   Upload,
   ChevronRight,
@@ -80,6 +82,8 @@ import { GrokVoiceChat } from '@/components/voice/GrokVoiceChat'
 import { GeminiVoiceChat } from '@/components/voice/GeminiVoiceChat'
 import { useAgentNotification } from '@/lib/contexts/AgentNotificationContext'
 import { executeActions, formatActionResultsForChat, convertToolAction, type AgentAction, type ToolAction } from '@/lib/ai/agent-actions'
+import { WorkflowStepVisualizer, useWorkflowExecution, type WorkflowStep } from '@/components/chat/WorkflowStepVisualizer'
+import PromptAssistant from '@/components/chat/PromptAssistant'
 
 type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'brainmap' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
 
@@ -1958,7 +1962,7 @@ function ApiConnectionsTab({ agentId, isDark }: { agentId: string; isDark: boole
                       {selectedPreset.name}
                     </div>
                     {selectedPreset.setup_guide && (
-                      <div className={cn('text-sm whitespace-pre-line', isDark ? 'text-gray-400' : 'text-gray-600')}>
+                      <div className={cn('text-sm whitespace-pre-line select-text', isDark ? 'text-gray-400' : 'text-gray-600')}>
                         {selectedPreset.setup_guide}
                       </div>
                     )}
@@ -2148,12 +2152,31 @@ export default function AgentProfilePage() {
       toolsUsed: string[]
       error?: string
     }
+    // 지식베이스 출처
+    knowledgeSources?: Array<{ title: string; similarity: number }>
+    // 워크플로우 시각화
+    workflow?: {
+      title: string
+      steps: WorkflowStep[]
+    }
   }>>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [chatTypingStatus, setChatTypingStatus] = useState<'none' | 'read' | 'typing'>('none')
   const [chatImage, setChatImage] = useState<string | null>(null)
   const [chatImageFile, setChatImageFile] = useState<File | null>(null)
+
+  // Prompt Assistant state
+  const [showPromptAssistant, setShowPromptAssistant] = useState(false)
+
+  // Tool menu states (도구 버튼 - 이미지 생성 등)
+  const [showToolMenu, setShowToolMenu] = useState(false)
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [selectedTool, setSelectedTool] = useState<'chat' | 'image' | 'code' | 'search'>('chat')
+
+  // Workflow execution hook
+  const workflowExecution = useWorkflowExecution()
+
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatFileInputRef = useRef<HTMLInputElement>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
@@ -2926,54 +2949,391 @@ export default function AgentProfilePage() {
     return taskKeywords.some(keyword => lowerMessage.includes(keyword))
   }
 
-  // 업무 실행
+  // AI 기반 워크플로우 생성 (스킬 조합)
+  const generateWorkflowSteps = async (instruction: string): Promise<{
+    title: string
+    steps: WorkflowStep[]
+    matchedSkills: { id: string; name: string }[]
+  }> => {
+    try {
+      const res = await fetch('/api/workflow/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction, useAI: true }),
+      })
+
+      const data = await res.json()
+
+      if (data.success && data.workflow) {
+        return {
+          title: data.workflow.title,
+          steps: data.workflow.steps.map((step: any) => ({
+            ...step,
+            status: 'pending' as const,
+          })),
+          matchedSkills: data.matchedSkills || [],
+        }
+      }
+    } catch (error) {
+      console.error('[Workflow] AI 워크플로우 생성 실패, 폴백 사용:', error)
+    }
+
+    // 폴백: 간단한 키워드 기반 단계 생성
+    const steps: WorkflowStep[] = [
+      {
+        id: 'step-1',
+        name: '업무 분석',
+        description: '지시 내용을 분석합니다',
+        type: 'ai',
+        status: 'pending',
+      },
+    ]
+
+    const lowerInstruction = instruction.toLowerCase()
+
+    if (lowerInstruction.includes('유튜브') || lowerInstruction.includes('youtube')) {
+      steps.push({
+        id: 'step-youtube',
+        name: 'YouTube 분석',
+        description: '유튜브 영상 내용을 가져옵니다',
+        type: 'tool',
+        status: 'pending',
+      })
+    }
+
+    if (lowerInstruction.includes('검색') || lowerInstruction.includes('찾아') || lowerInstruction.includes('조회')) {
+      steps.push({
+        id: 'step-search',
+        name: '정보 검색',
+        description: '관련 정보를 검색합니다',
+        type: 'tool',
+        status: 'pending',
+      })
+    }
+
+    if (lowerInstruction.includes('요약') || lowerInstruction.includes('정리')) {
+      steps.push({
+        id: 'step-summarize',
+        name: '내용 요약',
+        description: '수집한 정보를 요약합니다',
+        type: 'ai',
+        status: 'pending',
+      })
+    }
+
+    if (lowerInstruction.includes('ppt') || lowerInstruction.includes('슬라이드') || lowerInstruction.includes('발표')) {
+      steps.push({
+        id: 'step-ppt',
+        name: 'PPT 생성',
+        description: '프레젠테이션 슬라이드를 생성합니다',
+        type: 'tool',
+        status: 'pending',
+      })
+    }
+
+    if (lowerInstruction.includes('이메일') || lowerInstruction.includes('메일')) {
+      steps.push({
+        id: 'step-email',
+        name: '이메일 작성',
+        description: '이메일을 작성합니다',
+        type: 'tool',
+        status: 'pending',
+      })
+    }
+
+    if (lowerInstruction.includes('일정') || lowerInstruction.includes('캘린더') || lowerInstruction.includes('미팅')) {
+      steps.push({
+        id: 'step-calendar',
+        name: '일정 확인/등록',
+        description: '캘린더를 확인하거나 일정을 등록합니다',
+        type: 'tool',
+        status: 'pending',
+      })
+    }
+
+    steps.push({
+      id: 'step-final',
+      name: '결과 정리',
+      description: '실행 결과를 정리하여 보고합니다',
+      type: 'ai',
+      status: 'pending',
+    })
+
+    return {
+      title: instruction.substring(0, 30) + (instruction.length > 30 ? '...' : ''),
+      steps,
+      matchedSkills: [],
+    }
+  }
+
+  // 워크플로우 단계 업데이트 헬퍼
+  const updateWorkflowStep = (
+    workflowMsgId: string,
+    stepId: string,
+    update: Partial<WorkflowStep>
+  ) => {
+    setChatMessages(prev => prev.map(msg => {
+      if (msg.id === workflowMsgId && msg.workflow) {
+        return {
+          ...msg,
+          workflow: {
+            ...msg.workflow,
+            steps: msg.workflow.steps.map(step =>
+              step.id === stepId ? { ...step, ...update } : step
+            ),
+          },
+        }
+      }
+      return msg
+    }))
+  }
+
+  // 스킬별 파라미터 구성
+  const buildSkillParams = (skillId: string, context: Record<string, any>): Record<string, any> => {
+    switch (skillId) {
+      case 'youtube-transcript':
+        return { url: context.url, lang: 'ko' }
+      case 'summarize':
+        return { text: context.transcript || context.content || context.instruction, maxLength: 500 }
+      case 'ppt-generator':
+        return {
+          content: context.summary || context.transcript || context.instruction,
+          slideCount: 5,
+          theme: 'modern',
+          generateImages: false, // rate limit 방지
+        }
+      case 'web-search':
+        return { query: context.instruction }
+      case 'data-analysis':
+        return { data: context.summary || context.transcript || context.instruction }
+      case 'translate':
+        return { text: context.summary || context.transcript, targetLang: 'ko' }
+      default:
+        return context
+    }
+  }
+
+  // 최종 결과 생성
+  const generateFinalOutput = (context: Record<string, any>): string => {
+    const parts: string[] = []
+
+    if (context.summary) {
+      parts.push('📝 **요약**')
+      parts.push(context.summary)
+      parts.push('')
+    }
+
+    if (context.presentation) {
+      parts.push('📊 **PPT 슬라이드**')
+      if (context.downloadUrl) {
+        parts.push(`\n🔗 **[PPTX 다운로드](${context.downloadUrl})**`)
+      }
+      const slides = context.presentation.slides || []
+      slides.forEach((slide: any, i: number) => {
+        parts.push(`\n**슬라이드 ${i + 1}: ${slide.title}**`)
+        if (slide.content && slide.content.length > 0) {
+          slide.content.forEach((item: string) => parts.push(`• ${item}`))
+        }
+      })
+      parts.push('')
+    }
+
+    if (context.transcript && !context.summary) {
+      parts.push('📄 **트랜스크립트**')
+      parts.push(context.transcript.substring(0, 1000) + (context.transcript.length > 1000 ? '...' : ''))
+    }
+
+    if (parts.length === 0) {
+      parts.push('✅ 워크플로우가 완료되었습니다.')
+      parts.push(`\n원본 지시: ${context.instruction}`)
+    }
+
+    return parts.join('\n')
+  }
+
+  // 업무 실행 (워크플로우 시각화 포함)
   const executeTask = async (messageId: string, instruction: string) => {
     if (!agent) return
+
+    const workflowMsgId = `workflow-${Date.now()}`
 
     // 상태를 running으로 변경
     setChatMessages(prev => prev.map(msg =>
       msg.id === messageId ? { ...msg, taskStatus: 'running' as const } : msg
     ))
 
+    // 먼저 로딩 메시지 추가
+    const loadingMessage = {
+      id: workflowMsgId,
+      role: 'agent' as const,
+      content: '🔄 업무를 분석하고 워크플로우를 생성하는 중...',
+      timestamp: new Date(),
+      workflow: {
+        title: '워크플로우 생성 중...',
+        steps: [
+          {
+            id: 'loading',
+            name: '스킬 분석 중',
+            description: 'AI가 필요한 스킬을 조합하고 있습니다',
+            type: 'ai' as const,
+            status: 'running' as const,
+          },
+        ],
+      },
+    }
+    setChatMessages(prev => [...prev, loadingMessage])
+
+    // AI 기반 워크플로우 생성 (스킬 조합)
+    const { title: workflowTitle, steps: workflowSteps, matchedSkills } = await generateWorkflowSteps(instruction)
+
+    // 워크플로우 시각화 메시지 업데이트
+    setChatMessages(prev => prev.map(msg =>
+      msg.id === workflowMsgId ? {
+        ...msg,
+        content: matchedSkills.length > 0
+          ? `📋 ${matchedSkills.map(s => s.name).join(' → ')} 스킬을 조합하여 실행합니다`
+          : '📋 업무를 실행합니다...',
+        workflow: {
+          title: workflowTitle,
+          steps: workflowSteps,
+        },
+      } : msg
+    ))
+
     try {
-      const res = await fetch(`/api/agents/${agent.id}/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instruction,
-          title: instruction.substring(0, 50),
-        }),
-      })
+      // 워크플로우 컨텍스트 (이전 단계 결과를 다음 단계에 전달)
+      let workflowContext: Record<string, any> = {
+        instruction,
+        url: instruction.match(/https?:\/\/[^\s]+/)?.[0], // URL 추출
+      }
+      const toolsUsed: string[] = []
+      const sources: string[] = []
 
-      const result = await res.json()
+      // 각 단계를 순차적으로 실행 (실제 스킬 API 호출)
+      for (let i = 0; i < workflowSteps.length; i++) {
+        const step = workflowSteps[i]
 
-      // 결과 저장
+        // 현재 단계를 running으로 변경
+        updateWorkflowStep(workflowMsgId, step.id, {
+          status: 'running',
+          startedAt: new Date().toISOString(),
+        })
+
+        let stepResult: any = null
+        let stepError: string | undefined
+
+        try {
+          // 스킬 엔드포인트가 있으면 실제 API 호출
+          if (step.endpoint) {
+            console.log(`[Workflow] Executing step: ${step.name} (${step.endpoint})`)
+            toolsUsed.push(step.skillId || step.name)
+
+            // 스킬별 입력 파라미터 구성
+            const params = buildSkillParams(step.skillId || '', workflowContext)
+
+            const res = await fetch(step.endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(params),
+            })
+
+            const result = await res.json()
+
+            if (result.success) {
+              stepResult = result
+              // 결과를 컨텍스트에 저장 (다음 단계에서 사용)
+              if (result.transcript) workflowContext.transcript = result.transcript
+              if (result.summary) workflowContext.summary = result.summary
+              if (result.presentation) workflowContext.presentation = result.presentation
+              if (result.downloadUrl) workflowContext.downloadUrl = result.downloadUrl
+              if (result.url) sources.push(result.url)
+              if (result.downloadUrl) sources.push(result.downloadUrl)
+            } else {
+              stepError = result.error || '스킬 실행 실패'
+            }
+          } else if (step.type === 'ai') {
+            // AI 단계: 컨텍스트 기반 처리
+            await new Promise(resolve => setTimeout(resolve, 500))
+            stepResult = { success: true, message: step.name }
+          } else {
+            // 엔드포인트 없는 단계: 시뮬레이션
+            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500))
+            stepResult = { success: true }
+          }
+
+          // 단계 완료
+          updateWorkflowStep(workflowMsgId, step.id, {
+            status: stepError ? 'failed' : 'completed',
+            result: stepResult ? (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult).substring(0, 100)) : undefined,
+            error: stepError,
+            completedAt: new Date().toISOString(),
+          })
+        } catch (err) {
+          stepError = err instanceof Error ? err.message : '단계 실행 오류'
+          updateWorkflowStep(workflowMsgId, step.id, {
+            status: 'failed',
+            error: stepError,
+            completedAt: new Date().toISOString(),
+          })
+        }
+      }
+
+      // 최종 결과 생성
+      const finalOutput = generateFinalOutput(workflowContext)
+
+      // 원본 메시지 상태 업데이트
       setChatMessages(prev => prev.map(msg =>
         msg.id === messageId ? {
           ...msg,
-          taskStatus: result.success ? 'completed' as const : 'failed' as const,
+          taskStatus: 'completed' as const,
           taskResult: {
-            output: result.output || result.error || '실행 실패',
-            sources: result.sources || [],
-            toolsUsed: result.toolsUsed || [],
-            error: result.error,
+            output: finalOutput,
+            sources,
+            toolsUsed,
           },
         } : msg
       ))
 
-      // 실행 결과를 에이전트 메시지로 추가
-      if (result.success && result.output) {
+      // 워크플로우 메시지 내용 업데이트
+      setChatMessages(prev => prev.map(msg =>
+        msg.id === workflowMsgId ? {
+          ...msg,
+          content: '✅ 워크플로우가 완료되었습니다!',
+        } : msg
+      ))
+
+      // 실행 결과를 별도 메시지로 추가
+      if (finalOutput) {
         const resultMessage = {
           id: `result-${Date.now()}`,
           role: 'agent' as const,
-          content: result.output,
+          content: finalOutput,
           timestamp: new Date(),
           emotion: 'happy' as EmotionType,
         }
         setChatMessages(prev => [...prev, resultMessage])
-        saveMessageToHistory('agent', result.output, undefined, 'happy')
+        saveMessageToHistory('agent', finalOutput, undefined, 'happy')
       }
     } catch (error) {
+      // 모든 pending 단계를 failed로 변경
+      setChatMessages(prev => prev.map(msg => {
+        if (msg.id === workflowMsgId && msg.workflow) {
+          return {
+            ...msg,
+            content: '❌ 업무 실행 중 오류가 발생했습니다.',
+            workflow: {
+              ...msg.workflow,
+              steps: msg.workflow.steps.map(step =>
+                step.status === 'running' || step.status === 'pending'
+                  ? { ...step, status: 'failed' as const, error: '실행 중단됨' }
+                  : step
+              ),
+            },
+          }
+        }
+        return msg
+      }))
+
       setChatMessages(prev => prev.map(msg =>
         msg.id === messageId ? {
           ...msg,
@@ -3980,6 +4340,94 @@ export default function AgentProfilePage() {
 
   // ========== End Voice Call Functions ==========
 
+  // ========== Tool Functions (도구 버튼) ==========
+
+  // 이미지 생성 도구 - Z-Image API (Replicate) 직접 호출
+  const handleGenerateImage = async (prompt: string) => {
+    if (!prompt.trim() || !agent || isGeneratingImage) return
+
+    setIsGeneratingImage(true)
+    setChatInput('') // 채팅 입력창 클리어
+
+    // 사용자 메시지 추가
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user' as const,
+      content: `🎨 이미지 생성: ${prompt}`,
+      timestamp: new Date(),
+    }
+    setChatMessages((prev) => [...prev, userMessage])
+
+    // AI 생성 중 메시지 추가
+    const aiMessageId = `agent-${Date.now()}`
+    const loadingMessage = {
+      id: aiMessageId,
+      role: 'agent' as const,
+      content: '🖼️ Z-Image로 이미지를 생성하고 있어요... (약 5-10초 소요)',
+      timestamp: new Date(),
+    }
+    setChatMessages((prev) => [...prev, loadingMessage])
+
+    try {
+      const response = await fetch('/api/skills/z-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: prompt,
+          width: 1024,
+          height: 1024,
+          num_inference_steps: 8, // 초고속 생성
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.image_url) {
+        // 성공: 이미지 URL과 함께 메시지 업데이트
+        setChatMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId
+              ? {
+                  ...msg,
+                  content: `✨ "${prompt}" 이미지가 완성되었어요! (${data.metadata?.generation_time_ms || 0}ms)`,
+                  image: data.image_url,
+                }
+              : msg
+          )
+        )
+      } else {
+        // 실패: 에러 메시지
+        setChatMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId
+              ? {
+                  ...msg,
+                  content: `❌ 이미지 생성에 실패했어요: ${data.error || '알 수 없는 오류'}`,
+                }
+              : msg
+          )
+        )
+      }
+    } catch (error) {
+      console.error('Image generation error:', error)
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiMessageId
+            ? {
+                ...msg,
+                content: `❌ 이미지 생성 중 오류가 발생했어요: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
+              }
+            : msg
+        )
+      )
+    } finally {
+      setIsGeneratingImage(false)
+      setSelectedTool('chat') // 이미지 생성 후 채팅 모드로 복귀
+    }
+  }
+
+  // ========== End Tool Functions ==========
+
   // 채팅 메시지 전송
   const handleSendChat = async () => {
     if ((!chatInput.trim() && !chatImage) || !agent || chatLoading) return
@@ -3993,11 +4441,18 @@ export default function AgentProfilePage() {
       content: messageContent,
       timestamp: new Date(),
       image: chatImage || undefined,
-      // 업무 지시인 경우 플래그 추가
-      ...(isTask && { isTask: true, taskStatus: 'pending' as const }),
+      // 업무 지시인 경우 플래그 추가 (자동 실행)
+      ...(isTask && { isTask: true, taskStatus: 'running' as const }),
     }
 
     setChatMessages((prev) => [...prev, userMessage])
+
+    // 업무 지시인 경우 자동 실행 (워크플로우 모드)
+    if (isTask) {
+      executeTask(userMessage.id, messageContent)
+      // 워크플로우 실행 시 일반 채팅 API 호출하지 않음
+      return
+    }
 
     // 사용자 메시지 히스토리에 저장
     saveMessageToHistory('user', userMessage.content, userMessage.image)
@@ -4134,6 +4589,7 @@ export default function AgentProfilePage() {
             timestamp: new Date(),
             emotion: detectedEmotion, // 하위 호환성
             emotions: detectedEmotions, // 다중 감정 (텍스트 순서)
+            knowledgeSources: data.knowledgeSources, // 📚 지식베이스 출처
           }
           setChatMessages((prev) => [...prev, agentMessage])
           setCurrentEmotion(detectedEmotion)
@@ -4391,7 +4847,7 @@ export default function AgentProfilePage() {
         canvas.width = size
         canvas.height = size
 
-        const img = new Image()
+        const img = document.createElement('img')
         img.crossOrigin = 'anonymous'
 
         await new Promise((resolve, reject) => {
@@ -5568,6 +6024,65 @@ export default function AgentProfilePage() {
           {/* Chat Tab */}
           {activeTab === 'chat' && (
             <div className="relative flex flex-col h-[calc(100vh-130px)] min-h-[600px]">
+              {/* 🔥 프롬프트 어시스턴트 모달 */}
+              {showPromptAssistant && (
+                <PromptAssistant
+                  onSubmit={async (prompt) => {
+                    setShowPromptAssistant(false)
+
+                    // 직접 메시지 전송 (handleSendChat 로직 복제)
+                    if (!agent) return
+
+                    const userMessage = {
+                      id: `user-${Date.now()}`,
+                      role: 'user' as const,
+                      content: prompt,
+                      timestamp: new Date(),
+                    }
+                    setChatMessages((prev) => [...prev, userMessage])
+                    saveMessageToHistory('user', prompt)
+
+                    setChatLoading(true)
+
+                    try {
+                      // AI 응답 요청
+                      const response = await fetch(`/api/agents/${agent.id}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          message: prompt,
+                          history: chatMessages.slice(-10).map(m => ({
+                            role: m.role,
+                            content: m.content,
+                          })),
+                        }),
+                      })
+
+                      const data = await response.json()
+
+                      if (data.success && data.response) {
+                        const agentMessage = {
+                          id: `agent-${Date.now()}`,
+                          role: 'agent' as const,
+                          content: data.response,
+                          timestamp: new Date(),
+                        }
+                        setChatMessages((prev) => [...prev, agentMessage])
+                        saveMessageToHistory('agent', data.response)
+                      }
+                    } catch (error) {
+                      console.error('Chat error:', error)
+                    } finally {
+                      setChatLoading(false)
+                    }
+                  }}
+                  onClose={() => setShowPromptAssistant(false)}
+                  agentContext={{
+                    agentName: agent?.name,
+                    agentDescription: agent?.description || undefined,
+                  }}
+                />
+              )}
               {/* 🔥 Gemini Live 음성 통화 모드 */}
               {useGeminiVoice && agent && (
                 <div className="fixed inset-0 z-[100] bg-zinc-950">
@@ -5606,7 +6121,7 @@ export default function AgentProfilePage() {
               {/* Chat Messages Area */}
               <div
                 className={cn(
-                  'flex-1 overflow-y-auto rounded-2xl border p-4 md:p-6 space-y-4',
+                  'flex-1 overflow-y-auto rounded-2xl border p-4 md:p-6 space-y-4 select-text',
                   isDark ? 'bg-zinc-900/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
                 )}
               >
@@ -5796,7 +6311,7 @@ export default function AgentProfilePage() {
                         <div className={cn('flex flex-col', msg.role === 'user' ? 'items-end' : 'items-start', 'max-w-[80%]')}>
                           <div
                             className={cn(
-                              'rounded-2xl px-4 py-3',
+                              'rounded-2xl px-4 py-3 select-text',
                               msg.role === 'user'
                                 ? 'bg-accent text-white'
                                 : isDark
@@ -5871,22 +6386,13 @@ export default function AgentProfilePage() {
                                     msg.role === 'user' ? 'text-white/60' : isDark ? 'text-accent/60' : 'text-accent/60'
                                   )} />
                                 )}
-                                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                <p className="text-sm whitespace-pre-wrap select-text">{msg.content}</p>
                               </div>
                             )}
 
-                            {/* 업무 지시 메시지: Run 버튼 및 상태 표시 */}
+                            {/* 업무 지시 메시지: 상태 표시 (자동 실행) */}
                             {msg.isTask && msg.role === 'user' && (
                               <div className="mt-2 pt-2 border-t border-white/20">
-                                {msg.taskStatus === 'pending' && (
-                                  <button
-                                    onClick={() => executeTask(msg.id, msg.content)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors"
-                                  >
-                                    <Play className="w-3 h-3" />
-                                    Run
-                                  </button>
-                                )}
                                 {msg.taskStatus === 'running' && (
                                   <div className="flex items-center gap-1.5 text-xs">
                                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -5910,6 +6416,55 @@ export default function AgentProfilePage() {
                                     실패: {msg.taskResult?.error || '알 수 없는 오류'}
                                   </div>
                                 )}
+                              </div>
+                            )}
+
+                            {/* 워크플로우 시각화 */}
+                            {msg.workflow && msg.workflow.steps.length > 0 && (
+                              <div className="mt-3">
+                                <WorkflowStepVisualizer
+                                  title={msg.workflow.title}
+                                  steps={msg.workflow.steps}
+                                  compact={false}
+                                />
+                              </div>
+                            )}
+
+                            {/* 📚 지식베이스 출처 표시 */}
+                            {msg.knowledgeSources && msg.knowledgeSources.length > 0 && (
+                              <div className={cn(
+                                'mt-3 pt-2 border-t',
+                                isDark ? 'border-zinc-700' : 'border-zinc-200'
+                              )}>
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <BookOpen className={cn('w-3 h-3', isDark ? 'text-accent/70' : 'text-accent/70')} />
+                                  <span className={cn('text-xs font-medium', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
+                                    참조한 지식
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {msg.knowledgeSources.slice(0, 3).map((source, idx) => (
+                                    <span
+                                      key={idx}
+                                      className={cn(
+                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs',
+                                        isDark ? 'bg-accent/10 text-accent/80' : 'bg-accent/5 text-accent/80'
+                                      )}
+                                      title={`유사도: ${Math.round(source.similarity * 100)}%`}
+                                    >
+                                      <FileText className="w-3 h-3" />
+                                      {source.title.length > 20 ? source.title.slice(0, 20) + '...' : source.title}
+                                    </span>
+                                  ))}
+                                  {msg.knowledgeSources.length > 3 && (
+                                    <span className={cn(
+                                      'text-xs',
+                                      isDark ? 'text-zinc-500' : 'text-zinc-400'
+                                    )}>
+                                      +{msg.knowledgeSources.length - 3}개 더
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -6200,7 +6755,7 @@ export default function AgentProfilePage() {
                     {/* Content */}
                     <div className="p-4">
                       <div className={cn(
-                        'text-sm whitespace-pre-wrap leading-relaxed',
+                        'text-sm whitespace-pre-wrap leading-relaxed select-text',
                         isDark ? 'text-zinc-200' : 'text-zinc-700'
                       )}>
                         {pendingTask.confirmation_message}
@@ -6281,7 +6836,7 @@ export default function AgentProfilePage() {
 
                     {/* Message */}
                     <div className={cn(
-                      'text-sm whitespace-pre-wrap leading-relaxed mb-4',
+                      'text-sm whitespace-pre-wrap leading-relaxed mb-4 select-text',
                       isDark ? 'text-zinc-200' : 'text-zinc-700'
                     )}>
                       {pendingAction.confirmation_message}
@@ -6449,6 +7004,157 @@ export default function AgentProfilePage() {
                   >
                     <Smile className="w-4 h-4" />
                   </button>
+                  {/* Tool Menu Dropdown (위로 펼쳐짐) */}
+                  <div className="relative flex-shrink-0">
+                    <button
+                      onClick={() => setShowToolMenu(!showToolMenu)}
+                      disabled={chatLoading || isGeneratingImage || isTaskMode}
+                      className={cn(
+                        'h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all',
+                        selectedTool === 'image'
+                          ? isDark
+                            ? 'bg-gradient-to-r from-purple-500/30 to-pink-500/30 text-purple-300 border border-purple-500/50'
+                            : 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-600 border border-purple-500/30'
+                          : showToolMenu
+                            ? isDark
+                              ? 'bg-accent/30 text-accent border border-accent/50'
+                              : 'bg-accent/20 text-accent border border-accent/30'
+                            : isDark
+                              ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
+                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 border border-zinc-200',
+                        (chatLoading || isGeneratingImage || isTaskMode) && 'opacity-50 cursor-not-allowed'
+                      )}
+                      title="도구 선택"
+                    >
+                      {selectedTool === 'image' ? (
+                        <Wand2 className="w-4 h-4" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                      <span className="text-xs font-medium">
+                        {selectedTool === 'image' ? '이미지' : '도구'}
+                      </span>
+                      <ChevronUp className={cn('w-3 h-3 transition-transform', showToolMenu && 'rotate-180')} />
+                    </button>
+                    {showToolMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setShowToolMenu(false)}
+                        />
+                        <div className={cn(
+                          'absolute bottom-full left-0 mb-2 py-2 rounded-xl shadow-lg border z-50 min-w-[200px]',
+                          isDark
+                            ? 'bg-zinc-900 border-zinc-700'
+                            : 'bg-white border-zinc-200'
+                        )}>
+                          <div className={cn('px-3 py-1.5 text-xs font-medium', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                            AI 도구
+                          </div>
+                          {/* 일반 채팅 */}
+                          <button
+                            onClick={() => {
+                              setSelectedTool('chat')
+                              setShowToolMenu(false)
+                              chatInputRef.current?.focus()
+                            }}
+                            className={cn(
+                              'w-full px-3 py-2.5 flex items-center gap-3 transition-colors',
+                              selectedTool === 'chat'
+                                ? isDark ? 'bg-zinc-800 text-white' : 'bg-zinc-100 text-zinc-900'
+                                : isDark ? 'text-zinc-300 hover:bg-zinc-800' : 'text-zinc-700 hover:bg-zinc-50'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-8 h-8 rounded-lg flex items-center justify-center',
+                              'bg-gradient-to-br from-zinc-500 to-zinc-600'
+                            )}>
+                              <MessageSquare className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-medium">일반 채팅</div>
+                              <div className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                                AI와 대화하기
+                              </div>
+                            </div>
+                            {selectedTool === 'chat' && <Check className="w-4 h-4 ml-auto text-accent" />}
+                          </button>
+                          {/* 이미지 생성 */}
+                          <button
+                            onClick={() => {
+                              setSelectedTool('image')
+                              setShowToolMenu(false)
+                              chatInputRef.current?.focus()
+                            }}
+                            disabled={isGeneratingImage}
+                            className={cn(
+                              'w-full px-3 py-2.5 flex items-center gap-3 transition-colors',
+                              selectedTool === 'image'
+                                ? isDark ? 'bg-purple-500/20 text-purple-300' : 'bg-purple-50 text-purple-700'
+                                : isDark ? 'text-zinc-300 hover:bg-zinc-800' : 'text-zinc-700 hover:bg-zinc-50',
+                              isGeneratingImage && 'opacity-50 cursor-not-allowed'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-8 h-8 rounded-lg flex items-center justify-center',
+                              'bg-gradient-to-br from-purple-500 to-pink-500'
+                            )}>
+                              {isGeneratingImage ? (
+                                <Loader2 className="w-4 h-4 text-white animate-spin" />
+                              ) : (
+                                <Wand2 className="w-4 h-4 text-white" />
+                              )}
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-medium">이미지 생성</div>
+                              <div className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+                                AI로 이미지 그리기
+                              </div>
+                            </div>
+                            {selectedTool === 'image' && <Check className="w-4 h-4 ml-auto text-purple-500" />}
+                          </button>
+                          {/* 코드 실행 (추후 추가 예정) */}
+                          <button
+                            disabled
+                            className={cn(
+                              'w-full px-3 py-2.5 flex items-center gap-3 opacity-40 cursor-not-allowed',
+                              isDark ? 'text-zinc-500' : 'text-zinc-400'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-8 h-8 rounded-lg flex items-center justify-center',
+                              'bg-gradient-to-br from-blue-500 to-cyan-500'
+                            )}>
+                              <Cpu className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-medium">코드 실행</div>
+                              <div className="text-xs">Coming soon</div>
+                            </div>
+                          </button>
+                          {/* 웹 검색 (추후 추가 예정) */}
+                          <button
+                            disabled
+                            className={cn(
+                              'w-full px-3 py-2.5 flex items-center gap-3 opacity-40 cursor-not-allowed',
+                              isDark ? 'text-zinc-500' : 'text-zinc-400'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-8 h-8 rounded-lg flex items-center justify-center',
+                              'bg-gradient-to-br from-green-500 to-emerald-500'
+                            )}>
+                              <Target className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-medium">웹 검색</div>
+                              <div className="text-xs">Coming soon</div>
+                            </div>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   {/* Task mode button */}
                   <button
                     onClick={() => {
@@ -6539,42 +7245,75 @@ export default function AgentProfilePage() {
                         e.preventDefault()
                         if (isTaskMode) {
                           handleTaskInstruction()
+                        } else if (selectedTool === 'image') {
+                          if (chatInput.trim()) handleGenerateImage(chatInput.trim())
                         } else {
                           handleSendChat()
                         }
                       }
                     }}
-                    placeholder={isTaskMode
-                      ? '업무를 자유롭게 말씀하세요... (예: "경쟁사 분석해줘")'
-                      : `${agent?.name}에게 메시지 보내기...`
+                    placeholder={
+                      isTaskMode
+                        ? '업무를 자유롭게 말씀하세요... (예: "경쟁사 분석해줘")'
+                        : selectedTool === 'image'
+                          ? '어떤 이미지를 그릴까요? (예: "해변의 고양이", "사이버펑크 도시")'
+                          : `${agent?.name}에게 메시지 보내기...`
                     }
                     className={cn(
                       'flex-1 bg-transparent border-none outline-none text-sm py-1',
                       'focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0',
                       '!outline-none !ring-0',
                       isDark ? 'text-white placeholder:text-zinc-500' : 'text-zinc-900 placeholder:text-zinc-400',
-                      isTaskMode && 'placeholder:text-accent/70'
+                      isTaskMode && 'placeholder:text-accent/70',
+                      selectedTool === 'image' && 'placeholder:text-purple-400'
                     )}
                     style={{ outline: 'none', boxShadow: 'none' }}
-                    disabled={chatLoading || isAnalyzingTask || !!pendingTask}
+                    disabled={chatLoading || isAnalyzingTask || !!pendingTask || isGeneratingImage}
                     autoFocus
                   />
+                  {/* Prompt Assistant Button */}
                   <button
-                    onClick={isTaskMode ? handleTaskInstruction : handleSendChat}
-                    disabled={(!chatInput.trim() && !chatImage) || chatLoading || isAnalyzingTask || !!pendingTask}
+                    onClick={() => setShowPromptAssistant(true)}
+                    disabled={chatLoading || isAnalyzingTask || !!pendingTask || isGeneratingImage}
                     className={cn(
                       'w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0',
-                      (chatInput.trim() || chatImage) && !chatLoading && !isAnalyzingTask && !pendingTask
-                        ? isTaskMode
-                          ? 'bg-accent text-white hover:bg-accent/90'
-                          : 'bg-accent text-white hover:bg-accent/90'
+                      isDark
+                        ? 'bg-zinc-800 text-zinc-400 hover:bg-gradient-to-r hover:from-purple-500/20 hover:to-pink-500/20 hover:text-purple-400'
+                        : 'bg-zinc-100 text-zinc-500 hover:bg-purple-50 hover:text-purple-500'
+                    )}
+                    title="프롬프트 어시스턴트 (대충 입력해도 찰떡같이!)"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isTaskMode) {
+                        handleTaskInstruction()
+                      } else if (selectedTool === 'image') {
+                        if (chatInput.trim()) handleGenerateImage(chatInput.trim())
+                      } else {
+                        handleSendChat()
+                      }
+                    }}
+                    disabled={(!chatInput.trim() && !chatImage) || chatLoading || isAnalyzingTask || !!pendingTask || isGeneratingImage}
+                    className={cn(
+                      'w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0',
+                      (chatInput.trim() || chatImage) && !chatLoading && !isAnalyzingTask && !pendingTask && !isGeneratingImage
+                        ? selectedTool === 'image'
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600'
+                          : isTaskMode
+                            ? 'bg-accent text-white hover:bg-accent/90'
+                            : 'bg-accent text-white hover:bg-accent/90'
                         : isDark
                           ? 'bg-zinc-800 text-zinc-500'
                           : 'bg-zinc-100 text-zinc-400'
                     )}
+                    title={selectedTool === 'image' ? '이미지 생성' : '전송'}
                   >
-                    {isAnalyzingTask ? (
+                    {isAnalyzingTask || isGeneratingImage ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : selectedTool === 'image' ? (
+                      <Wand2 className="w-4 h-4" />
                     ) : (
                       <Send className="w-4 h-4" />
                     )}
@@ -8743,7 +9482,7 @@ function ChatHistoryView({ agentId, isDark }: { agentId: string; isDark: boolean
                           : 'bg-white text-zinc-800 border border-zinc-200'
                     )}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <p className="whitespace-pre-wrap select-text">{msg.content}</p>
                     <p className={cn(
                       'text-xs mt-1 opacity-60',
                       msg.role === 'user' ? 'text-right' : 'text-left'

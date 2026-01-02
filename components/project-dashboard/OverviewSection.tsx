@@ -141,9 +141,9 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
     <div className="relative min-h-full">
       {/* Background Effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-cyan-500/3 rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-3xl opacity-50 dark:opacity-100" />
+        <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-3xl opacity-50 dark:opacity-100" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-cyan-500/3 rounded-full blur-3xl opacity-50 dark:opacity-100" />
       </div>
 
       <div className="relative z-10 space-y-6 pb-20">
@@ -161,7 +161,7 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
                 boxShadow: `0 0 40px ${project.color}30`,
               }}
             >
-              <Rocket className="w-7 h-7 text-white" />
+              <Rocket className="w-7 h-7 text-zinc-900 dark:text-white" />
               <motion.div
                 className="absolute inset-0 rounded-2xl"
                 style={{ border: `2px solid ${project.color}50` }}
@@ -171,7 +171,7 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-white">{project.name}</h1>
+                <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">{project.name}</h1>
                 <span
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
                   style={{ backgroundColor: `${stageInfo.color}20`, color: stageInfo.color }}
@@ -180,7 +180,7 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
                   {stageInfo.label}
                 </span>
                 {daysUntilDeadline !== null && daysUntilDeadline <= 14 && daysUntilDeadline >= 0 && (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400">
                     <Clock className="w-3 h-3" />
                     D-{daysUntilDeadline}
                   </span>
@@ -196,25 +196,25 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
           <div className="flex items-center gap-3">
             <motion.div
               whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/80 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 shadow-sm backdrop-blur-sm"
             >
-              <Users className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-white font-medium">{kpiData.teamSize}명</span>
+              <Users className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+              <span className="text-sm text-zinc-700 dark:text-white font-medium">{kpiData.teamSize}명</span>
             </motion.div>
             <motion.div
               whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/80 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 shadow-sm backdrop-blur-sm"
             >
-              <Bot className="w-4 h-4 text-purple-400" />
-              <span className="text-sm text-white font-medium">{kpiData.agentCount} AI</span>
+              <Bot className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+              <span className="text-sm text-zinc-700 dark:text-white font-medium">{kpiData.agentCount} AI</span>
             </motion.div>
             <motion.div
               whileHover={{ scale: 1.05 }}
-              className="relative flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30"
+              className="relative flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 border border-emerald-500/30 shadow-sm"
             >
               <div className="w-10 h-10 relative">
                 <svg className="w-full h-full transform -rotate-90">
-                  <circle cx="20" cy="20" r="16" stroke="#27272a" strokeWidth="3" fill="none" />
+                  <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" className="text-zinc-200 dark:text-zinc-800" />
                   <circle
                     cx="20"
                     cy="20"
@@ -227,7 +227,7 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
                   />
                 </svg>
               </div>
-              <span className="text-sm text-emerald-400 font-bold">{project.progress}%</span>
+              <span className="text-sm text-emerald-600 dark:text-emerald-400 font-bold">{project.progress}%</span>
             </motion.div>
           </div>
         </motion.div>
@@ -297,13 +297,13 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: idx * 0.05 }}
                   whileHover={{ scale: 1.02 }}
-                  className="relative overflow-hidden bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 group cursor-pointer"
+                  className="relative overflow-hidden bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 group cursor-pointer shadow-sm"
                 >
                   {/* Glow Effect */}
                   <div
-                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                    className="absolute inset-0 opacity-0 group-hover:opacity-10 dark:group-hover:opacity-100 transition-opacity duration-500"
                     style={{
-                      background: `radial-gradient(circle at center, ${kpi.color}10 0%, transparent 70%)`,
+                      background: `radial-gradient(circle at center, ${kpi.color}20 0%, transparent 70%)`,
                     }}
                   />
 
@@ -316,12 +316,12 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
                         <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
                       </div>
                       {(kpi as any).alert && (
-                        <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
+                        <AlertTriangle className="w-4 h-4 text-red-500 dark:text-red-400 animate-pulse" />
                       )}
                     </div>
-                    <div className="text-xl font-bold text-white">{kpi.value}</div>
+                    <div className="text-xl font-bold text-zinc-900 dark:text-white">{kpi.value}</div>
                     <div className="text-xs text-zinc-500">{kpi.label}</div>
-                    <div className="text-[10px] text-zinc-600 mt-1">{kpi.subtext}</div>
+                    <div className="text-[10px] text-zinc-600 dark:text-zinc-500 mt-1">{kpi.subtext}</div>
                   </div>
 
                   {/* Bottom accent */}
@@ -346,9 +346,9 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6"
+          className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm"
         >
-          <h3 className="text-sm font-medium text-zinc-400 mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-4 flex items-center gap-2">
             <Target className="w-4 h-4" />
             프로젝트 단계
           </h3>
@@ -362,29 +362,26 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
                 <div key={key} className="flex-1 relative">
                   {idx > 0 && (
                     <div
-                      className={`absolute left-0 top-5 w-full h-0.5 -translate-x-1/2 transition-colors ${
-                        isPast ? "bg-emerald-500" : "bg-zinc-700"
-                      }`}
+                      className={`absolute left-0 top-5 w-full h-0.5 -translate-x-1/2 transition-colors ${isPast ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700"
+                        }`}
                     />
                   )}
                   <div className="relative flex flex-col items-center">
                     <motion.div
                       whileHover={{ scale: 1.1 }}
-                      className={`w-10 h-10 rounded-full flex items-center justify-center z-10 transition-all ${
-                        isActive ? "ring-4 ring-offset-2 ring-offset-zinc-900" : ""
-                      }`}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center z-10 transition-all ${isActive ? "ring-4 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900 shadow-md" : ""
+                        } ${!(isPast || isActive) ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600" : ""
+                        }`}
                       style={{
-                        backgroundColor: isPast || isActive ? `${config.color}20` : "#27272a",
-                        color: isPast || isActive ? config.color : "#71717a",
-                        ...(isActive && { boxShadow: `0 0 20px ${config.color}50` }),
+                        backgroundColor: isPast || isActive ? `${config.color}20` : undefined,
+                        color: isPast || isActive ? config.color : undefined,
                       }}
                     >
                       <Icon className="w-5 h-5" />
                     </motion.div>
                     <span
-                      className={`mt-2 text-sm font-medium ${
-                        isActive ? "text-white" : isPast ? "text-zinc-400" : "text-zinc-600"
-                      }`}
+                      className={`mt-2 text-sm font-medium ${isActive ? "text-zinc-900 dark:text-white" : isPast ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-600"
+                        }`}
                     >
                       {config.label}
                     </span>
@@ -400,12 +397,12 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="relative overflow-hidden bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-cyan-500/10 border border-purple-500/20 rounded-xl p-6"
+          className="relative overflow-hidden bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 border border-purple-500/20 rounded-xl p-6 shadow-sm"
         >
           {/* Animated gradient border */}
-          <div className="absolute inset-0 rounded-xl">
+          <div className="absolute inset-0 rounded-xl pointer-events-none">
             <div
-              className="absolute inset-0 rounded-xl animate-pulse"
+              className="absolute inset-0 rounded-xl animate-pulse opacity-50"
               style={{
                 background: "linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent)",
                 backgroundSize: "200% 100%",
@@ -414,23 +411,23 @@ export function OverviewSection({ projectId, project, onEdit }: OverviewSectionP
           </div>
 
           <div className="relative z-10 flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-6 h-6 text-purple-400" />
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-white mb-1 flex items-center gap-2">
+              <h3 className="font-semibold text-zinc-900 dark:text-white mb-1 flex items-center gap-2">
                 AI 인사이트
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
                 </span>
               </h3>
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 {kpiData.overdueTasks > 0
                   ? `⚠️ ${kpiData.overdueTasks}개의 지연된 태스크가 있습니다. 우선순위를 조정하거나 AI 에이전트에게 위임하는 것을 고려해보세요.`
                   : kpiData.inProgressTasks > 0
-                  ? `✨ 현재 ${kpiData.inProgressTasks}개의 태스크가 진행 중입니다. 완료율 ${completionRate}%로 순조롭게 진행되고 있습니다.`
-                  : "🚀 태스크를 추가하여 프로젝트를 시작하세요!"}
+                    ? `✨ 현재 ${kpiData.inProgressTasks}개의 태스크가 진행 중입니다. 완료율 ${completionRate}%로 순조롭게 진행되고 있습니다.`
+                    : "🚀 태스크를 추가하여 프로젝트를 시작하세요!"}
               </p>
             </div>
           </div>

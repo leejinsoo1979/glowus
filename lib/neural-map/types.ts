@@ -341,6 +341,14 @@ export interface NeuralGraph {
 
 export type NeuralFileType = 'pdf' | 'image' | 'video' | 'markdown' | 'code' | 'text' | 'binary'
 
+/**
+ * 🔥 파일 저장 전략
+ * - local: 로컬 경로만 참조 (Electron 전용, 파일 복사 없음)
+ * - supabase: Supabase Storage에 업로드 (기존 방식)
+ * - gcs: Google Cloud Storage에 업로드
+ */
+export type StorageMode = 'local' | 'supabase' | 'gcs'
+
 export interface NeuralFile {
   id: string
   mapId: string
@@ -353,6 +361,9 @@ export interface NeuralFile {
   linkedNodeCount?: number
   createdAt: string
   children?: NeuralFile[]  // 폴더 구조를 위한 하위 파일/폴더
+  // 🔥 로컬 참조 모드용 필드
+  localPath?: string  // 로컬 절대 경로 (Electron에서 직접 읽기용)
+  storageMode?: StorageMode  // 이 파일의 저장 방식
 }
 
 // ============================================

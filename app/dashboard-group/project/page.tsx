@@ -32,6 +32,9 @@ import {
   Check,
   Trash2,
   GripVertical,
+  FolderInput,
+  Square,
+  CheckSquare,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/Button"
@@ -142,6 +145,12 @@ export default function ProjectsPage() {
   const [editName, setEditName] = useState("")
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
+
+  // 선택된 프로젝트 (체크박스)
+  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false)
+  const [moveTargetCategory, setMoveTargetCategory] = useState<string | null>(null)
 
   // Check if running in Electron
   useEffect(() => {
@@ -476,6 +485,78 @@ export default function ProjectsPage() {
       })
   }, [projects, searchQuery, statusFilter, sortBy, categoryFilter])
 
+  // 체크박스 토글 함수
+  const toggleProjectSelection = useCallback((projectId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setSelectedProjects(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(projectId)) {
+        newSet.delete(projectId)
+      } else {
+        newSet.add(projectId)
+      }
+      return newSet
+    })
+  }, [])
+
+  // 전체 선택/해제
+  const toggleSelectAll = useCallback(() => {
+    if (selectedProjects.size === filteredProjects.length) {
+      setSelectedProjects(new Set())
+    } else {
+      setSelectedProjects(new Set(filteredProjects.map(p => p.id)))
+    }
+  }, [filteredProjects, selectedProjects.size])
+
+  // 선택 초기화
+  const clearSelection = useCallback(() => {
+    setSelectedProjects(new Set())
+  }, [])
+
+  // 일괄 삭제
+  const handleBulkDelete = async () => {
+    if (selectedProjects.size === 0) return
+    if (!confirm(`선택한 ${selectedProjects.size}개의 프로젝트를 삭제하시겠습니까?`)) return
+
+    setIsDeleting(true)
+    try {
+      const deletePromises = Array.from(selectedProjects).map(projectId =>
+        fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      )
+      await Promise.all(deletePromises)
+      await fetchProjects()
+      clearSelection()
+    } catch (error) {
+      console.error('Bulk delete error:', error)
+      alert('일부 프로젝트 삭제에 실패했습니다')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // 일괄 이동
+  const handleBulkMove = async () => {
+    if (selectedProjects.size === 0 || !moveTargetCategory) return
+
+    try {
+      const movePromises = Array.from(selectedProjects).map(projectId =>
+        fetch(`/api/projects/${projectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category_id: moveTargetCategory })
+        })
+      )
+      await Promise.all(movePromises)
+      await fetchProjects()
+      clearSelection()
+      setIsMoveModalOpen(false)
+      setMoveTargetCategory(null)
+    } catch (error) {
+      console.error('Bulk move error:', error)
+      alert('일부 프로젝트 이동에 실패했습니다')
+    }
+  }
+
   const stats = useMemo(() => {
     const total = projects.length
     const active = projects.filter(p => p.status === "active").length
@@ -525,10 +606,10 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-zinc-800/50">
-        <div className="px-6 py-4">
+    <div className="h-full flex flex-col bg-white dark:bg-zinc-950">
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 h-16 flex items-center bg-white dark:bg-zinc-950 border-b border-zinc-200/50 dark:border-zinc-800/50 z-10">
+        <div className="px-4 w-full">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {/* 타이틀 + 뒤로가기 */}
@@ -582,108 +663,110 @@ export default function ProjectsPage() {
               </Button>
             </div>
           </div>
-
-          {/* Toolbar - 카테고리 선택 시에만 표시 */}
-          {categoryFilter && (
-            <div className="flex items-center justify-between mt-4 gap-4">
-              <div className="flex items-center gap-2 flex-1">
-                {/* Search */}
-                <div className="relative max-w-xs flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="프로젝트 검색..."
-                    className="w-full h-9 pl-9 pr-3 text-sm bg-zinc-100 dark:bg-zinc-800/50 border-0 rounded-xl text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-shadow"
-                  />
-                </div>
-
-                {/* Filters */}
-                <div className="relative">
-                  <Button
-                    onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    variant={statusFilter !== "all" ? "accent" : "outline"}
-                    size="sm"
-                    leftIcon={<SlidersHorizontal className="w-4 h-4" />}
-                    rightIcon={statusFilter !== "all" ? (
-                      <span className="flex items-center justify-center w-5 h-5 text-xs bg-white/20 rounded">1</span>
-                    ) : undefined}
-                  >
-                    필터
-                  </Button>
-
-                  <AnimatePresence>
-                    {isFilterOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl p-1.5 z-50"
-                      >
-                        <div className="px-2 py-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wider">상태</div>
-                        {["all", "planning", "active", "on_hold", "completed"].map((status) => (
-                          <button
-                            key={status}
-                            onClick={() => {
-                              setStatusFilter(status)
-                              setIsFilterOpen(false)
-                            }}
-                            className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg transition-colors ${statusFilter === status
-                              ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                              : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                              }`}
-                          >
-                            {status !== "all" && (
-                              <span className={`w-2 h-2 rounded-full ${statusStyles[status]?.dot}`} />
-                            )}
-                            {status === "all" ? "전체" : statusLabels[status]}
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Sort */}
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="h-9 px-3 text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 cursor-pointer"
-                >
-                  <option value="updated">최근 수정순</option>
-                  <option value="created">생성일순</option>
-                  <option value="name">이름순</option>
-                </select>
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl">
-                <Button
-                  onClick={() => setViewMode("list")}
-                  variant={viewMode === "list" ? "secondary" : "ghost"}
-                  size="icon-sm"
-                  className={viewMode === "list" ? "shadow-sm" : ""}
-                >
-                  <AlignJustify className="w-4 h-4" />
-                </Button>
-                <Button
-                  onClick={() => setViewMode("grid")}
-                  variant={viewMode === "grid" ? "secondary" : "ghost"}
-                  size="icon-sm"
-                  className={viewMode === "grid" ? "shadow-sm" : ""}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6">
+      {/* Toolbar - 카테고리 선택 시에만 표시 (헤더 밖에 별도 섹션) */}
+      {categoryFilter && (
+        <div className="flex-shrink-0 px-4 py-3 bg-white dark:bg-zinc-950 border-b border-zinc-200/50 dark:border-zinc-800/50">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 flex-1">
+              {/* Search */}
+              <div className="relative max-w-xs flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="프로젝트 검색..."
+                  className="w-full h-9 pl-9 pr-3 text-sm bg-zinc-100 dark:bg-zinc-800/50 border-0 rounded-xl text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-shadow"
+                />
+              </div>
+
+              {/* Filters */}
+              <div className="relative">
+                <Button
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  variant={statusFilter !== "all" ? "accent" : "outline"}
+                  size="sm"
+                  leftIcon={<SlidersHorizontal className="w-4 h-4" />}
+                  rightIcon={statusFilter !== "all" ? (
+                    <span className="flex items-center justify-center w-5 h-5 text-xs bg-white/20 rounded">1</span>
+                  ) : undefined}
+                >
+                  필터
+                </Button>
+
+                <AnimatePresence>
+                  {isFilterOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl p-1.5 z-50"
+                    >
+                      <div className="px-2 py-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wider">상태</div>
+                      {["all", "planning", "active", "on_hold", "completed"].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => {
+                            setStatusFilter(status)
+                            setIsFilterOpen(false)
+                          }}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg transition-colors ${statusFilter === status
+                            ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                            : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                            }`}
+                        >
+                          {status !== "all" && (
+                            <span className={`w-2 h-2 rounded-full ${statusStyles[status]?.dot}`} />
+                          )}
+                          {status === "all" ? "전체" : statusLabels[status]}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Sort */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="h-9 px-3 text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 cursor-pointer"
+              >
+                <option value="updated">최근 수정순</option>
+                <option value="created">생성일순</option>
+                <option value="name">이름순</option>
+              </select>
+            </div>
+
+            {/* View Toggle */}
+            <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl">
+              <Button
+                onClick={() => setViewMode("list")}
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="icon-sm"
+                className={viewMode === "list" ? "shadow-sm" : ""}
+              >
+                <AlignJustify className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={() => setViewMode("grid")}
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                size="icon-sm"
+                className={viewMode === "grid" ? "shadow-sm" : ""}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-6">
         {/* 카테고리 카드 뷰 */}
         {!categoryFilter ? (
           <div className="space-y-6">
@@ -703,75 +786,63 @@ export default function ProjectsPage() {
                     className="group"
                   >
                     <div
-                      className="relative h-48 rounded-[2rem] p-6 cursor-pointer transition-all duration-300 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-transparent hover:shadow-2xl hover:-translate-y-1"
+                      className="relative h-48 rounded-[2rem] p-6 cursor-pointer transition-all duration-300 bg-white dark:bg-zinc-900 border-2 border-zinc-100 dark:border-zinc-800 hover:border-transparent hover:shadow-2xl hover:-translate-y-1 flex flex-col justify-between"
                       onClick={() => !isEditing && setCategoryFilter(category.id)}
                       style={{
                         '--category-color': safeColor
                       } as React.CSSProperties}
                     >
                       {/* Hover Ring (Color) */}
-                      <div className="absolute inset-0 rounded-[2rem] ring-2 ring-transparent group-hover:ring-[var(--category-color)] transition-all duration-300 opacity-50" />
+                      <div className="absolute inset-0 rounded-[2rem] ring-2 ring-transparent group-hover:ring-[var(--category-color)] transition-all duration-300 opacity-50 pointer-events-none" />
 
                       {/* Subtle Tint Background */}
                       <div
-                        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                        style={{ background: `linear-gradient(to bottom right, ${safeColor}10, transparent)` }}
+                        className="absolute inset-0 rounded-[2rem] opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                        style={{ background: `linear-gradient(to bottom right, ${safeColor}08, transparent)` }}
                       />
 
                       {/* Header: Icon & Count Badge */}
-                      <div className="relative z-10 flex items-start justify-between mb-8">
+                      <div className="relative z-10 flex items-start justify-between w-full">
                         {/* Icon */}
                         <div
-                          className="w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6"
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6"
                           style={{
                             background: safeColor,
-                            boxShadow: `0 4px 10px -2px ${safeColor}50`
+                            boxShadow: `0 4px 12px -2px ${safeColor}40`
                           }}
                         >
-                          <IconComponent className="w-7 h-7" strokeWidth={2} />
+                          <IconComponent className="w-6 h-6" strokeWidth={2.5} />
                         </div>
 
                         {/* Project Count Badge - High Visibility */}
                         <div
-                          className="px-3 py-1.5 rounded-full text-xs font-bold border"
+                          className="px-2.5 py-1 rounded-full text-[11px] font-bold border tracking-wide uppercase"
                           style={{
-                            backgroundColor: `${safeColor}10`,
+                            backgroundColor: `${safeColor}08`,
                             color: safeColor,
-                            borderColor: `${safeColor}30`
+                            borderColor: `${safeColor}20`
                           }}
                         >
                           {count} Projects
                         </div>
                       </div>
 
-                      {/* Edit Actions (Absolute Positioned Top Right, revealed on Hover) */}
-                      {/* Replaces Count when hovering? No, simpler to be next to it of overlapping */}
-                      <div className="absolute top-6 right-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0 z-20">
+                      {/* Edit Actions (Visible on Hover) */}
+                      <div className="absolute top-6 right-28 flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0 z-20">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             setEditingCategory(category.id)
                             setEditName(category.name)
                           }}
-                          className="p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-white dark:hover:bg-zinc-700 shadow-sm ring-1 ring-zinc-200 dark:ring-zinc-700 transition-all text-zinc-600 dark:text-zinc-300"
+                          className="p-1.5 rounded-lg bg-white dark:bg-zinc-800 hover:bg-zinc-50 border border-zinc-200 dark:border-zinc-700 shadow-sm text-zinc-500"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        {category.user_id && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteCategory(category.id)
-                            }}
-                            className="p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-red-500 hover:text-white shadow-sm ring-1 ring-zinc-200 dark:ring-zinc-700 transition-all text-zinc-600 dark:text-zinc-300"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                       </div>
 
                       {/* Main Content */}
-                      <div className="relative z-10 flex flex-col justify-end h-full">
+                      <div className="relative z-10 w-full">
                         {isEditing ? (
                           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <input
@@ -785,11 +856,19 @@ export default function ProjectsPage() {
                                 if (e.key === 'Escape') setEditingCategory(null)
                               }}
                             />
+                            {category.user_id && (
+                              <button
+                                onClick={() => handleDeleteCategory(category.id)}
+                                className="p-2 rounded-xl bg-red-100 text-red-500 hover:bg-red-200"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <>
                             {/* Category Name */}
-                            <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-1 group-hover:translate-x-1 transition-transform">
+                            <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-1 group-hover:translate-x-1 transition-transform truncate">
                               {category.name}
                             </h3>
                             <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500 line-clamp-1 group-hover:translate-x-1 transition-transform delay-75">
@@ -898,10 +977,75 @@ export default function ProjectsPage() {
             </div>
           </motion.div>
         ) : viewMode === "list" ? (
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 overflow-hidden shadow-sm">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 shadow-sm overflow-hidden">
+            {/* Bulk Action Toolbar */}
+            <AnimatePresence>
+              {selectedProjects.size > 0 && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-zinc-100 to-zinc-50 dark:from-zinc-800 dark:to-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold" style={{ color: themeAccentColor }}>
+                        {selectedProjects.size}개 선택됨
+                      </span>
+                      <button
+                        onClick={clearSelection}
+                        className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 underline"
+                      >
+                        선택 해제
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => setIsMoveModalOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<FolderInput className="w-4 h-4" />}
+                      >
+                        이동
+                      </Button>
+                      <Button
+                        onClick={handleBulkDelete}
+                        variant="outline"
+                        size="sm"
+                        leftIcon={isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        disabled={isDeleting}
+                        className="text-red-600 hover:text-red-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-700"
+                      >
+                        삭제
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-5 py-3.5 bg-zinc-50/80 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-              <div className="col-span-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">프로젝트</div>
+              <div className="col-span-1 flex items-center">
+                <button
+                  onClick={toggleSelectAll}
+                  className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                >
+                  {selectedProjects.size === filteredProjects.length && filteredProjects.length > 0 ? (
+                    <CheckSquare className="w-4 h-4" style={{ color: themeAccentColor }} />
+                  ) : selectedProjects.size > 0 ? (
+                    <div className="relative">
+                      <Square className="w-4 h-4 text-zinc-400" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-2 h-0.5 rounded" style={{ backgroundColor: themeAccentColor }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <Square className="w-4 h-4 text-zinc-400" />
+                  )}
+                </button>
+              </div>
+              <div className="col-span-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">프로젝트</div>
               <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">상태</div>
               <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">진행률</div>
               <div className="col-span-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">팀</div>
@@ -919,6 +1063,7 @@ export default function ProjectsPage() {
               const folderPath = (project as any).folder_path
               const metadata = (project as any).metadata || {}
               const projectType = metadata.type as string | undefined
+              const isSelected = selectedProjects.has(project.id)
 
               return (
                 <motion.div
@@ -926,11 +1071,25 @@ export default function ProjectsPage() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.02 }}
-                  className="grid grid-cols-12 gap-4 px-5 py-4 items-center border-b border-zinc-100 dark:border-zinc-800/50 last:border-0 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20 cursor-pointer group transition-all"
+                  className={`grid grid-cols-12 gap-4 px-5 py-4 items-center border-b border-zinc-100 dark:border-zinc-800/50 last:border-0 hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20 cursor-pointer group transition-all ${isSelected ? 'bg-zinc-50 dark:bg-zinc-800/30' : ''}`}
                   onClick={() => router.push(`/dashboard-group/project/${project.id}`)}
                 >
+                  {/* Checkbox */}
+                  <div className="col-span-1 flex items-center">
+                    <button
+                      onClick={(e) => toggleProjectSelection(project.id, e)}
+                      className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-4 h-4" style={{ color: themeAccentColor }} />
+                      ) : (
+                        <Square className="w-4 h-4 text-zinc-400 group-hover:text-zinc-500" />
+                      )}
+                    </button>
+                  </div>
+
                   {/* Project Info */}
-                  <div className="col-span-4 flex items-center gap-3.5 min-w-0">
+                  <div className="col-span-3 flex items-center gap-3.5 min-w-0">
                     <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${style.bg}`}>
                       <Folder className={`w-5 h-5 ${style.icon}`} />
                       {/* 폴더 연결 표시 - 테마 색상 */}
@@ -1080,7 +1239,54 @@ export default function ProjectsPage() {
           </div>
         ) : (
           /* Grid View - 테마 액센트 색상 적용 */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          <div className="space-y-4">
+            {/* Grid View Bulk Action Toolbar */}
+            <AnimatePresence>
+              {selectedProjects.size > 0 && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-5 py-3 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold" style={{ color: themeAccentColor }}>
+                        {selectedProjects.size}개 선택됨
+                      </span>
+                      <button
+                        onClick={clearSelection}
+                        className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 underline"
+                      >
+                        선택 해제
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => setIsMoveModalOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<FolderInput className="w-4 h-4" />}
+                      >
+                        이동
+                      </Button>
+                      <Button
+                        onClick={handleBulkDelete}
+                        variant="outline"
+                        size="sm"
+                        leftIcon={isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        disabled={isDeleting}
+                        className="text-red-600 hover:text-red-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-700"
+                      >
+                        삭제
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {(() => {
               // 테마 액센트 색상 사용
               const themeColor = themeAccentColor
@@ -1095,6 +1301,7 @@ export default function ProjectsPage() {
                 const folderPath = (project as any).folder_path
                 const metadata = (project as any).metadata || {}
                 const projectType = metadata.type as string | undefined
+                const isSelected = selectedProjects.has(project.id)
 
                 return (
                   <motion.div
@@ -1103,19 +1310,20 @@ export default function ProjectsPage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.04, duration: 0.3 }}
                     whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                    className="group relative rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-2xl bg-white dark:bg-zinc-900 ring-1 ring-zinc-200/80 dark:ring-zinc-800 hover:ring-2"
+                    className={`group relative rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-2xl bg-white dark:bg-zinc-900 ring-1 ring-zinc-200/80 dark:ring-zinc-800 hover:ring-2 ${isSelected ? 'ring-2' : ''}`}
                     style={{
                       '--theme-color': themeColor,
                       borderColor: 'transparent',
+                      ...(isSelected ? { '--tw-ring-color': themeColor } : {}),
                     } as React.CSSProperties}
                     onClick={() => router.push(`/dashboard-group/project/${project.id}`)}
                   >
                     {/* Dynamic Border via Box Shadow or Ring Color on Hover */}
-                    <div className="absolute inset-0 pointer-events-none rounded-[1.5rem] ring-inset ring-2 ring-transparent group-hover:ring-[var(--theme-color)] transition-all duration-300 opacity-20" />
+                    <div className={`absolute inset-0 pointer-events-none rounded-[1.5rem] ring-inset ring-2 transition-all duration-300 ${isSelected ? 'ring-[var(--theme-color)] opacity-40' : 'ring-transparent group-hover:ring-[var(--theme-color)] opacity-20'}`} />
 
                     {/* Premium Gradient Background Fade */}
                     <div
-                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                      className={`absolute inset-0 transition-opacity duration-500 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                       style={{
                         background: `linear-gradient(to bottom right, ${themeColor}10, transparent 40%)`
                       }}
@@ -1123,9 +1331,23 @@ export default function ProjectsPage() {
 
                     {/* Top Glow Accent */}
                     <div
-                      className="absolute top-0 inset-x-0 h-32 opacity-20 dark:opacity-10 transition-opacity duration-300 group-hover:opacity-30"
+                      className={`absolute top-0 inset-x-0 h-32 transition-opacity duration-300 ${isSelected ? 'opacity-30' : 'opacity-20 dark:opacity-10 group-hover:opacity-30'}`}
                       style={{ background: `radial-gradient(ellipse at top, ${themeColor}60, transparent 70%)` }}
                     />
+
+                    {/* 체크박스 - 항상 표시 */}
+                    <div className="absolute top-4 left-4 z-10">
+                      <button
+                        onClick={(e) => toggleProjectSelection(project.id, e)}
+                        className={`p-1.5 rounded-lg transition-all ${isSelected ? 'bg-white/90 dark:bg-zinc-800/90 shadow-md' : 'bg-white/70 dark:bg-zinc-800/70 opacity-0 group-hover:opacity-100'}`}
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-5 h-5" style={{ color: themeColor }} />
+                        ) : (
+                          <Square className="w-5 h-5 text-zinc-400" />
+                        )}
+                      </button>
+                    </div>
 
                     {/* 호버시 Edit 버튼 */}
                     <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -1285,6 +1507,7 @@ export default function ProjectsPage() {
                 )
               })
             })()}
+            </div>
           </div>
         )}
       </div>
@@ -1299,6 +1522,97 @@ export default function ProjectsPage() {
         onTeamChange={fetchTeamMembers}
         teamMembers={teamMembers}
       />
+
+      {/* Move Modal */}
+      <AnimatePresence>
+        {isMoveModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => {
+              setIsMoveModalOpen(false)
+              setMoveTargetCategory(null)
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
+                  프로젝트 이동
+                </h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  {selectedProjects.size}개의 프로젝트를 이동할 카테고리를 선택하세요
+                </p>
+              </div>
+
+              <div className="p-4 max-h-80 overflow-y-auto">
+                <div className="space-y-2">
+                  {categories.map((category) => {
+                    const IconComponent = iconMap[category.icon] || Folder
+                    const isTarget = moveTargetCategory === category.id
+                    return (
+                      <button
+                        key={category.id}
+                        onClick={() => setMoveTargetCategory(category.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                          isTarget
+                            ? 'ring-2 bg-zinc-50 dark:bg-zinc-800'
+                            : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
+                        }`}
+                        style={isTarget ? { '--tw-ring-color': category.color } as React.CSSProperties : {}}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
+                          style={{ backgroundColor: category.color }}
+                        >
+                          <IconComponent className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-semibold text-zinc-900 dark:text-white">
+                            {category.name}
+                          </p>
+                          <p className="text-xs text-zinc-500">
+                            {category.description || 'No description'}
+                          </p>
+                        </div>
+                        {isTarget && (
+                          <Check className="w-5 h-5" style={{ color: category.color }} />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsMoveModalOpen(false)
+                    setMoveTargetCategory(null)
+                  }}
+                >
+                  취소
+                </Button>
+                <Button
+                  variant="accent"
+                  onClick={handleBulkMove}
+                  disabled={!moveTargetCategory}
+                >
+                  이동
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Click outside to close filter */}
       {isFilterOpen && (

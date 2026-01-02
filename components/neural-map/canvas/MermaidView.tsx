@@ -892,15 +892,22 @@ function FlowEditor() {
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
+    console.log('[MermaidView] onDragOver triggered')
   }, [])
 
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault()
+      console.log('[MermaidView] onDrop triggered')
       const type = event.dataTransfer.getData('application/reactflow')
-      if (!type) return
+      console.log('[MermaidView] Drop type:', type)
+      if (!type) {
+        console.log('[MermaidView] No type found in dataTransfer')
+        return
+      }
 
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      console.log('[MermaidView] Drop position:', position)
       const shape = shapeLibrary.find((s) => s.type === type)
 
       const newNode: Node = {
@@ -910,6 +917,7 @@ function FlowEditor() {
         data: { label: shape?.label || type },
       }
 
+      console.log('[MermaidView] Creating new node:', newNode)
       setNodes((nds) => nds.concat(newNode))
     },
     [screenToFlowPosition, setNodes]
@@ -1032,6 +1040,7 @@ function FlowEditor() {
                 key={shape.type}
                 draggable
                 onDragStart={(e) => {
+                  console.log('[MermaidView] onDragStart:', shape.type)
                   e.dataTransfer.setData('application/reactflow', shape.type)
                   e.dataTransfer.effectAllowed = 'move'
                 }}

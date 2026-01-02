@@ -7,15 +7,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-
-// 파일 업로드 크기 제한 설정 (10MB)
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-}
 import { createClient } from '@/lib/supabase/server'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import {
@@ -25,6 +16,10 @@ import {
   getKnowledgeStats,
   type AccessLevel,
 } from '@/lib/memory/agent-knowledge-service'
+
+// Route segment config for file uploads
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30 // seconds
 
 interface Params {
   params: { id: string }

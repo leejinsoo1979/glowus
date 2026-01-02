@@ -312,11 +312,11 @@ export function ProjectRunner({
 
   const statusColors: Record<RunStatus, string> = {
     idle: "text-zinc-500",
-    initializing: "text-blue-400",
-    starting: "text-amber-400",
-    running: "text-emerald-400",
-    stopping: "text-amber-400",
-    error: "text-red-400",
+    initializing: "text-blue-500 dark:text-blue-400",
+    starting: "text-amber-500 dark:text-amber-400",
+    running: "text-emerald-500 dark:text-emerald-400",
+    stopping: "text-amber-500 dark:text-amber-400",
+    error: "text-red-500 dark:text-red-400",
   }
 
   const statusLabels: Record<RunStatus, string> = {
@@ -329,25 +329,24 @@ export function ProjectRunner({
   }
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+    <div className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-zinc-800/30 transition-colors"
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3">
-          <div className={`w-2 h-2 rounded-full ${
-            status === "running" ? "bg-emerald-500 animate-pulse" :
-            status === "initializing" ? "bg-blue-500 animate-pulse" :
-            "bg-zinc-600"
-          }`} />
-          <Terminal className="w-4 h-4 text-zinc-400" />
-          <span className="text-sm font-medium text-zinc-200">프로젝트 실행</span>
+          <div className={`w-2 h-2 rounded-full ${status === "running" ? "bg-emerald-500 animate-pulse" :
+              status === "initializing" ? "bg-blue-500 animate-pulse" :
+                "bg-zinc-400 dark:bg-zinc-600"
+            }`} />
+          <Terminal className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-200">프로젝트 실행</span>
           <span className={`text-xs ${statusColors[status]}`}>({statusLabels[status]})</span>
         </div>
         <div className="flex items-center gap-2">
           {status === "initializing" ? (
-            <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+            <Loader2 className="w-4 h-4 animate-spin text-blue-500 dark:text-blue-400" />
           ) : status === "idle" || status === "error" ? (
             <Button
               size="sm"
@@ -369,7 +368,7 @@ export function ProjectRunner({
                 e.stopPropagation()
                 stopProject()
               }}
-              className="h-7 px-3 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+              className="h-7 px-3 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10"
             >
               <Square className="w-3 h-3 mr-1.5" />
               Stop
@@ -396,17 +395,16 @@ export function ProjectRunner({
           >
             {/* Script Selector */}
             {config?.scripts && Object.keys(config.scripts).length > 0 && (
-              <div className="px-4 py-2 border-t border-zinc-800/50 flex items-center gap-2 flex-wrap">
+              <div className="px-4 py-2 border-t border-zinc-200 dark:border-zinc-800/50 flex items-center gap-2 flex-wrap bg-zinc-50/50 dark:bg-transparent">
                 <span className="text-xs text-zinc-500">Script:</span>
                 {Object.keys(config.scripts).slice(0, 6).map((script) => (
                   <button
                     key={script}
                     onClick={() => setSelectedScript(script)}
-                    className={`px-2 py-1 text-xs rounded transition-colors ${
-                      selectedScript === script
-                        ? "bg-zinc-700 text-white"
-                        : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800"
-                    }`}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${selectedScript === script
+                        ? "bg-zinc-900 dark:bg-zinc-700 text-white"
+                        : "bg-zinc-200 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-800"
+                      }`}
                   >
                     {script}
                   </button>
@@ -415,22 +413,22 @@ export function ProjectRunner({
             )}
 
             {/* Output Terminal */}
-            <div className="border-t border-zinc-800/50">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80">
+            <div className="border-t border-zinc-200 dark:border-zinc-800/50">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800/50">
                 <span className="text-xs text-zinc-500">Output</span>
                 <button
                   onClick={clearOutput}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-0.5 rounded hover:bg-zinc-800"
+                  className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-2 py-0.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800"
                 >
                   Clear
                 </button>
               </div>
               <div
                 ref={outputRef}
-                className="h-48 overflow-y-auto px-3 py-2 font-mono text-xs bg-black/50 text-zinc-300 space-y-0.5"
+                className="h-48 overflow-y-auto px-3 py-2 font-mono text-xs bg-zinc-50 dark:bg-black/50 text-zinc-700 dark:text-zinc-300 space-y-0.5"
               >
                 {output.length === 0 ? (
-                  <div className="text-zinc-600 py-4 text-center">
+                  <div className="text-zinc-400 dark:text-zinc-600 py-4 text-center">
                     {!folderPath ? "워크스페이스 생성 중..." : "Run 버튼을 눌러 프로젝트를 실행하세요"}
                   </div>
                 ) : (

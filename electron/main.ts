@@ -286,11 +286,17 @@ async function createWindow() {
 }
 
 // GPU 설정 - WebGL/Three.js를 위해 GPU 활성화
-// app.disableHardwareAcceleration();  // WebGL 사용을 위해 비활성화
-// app.commandLine.appendSwitch('disable-gpu');  // WebGL 사용을 위해 비활성화
-app.commandLine.appendSwitch('ignore-gpu-blacklist');  // GPU 블랙리스트 무시
-app.commandLine.appendSwitch('enable-webgl');  // WebGL 강제 활성화
-app.commandLine.appendSwitch('enable-gpu-rasterization');  // GPU 래스터화 활성화
+// DISABLE_GPU=1 환경변수로 GPU 비활성화 가능 (다른 Electron 앱과 충돌 방지)
+if (process.env.DISABLE_GPU === '1') {
+    console.log('[GPU] Hardware acceleration disabled (DISABLE_GPU=1)');
+    app.disableHardwareAcceleration();
+    app.commandLine.appendSwitch('disable-gpu');
+    app.commandLine.appendSwitch('disable-software-rasterizer');
+} else {
+    app.commandLine.appendSwitch('ignore-gpu-blacklist');  // GPU 블랙리스트 무시
+    app.commandLine.appendSwitch('enable-webgl');  // WebGL 강제 활성화
+    app.commandLine.appendSwitch('enable-gpu-rasterization');  // GPU 래스터화 활성화
+}
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors,NetworkService');
 
@@ -339,6 +345,14 @@ app.whenReady().then(() => {
             label: 'GlowUS',
             submenu: [
                 { role: 'about' },
+                { type: 'separator' },
+                {
+                    label: 'Preferences...',
+                    accelerator: 'CmdOrCtrl+,',
+                    click: () => {
+                        mainWindow?.webContents.send('menu:preferences');
+                    }
+                },
                 { type: 'separator' },
                 { role: 'services' },
                 { type: 'separator' },

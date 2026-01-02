@@ -22,6 +22,24 @@
 // ============================================
 export * from './agent-os'
 
+// 🧠 JARVIS Long-term Memory (RAG)
+export {
+  buildJarvisContext,
+  saveConversationMessage,
+  getRecentConversations,
+  searchRelevantMemories,
+  searchEpisodes,
+  saveEpisode,
+  getOrCreateUserProfile,
+  updateUserProfile,
+  addImportantFact,
+  analyzeAndLearn,
+  type UserProfile,
+  type ConversationMessage,
+  type JarvisContext,
+  type SaveMessageParams,
+} from './jarvis-memory-manager'
+
 // Agent Memory Search Service (Phase 2.3)
 export {
   searchMemories,

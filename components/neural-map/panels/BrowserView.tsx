@@ -171,19 +171,69 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
             if (node.canGoBack) setCanGoBack(node.canGoBack())
             if (node.canGoForward) setCanGoForward(node.canGoForward())
 
-            // Webview의 webContentsId 가져오기 (Electron 캡처용)
+            // Webview의 webContentsId 가져오기 및 AI Browser 시스템에 등록
+            const registerAiBrowser = async (retryCount = 0) => {
+                try {
+                    console.log('[BrowserView] 🔍 Checking webContentsId... (retry:', retryCount, ')')
+
+                    // @ts-ignore - Electron webview method
+                    const wcId = node.getWebContentsId?.()
+                    console.log('[BrowserView] wcId:', wcId)
+
+                    if (wcId) {
+                        setWebContentsId(wcId)
+                        console.log('[BrowserView] WebContentsId captured:', wcId)
+
+                        // 🌐 AI Browser 시스템에 등록 (채팅 에이전트가 제어 가능하도록)
+                        const electronApi = (window as any).electron?.aiBrowser
+                        console.log('[BrowserView] 🌐 electron.aiBrowser:', !!electronApi)
+
+                        if (electronApi) {
+                            console.log('[BrowserView] 📡 Calling register...')
+                            const result = await electronApi.register(wcId)
+                            console.log('[BrowserView] ✅ Registered with AI Browser system:', result)
+                        } else {
+                            console.warn('[BrowserView] ⚠️ electron.aiBrowser not available!')
+                        }
+                    } else if (retryCount < 5) {
+                        // webContentsId가 없으면 재시도
+                        console.log('[BrowserView] ⏳ webContentsId not ready, retrying in 500ms...')
+                        setTimeout(() => registerAiBrowser(retryCount + 1), 500)
+                    } else {
+                        console.warn('[BrowserView] ⚠️ Failed to get webContentsId after 5 retries')
+                    }
+                } catch (e) {
+                    console.error('[BrowserView] ❌ Error:', e)
+                    if (retryCount < 5) {
+                        setTimeout(() => registerAiBrowser(retryCount + 1), 500)
+                    }
+                }
+            }
+
+            registerAiBrowser()
+        }
+
+        // 🌐 did-attach 이벤트 - webContentsId를 직접 받을 수 있음
+        const onDidAttach = () => {
+            console.log('[BrowserView] 🔗 did-attach fired')
             try {
+                // @ts-ignore - Electron webview method
                 const wcId = node.getWebContentsId?.()
-                if (wcId) {
-                    setWebContentsId(wcId)
-                    console.log('[BrowserView] WebContentsId captured:', wcId)
+                console.log('[BrowserView] wcId from did-attach:', wcId)
+
+                if (wcId && (window as any).electron?.aiBrowser) {
+                    console.log('[BrowserView] 📡 Registering from did-attach...')
+                    ;(window as any).electron.aiBrowser.register(wcId)
+                        .then((r: any) => console.log('[BrowserView] ✅ Registered:', r))
+                        .catch((e: any) => console.error('[BrowserView] ❌ Register failed:', e))
                 }
             } catch (e) {
-                console.warn('[BrowserView] Could not get webContentsId:', e)
+                console.error('[BrowserView] did-attach error:', e)
             }
         }
 
         // 리스너 등록
+        node.addEventListener('did-attach', onDidAttach)
         node.addEventListener('did-start-loading', onDidStartLoading)
         node.addEventListener('did-stop-loading', onDidStopLoading)
         node.addEventListener('did-fail-load', onDidFailLoad)
@@ -195,6 +245,7 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
 
         // 클린업 (필수: 중복 리스너 방지)
         return () => {
+            node.removeEventListener('did-attach', onDidAttach)
             node.removeEventListener('did-start-loading', onDidStartLoading)
             node.removeEventListener('did-stop-loading', onDidStopLoading)
             node.removeEventListener('did-fail-load', onDidFailLoad)
@@ -203,6 +254,12 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
             node.removeEventListener('page-favicon-updated', onPageFaviconUpdated)
             node.removeEventListener('new-window', onNewWindow)
             node.removeEventListener('dom-ready', onDomReady)
+
+            // 🌐 AI Browser 시스템에서 해제
+            if ((window as any).electron?.aiBrowser) {
+                (window as any).electron.aiBrowser.unregister()
+                    .catch((e: any) => console.warn('[BrowserView] Failed to unregister from AI Browser:', e))
+            }
         }
     }, [webviewNode, activeTabId]) // activeTabId가 바뀔 때마다 정리하고 새로 등록
 

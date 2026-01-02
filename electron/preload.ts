@@ -213,6 +213,41 @@ contextBridge.exposeInMainWorld('electron', {
             return () => ipcRenderer.removeListener('agent:switch-tab', handler);
         },
     },
+
+    // 🌐 AI Browser Control - 앱 내 웹뷰를 AI가 제어
+    aiBrowser: {
+        // 웹뷰 등록 (BrowserView 컴포넌트에서 호출)
+        register: (webContentsId: number) => ipcRenderer.invoke('ai-browser:register', webContentsId),
+
+        // 웹뷰 해제
+        unregister: () => ipcRenderer.invoke('ai-browser:unregister'),
+
+        // 현재 URL 가져오기
+        getUrl: () => ipcRenderer.invoke('ai-browser:get-url'),
+
+        // URL로 이동
+        navigate: (url: string) => ipcRenderer.invoke('ai-browser:navigate', url),
+
+        // JavaScript 실행
+        execute: (script: string) => ipcRenderer.invoke('ai-browser:execute', script),
+
+        // 스크린샷 캡처
+        screenshot: () => ipcRenderer.invoke('ai-browser:screenshot'),
+
+        // 클릭 가능한 요소 추출
+        getElements: () => ipcRenderer.invoke('ai-browser:get-elements'),
+
+        // AI Agent Loop 실행 (자연어 태스크 → 자동 실행)
+        runAgent: (task: string, maxSteps?: number) =>
+            ipcRenderer.invoke('ai-browser:agent', task, maxSteps || 10),
+
+        // 브라우저 패널 열기 이벤트 수신 (main → renderer)
+        onOpenPanel: (callback: () => void) => {
+            const handler = () => callback();
+            ipcRenderer.on('ai-browser:open-panel', handler);
+            return () => ipcRenderer.removeListener('ai-browser:open-panel', handler);
+        },
+    },
 });
 
 // Electron 앱 표시 - DOM 로드 후 클래스 추가

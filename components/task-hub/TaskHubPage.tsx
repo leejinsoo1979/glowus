@@ -109,9 +109,9 @@ export function TaskHubPage({
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
+    <div className="flex flex-col h-full bg-zinc-50 dark:bg-zinc-950">
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
+      <div className="flex items-center justify-between px-4 h-16 border-b border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">
             Task Hub
@@ -173,13 +173,13 @@ export function TaskHubPage({
             <RefreshCw className={cn('w-4 h-4 text-zinc-600 dark:text-zinc-400', isLoading && 'animate-spin')} />
           </button>
 
-          {/* 새 Task 버튼 */}
+          {/* Task 추가 버튼 */}
           <button
             onClick={() => handleCreateTask()}
-            className="flex items-center gap-1 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors text-sm"
           >
             <Plus className="w-4 h-4" />
-            새 Task
+            Task
           </button>
         </div>
       </div>

@@ -36,7 +36,7 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const { setUser, setCurrentStartup, setIsLoading, isLoading } = useAuthStore()
   // Include isResizingLevel2 for global resize fix
-  const { sidebarOpen, emailSidebarWidth, isResizingEmail, agentSidebarOpen, toggleAgentSidebar, level2Width, isResizingLevel2 } = useUIStore()
+  const { sidebarOpen, emailSidebarWidth, isResizingEmail, agentSidebarOpen, toggleAgentSidebar, level2Width, isResizingLevel2, level2Collapsed } = useUIStore()
   const [mounted, setMounted] = useState(false)
   const [isElectron, setIsElectron] = useState(false)
 
@@ -52,7 +52,39 @@ export default function DashboardLayout({
     }
     checkElectron()
   }, [])
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.match(/\/project\/[^/]+$/) || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/neural-map')
+
+  // 🌐 글로벌 AI Browser 패널 자동 열기 리스너
+  // Neural Map 페이지가 아닌 곳에서도 브라우저 요청 시 자동으로 이동
+  useEffect(() => {
+    const electronApi = (window as any).electron?.aiBrowser
+    if (!electronApi?.onOpenPanel) return
+
+    const unsubscribe = electronApi.onOpenPanel(() => {
+      console.log('[Dashboard Layout] 🌐 AI Browser requested panel open!')
+
+      // Neural Map 페이지가 아니면 이동
+      if (!pathname?.includes('/neural-map')) {
+        console.log('[Dashboard Layout] Navigating to Neural Map with browser tab...')
+        router.push('/dashboard-group/neural-map?tab=browser')
+      }
+    })
+
+    return () => unsubscribe?.()
+  }, [pathname, router])
+
+  // ⚙️ 네이티브 메뉴 Preferences 리스너 (Cmd+,)
+  useEffect(() => {
+    const electronApi = (window as any).electron
+    if (!electronApi?.onMenuEvent) return
+
+    const unsubscribe = electronApi.onMenuEvent('menu:preferences', () => {
+      console.log('[Dashboard Layout] ⚙️ Preferences menu clicked!')
+      router.push('/dashboard-group/settings')
+    })
+
+    return () => unsubscribe?.()
+  }, [router])
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/apps/government-programs') || pathname?.includes('/neural-map') || pathname?.includes('/gantt')
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -156,9 +188,9 @@ export default function DashboardLayout({
   // 2단계 사이드바: Level1(64px) + Level2(동적)
   const isEmailPage = pathname?.includes('/email')
   const isNeuralMapPage = pathname?.includes('/neural-map')
-  // Neural Map은 동적 level2Width 사용
+  // Neural Map은 동적 level2Width 사용 (level2Collapsed 시 32px만 표시)
   const sidebarWidth = sidebarOpen
-    ? (isEmailPage ? 64 : (isNeuralMapPage ? 64 + level2Width : 304))
+    ? (isEmailPage ? 64 : (isNeuralMapPage ? 64 + (level2Collapsed ? 32 : level2Width) : 304))
     : 64
 
   // Check if we are on the main dashboard page
@@ -185,7 +217,7 @@ export default function DashboardLayout({
           marginTop: isElectron ? '48px' : 'var(--title-bar-height, 0px)',
           minHeight: `calc(100vh - ${isElectron ? '48px' : 'var(--title-bar-height, 0px)'})`,
           height: isFullWidthPage ? `calc(100vh - ${isElectron ? '48px' : 'var(--title-bar-height, 0px)'})` : undefined,
-          paddingTop: isElectron ? 0 : (isFullWidthPage ? '4rem' : undefined)
+          paddingTop: isElectron ? 0 : (isFullWidthPage ? 0 : undefined)
         }}
       >
         <div className={cn(

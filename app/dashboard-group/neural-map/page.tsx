@@ -47,6 +47,7 @@ import GitPanel from '@/components/neural-map/panels/GitPanel'
 // FileTreePanel은 TwoLevelSidebar에서 렌더링됨 (layout.tsx)
 
 // Controls
+import { Toolbar } from '@/components/neural-map/controls/Toolbar'
 import { ViewTabs } from '@/components/neural-map/controls/ViewTabs'
 import { StatusBar } from '@/components/neural-map/controls/StatusBar'
 
@@ -98,6 +99,15 @@ const CosmicForceGraph = dynamic(
 // Dynamically import Logic Flow (React Flow based Tree)
 const LogicFlow = dynamic(
   () => import('@/components/neural-map/canvas/logic/LogicFlow').then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => <CanvasLoadingFallback />,
+  }
+)
+
+// Dynamically import Architecture View (system architecture reverse-engineering)
+const ArchitectureView = dynamic(
+  () => import('@/components/neural-map/canvas/architecture/ArchitectureView').then((mod) => mod.ArchitectureView),
   {
     ssr: false,
     loading: () => <CanvasLoadingFallback />,
@@ -257,9 +267,10 @@ export default function NeuralMapPage() {
   const setMapId = useNeuralMapStore((s) => s.setMapId)
   const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
 
-  // URL 파라미터에서 mapId 처리
+  // URL 파라미터에서 mapId, tab 처리
   const searchParams = useSearchParams()
   const urlMapId = searchParams.get('mapId')
+  const urlTab = searchParams.get('tab')
 
   // URL에서 mapId가 있으면 store에 설정
   useEffect(() => {
@@ -267,6 +278,14 @@ export default function NeuralMapPage() {
       setMapId(urlMapId)
     }
   }, [urlMapId, mapId, setMapId])
+
+  // URL에서 tab 파라미터가 있으면 해당 탭으로 전환
+  useEffect(() => {
+    if (urlTab === 'browser' && activeTab !== 'browser') {
+      console.log('[NeuralMap] 🌐 Setting browser tab from URL parameter')
+      setActiveTab('browser')
+    }
+  }, [urlTab, activeTab, setActiveTab])
 
   // MCP Bridge for Claude Code CLI control
   const { isConnected: mcpConnected } = useMcpBridge()
@@ -313,12 +332,25 @@ export default function NeuralMapPage() {
   // 진입 시 이전 프로젝트 연결 초기화
   const clearLinkedProject = useNeuralMapStore((s) => s.clearLinkedProject)
 
+  // 🌐 AI Browser 패널 자동 열기 이벤트 리스너
+  useEffect(() => {
+    const electronApi = (window as any).electron?.aiBrowser
+    if (!electronApi?.onOpenPanel) return
+
+    const unsubscribe = electronApi.onOpenPanel(() => {
+      console.log('[NeuralMap] 🌐 AI Browser requested panel open!')
+      setActiveTab('browser')
+    })
+
+    return () => unsubscribe?.()
+  }, [setActiveTab])
+
   useEffect(() => {
     setMounted(true)
 
-    // URL에서 projectId 확인
+    // URL에서 projectId 확인 (projectId 또는 project 파라미터 모두 지원)
     const urlParams = new URLSearchParams(window.location.search)
-    const projectIdFromUrl = urlParams.get('projectId')
+    const projectIdFromUrl = urlParams.get('projectId') || urlParams.get('project')
 
     // 스토어에 이미 linkedProjectId가 있으면 (project 페이지에서 설정한 경우) 유지
     // URL에서 projectId가 오거나, 스토어에 이미 프로젝트가 설정되어 있으면 유지
@@ -400,6 +432,69 @@ export default function NeuralMapPage() {
       return () => window.removeEventListener('keydown', handleKeyDown)
     }
   }, [toggleTerminal])
+
+  // 🔥 저장 토스트 상태
+  const [saveToast, setSaveToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' })
+
+  const showSaveToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setSaveToast({ show: true, message, type })
+    setTimeout(() => setSaveToast({ show: false, message: '', type: 'success' }), 2500)
+  }, [])
+
+  // 🔥 Electron 메뉴 저장 이벤트 리스너 (Cmd+S)
+  useEffect(() => {
+    const electron = typeof window !== 'undefined' ? (window as any).electron : null
+    if (!electron?.onMenuEvent) return
+
+    const handleSave = async () => {
+      console.log('[NeuralMap] 💾 Menu save triggered')
+      const state = useNeuralMapStore.getState()
+      const { linkedProjectId, mapId, graph, projectPath, linkedProjectName } = state
+
+      // 1. 이미 프로젝트에 연결되어 있으면 바로 저장
+      if (linkedProjectId && mapId) {
+        try {
+          // 맵 상태 저장
+          await fetch(`/api/neural-map/${mapId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ graph }),
+          })
+
+          // folder_path도 업데이트
+          if (projectPath) {
+            await fetch(`/api/projects/${linkedProjectId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder_path: projectPath })
+            })
+          }
+
+          console.log('[NeuralMap] ✅ Saved to project:', linkedProjectId)
+          showSaveToast(`"${linkedProjectName || '프로젝트'}" 에 저장됨`)
+        } catch (err) {
+          console.error('[NeuralMap] Save failed:', err)
+          showSaveToast('저장 실패', 'error')
+        }
+        return
+      }
+
+      // 2. 프로젝트 연결 없이 로컬 폴더만 있으면 저장 모달 열기 (카테고리 선택 필요)
+      if (projectPath && !linkedProjectId) {
+        console.log('[NeuralMap] Opening save modal for category selection')
+        useNeuralMapStore.getState().setShowSaveModal(true)
+        return
+      }
+
+      // 3. 아무것도 없으면 안내
+      if (!projectPath && !linkedProjectId) {
+        showSaveToast('저장할 폴더를 먼저 열어주세요', 'error')
+      }
+    }
+
+    const unsubscribe = electron.onMenuEvent('menu:save', handleSave)
+    return () => unsubscribe?.()
+  }, [setLinkedProject, showSaveToast])
 
   // 🔥 프로젝트 문서 로드 및 그래프 빌드 (linkedProjectId가 있을 때)
   const documentsLoadedRef = useRef<string | null>(null) // 이미 로드한 프로젝트 ID 추적
@@ -972,8 +1067,11 @@ export default function NeuralMapPage() {
         {/* Main Content Area */}
         <div className={cn("flex-1 flex flex-col min-w-0 relative", isDark ? "bg-zinc-900" : "bg-white")}>
 
+          {/* Toolbar - 저장, 검색, 테마 등 */}
+          <Toolbar />
+
           {/* Top View Controls (Tabs, etc) */}
-          <div className={cn("h-10 border-b flex items-center justify-between px-3 select-none z-20 overflow-hidden", isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200")}>
+          <div className={cn("h-16 border-b flex items-center justify-between px-4 select-none z-20 overflow-hidden", isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200")}>
             <div className="flex-1 min-w-0 overflow-hidden">
               <ViewTabs />
             </div>
@@ -1049,6 +1147,8 @@ export default function NeuralMapPage() {
               <div className="absolute inset-0 overflow-hidden">
                 <AgentBuilder />
               </div>
+            ) : activeTab === 'architecture' ? (
+              <ArchitectureView />
             ) : activeTab === 'data' ? (
               <SchemaView className="absolute inset-0" />
             ) : activeTab === 'logic' ? (
@@ -1152,6 +1252,34 @@ export default function NeuralMapPage() {
 
       {/* Status Bar */}
       <StatusBar />
+
+      {/* Save Toast */}
+      <AnimatePresence>
+        {saveToast.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={cn(
+              'fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2',
+              saveToast.type === 'success'
+                ? 'bg-green-500 text-white'
+                : 'bg-red-500 text-white'
+            )}
+          >
+            {saveToast.type === 'success' ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="text-sm font-medium">{saveToast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modals */}
       {

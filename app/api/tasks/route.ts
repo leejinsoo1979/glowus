@@ -14,38 +14,27 @@ interface StartupCheck {
   founder_id: string
 }
 
-// GET /api/tasks - List tasks
+// GET /api/tasks - List tasks (project_tasks 테이블 사용)
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
     const adminSupabase = createAdminClient()
     const { searchParams } = new URL(request.url)
 
-    let userId: string
-    if (DEV_MODE) {
-      userId = DEV_USER_ID
-    } else {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
-      }
-      userId = user.id
-    }
-
-    const startupId = searchParams.get('startup_id')
+    const projectId = searchParams.get('project_id')
     const status = searchParams.get('status')
     const priority = searchParams.get('priority')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
+    // project_tasks 테이블에서 조회
     let query = adminSupabase
-      .from('tasks')
-      .select('*', { count: 'exact' })
+      .from('project_tasks')
+      .select('id, title, description, status, priority, due_date, start_date, project_id, created_at, updated_at', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    if (startupId) {
-      query = query.eq('startup_id', startupId)
+    if (projectId) {
+      query = query.eq('project_id', projectId)
     }
 
     if (status) {
@@ -63,8 +52,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // TodoWidget 형식에 맞게 변환 (status 매핑)
+    const mappedData = data?.map(task => ({
+      ...task,
+      // project_tasks의 status를 TodoWidget 형식으로 매핑
+      status: mapStatus(task.status),
+    })) || []
+
     return NextResponse.json({
-      data,
+      data: mappedData,
       count,
       page: Math.floor(offset / limit) + 1,
       limit,
@@ -74,6 +70,19 @@ export async function GET(request: NextRequest) {
     console.error('Tasks API error:', error)
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
+}
+
+// project_tasks status를 TodoWidget status로 매핑
+function mapStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    'TODO': 'TODO',
+    'IN_PROGRESS': 'IN_PROGRESS',
+    'REVIEW': 'IN_PROGRESS',
+    'DONE': 'DONE',
+    'CANCELLED': 'CANCELLED',
+    'BLOCKED': 'TODO',
+  }
+  return statusMap[status] || 'TODO'
 }
 
 // POST /api/tasks - Create new task

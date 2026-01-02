@@ -1,6 +1,6 @@
 "use client"
 
-import { Flame, TrendingUp, Users, Clock, Zap, Sparkles, ThermometerSun, Minus } from "lucide-react"
+import { Flame, TrendingUp, TrendingDown, Users, Clock, Zap, Sparkles, ThermometerSun, Minus, Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
 
@@ -14,9 +14,12 @@ interface EngagementData {
 }
 
 interface HotTask {
+  id: string
   title: string
   heat: number
   assignees: number
+  status: string
+  priority: string
 }
 
 interface EngagementOverviewProps {
@@ -24,33 +27,39 @@ interface EngagementOverviewProps {
   hotTasks?: HotTask[]
 }
 
-const defaultEngagementData: EngagementData = {
-  overallHeat: 0.78,
-  peakHours: "오후 2시 - 4시",
-  hottestDay: "수요일",
-  activeMembers: 8,
-  avgSessionTime: "45분",
-  heatTrend: "up",
-}
-
-const defaultHotTasks: HotTask[] = [
-  { title: "결제 시스템 연동", heat: 0.95, assignees: 3 },
-  { title: "사용자 인증 개선", heat: 0.87, assignees: 2 },
-  { title: "대시보드 UI 리팩토링", heat: 0.82, assignees: 2 },
-  { title: "API 성능 최적화", heat: 0.74, assignees: 1 },
-  { title: "테스트 커버리지 향상", heat: 0.68, assignees: 2 },
-]
-
-export function EngagementOverview({
-  data = defaultEngagementData,
-  hotTasks = defaultHotTasks
-}: EngagementOverviewProps) {
+export function EngagementOverview({}: EngagementOverviewProps) {
   const { accentColor } = useThemeStore()
   const [mounted, setMounted] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<EngagementData>({
+    overallHeat: 0,
+    peakHours: "-",
+    hottestDay: "-",
+    activeMembers: 0,
+    avgSessionTime: "-",
+    heatTrend: "stable",
+  })
+  const [hotTasks, setHotTasks] = useState<HotTask[]>([])
 
   useEffect(() => {
     setMounted(true)
+    fetchEngagementData()
   }, [])
+
+  const fetchEngagementData = async () => {
+    try {
+      const res = await fetch('/api/dashboard/engagement')
+      if (res.ok) {
+        const json = await res.json()
+        setData(json.engagement)
+        setHotTasks(json.hotTasks || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch engagement data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const currentAccent = accentColors.find(c => c.id === accentColor) || accentColors[0]
 
@@ -74,6 +83,14 @@ export function EngagementOverview({
 
   const overallHeatLevel = getHeatLevel(data.overallHeat)
 
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Top Stats Row */}
@@ -91,6 +108,7 @@ export function EngagementOverview({
               {overallHeatLevel.label}
             </span>
             {data.heatTrend === "up" && <TrendingUp className="h-3 w-3 text-green-500" />}
+            {data.heatTrend === "down" && <TrendingDown className="h-3 w-3 text-red-500" />}
           </div>
         </div>
 
@@ -129,8 +147,12 @@ export function EngagementOverview({
         </div>
         <p className="text-xs text-zinc-500 mb-2">팀원 활동 및 상호작용 기반 가장 활발한 태스크</p>
         <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-          {hotTasks.map((task, index) => (
-            <div key={task.title} className="flex items-center justify-between p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
+          {hotTasks.length === 0 ? (
+            <div className="text-center py-4 text-zinc-400 dark:text-zinc-500 text-sm">
+              활성 태스크가 없습니다
+            </div>
+          ) : hotTasks.map((task, index) => (
+            <div key={task.id || task.title} className="flex items-center justify-between p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold bg-accent/20 text-accent">
                   {index + 1}
@@ -155,3 +177,4 @@ export function EngagementOverview({
     </div>
   )
 }
+

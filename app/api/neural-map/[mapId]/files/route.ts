@@ -101,6 +101,7 @@ export async function GET(request: Request, { params }: RouteParams) {
 }
 
 // POST /api/neural-map/[mapId]/files - 파일 업로드
+// 🔥 storageMode 지원: local | supabase | gcs
 export async function POST(request: Request, { params }: RouteParams) {
   try {
     const { mapId } = await params
@@ -131,34 +132,221 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     const formData = await request.formData()
-    const file = formData.get('file') as File
+    const file = formData.get('file') as File | null
     const path = formData.get('path') as string | null
+    const localPath = formData.get('localPath') as string | null  // 🔥 로컬 절대 경로
+    const storageMode = (formData.get('storageMode') as string) || 'supabase'  // 🔥 저장 모드
+    const fileName = formData.get('fileName') as string | null  // 🔥 local 모드에서 파일명
+    const fileSize = formData.get('fileSize') as string | null  // 🔥 local 모드에서 파일 크기
 
+    // 🔥 LOCAL 모드: 파일 업로드 없이 경로 참조만 저장
+    if (storageMode === 'local') {
+      if (!localPath || !fileName) {
+        return NextResponse.json({ error: 'localPath and fileName are required for local mode' }, { status: 400 })
+      }
+
+      const fileExtension = fileName.split('.').pop()?.toLowerCase() || ''
+      const fileType = getFileType(fileExtension)
+
+      console.log('[POST /files] LOCAL mode - storing path reference only:', localPath)
+
+      // DB에 메타데이터만 저장 (URL 없음, localPath만 저장)
+      const insertData: Record<string, unknown> = {
+        map_id: mapId,
+        name: fileName,
+        type: fileType,
+        url: `local://${localPath}`,  // 🔥 local:// 프로토콜로 로컬 경로 표시
+        size: parseInt(fileSize || '0'),
+        local_path: localPath,  // 🔥 로컬 절대 경로 저장
+        storage_mode: 'local',  // 🔥 저장 모드 기록
+      }
+      if (path) {
+        insertData.path = path
+      }
+
+      let { data, error } = await adminSupabase
+        .from('neural_files')
+        .insert(insertData as never)
+        .select()
+        .single()
+
+      // 컬럼 에러시 기본 필드만으로 재시도
+      if (error && (error.message.includes('local_path') || error.message.includes('storage_mode'))) {
+        console.warn('New column not found, retrying with basic fields:', error.message)
+        const basicInsertData: Record<string, unknown> = {
+          map_id: mapId,
+          name: fileName,
+          type: fileType,
+          url: `local://${localPath}`,
+          size: parseInt(fileSize || '0'),
+        }
+        if (path) {
+          basicInsertData.path = path
+        }
+        const retryResult = await adminSupabase
+          .from('neural_files')
+          .insert(basicInsertData as never)
+          .select()
+          .single()
+        data = retryResult.data
+        error = retryResult.error
+      }
+
+      if (error) {
+        console.error('Failed to save file metadata:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      const fileData = data as unknown as {
+        id: string
+        map_id: string
+        name: string
+        path: string | null
+        type: string
+        url: string
+        size: number
+        created_at: string
+      }
+
+      return NextResponse.json({
+        id: fileData.id,
+        mapId: fileData.map_id,
+        name: fileData.name,
+        path: fileData.path || undefined,
+        type: fileData.type,
+        url: fileData.url,
+        size: fileData.size,
+        localPath: localPath,
+        storageMode: 'local',
+        createdAt: fileData.created_at,
+      }, { status: 201 })
+    }
+
+    // 🔥 SUPABASE / GCS 모드: 기존 파일 업로드 로직
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
     // 파일 타입 분류 (VS Code처럼 대부분 파일 허용)
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || ''
-    let fileType: 'pdf' | 'image' | 'video' | 'markdown' | 'code' | 'text' | 'binary'
+    const fileType = getFileType(fileExtension)
 
-    if (fileExtension === 'pdf') {
-      fileType = 'pdf'
-    } else if (IMAGE_EXTENSIONS.has(fileExtension)) {
-      fileType = 'image'
-    } else if (VIDEO_EXTENSIONS.has(fileExtension)) {
-      fileType = 'video'
-    } else if (MARKDOWN_EXTENSIONS.has(fileExtension)) {
-      fileType = 'markdown'
-    } else if (CODE_EXTENSIONS.has(fileExtension)) {
-      fileType = 'code'
-    } else if (TEXT_EXTENSIONS.has(fileExtension)) {
-      fileType = 'text'
-    } else {
-      fileType = 'binary'
+    console.log('[POST /files] Starting upload for map:', mapId, 'file:', file.name, 'mode:', storageMode)
+
+    // 🔥 GCS 모드: Google Cloud Storage에 업로드
+    if (storageMode === 'gcs') {
+      console.log('[POST /files] GCS mode - uploading to Google Cloud Storage')
+
+      // 파일 내용 읽기
+      const arrayBuffer = await file.arrayBuffer()
+      const base64Content = Buffer.from(arrayBuffer).toString('base64')
+
+      // 프로젝트 ID 가져오기 (mapId 기반)
+      const { data: neuralMapData } = await adminSupabase
+        .from('neural_maps')
+        .select('project_id')
+        .eq('id', mapId)
+        .single()
+
+      const projectId = (neuralMapData as any)?.project_id || mapId
+
+      // GCS API 호출
+      const gcsPath = path ? `neural-maps/${mapId}/${path}` : `neural-maps/${mapId}/${Date.now()}-${file.name}`
+
+      const gcsResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/gcs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: gcsPath,
+          content: base64Content,
+          projectId: projectId,
+          contentType: file.type || 'application/octet-stream',
+        }),
+      })
+
+      if (!gcsResponse.ok) {
+        const gcsError = await gcsResponse.json()
+        console.error('[GCS Upload] Failed:', gcsError)
+        // GCS 실패 시 Supabase로 fallback
+        console.log('[GCS Upload] Falling back to Supabase Storage')
+        // 아래 Supabase 로직으로 계속 진행 (storageMode는 supabase로 변경)
+      } else {
+        const gcsResult = await gcsResponse.json()
+        console.log('[GCS Upload] Success:', gcsResult)
+
+        // GCS URL 구성
+        const GCS_BUCKET = process.env.GCS_BUCKET || 'glowus-projects'
+        const gcsUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${gcsResult.path}`
+
+        // DB에 메타데이터 저장
+        const insertData: Record<string, unknown> = {
+          map_id: mapId,
+          name: file.name,
+          type: fileType,
+          url: gcsUrl,
+          size: file.size,
+          storage_mode: 'gcs',
+        }
+        if (path) {
+          insertData.path = path
+        }
+
+        let { data, error } = await adminSupabase
+          .from('neural_files')
+          .insert(insertData as never)
+          .select()
+          .single()
+
+        // 컬럼 에러시 기본 필드만으로 재시도
+        if (error && error.message.includes('storage_mode')) {
+          const basicInsertData: Record<string, unknown> = {
+            map_id: mapId,
+            name: file.name,
+            type: fileType,
+            url: gcsUrl,
+            size: file.size,
+          }
+          if (path) {
+            basicInsertData.path = path
+          }
+          const retryResult = await adminSupabase
+            .from('neural_files')
+            .insert(basicInsertData as never)
+            .select()
+            .single()
+          data = retryResult.data
+          error = retryResult.error
+        }
+
+        if (error) {
+          console.error('Failed to save file metadata:', error)
+          return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+
+        const fileData = data as unknown as {
+          id: string
+          map_id: string
+          name: string
+          path: string | null
+          type: string
+          url: string
+          size: number
+          created_at: string
+        }
+
+        return NextResponse.json({
+          id: fileData.id,
+          mapId: fileData.map_id,
+          name: fileData.name,
+          path: fileData.path || undefined,
+          type: fileData.type,
+          url: fileData.url,
+          size: fileData.size,
+          storageMode: 'gcs',
+          createdAt: fileData.created_at,
+        }, { status: 201 })
+      }
     }
-
-    console.log('[POST /files] Starting upload for map:', mapId, 'file:', file.name, 'path:', path)
 
     // Storage에 파일 업로드 (adminSupabase for storage operations)
     // path가 절대 경로로 날아오는 경우를 대비하여 basename만 사용하도록 안전하게 처리
@@ -211,6 +399,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       type: fileType,
       url: urlData.publicUrl,
       size: file.size,
+      storage_mode: 'supabase',  // 🔥 저장 모드 기록
     }
     // path가 있을 때만 추가 (DB에 컬럼이 없으면 에러 방지)
     if (path) {
@@ -223,10 +412,10 @@ export async function POST(request: Request, { params }: RouteParams) {
       .select()
       .single()
 
-    // path 컬럼 관련 에러시 path 없이 재시도
-    if (error && error.message.includes('path')) {
-      console.warn('Path column error, retrying without path:', error.message)
-      const insertDataWithoutPath: Record<string, unknown> = {
+    // path/storage_mode 컬럼 관련 에러시 path 없이 재시도
+    if (error && (error.message.includes('path') || error.message.includes('storage_mode'))) {
+      console.warn('Column error, retrying with basic fields:', error.message)
+      const insertDataWithoutExtras: Record<string, unknown> = {
         map_id: mapId,
         name: file.name,
         type: fileType,
@@ -235,7 +424,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       }
       const retryResult = await adminSupabase
         .from('neural_files')
-        .insert(insertDataWithoutPath as never)
+        .insert(insertDataWithoutExtras as never)
         .select()
         .single()
       data = retryResult.data
@@ -268,6 +457,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       type: fileData.type,
       url: fileData.url,
       size: fileData.size,
+      storageMode: 'supabase',
       createdAt: fileData.created_at,
     }
 
@@ -275,6 +465,25 @@ export async function POST(request: Request, { params }: RouteParams) {
   } catch (err) {
     console.error('Files POST error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// 🔥 파일 타입 분류 헬퍼 함수
+function getFileType(extension: string): 'pdf' | 'image' | 'video' | 'markdown' | 'code' | 'text' | 'binary' {
+  if (extension === 'pdf') {
+    return 'pdf'
+  } else if (IMAGE_EXTENSIONS.has(extension)) {
+    return 'image'
+  } else if (VIDEO_EXTENSIONS.has(extension)) {
+    return 'video'
+  } else if (MARKDOWN_EXTENSIONS.has(extension)) {
+    return 'markdown'
+  } else if (CODE_EXTENSIONS.has(extension)) {
+    return 'code'
+  } else if (TEXT_EXTENSIONS.has(extension)) {
+    return 'text'
+  } else {
+    return 'binary'
   }
 }
 

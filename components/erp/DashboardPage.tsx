@@ -38,7 +38,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950">
+    <div className="h-full flex flex-col bg-theme">
       <PageHeader
         title="대시보드"
         subtitle={`${new Date().getFullYear()}년 ${new Date().getMonth() + 1}월 현황`}
@@ -83,10 +83,10 @@ export function DashboardPage() {
         {/* Financial Overview */}
         <div className="grid grid-cols-3 gap-6">
           {/* Profit Card */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <div className="bg-theme-card border border-theme rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-zinc-400">이번 달 손익</h3>
-              <DollarSign className="w-5 h-5 text-zinc-500" />
+              <h3 className="text-sm font-medium text-theme-muted">이번 달 손익</h3>
+              <DollarSign className="w-5 h-5 text-theme-muted" />
             </div>
             <div className={`text-2xl font-bold ${(data?.financials?.monthly_profit || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {formatCurrency(data?.financials?.monthly_profit || 0)}
@@ -97,58 +97,58 @@ export function DashboardPage() {
               ) : (
                 <ArrowDownRight className="w-4 h-4 text-red-500" />
               )}
-              <span className="text-zinc-500">매출 - 매입</span>
+              <span className="text-theme-muted">매출 - 매입</span>
             </div>
           </div>
 
           {/* Receivable */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <div className="bg-theme-card border border-theme rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-zinc-400">매출채권 (미수금)</h3>
-              <Receipt className="w-5 h-5 text-zinc-500" />
+              <h3 className="text-sm font-medium text-theme-muted">매출채권 (미수금)</h3>
+              <Receipt className="w-5 h-5 text-theme-muted" />
             </div>
             <div className="text-2xl font-bold text-blue-400">
               {formatCurrency(data?.financials?.total_receivable || 0)}
             </div>
-            <div className="text-sm text-zinc-500 mt-2">미회수 잔액</div>
+            <div className="text-sm text-theme-muted mt-2">미회수 잔액</div>
           </div>
 
           {/* Payable */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <div className="bg-theme-card border border-theme rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-zinc-400">매입채무 (미지급금)</h3>
-              <Receipt className="w-5 h-5 text-zinc-500" />
+              <h3 className="text-sm font-medium text-theme-muted">매입채무 (미지급금)</h3>
+              <Receipt className="w-5 h-5 text-theme-muted" />
             </div>
             <div className="text-2xl font-bold text-orange-400">
               {formatCurrency(data?.financials?.total_payable || 0)}
             </div>
-            <div className="text-sm text-zinc-500 mt-2">미지급 잔액</div>
+            <div className="text-sm text-theme-muted mt-2">미지급 잔액</div>
           </div>
         </div>
 
         {/* Bottom Row */}
         <div className="grid grid-cols-2 gap-6">
           {/* Pending Items */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-            <h3 className="text-lg font-semibold text-white mb-4">처리 대기</h3>
+          <div className="bg-theme-card border border-theme rounded-xl p-5">
+            <h3 className="text-lg font-semibold text-theme mb-4">처리 대기</h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-theme-secondary rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-yellow-500/10 rounded-lg">
                     <AlertCircle className="w-4 h-4 text-yellow-500" />
                   </div>
-                  <span className="text-sm text-zinc-300">휴가 신청</span>
+                  <span className="text-sm text-theme-secondary">휴가 신청</span>
                 </div>
                 <span className="text-lg font-bold text-yellow-500">
                   {data?.leaves?.pending || 0}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-theme-secondary rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-purple-500/10 rounded-lg">
                     <Receipt className="w-4 h-4 text-purple-500" />
                   </div>
-                  <span className="text-sm text-zinc-300">경비 신청</span>
+                  <span className="text-sm text-theme-secondary">경비 신청</span>
                 </div>
                 <span className="text-lg font-bold text-purple-500">
                   {data?.expenses?.pending || 0}
@@ -158,14 +158,14 @@ export function DashboardPage() {
           </div>
 
           {/* Recent Transactions */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-            <h3 className="text-lg font-semibold text-white mb-4">최근 거래</h3>
+          <div className="bg-theme-card border border-theme rounded-xl p-5">
+            <h3 className="text-lg font-semibold text-theme mb-4">최근 거래</h3>
             <div className="space-y-2">
               {data?.recent_transactions?.length > 0 ? (
                 data.recent_transactions.map((tx: any) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg"
+                    className="flex items-center justify-between p-3 bg-theme-secondary rounded-lg"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg ${tx.transaction_type === 'sales' ? 'bg-green-500/10' : 'bg-orange-500/10'}`}>
@@ -176,10 +176,10 @@ export function DashboardPage() {
                         )}
                       </div>
                       <div>
-                        <div className="text-sm text-zinc-300">
+                        <div className="text-sm text-theme-secondary">
                           {tx.partner?.name || tx.transaction_number}
                         </div>
-                        <div className="text-xs text-zinc-500">{tx.transaction_date}</div>
+                        <div className="text-xs text-theme-muted">{tx.transaction_date}</div>
                       </div>
                     </div>
                     <div className={`text-sm font-medium ${tx.transaction_type === 'sales' ? 'text-green-400' : 'text-orange-400'}`}>
@@ -189,7 +189,7 @@ export function DashboardPage() {
                   </div>
                 ))
               ) : (
-                <div className="text-sm text-zinc-500 text-center py-4">
+                <div className="text-sm text-theme-muted text-center py-4">
                   최근 거래가 없습니다.
                 </div>
               )}
@@ -198,8 +198,8 @@ export function DashboardPage() {
         </div>
 
         {/* Monthly Trend Chart Placeholder */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <h3 className="text-lg font-semibold text-white mb-4">월별 매출/매입 추이</h3>
+        <div className="bg-theme-card border border-theme rounded-xl p-5">
+          <h3 className="text-lg font-semibold text-theme mb-4">월별 매출/매입 추이</h3>
           <div className="h-64 flex items-end gap-2">
             {data?.monthly_trend?.map((item: any, index: number) => {
               const maxValue = Math.max(
@@ -224,7 +224,7 @@ export function DashboardPage() {
               )
             })}
           </div>
-          <div className="flex justify-between mt-2 text-xs text-zinc-500">
+          <div className="flex justify-between mt-2 text-xs text-theme-muted">
             {data?.monthly_trend?.map((item: any) => (
               <span key={item.month}>{item.month.slice(-2)}월</span>
             ))}
@@ -232,11 +232,11 @@ export function DashboardPage() {
           <div className="flex items-center justify-center gap-6 mt-4">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 bg-purple-500/50 rounded" />
-              <span className="text-xs text-zinc-400">매출</span>
+              <span className="text-xs text-theme-muted">매출</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 bg-orange-500/50 rounded" />
-              <span className="text-xs text-zinc-400">매입</span>
+              <span className="text-xs text-theme-muted">매입</span>
             </div>
           </div>
         </div>

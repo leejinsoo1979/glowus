@@ -610,7 +610,7 @@ export default function EmailPage() {
       {/* Right Section: Header + (Content + Chat) */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header - spans full width */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
+        <div className="flex items-center justify-between h-16 px-4 border-b border-zinc-200 dark:border-zinc-700">
           <div className="flex items-center gap-3">
             {(selectedEmail || isComposeOpen) && (
               <button

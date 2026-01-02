@@ -23,7 +23,7 @@ export function StatCard({
   value,
   subtitle,
   icon: Icon,
-  iconColor = 'text-purple-500',
+  iconColor = 'text-accent',
   trend,
   loading = false,
   className = '',
@@ -31,21 +31,21 @@ export function StatCard({
 }: StatCardProps) {
   return (
     <div
-      className={`bg-zinc-900 border border-zinc-800 rounded-xl p-5 ${onClick ? 'cursor-pointer hover:border-zinc-700 transition-colors' : ''} ${className}`}
+      className={`bg-theme-card border border-theme rounded-xl p-5 ${onClick ? 'cursor-pointer hover:border-accent/30 transition-colors' : ''} ${className}`}
       onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-sm text-zinc-400 mb-1">{title}</p>
+          <p className="text-sm text-theme-muted mb-1">{title}</p>
           {loading ? (
-            <div className="h-8 w-24 bg-zinc-800 rounded animate-pulse" />
+            <div className="h-8 w-24 bg-theme-secondary rounded animate-pulse" />
           ) : (
-            <p className="text-2xl font-bold text-white">
+            <p className="text-2xl font-bold text-theme">
               {typeof value === 'number' ? value.toLocaleString() : value}
             </p>
           )}
           {subtitle && (
-            <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>
+            <p className="text-xs text-theme-muted mt-1">{subtitle}</p>
           )}
           {trend && (
             <div className={`flex items-center gap-1 mt-2 text-xs ${trend.value >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -55,12 +55,12 @@ export function StatCard({
                 <TrendingDown className="w-3 h-3" />
               )}
               <span>{trend.value >= 0 ? '+' : ''}{trend.value}%</span>
-              {trend.label && <span className="text-zinc-500">{trend.label}</span>}
+              {trend.label && <span className="text-theme-muted">{trend.label}</span>}
             </div>
           )}
         </div>
         {Icon && (
-          <div className={`p-3 rounded-lg bg-zinc-800 ${iconColor}`}>
+          <div className={`p-3 rounded-lg bg-theme-secondary ${iconColor}`}>
             <Icon className="w-5 h-5" />
           </div>
         )}

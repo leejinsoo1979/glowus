@@ -489,6 +489,51 @@ async function callPythonBackend(videoId: string) {
     }
 }
 
+// MCP YouTube Transcript 도구 사용 (가장 신뢰할 수 있는 방법)
+async function fetchTranscriptWithMCP(videoId: string): Promise<{ start: number; text: string }[]> {
+    try {
+        console.log('Trying MCP youtube-transcript...')
+        const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
+
+        // 내부 스킬 API 호출
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const response = await fetch(`${baseUrl}/api/skills/youtube-transcript`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: youtubeUrl, lang: 'ko' }),
+        })
+
+        if (!response.ok) {
+            console.log('MCP skill API failed:', response.status)
+            return []
+        }
+
+        const data = await response.json()
+
+        if (data.success && data.transcript) {
+            // 텍스트를 문장 단위로 분할하여 타임스탬프 추정
+            const sentences = data.transcript.split(/[.!?]\s+/).filter((s: string) => s.trim())
+            const results: { start: number; text: string }[] = []
+
+            // 간단한 시간 추정 (문장당 약 5초)
+            sentences.forEach((sentence: string, index: number) => {
+                results.push({
+                    start: index * 5,
+                    text: sentence.trim(),
+                })
+            })
+
+            console.log(`✓ MCP transcript fetched: ${results.length} items`)
+            return results
+        }
+
+        return []
+    } catch (error) {
+        console.error('MCP transcript error:', error)
+        return []
+    }
+}
+
 export async function POST(request: Request) {
     try {
         const { videoId } = await request.json()
@@ -520,11 +565,17 @@ export async function POST(request: Request) {
             })
         }
 
-        // 2. Supadata API 시도 (Vercel에서 작동하는 프록시 서비스)
-        console.log('Trying Supadata API...')
-        let transcriptItems = await fetchTranscriptWithSupadata(videoId)
+        // 2. MCP YouTube Transcript 시도 (가장 신뢰할 수 있음)
+        console.log('Trying MCP youtube-transcript...')
+        let transcriptItems = await fetchTranscriptWithMCP(videoId)
 
-        // 3. Supadata 실패 시 직접 추출 시도 (로컬에서만 작동)
+        // 3. Supadata API 시도 (Vercel에서 작동하는 프록시 서비스)
+        if (transcriptItems.length === 0) {
+            console.log('MCP failed, trying Supadata API...')
+            transcriptItems = await fetchTranscriptWithSupadata(videoId)
+        }
+
+        // 4. Supadata 실패 시 직접 추출 시도 (로컬에서만 작동)
         if (transcriptItems.length === 0) {
             console.log('Supadata failed, falling back to direct extraction...')
             transcriptItems = await fetchTranscript(videoId)

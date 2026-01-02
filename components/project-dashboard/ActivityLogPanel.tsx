@@ -115,15 +115,15 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
   const getLogColor = (type: LogEntry["type"]) => {
     switch (type) {
       case "success":
-        return "text-emerald-400"
+        return "text-emerald-600 dark:text-emerald-400"
       case "warning":
-        return "text-amber-400"
+        return "text-amber-600 dark:text-amber-400"
       case "error":
-        return "text-red-400"
+        return "text-red-600 dark:text-red-400"
       case "ai":
-        return "text-purple-400"
+        return "text-purple-600 dark:text-purple-400"
       default:
-        return "text-zinc-400"
+        return "text-zinc-500 dark:text-zinc-400"
     }
   }
 
@@ -151,11 +151,11 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
       >
         <button
           onClick={() => setIsMinimized(false)}
-          className="flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg hover:bg-zinc-800 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors shadow-lg"
         >
-          <Terminal className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm text-white">Log</span>
-          <span className="px-1.5 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded">
+          <Terminal className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+          <span className="text-sm text-zinc-900 dark:text-white">Log</span>
+          <span className="px-1.5 py-0.5 text-xs bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded">
             {logs.length}
           </span>
         </button>
@@ -168,32 +168,31 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
       layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 ${
-        isExpanded ? "fixed inset-4 z-50" : ""
-      }`}
+      className={`relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 shadow-sm ${isExpanded ? "fixed inset-4 z-50 shadow-2xl" : ""
+        }`}
     >
       {/* Window Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 border-b border-zinc-800">
+      <div className="flex items-center justify-between px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-2">
-          <Terminal className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm font-medium text-white">Log</span>
+          <Terminal className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+          <span className="text-sm font-medium text-zinc-900 dark:text-white">Log</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setIsMinimized(true)}
-            className="p-1 rounded hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
           >
             <Minus className="w-3 h-3 text-zinc-500" />
           </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 rounded hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
           >
             <Maximize2 className="w-3 h-3 text-zinc-500" />
           </button>
           <button
             onClick={() => setIsMinimized(true)}
-            className="p-1 rounded hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
           >
             <X className="w-3 h-3 text-zinc-500" />
           </button>
@@ -205,7 +204,7 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
         ref={logContainerRef}
         className={`overflow-y-auto font-mono text-xs ${isExpanded ? "h-[calc(100%-40px)]" : "h-48"}`}
         style={{
-          background: "linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.9) 100%)",
+          // Removed hardcoded gradient to allow bg color to show
         }}
       >
         <div className="p-3 space-y-1">
@@ -216,28 +215,28 @@ export function ActivityLogPanel({ projectId }: ActivityLogPanelProps) {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0 }}
-                className="flex items-start gap-2 hover:bg-zinc-800/30 px-2 py-0.5 rounded"
+                className="flex items-start gap-2 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/30 px-2 py-0.5 rounded transition-colors"
               >
-                <span className="text-zinc-600 flex-shrink-0">[{log.timestamp}]</span>
+                <span className="text-zinc-400 dark:text-zinc-600 flex-shrink-0">[{log.timestamp}]</span>
                 <span className={`flex-shrink-0 ${getLogColor(log.type)}`}>
                   {getLogPrefix(log.type)}
                 </span>
-                <span className="text-zinc-300">{log.message}</span>
+                <span className="text-zinc-700 dark:text-zinc-300">{log.message}</span>
               </motion.div>
             ))}
           </AnimatePresence>
 
           {/* Blinking Cursor */}
           <div className="flex items-center gap-2 px-2 py-0.5">
-            <span className="text-zinc-600">[{new Date().toLocaleTimeString("ko-KR", { hour12: false })}]</span>
-            <span className="text-emerald-400 animate-pulse">▌</span>
+            <span className="text-zinc-400 dark:text-zinc-600">[{new Date().toLocaleTimeString("ko-KR", { hour12: false })}]</span>
+            <span className="text-emerald-500 dark:text-emerald-400 animate-pulse">▌</span>
           </div>
         </div>
       </div>
 
       {/* Scroll Indicator */}
-      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none flex items-end justify-center pb-1">
-        <ChevronDown className="w-4 h-4 text-zinc-600 animate-bounce" />
+      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-zinc-100 dark:from-zinc-950 to-transparent pointer-events-none flex items-end justify-center pb-1">
+        <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 animate-bounce" />
       </div>
     </motion.div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { Building2, Save, Loader2, MapPin, Phone, Mail, Globe, Calendar, Briefcase, FileText, Upload, Sparkles, Image as ImageIcon, X, Plus, Download, ZoomIn, ImagePlus } from 'lucide-react'
+import { Building2, Save, Loader2, MapPin, Phone, Mail, Globe, Calendar, Briefcase, FileText, Upload, Sparkles, Image as ImageIcon, X, Plus, Download, ZoomIn, ImagePlus, Check, AlertCircle } from 'lucide-react'
 import { useCompany, useMutation, useLocations } from '@/lib/erp/hooks'
 import { PageHeader, FormField, FormInput, FormSelect, FormTextarea, FormRow, StatCard, StatGrid } from './shared'
 import type { Company } from '@/lib/erp/types'
@@ -21,6 +21,7 @@ export function CompanyPage() {
   const [modalImage, setModalImage] = useState<string | null>(null)
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [editingTabName, setEditingTabName] = useState('')
+  const [toast, setToast] = useState<{ show: boolean; type: 'success' | 'error'; message: string }>({ show: false, type: 'success', message: '' })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const tabFileInputRef = useRef<HTMLInputElement>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -138,6 +139,11 @@ export function CompanyPage() {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ show: true, type, message })
+    setTimeout(() => setToast({ show: false, type: 'success', message: '' }), 3000)
+  }
+
   const handleSubmit = async () => {
     try {
       if (company?.id) {
@@ -146,8 +152,10 @@ export function CompanyPage() {
         await create(formData)
       }
       refresh()
+      showToast('success', '저장이 완료되었습니다.')
     } catch (error) {
       console.error('Save error:', error)
+      showToast('error', '저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -158,6 +166,7 @@ export function CompanyPage() {
       // Worker 설정 - 여러 방법 시도
       if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
         try {
+          // @ts-ignore - pdfjs-dist worker module has no type declarations
           const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.mjs')
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default || pdfjsWorker
         } catch {
@@ -183,6 +192,7 @@ export function CompanyPage() {
       await page.render({
         canvasContext: context,
         viewport: viewport,
+        canvas: canvas,
       }).promise
 
       return new Promise((resolve, reject) => {
@@ -218,11 +228,21 @@ export function CompanyPage() {
       const uploadedUrl = await uploadToStorage(file, 'business-registration', file.name)
       if (uploadedUrl) {
         setUploadedImage(uploadedUrl)
-        // localStorage에 저장
+        // localStorage에 백업 저장
         if (company?.id && typeof window !== 'undefined') {
           localStorage.setItem(`company_${company.id}_business_registration_url`, uploadedUrl)
         }
-        console.log('✅ 파일 저장 완료:', uploadedUrl)
+        console.log('✅ 사업자등록증 저장 완료:', uploadedUrl)
+        // formData.settings도 업데이트 (저장 시 덮어쓰기 방지)
+        setFormData(prev => ({
+          ...prev,
+          settings: {
+            ...(prev.settings as Record<string, any> || {}),
+            business_registration_url: uploadedUrl
+          }
+        }))
+        // DB에서 최신 데이터 가져오기
+        refresh()
       }
     } catch (uploadError) {
       console.error('파일 업로드 실패:', uploadError)
@@ -313,6 +333,34 @@ export function CompanyPage() {
     setShowImageModal(true)
   }
 
+  const handleDeleteBusinessRegistration = async () => {
+    setUploadedImage(null)
+    // formData.settings도 업데이트
+    setFormData(prev => ({
+      ...prev,
+      settings: {
+        ...(prev.settings as Record<string, any> || {}),
+        business_registration_url: null
+      }
+    }))
+    // localStorage에서 삭제
+    if (company?.id && typeof window !== 'undefined') {
+      localStorage.removeItem(`company_${company.id}_business_registration_url`)
+    }
+    // DB에서도 삭제
+    if (company?.id) {
+      try {
+        const currentSettings = (company.settings as Record<string, any>) || {}
+        await mutate('PUT', {
+          settings: { ...currentSettings, business_registration_url: null }
+        })
+        refresh()
+      } catch (err) {
+        console.error('사업자등록증 삭제 실패:', err)
+      }
+    }
+  }
+
   const handleDownload = (imageUrl: string, fileName: string) => {
     const link = document.createElement('a')
     link.href = imageUrl
@@ -373,7 +421,7 @@ export function CompanyPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950">
+    <div className="h-full flex flex-col bg-theme">
       <PageHeader
         title="회사/기업 현황"
         subtitle="회사 정보 및 사업장 관리"
@@ -384,7 +432,7 @@ export function CompanyPage() {
         {/* Stats with Logo */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {/* 기업 로고 업로드 */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="bg-theme-card border border-theme rounded-xl p-4">
             <input
               ref={logoInputRef}
               type="file"
@@ -442,9 +490,9 @@ export function CompanyPage() {
         </div>
 
         {/* Company Form - 2 Column Layout */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">기본 정보</h2>
+        <div className="bg-theme-card border border-theme rounded-xl">
+          <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-theme">기본 정보</h2>
             <div className="flex items-center gap-3">
               <input
                 ref={fileInputRef}
@@ -456,11 +504,10 @@ export function CompanyPage() {
               />
               <label
                 htmlFor="business-registration-upload"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-all ${
-                  ocrLoading
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-all ${ocrLoading
                     ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
                     : 'bg-accent hover:bg-accent/90 text-white'
-                }`}
+                  }`}
               >
                 {ocrLoading ? (
                   <>
@@ -478,203 +525,201 @@ export function CompanyPage() {
           </div>
           <div className="flex">
             {/* Left Side - Form */}
-            <div className="w-1/2 p-6 space-y-6 border-r border-zinc-800">
-            {/* Basic Info */}
-            <div className="space-y-4">
-              <FormRow>
-                <FormField label="회사명" required>
-                  <FormInput
-                    value={formData.name || ''}
-                    onChange={(e) => handleChange('name', e.target.value)}
-                    placeholder="회사명을 입력하세요"
-                  />
-                </FormField>
-                <FormField label="대표자명">
-                  <FormInput
-                    value={formData.ceo_name || ''}
-                    onChange={(e) => handleChange('ceo_name', e.target.value)}
-                    placeholder="대표자명을 입력하세요"
-                  />
-                </FormField>
-              </FormRow>
-
-              <FormRow>
-                <FormField label="사업자등록번호">
-                  <FormInput
-                    value={formData.business_number || ''}
-                    onChange={(e) => handleChange('business_number', e.target.value)}
-                    placeholder="000-00-00000"
-                  />
-                </FormField>
-                <FormField label="법인등록번호">
-                  <FormInput
-                    value={formData.corporate_number || ''}
-                    onChange={(e) => handleChange('corporate_number', e.target.value)}
-                    placeholder="000000-0000000"
-                  />
-                </FormField>
-              </FormRow>
-
-              <FormRow>
-                <FormField label="업태">
-                  <FormInput
-                    value={formData.business_type || ''}
-                    onChange={(e) => handleChange('business_type', e.target.value)}
-                    placeholder="업태를 입력하세요"
-                  />
-                </FormField>
-                <FormField label="업종">
-                  <FormInput
-                    value={formData.business_category || ''}
-                    onChange={(e) => handleChange('business_category', e.target.value)}
-                    placeholder="업종을 입력하세요"
-                  />
-                </FormField>
-              </FormRow>
-
-              <FormRow>
-                <FormField label="설립일">
-                  <FormInput
-                    type="date"
-                    value={formData.establishment_date || ''}
-                    onChange={(e) => handleChange('establishment_date', e.target.value)}
-                  />
-                </FormField>
-                <FormField label="회계연도 시작월">
-                  <FormSelect
-                    value={String(formData.fiscal_year_start || 1)}
-                    onChange={(e) => handleChange('fiscal_year_start', parseInt(e.target.value))}
-                    options={Array.from({ length: 12 }, (_, i) => ({
-                      value: String(i + 1),
-                      label: `${i + 1}월`,
-                    }))}
-                  />
-                </FormField>
-              </FormRow>
-            </div>
-
-            {/* Contact Info */}
-            <div className="pt-6 border-t border-zinc-800">
-              <h3 className="text-sm font-medium text-zinc-400 mb-4">연락처 정보</h3>
+            <div className="w-1/2 p-6 space-y-6 border-r border-theme">
+              {/* Basic Info */}
               <div className="space-y-4">
                 <FormRow>
-                  <FormField label="전화번호">
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <FormField label="회사명" required>
+                    <FormInput
+                      value={formData.name || ''}
+                      onChange={(e) => handleChange('name', e.target.value)}
+                      placeholder="회사명을 입력하세요"
+                    />
+                  </FormField>
+                  <FormField label="대표자명">
+                    <FormInput
+                      value={formData.ceo_name || ''}
+                      onChange={(e) => handleChange('ceo_name', e.target.value)}
+                      placeholder="대표자명을 입력하세요"
+                    />
+                  </FormField>
+                </FormRow>
+
+                <FormRow>
+                  <FormField label="사업자등록번호">
+                    <FormInput
+                      value={formData.business_number || ''}
+                      onChange={(e) => handleChange('business_number', e.target.value)}
+                      placeholder="000-00-00000"
+                    />
+                  </FormField>
+                  <FormField label="법인등록번호">
+                    <FormInput
+                      value={formData.corporate_number || ''}
+                      onChange={(e) => handleChange('corporate_number', e.target.value)}
+                      placeholder="000000-0000000"
+                    />
+                  </FormField>
+                </FormRow>
+
+                <FormRow>
+                  <FormField label="업태">
+                    <FormInput
+                      value={formData.business_type || ''}
+                      onChange={(e) => handleChange('business_type', e.target.value)}
+                      placeholder="업태를 입력하세요"
+                    />
+                  </FormField>
+                  <FormField label="업종">
+                    <FormInput
+                      value={formData.business_category || ''}
+                      onChange={(e) => handleChange('business_category', e.target.value)}
+                      placeholder="업종을 입력하세요"
+                    />
+                  </FormField>
+                </FormRow>
+
+                <FormRow>
+                  <FormField label="설립일">
+                    <FormInput
+                      type="date"
+                      value={formData.establishment_date || ''}
+                      onChange={(e) => handleChange('establishment_date', e.target.value)}
+                    />
+                  </FormField>
+                  <FormField label="회계연도 시작월">
+                    <FormSelect
+                      value={String(formData.fiscal_year_start || 1)}
+                      onChange={(e) => handleChange('fiscal_year_start', parseInt(e.target.value))}
+                      options={Array.from({ length: 12 }, (_, i) => ({
+                        value: String(i + 1),
+                        label: `${i + 1}월`,
+                      }))}
+                    />
+                  </FormField>
+                </FormRow>
+              </div>
+
+              {/* Contact Info */}
+              <div className="pt-6 border-t border-theme">
+                <h3 className="text-sm font-medium text-theme-muted mb-4">연락처 정보</h3>
+                <div className="space-y-4">
+                  <FormRow>
+                    <FormField label="전화번호">
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <FormInput
+                          className="pl-10"
+                          value={formData.phone || ''}
+                          onChange={(e) => handleChange('phone', e.target.value)}
+                          placeholder="02-0000-0000"
+                        />
+                      </div>
+                    </FormField>
+                    <FormField label="팩스">
                       <FormInput
-                        className="pl-10"
-                        value={formData.phone || ''}
-                        onChange={(e) => handleChange('phone', e.target.value)}
+                        value={formData.fax || ''}
+                        onChange={(e) => handleChange('fax', e.target.value)}
                         placeholder="02-0000-0000"
                       />
-                    </div>
-                  </FormField>
-                  <FormField label="팩스">
+                    </FormField>
+                  </FormRow>
+
+                  <FormRow>
+                    <FormField label="이메일">
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <FormInput
+                          type="email"
+                          className="pl-10"
+                          value={formData.email || ''}
+                          onChange={(e) => handleChange('email', e.target.value)}
+                          placeholder="info@company.com"
+                        />
+                      </div>
+                    </FormField>
+                    <FormField label="웹사이트">
+                      <div className="relative">
+                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <FormInput
+                          className="pl-10"
+                          value={formData.website || ''}
+                          onChange={(e) => handleChange('website', e.target.value)}
+                          placeholder="https://company.com"
+                        />
+                      </div>
+                    </FormField>
+                  </FormRow>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="pt-6 border-t border-theme">
+                <h3 className="text-sm font-medium text-theme-muted mb-4">주소 정보</h3>
+                <div className="space-y-4">
+                  <FormRow>
+                    <FormField label="우편번호">
+                      <FormInput
+                        value={formData.postal_code || ''}
+                        onChange={(e) => handleChange('postal_code', e.target.value)}
+                        placeholder="00000"
+                      />
+                    </FormField>
+                    <div /> {/* Empty space */}
+                  </FormRow>
+                  <FormField label="주소">
                     <FormInput
-                      value={formData.fax || ''}
-                      onChange={(e) => handleChange('fax', e.target.value)}
-                      placeholder="02-0000-0000"
+                      value={formData.address || ''}
+                      onChange={(e) => handleChange('address', e.target.value)}
+                      placeholder="주소를 입력하세요"
                     />
                   </FormField>
-                </FormRow>
-
-                <FormRow>
-                  <FormField label="이메일">
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                      <FormInput
-                        type="email"
-                        className="pl-10"
-                        value={formData.email || ''}
-                        onChange={(e) => handleChange('email', e.target.value)}
-                        placeholder="info@company.com"
-                      />
-                    </div>
-                  </FormField>
-                  <FormField label="웹사이트">
-                    <div className="relative">
-                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                      <FormInput
-                        className="pl-10"
-                        value={formData.website || ''}
-                        onChange={(e) => handleChange('website', e.target.value)}
-                        placeholder="https://company.com"
-                      />
-                    </div>
-                  </FormField>
-                </FormRow>
-              </div>
-            </div>
-
-            {/* Address */}
-            <div className="pt-6 border-t border-zinc-800">
-              <h3 className="text-sm font-medium text-zinc-400 mb-4">주소 정보</h3>
-              <div className="space-y-4">
-                <FormRow>
-                  <FormField label="우편번호">
+                  <FormField label="상세주소">
                     <FormInput
-                      value={formData.postal_code || ''}
-                      onChange={(e) => handleChange('postal_code', e.target.value)}
-                      placeholder="00000"
+                      value={formData.address_detail || ''}
+                      onChange={(e) => handleChange('address_detail', e.target.value)}
+                      placeholder="상세주소를 입력하세요"
                     />
                   </FormField>
-                  <div /> {/* Empty space */}
-                </FormRow>
-                <FormField label="주소">
-                  <FormInput
-                    value={formData.address || ''}
-                    onChange={(e) => handleChange('address', e.target.value)}
-                    placeholder="주소를 입력하세요"
-                  />
-                </FormField>
-                <FormField label="상세주소">
-                  <FormInput
-                    value={formData.address_detail || ''}
-                    onChange={(e) => handleChange('address_detail', e.target.value)}
-                    placeholder="상세주소를 입력하세요"
-                  />
-                </FormField>
+                </div>
               </div>
-            </div>
 
-            {/* Save Button */}
-            <div className="pt-6 border-t border-zinc-800 flex justify-end">
-              <button
-                onClick={handleSubmit}
-                disabled={saving}
-                className="flex items-center gap-2 px-6 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                저장
-              </button>
-            </div>
+              {/* Save Button */}
+              <div className="pt-6 border-t border-theme flex justify-end">
+                <button
+                  onClick={handleSubmit}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-6 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  저장
+                </button>
+              </div>
             </div>
             {/* Right Side - Tabs */}
             <div className="w-1/2 flex flex-col">
               {/* Tabs */}
-              <div className="flex border-b border-zinc-800 overflow-x-auto">
+              <div className="flex border-b border-theme overflow-x-auto">
                 <button
                   onClick={() => setActiveTab('business')}
-                  className={`px-6 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
-                    activeTab === 'business'
+                  className={`px-6 py-3 text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'business'
                       ? 'text-accent border-b-2 border-accent'
                       : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                    }`}
                 >
                   사업자등록증
                 </button>
                 {customTabs.map(tab => (
                   <div
                     key={tab.id}
-                    className={`relative group flex items-center ${
-                      activeTab === tab.id
+                    className={`relative group flex items-center ${activeTab === tab.id
                         ? 'border-b-2 border-accent'
                         : ''
-                    }`}
+                      }`}
                   >
                     {editingTabId === tab.id ? (
                       <input
@@ -699,11 +744,10 @@ export function CompanyPage() {
                           setEditingTabId(tab.id)
                           setEditingTabName(tab.name)
                         }}
-                        className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1 ${
-                          activeTab === tab.id
+                        className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1 ${activeTab === tab.id
                             ? 'text-accent'
                             : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
+                          }`}
                       >
                         {tab.name}
                         {tab.files.length > 0 && (
@@ -761,7 +805,7 @@ export function CompanyPage() {
                             <Download className="w-4 h-4 text-zinc-300" />
                           </button>
                           <button
-                            onClick={() => setUploadedImage(null)}
+                            onClick={handleDeleteBusinessRegistration}
                             className="p-2 bg-zinc-800/80 hover:bg-red-600 rounded-lg transition-colors"
                             title="삭제"
                           >
@@ -878,6 +922,23 @@ export function CompanyPage() {
                 <X className="w-5 h-5 text-white" />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border ${toast.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-red-500/10 border-red-500/30 text-red-400'
+            }`}>
+            {toast.type === 'success' ? (
+              <Check className="w-5 h-5" />
+            ) : (
+              <AlertCircle className="w-5 h-5" />
+            )}
+            <span className="font-medium">{toast.message}</span>
           </div>
         </div>
       )}

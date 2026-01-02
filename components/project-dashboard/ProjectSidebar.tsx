@@ -120,20 +120,20 @@ export function ProjectSidebar({
   }
 
   return (
-    <div className="w-64 bg-zinc-900/50 border-r border-zinc-800 flex-shrink-0 flex flex-col overflow-hidden">
+    <div className="w-64 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md border-r border-zinc-200 dark:border-zinc-800 flex-shrink-0 flex flex-col overflow-hidden">
       {/* Project Header */}
-      <div className="p-4 border-b border-zinc-800">
+      <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg"
+            className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shadow-sm"
             style={{ backgroundColor: `${project.color}20`, color: project.color }}
           >
             {project.name.charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-white truncate">{project.name}</h2>
+            <h2 className="font-semibold text-zinc-900 dark:text-white truncate">{project.name}</h2>
             <div className="flex items-center gap-2 mt-0.5">
-              <div className="h-1.5 flex-1 bg-zinc-800 rounded-full overflow-hidden">
+              <div className="h-1.5 flex-1 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{ width: `${project.progress}%`, backgroundColor: project.color }}
@@ -163,18 +163,16 @@ export function ProjectSidebar({
                   <motion.button
                     key={item.id}
                     onClick={() => onSectionChange(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                      isActive
-                        ? "bg-zinc-800 text-white"
-                        : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${isActive
+                        ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm"
+                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                      }`}
                     whileHover={{ x: 2 }}
                     whileTap={{ scale: 0.98 }}
                   >
                     <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                        isActive ? "" : "bg-transparent"
-                      }`}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${isActive ? "" : "bg-transparent"
+                        }`}
                       style={{
                         backgroundColor: isActive ? `${item.color}20` : undefined,
                       }}
@@ -186,12 +184,12 @@ export function ProjectSidebar({
                     </div>
                     <span className="flex-1 text-sm font-medium">{item.label}</span>
                     {badge && (
-                      <span className="px-2 py-0.5 text-xs font-medium bg-zinc-700 text-zinc-300 rounded-full">
+                      <span className="px-2 py-0.5 text-xs font-medium bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-full">
                         {badge}
                       </span>
                     )}
                     {isActive && (
-                      <ChevronRight className="w-4 h-4 text-zinc-500" />
+                      <ChevronRight className="w-4 h-4 text-zinc-400" />
                     )}
                   </motion.button>
                 )
@@ -202,7 +200,7 @@ export function ProjectSidebar({
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-zinc-800">
+      <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           <Rocket className="w-4 h-4" />
           <span>GlowUS v1.0</span>

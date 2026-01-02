@@ -96,6 +96,8 @@ import {
   Pin,
   Container,
   Github,
+  LayoutGrid,
+  GanttChart,
 } from 'lucide-react'
 import { SiPython } from 'react-icons/si'
 
@@ -526,14 +528,10 @@ const categories: Category[] = [
         icon: Zap,
         children: [
           { name: '프로젝트 생성', href: '/dashboard-group/project', icon: Plus },
-          { name: '업무 생성', href: '/dashboard-group/tasks/new', icon: Plus },
+          { name: '업무 생성', href: '/dashboard-group/task-hub?action=create', icon: Plus },
           { name: '에이전트 호출', href: '/dashboard-group/agents', icon: Bot },
         ]
       },
-      { name: '오늘 할 일', href: '/dashboard-group/tasks?filter=today', icon: ListTodo },
-      { name: '내가 맡은 업무', href: '/dashboard-group/tasks?filter=mine', icon: User },
-      { name: '마감 임박', href: '/dashboard-group/tasks?filter=urgent', icon: AlertCircle },
-      { name: '오늘 일정', href: '/dashboard-group/calendar?view=today', icon: CalendarDays },
       {
         name: '프로젝트',
         icon: IoRocketOutline,
@@ -544,7 +542,10 @@ const categories: Category[] = [
           { name: '보류', href: '/dashboard-group/project?status=on_hold', icon: Archive },
         ]
       },
-      { name: '개인 KPI', href: '/dashboard-group/kpis', icon: Target },
+      { name: '태스크 허브', href: '/dashboard-group/task-hub', icon: LayoutGrid },
+      { name: '오늘 일정', href: '/dashboard-group/calendar?view=today', icon: CalendarDays },
+      { name: '간트차트', href: '/dashboard-group/gantt', icon: GanttChart },
+      { name: 'KPI 관리', href: '/dashboard-group/kpis', icon: Target },
     ]
   },
   // 앱 (Apps) - 도구 모음
@@ -1015,7 +1016,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
   const {
     activeCategory, setActiveCategory, sidebarOpen, setSidebarOpen, toggleSidebar,
     level2Width, setLevel2Width, isResizingLevel2, setIsResizingLevel2,
-    emailSidebarWidth, setEmailSidebarWidth, isResizingEmail, setIsResizingEmail
+    emailSidebarWidth, setEmailSidebarWidth, isResizingEmail, setIsResizingEmail,
+    level2Collapsed, toggleLevel2, setLevel2Collapsed
   } = useUIStore()
 
   const { resolvedTheme } = useTheme()
@@ -1482,8 +1484,33 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
 
       {!pathname?.includes('/works/new') && (
         <AnimatePresence>
+          {/* Neural Map Collapsed Toggle Button */}
+          {sidebarOpen && currentCategory === 'neural-map' && pathname?.includes('/neural-map') && level2Collapsed && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 32, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className={cn(
+                'h-full border-r flex items-start justify-center pt-3',
+                isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
+              )}
+            >
+              <button
+                onClick={toggleLevel2}
+                className={cn(
+                  'p-1.5 rounded-md transition-colors',
+                  isDark ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100' : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+                )}
+                title="파일 트리 펼치기"
+              >
+                <PanelLeftOpen className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+
           {/* Neural Map File Tree Panel */}
-          {sidebarOpen && currentCategory === 'neural-map' && pathname?.includes('/neural-map') && (
+          {sidebarOpen && currentCategory === 'neural-map' && pathname?.includes('/neural-map') && !level2Collapsed && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: level2Width, opacity: 1 }}
@@ -1621,6 +1648,21 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                     )}
                   </AnimatePresence>
                 </div>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* 패널 접기 버튼 */}
+                <button
+                  onClick={toggleLevel2}
+                  className={cn(
+                    "p-1.5 rounded-md transition-all",
+                    isDark ? "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800" : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"
+                  )}
+                  title="파일 트리 접기"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
               </div>
 
               {/* FileTreePanel / GitPanel - 툴바 선택에 따라 전환 */}

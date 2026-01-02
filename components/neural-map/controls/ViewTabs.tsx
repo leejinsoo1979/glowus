@@ -11,7 +11,7 @@ import {
   Activity, // Life Stream
   Bot, // Agent Builder
   Database, // Data
-  GitBranch, // Logic
+  FolderTree, // Tree (파일 구조)
   FlaskConical, // Test
   Globe, // Browser
   GitCommit, // Git
@@ -23,14 +23,16 @@ import {
   PieChart, // Pie
   CircleDot, // State
   GitFork, // GitGraph
+  LayoutDashboard, // Architecture
 } from 'lucide-react'
 
 const viewTabs: { id: ViewTab; label: string; icon: typeof Network; description: string }[] = [
   { id: 'map', label: 'Map', icon: Network, description: '전체 노드 탐색 (2D/3D)' },
+  { id: 'architecture', label: 'Architecture', icon: LayoutDashboard, description: '시스템 아키텍처 역설계 시각화' },
   { id: 'life-stream', label: 'Blueprint', icon: Activity, description: '전체 개발 현황 및 순서 (Blueprint)' },
   { id: 'agent-builder', label: 'Skill', icon: Bot, description: '스킬 워크플로우 빌더' },
   { id: 'data', label: 'Data', icon: Database, description: '데이터 구조 및 스키마' },
-  { id: 'logic', label: 'Logic', icon: GitBranch, description: '로직 흐름 및 파일 구조' },
+  { id: 'logic', label: 'Tree', icon: FolderTree, description: '파일/폴더 구조 시각화' },
   { id: 'test', label: 'Test', icon: FlaskConical, description: '품질 검증 및 테스트' },
   { id: 'browser', label: 'Browser', icon: Globe, description: '웹 브라우저' },
 ]

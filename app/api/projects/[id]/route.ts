@@ -100,6 +100,7 @@ export async function PATCH(
       'tags',
       'color',
       'folder_path',  // 로컬 폴더 경로
+      'category_id',  // 프로젝트 카테고리
       // GitHub integration fields
       'github_owner',
       'github_repo',

@@ -472,7 +472,21 @@ export default function AISlidesPage() {
     const [messages, setMessages] = useState<Message[]>([
         {
             role: 'assistant',
-            content: '안녕하세요! 사업계획서 슬라이드를 제작해드리겠습니다.\n\n먼저 몇 가지 정보가 필요합니다:\n\n1. **사업 분야** 또는 업종은 무엇인가요?\n2. **사업계획서의 목적**은 무엇인가요? (투자 유치, 은행 대출 등)\n3. **주요 포함 내용**이 있나요?\n4. **대략적인 슬라이드 분량**은? (10-15장, 20장 이상 등)\n\n예시:\n• "IT 스타트업 투자 유치용 사업계획서 15장으로 만들어줘"\n• "카페 창업 사업계획서를 은행 대출용으로 만들어줘"',
+            content: `안녕하세요! AI 슬라이드 스튜디오입니다. 🎨
+
+**프레젠테이션을 만들어 드릴게요:**
+
+📹 **YouTube 영상 → PPT 변환**
+YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT 슬라이드로 만들어드립니다.
+
+📊 **사업계획서 생성**
+• "IT 스타트업 투자 유치용 사업계획서 15장으로 만들어줘"
+• "카페 창업 사업계획서를 은행 대출용으로 만들어줘"
+
+📄 **파일 업로드**
+기존 PPTX/PDF 파일을 업로드하여 편집할 수 있습니다.
+
+**지금 바로 시작하세요!** 👇`,
             type: 'question'
         }
     ])
@@ -636,7 +650,7 @@ export default function AISlidesPage() {
         setIsLoading(false)
     }, [slides, presentationTitle])
 
-    // Generate slides with AI
+    // Generate slides with AI (using PPT Pro)
     const generateSlides = useCallback(async (prompt: string) => {
         setIsLoading(true)
 
@@ -646,19 +660,12 @@ export default function AISlidesPage() {
 
         // Create initial todos
         const initialTodos: TodoItem[] = [
-            { id: '1', text: '슬라이드 시스템 초기화', status: 'in_progress' },
-            { id: '2', text: '관련 정보 조사 (트렌드, 투자자 관심사)', status: 'pending' },
-            { id: '3', text: `${slideCount}장 슬라이드 구성 아웃라인 생성`, status: 'pending' },
+            { id: '1', text: '📊 슬라이드 시스템 초기화', status: 'in_progress' },
+            { id: '2', text: '🔍 비즈니스 컨텍스트 분석', status: 'pending' },
+            { id: '3', text: `📝 ${slideCount}장 슬라이드 구조 생성`, status: 'pending' },
+            { id: '4', text: '🎨 테마 및 디자인 적용', status: 'pending' },
+            { id: '5', text: '📥 PPTX 파일 생성', status: 'pending' },
         ]
-
-        // Add todo for each slide
-        for (let i = 1; i <= Math.min(slideCount, 15); i++) {
-            initialTodos.push({
-                id: String(i + 3),
-                text: `페이지 ${i}: 슬라이드 제작`,
-                status: 'pending'
-            })
-        }
 
         setTodos(initialTodos)
 
@@ -667,60 +674,115 @@ export default function AISlidesPage() {
         setTodos(prev => prev.map((t, i) => i === 0 ? { ...t, status: 'completed' } : i === 1 ? { ...t, status: 'in_progress' } : t))
 
         try {
-            // Call AI API
-            const response = await fetch('/api/slides/generate', {
+            // Determine theme based on prompt
+            let theme = 'modern'
+            if (prompt.includes('창의') || prompt.includes('creative')) theme = 'creative'
+            else if (prompt.includes('기업') || prompt.includes('corporate')) theme = 'corporate'
+            else if (prompt.includes('미니멀') || prompt.includes('minimal')) theme = 'minimal'
+
+            setTodos(prev => prev.map((t, i) =>
+                i <= 1 ? { ...t, status: 'completed' } :
+                i === 2 ? { ...t, status: 'in_progress' } : t
+            ))
+
+            // Call PPT Pro API instead of basic slide API
+            const response = await fetch('/api/skills/ppt-pro', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt,
+                    content: prompt,
+                    title: prompt.includes('IT') ? 'IT 스타트업 사업계획서' :
+                           prompt.includes('카페') ? '카페 창업 사업계획서' : '사업계획서',
                     slideCount,
-                    businessType: prompt.includes('IT') ? 'IT 스타트업' : '스타트업',
-                    purpose: prompt.includes('투자') ? '투자 유치' : prompt.includes('대출') ? '은행 대출' : '사업계획'
+                    theme,
+                    generateImages: false,
+                    language: 'ko'
                 })
             })
 
             const data = await response.json()
 
-            if (data.success && data.slides) {
-                // Update todos progressively
-                for (let i = 2; i < initialTodos.length; i++) {
-                    await new Promise(r => setTimeout(r, 300))
-                    setTodos(prev => prev.map((t, idx) =>
-                        idx < i ? { ...t, status: 'completed' } :
-                        idx === i ? { ...t, status: 'in_progress' } : t
-                    ))
+            setTodos(prev => prev.map((t, i) =>
+                i <= 2 ? { ...t, status: 'completed' } :
+                i === 3 ? { ...t, status: 'in_progress' } : t
+            ))
 
-                    // Add slides progressively
-                    if (i >= 3) {
-                        setSlides(data.slides.slice(0, i - 2))
-                    }
-                }
+            if (data.success && data.presentation?.slides) {
+                // Convert to SlideContent format
+                const generatedSlides: SlideContent[] = data.presentation.slides.map((slide: any, idx: number) => ({
+                    id: `slide-${idx}`,
+                    type: idx === 0 ? 'cover' :
+                          slide.layout === 'conclusion' ? 'contact' :
+                          slide.title?.includes('문제') ? 'problem' :
+                          slide.title?.includes('솔루션') || slide.title?.includes('해결') ? 'solution' :
+                          slide.title?.includes('시장') ? 'market' :
+                          slide.title?.includes('팀') ? 'team' :
+                          slide.title?.includes('투자') ? 'investment' :
+                          'content',
+                    title: slide.title,
+                    subtitle: slide.subtitle || '',
+                    content: { points: slide.content || [] },
+                }))
 
-                // Final update
-                setSlides(data.slides)
-                setTodos(prev => prev.map(t => ({ ...t, status: 'completed' })))
+                setSlides(generatedSlides)
+                setTodos(prev => prev.map((t, i) =>
+                    i <= 3 ? { ...t, status: 'completed' } :
+                    i === 4 ? { ...t, status: 'in_progress' } : t
+                ))
 
                 // Update title
                 const titleMatch = prompt.match(/(IT\s*스타트업|카페|제조업|[가-힣]+)\s*(투자|대출|사업)/)
                 if (titleMatch) {
                     setPresentationTitle(`${titleMatch[1]} ${titleMatch[2]} 사업계획서`)
                 } else {
-                    setPresentationTitle('사업계획서')
+                    setPresentationTitle(data.presentation.title || '사업계획서')
+                }
+
+                setTodos(prev => prev.map(t => ({ ...t, status: 'completed' })))
+
+                // PPTX 자동 다운로드
+                if (data.pptxBase64) {
+                    const byteCharacters = atob(data.pptxBase64)
+                    const byteNumbers = new Array(byteCharacters.length)
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i)
+                    }
+                    const byteArray = new Uint8Array(byteNumbers)
+                    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${data.presentation.title || 'presentation'}.pptx`
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                    URL.revokeObjectURL(url)
                 }
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: `사업계획서 ${data.slides.length}장을 제작했습니다.\n\n우측 미리보기에서 각 슬라이드를 확인하실 수 있습니다.\n\n수정이 필요하시면:\n• "3번 슬라이드 제목을 '핵심 문제'로 바꿔줘"\n• "팀 소개 슬라이드에 CTO 추가해줘"\n• "시장 규모를 200조원으로 수정해줘"`,
+                    content: `✅ 사업계획서 ${generatedSlides.length}장을 제작했습니다!
+
+🎨 **테마**: ${theme}
+📊 **슬라이드 수**: ${generatedSlides.length}장
+${data.pptxBase64 ? '📥 **PPTX 파일**: 자동 다운로드됨' : ''}
+
+우측 미리보기에서 각 슬라이드를 확인하실 수 있습니다.
+
+수정이 필요하시면:
+• "3번 슬라이드 제목을 '핵심 문제'로 바꿔줘"
+• "팀 소개 슬라이드에 CTO 추가해줘"
+• "시장 규모를 200조원으로 수정해줘"`,
                     type: 'complete',
                 }])
             } else {
-                throw new Error('Failed to generate slides')
+                throw new Error(data.error || 'Failed to generate slides')
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Slide generation error:', error)
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: '슬라이드 생성 중 오류가 발생했습니다. 다시 시도해주세요.'
+                content: `슬라이드 생성 중 오류가 발생했습니다: ${error.message}\n\n다시 시도해주세요.`
             }])
             setTodos([])
         }
@@ -798,12 +860,232 @@ export default function AISlidesPage() {
         return null
     }, [currentSlide])
 
+    // YouTube URL 감지 함수
+    const detectYouTubeUrl = (text: string): string | null => {
+        const patterns = [
+            /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+            /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
+            /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+        ]
+        for (const pattern of patterns) {
+            const match = text.match(pattern)
+            if (match) return match[0]
+        }
+        return null
+    }
+
+    // YouTube → 요약 → PPT 워크플로우 실행
+    const executeYouTubeToPptWorkflow = async (url: string, instruction: string) => {
+        setIsLoading(true)
+
+        const workflowTodos: TodoItem[] = [
+            { id: 'yt-1', text: '🎬 YouTube 트랜스크립트 추출', status: 'in_progress' },
+            { id: 'yt-2', text: '📝 AI 핵심 내용 요약', status: 'pending' },
+            { id: 'yt-3', text: '📊 PPT 레이아웃 생성', status: 'pending' },
+            { id: 'yt-4', text: '🎨 나노바나나 디자인 적용', status: 'pending' },
+            { id: 'yt-5', text: '📥 PPTX 파일 생성', status: 'pending' },
+        ]
+        setTodos(workflowTodos)
+
+        try {
+            // Step 1: YouTube 트랜스크립트 추출
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '🎬 YouTube 영상의 트랜스크립트를 추출하고 있습니다...',
+                type: 'progress'
+            }])
+
+            const transcriptRes = await fetch('/api/skills/youtube-transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, lang: 'ko' })
+            })
+            const transcriptData = await transcriptRes.json()
+
+            if (!transcriptData.success) {
+                throw new Error(transcriptData.error || '트랜스크립트 추출 실패')
+            }
+
+            setTodos(prev => prev.map((t, i) =>
+                i === 0 ? { ...t, status: 'completed' } :
+                i === 1 ? { ...t, status: 'in_progress' } : t
+            ))
+
+            // Step 2: AI 요약
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `📝 ${transcriptData.transcript?.length || 0}자 분량의 내용을 요약하고 있습니다...`,
+                type: 'progress'
+            }])
+
+            const summaryRes = await fetch('/api/ai/summarize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: transcriptData.transcript,
+                    maxLength: 2000,
+                    format: 'bullet'
+                })
+            })
+            const summaryData = await summaryRes.json()
+
+            if (!summaryData.success) {
+                throw new Error(summaryData.error || '요약 실패')
+            }
+
+            setTodos(prev => prev.map((t, i) =>
+                i <= 1 ? { ...t, status: 'completed' } :
+                i === 2 ? { ...t, status: 'in_progress' } : t
+            ))
+
+            // Step 3: PPT Pro로 슬라이드 생성
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '📊 프레젠테이션 레이아웃을 생성하고 있습니다...',
+                type: 'progress'
+            }])
+
+            const pptRes = await fetch('/api/skills/ppt-pro', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: summaryData.summary,
+                    title: transcriptData.title || 'YouTube 영상 요약',
+                    slideCount: 8,
+                    theme: 'modern',
+                    generateImages: false, // 나노바나나로 따로 생성
+                    language: 'ko'
+                })
+            })
+            const pptData = await pptRes.json()
+
+            if (!pptData.success) {
+                throw new Error(pptData.error || 'PPT 생성 실패')
+            }
+
+            setTodos(prev => prev.map((t, i) =>
+                i <= 2 ? { ...t, status: 'completed' } :
+                i === 3 ? { ...t, status: 'in_progress' } : t
+            ))
+
+            // Step 4: 나노바나나로 커버 이미지 생성
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '🎨 나노바나나로 프레젠테이션 디자인을 생성하고 있습니다...',
+                type: 'progress'
+            }])
+
+            let coverImageUrl = null
+            try {
+                const imageRes = await fetch('/api/skills/nano-banana', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: `Professional presentation cover image for: ${transcriptData.title || 'YouTube Summary'}. Modern, minimalist, business style.`,
+                        style: 'digital_art',
+                        aspectRatio: '16:9'
+                    })
+                })
+                const imageData = await imageRes.json()
+                if (imageData.success) {
+                    coverImageUrl = imageData.image_url
+                }
+            } catch (imgError) {
+                console.log('[AI-Slides] 이미지 생성 스킵:', imgError)
+            }
+
+            setTodos(prev => prev.map((t, i) =>
+                i <= 3 ? { ...t, status: 'completed' } :
+                i === 4 ? { ...t, status: 'in_progress' } : t
+            ))
+
+            // Step 5: 슬라이드 데이터로 변환
+            const generatedSlides: SlideContent[] = pptData.presentation?.slides?.map((slide: any, idx: number) => ({
+                id: `slide-${idx}`,
+                type: idx === 0 ? 'cover' :
+                      idx === pptData.presentation.slides.length - 1 ? 'contact' : 'content',
+                title: slide.title,
+                subtitle: slide.subtitle || '',
+                content: { points: slide.content || [] },
+                images: idx === 0 && coverImageUrl ? [{
+                    id: 'cover-img',
+                    dataUrl: coverImageUrl,
+                }] : undefined
+            })) || []
+
+            setSlides(generatedSlides)
+            setPresentationTitle(transcriptData.title || 'YouTube 영상 요약')
+            setCurrentSlide(0)
+
+            setTodos(prev => prev.map(t => ({ ...t, status: 'completed' })))
+
+            // 성공 메시지 + PPTX 다운로드 링크
+            const downloadMessage = pptData.downloadUrl
+                ? `\n\n📥 [PPTX 파일 다운로드](${pptData.downloadUrl})`
+                : ''
+
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `✅ YouTube 영상 기반 프레젠테이션이 완성되었습니다!
+
+📹 **영상 제목**: ${transcriptData.title || 'YouTube 영상'}
+📊 **슬라이드 수**: ${generatedSlides.length}장
+${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''}
+
+우측 미리보기에서 각 슬라이드를 확인하실 수 있습니다.
+수정이 필요하시면 말씀해주세요!${downloadMessage}`,
+                type: 'complete',
+            }])
+
+            // PPTX 자동 다운로드 (pptData에 base64가 있으면)
+            if (pptData.pptxBase64) {
+                const byteCharacters = atob(pptData.pptxBase64)
+                const byteNumbers = new Array(byteCharacters.length)
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                }
+                const byteArray = new Uint8Array(byteNumbers)
+                const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `${transcriptData.title || 'presentation'}.pptx`
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                URL.revokeObjectURL(url)
+            }
+
+        } catch (error: any) {
+            console.error('[AI-Slides] Workflow error:', error)
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `❌ 워크플로우 실행 중 오류가 발생했습니다: ${error.message}\n\n다시 시도해주세요.`
+            }])
+            setTodos([])
+        }
+
+        setIsLoading(false)
+    }
+
     const sendMessage = async () => {
         if (!input.trim() || isLoading) return
 
         const userMessage = input.trim()
         setInput('')
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+
+        // YouTube URL 감지 → 워크플로우 실행
+        const youtubeUrl = detectYouTubeUrl(userMessage)
+        if (youtubeUrl) {
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `🎬 YouTube 영상을 감지했습니다!\n\n영상 내용을 분석하여 PPT 슬라이드를 자동으로 생성합니다...`,
+                type: 'progress'
+            }])
+            await executeYouTubeToPptWorkflow(youtubeUrl, userMessage)
+            return
+        }
 
         // Check if it's a slide generation request
         if (
@@ -1129,7 +1411,7 @@ export default function AISlidesPage() {
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                                placeholder="슬라이드 요청을 여기에 입력하세요"
+                                placeholder="YouTube URL 붙여넣기 또는 슬라이드 요청..."
                                 className="w-full bg-transparent text-zinc-900 dark:text-white placeholder-zinc-500 text-sm no-focus-ring"
                             />
                         </div>
@@ -1226,7 +1508,7 @@ export default function AISlidesPage() {
             {/* Left Panel - Preview */}
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-50 dark:bg-zinc-950">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+                <div className="flex items-center justify-between h-16 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
                     <div className="flex items-center gap-3">
                         <FileText className="w-5 h-5 text-zinc-500" />
                         <input

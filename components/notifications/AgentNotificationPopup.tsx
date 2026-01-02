@@ -54,13 +54,6 @@ interface SpeechRecognition extends EventTarget {
   onsoundend: (() => void) | null
 }
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition
-    webkitSpeechRecognition: new () => SpeechRecognition
-  }
-}
-
 const typeIcons = {
   info: Bell,
   alert: AlertTriangle,

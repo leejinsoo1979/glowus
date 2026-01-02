@@ -57,6 +57,8 @@ import {
   Palette,
   Briefcase,
   Folder,
+  Brain,
+  CircleDot,
 } from 'lucide-react'
 
 // react-icons - VS Code 스타일 파일 아이콘
@@ -428,6 +430,11 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const [createGitHubRepo, setCreateGitHubRepo] = useState(false)
   const [isGitHubConnected, setIsGitHubConnected] = useState(false)
   const projectNameInputRef = useRef<HTMLInputElement>(null)
+
+  // 프로젝트 열기 모달 상태
+  const [isOpenProjectModal, setIsOpenProjectModal] = useState(false)
+  const [projectList, setProjectList] = useState<Array<{ id: string; name: string; folder_path?: string; status?: string }>>([])
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
 
   // 카테고리 상태
   interface ProjectCategory {
@@ -2312,6 +2319,23 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       setTimeout(() => projectNameInputRef.current?.focus(), 100)
     })
 
+    const unsubOpenProject = electron.onMenuEvent('menu:open-project', async () => {
+      console.log('[Menu] Open Project triggered')
+      setIsOpenProjectModal(true)
+      setIsLoadingProjects(true)
+      try {
+        const res = await fetch('/api/projects')
+        if (res.ok) {
+          const data = await res.json()
+          setProjectList(Array.isArray(data) ? data : [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch projects:', err)
+      } finally {
+        setIsLoadingProjects(false)
+      }
+    })
+
     // Listen for file system changes (Agent actions)
     const unsubFsChanged = electron.fs?.onChanged?.(async (data: { path: string }) => {
       console.log('[FileTree] File changed by Agent:', data.path)
@@ -2328,6 +2352,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       unsubNewNote?.()
       unsubNewFile?.()
       unsubNewProject?.()
+      unsubOpenProject?.()
       unsubFsChanged?.()
       // Stop file system watcher
       electron.fs?.watchStop?.()
@@ -2821,6 +2846,61 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
 
       {/* 하단 패널들 (VS Code 스타일) */}
       <div className={cn('border-t', isDark ? 'border-[#3c3c3c]' : 'border-[#d4d4d4]')}>
+        {/* 🧠 노트 섹션 - Obsidian 스타일 (노드 = 파일) */}
+        <CollapsibleSection title="노트" isDark={isDark} defaultClosed={false}>
+          {graph?.nodes && graph.nodes.length > 0 ? (
+            <div className="max-h-[200px] overflow-y-auto">
+              {graph.nodes
+                .filter(n => n.type !== 'project' && n.type !== 'self') // 프로젝트/셀프 노드 제외
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+                .map((node) => (
+                  <button
+                    key={node.id}
+                    onClick={() => {
+                      // 노드 선택 및 포커스
+                      setSelectedNodes([node.id])
+                      setFocusNodeId(node.id)
+                      focusOnNode(node.id)
+                    }}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors',
+                      isDark
+                        ? 'hover:bg-[#2a2d2e] text-[#cccccc]'
+                        : 'hover:bg-[#e8e8e8] text-[#3b3b3b]'
+                    )}
+                    title={node.summary || node.title}
+                  >
+                    {/* 노드 타입별 아이콘 */}
+                    {node.type === 'concept' && <CircleDot className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />}
+                    {node.type === 'identity' && <Brain className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />}
+                    {node.type === 'rule' && <FileText className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                    {node.type === 'decision' && <FileCode className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />}
+                    {node.type === 'playbook' && <Files className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />}
+                    {node.type === 'preference' && <Palette className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />}
+                    {node.type === 'memory' && <Bot className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />}
+                    {!['concept', 'identity', 'rule', 'decision', 'playbook', 'preference', 'memory'].includes(node.type) && (
+                      <VscMarkdown className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                    )}
+                    <span className="truncate flex-1">{node.title || 'Untitled'}</span>
+                    {/* 태그 카운트 뱃지 */}
+                    {node.tags && node.tags.length > 0 && (
+                      <span className={cn(
+                        'text-[10px] px-1 rounded',
+                        isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-100 text-zinc-400'
+                      )}>
+                        {node.tags.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+            </div>
+          ) : (
+            <div className={cn('py-2 px-4 text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+              노트가 없습니다. 캔버스에서 노드를 추가하세요.
+            </div>
+          )}
+        </CollapsibleSection>
+
         {/* 개요 섹션 */}
         <CollapsibleSection title="개요" isDark={isDark} defaultClosed>
           <div className={cn('py-2 px-4 text-xs', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
@@ -3156,6 +3236,123 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                     </>
                   )}
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 프로젝트 열기 모달 */}
+      <AnimatePresence>
+        {isOpenProjectModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
+            onClick={() => setIsOpenProjectModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                'w-[480px] max-h-[600px] rounded-2xl shadow-2xl overflow-hidden flex flex-col',
+                isDark ? 'bg-[#1e1e1e]' : 'bg-white'
+              )}
+            >
+              {/* 헤더 */}
+              <div className={cn(
+                'px-6 py-4 border-b flex items-center justify-between',
+                isDark ? 'border-zinc-700' : 'border-zinc-200'
+              )}>
+                <h2 className={cn('text-lg font-bold', isDark ? 'text-white' : 'text-zinc-900')}>
+                  프로젝트 열기
+                </h2>
+                <button
+                  onClick={() => setIsOpenProjectModal(false)}
+                  className={cn(
+                    'p-1.5 rounded-lg transition-colors',
+                    isDark ? 'hover:bg-zinc-700 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'
+                  )}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 프로젝트 목록 */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {isLoadingProjects ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+                  </div>
+                ) : projectList.length === 0 ? (
+                  <div className={cn(
+                    'text-center py-12',
+                    isDark ? 'text-zinc-500' : 'text-zinc-400'
+                  )}>
+                    <Folder className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>프로젝트가 없습니다</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {projectList.map((project) => (
+                      <button
+                        key={project.id}
+                        onClick={async () => {
+                          // 프로젝트 선택 시 Neural Map에 연결
+                          setLinkedProject(project.id, project.name)
+                          if (project.folder_path) {
+                            useNeuralMapStore.getState().setProjectPath(project.folder_path)
+                            await loadFolderFromPathRef.current(project.folder_path)
+                          }
+                          setIsOpenProjectModal(false)
+                        }}
+                        className={cn(
+                          'w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left',
+                          isDark
+                            ? 'hover:bg-zinc-800 active:bg-zinc-700'
+                            : 'hover:bg-zinc-50 active:bg-zinc-100'
+                        )}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center"
+                          style={{ backgroundColor: `${currentAccent.color}20` }}
+                        >
+                          <Folder className="w-5 h-5" style={{ color: currentAccent.color }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={cn(
+                            'font-semibold truncate',
+                            isDark ? 'text-white' : 'text-zinc-900'
+                          )}>
+                            {project.name}
+                          </p>
+                          {project.folder_path && (
+                            <p className={cn(
+                              'text-xs truncate',
+                              isDark ? 'text-zinc-500' : 'text-zinc-400'
+                            )}>
+                              {project.folder_path}
+                            </p>
+                          )}
+                        </div>
+                        {project.status === 'active' && (
+                          <span
+                            className="px-2 py-0.5 text-xs font-medium rounded-full"
+                            style={{
+                              backgroundColor: `${currentAccent.color}20`,
+                              color: currentAccent.color
+                            }}
+                          >
+                            진행중
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>

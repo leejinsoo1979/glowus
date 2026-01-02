@@ -377,6 +377,10 @@ function ToolCard({ tool, onEdit }: { tool: ToolItem, onEdit: () => void }) {
                     window.location.href = '/dashboard-group/apps/ai-summary'
                 } else if (tool.id === 'image-gen') {
                     window.location.href = '/dashboard-group/apps/image-gen'
+                } else if (tool.id === 'blog') {
+                    window.location.href = '/dashboard-group/apps/ai-blog'
+                } else if (tool.id === 'ai-slides') {
+                    window.location.href = '/dashboard-group/apps/ai-slides'
                 }
             }}
             onMouseLeave={() => setIsMenuOpen(false)}

@@ -10,6 +10,7 @@ export { TeamMembersPage } from './TeamMembersPage'
 export { OrgChartPage } from './OrgChartPage'
 export { AttendancePage } from './AttendancePage'
 export { ApprovalPage } from './ApprovalPage'
+export { OKRPage } from './OKRPage'
 
 // Shared Components
 export * from './shared'

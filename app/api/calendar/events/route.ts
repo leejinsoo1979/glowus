@@ -10,26 +10,11 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // GET /api/calendar/events - Get events within date range
 export async function GET(request: Request) {
-  const supabase = await createClient()
   const adminSupabase = createAdminClient()
-
-  let userId: string
-  if (DEV_MODE) {
-    userId = DEV_USER_ID
-  } else {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    userId = user.id
-  }
 
   const { searchParams } = new URL(request.url)
   const startDate = searchParams.get('start_date')
   const endDate = searchParams.get('end_date')
-  const teamId = searchParams.get('team_id')
-  const projectId = searchParams.get('project_id')
-  const includeCancelled = searchParams.get('include_cancelled') === 'true'
 
   if (!startDate || !endDate) {
     return NextResponse.json(
@@ -38,34 +23,40 @@ export async function GET(request: Request) {
     )
   }
 
-  let query = adminSupabase
+  // 1. calendar_events에서 이벤트 조회
+  const { data: calendarEvents } = await adminSupabase
     .from('calendar_events' as any)
     .select('*')
-    .eq('user_id', userId)
     .gte('start_time', startDate)
     .lte('end_time', endDate)
     .order('start_time', { ascending: true })
 
-  if (!includeCancelled) {
-    query = query.neq('status', 'cancelled')
-  }
+  // 2. project_tasks에서 due_date가 있는 태스크를 캘린더 이벤트로 변환
+  const { data: taskEvents } = await adminSupabase
+    .from('project_tasks')
+    .select('id, title, due_date, start_date, priority, status')
+    .not('due_date', 'is', null)
+    .gte('due_date', startDate.split('T')[0])
+    .lte('due_date', endDate.split('T')[0])
+    .order('due_date', { ascending: true })
 
-  if (teamId) {
-    query = query.eq('team_id', teamId)
-  }
+  // 태스크를 캘린더 이벤트 형식으로 변환
+  const taskAsEvents = (taskEvents || []).map(task => ({
+    id: `task-${task.id}`,
+    title: `📋 ${task.title}`,
+    start_time: task.due_date ? `${task.due_date}T09:00:00` : task.start_date,
+    end_time: task.due_date ? `${task.due_date}T18:00:00` : task.start_date,
+    color: task.priority === 'HIGH' || task.priority === 'URGENT' ? 'red' :
+           task.priority === 'MEDIUM' ? 'orange' : 'blue',
+    is_task: true,
+    status: task.status,
+  }))
 
-  if (projectId) {
-    query = query.eq('project_id', projectId)
-  }
+  // 두 데이터 합치기
+  const allEvents = [...(calendarEvents || []), ...taskAsEvents]
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
 
-  const { data, error } = await query
-
-  if (error) {
-    console.error('Failed to fetch events:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json(data || [])
+  return NextResponse.json(allEvents)
 }
 
 // POST /api/calendar/events - Create new event

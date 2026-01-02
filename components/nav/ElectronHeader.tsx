@@ -140,70 +140,75 @@ export function ElectronHeader() {
 
             {/* Right Section: Layout Controls & Search - No Drag */}
             <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
-                {/* "er 08" text like image */}
-                <span className="text-xs text-zinc-500 font-medium">08</span>
+                {/* Neural Map 전용 뷰 모드 아이콘들 - 마이뉴럴맵 페이지에서만 표시 */}
+                {pathname?.includes('/neural-map') && (
+                    <>
+                        {/* Node count */}
+                        <span className="text-xs text-zinc-500 font-medium">08</span>
 
-                {/* Window Layout Icons Group */}
-                <div className="flex items-center gap-0.5">
-                    {/* Grid 4-panel */}
-                    <button
-                        className={cn("p-1.5 rounded transition-colors", isDark ? "hover:bg-white/10 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
-                        title="Grid Layout"
-                    >
-                        <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-                            <rect x="2" y="2" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
-                            <rect x="9" y="2" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
-                            <rect x="2" y="9" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
-                            <rect x="9" y="9" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
-                        </svg>
-                    </button>
-                    {/* Single window */}
-                    <button
-                        className={cn("p-1.5 rounded transition-colors", isDark ? "hover:bg-white/10 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
-                        title="Single Window"
-                    >
-                        <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-                            <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                        </svg>
-                    </button>
-                    {/* Split view */}
-                    <button
-                        className="p-1.5 rounded bg-white/10 text-zinc-300 transition-colors"
-                        title="Split View"
-                    >
-                        <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-                            <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                            <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" strokeWidth="1.2" />
-                        </svg>
-                    </button>
-                    {/* Terminal */}
-                    <button
-                        onClick={() => useNeuralMapStore.getState().toggleTerminal()}
-                        className={cn(
-                            "p-1.5 rounded transition-colors",
-                            !useNeuralMapStore.getState().terminalOpen && "hover:bg-white/10 text-zinc-500 hover:text-white"
-                        )}
-                        style={useNeuralMapStore.getState().terminalOpen ? {
-                            backgroundColor: `${accentColor}33`,
-                            color: accentColor
-                        } : undefined}
-                        title="Terminal"
-                    >
-                        <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-                            <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                            <line x1="2" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.2" />
-                            <rect x="2.6" y="10.6" width="10.8" height="2.8" rx="0.5" fill="currentColor" opacity="0.5" />
-                        </svg>
-                    </button>
-                </div>
+                        {/* Window Layout Icons Group */}
+                        <div className="flex items-center gap-0.5">
+                            {/* Grid 4-panel */}
+                            <button
+                                className={cn("p-1.5 rounded transition-colors", isDark ? "hover:bg-white/10 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
+                                title="Grid Layout"
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                                    <rect x="2" y="2" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+                                    <rect x="9" y="2" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+                                    <rect x="2" y="9" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+                                    <rect x="9" y="9" width="5" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
+                                </svg>
+                            </button>
+                            {/* Single window */}
+                            <button
+                                className={cn("p-1.5 rounded transition-colors", isDark ? "hover:bg-white/10 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
+                                title="Single Window"
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                                    <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                                </svg>
+                            </button>
+                            {/* Split view */}
+                            <button
+                                className="p-1.5 rounded bg-white/10 text-zinc-300 transition-colors"
+                                title="Split View"
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                                    <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                                    <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" strokeWidth="1.2" />
+                                </svg>
+                            </button>
+                            {/* Terminal */}
+                            <button
+                                onClick={() => useNeuralMapStore.getState().toggleTerminal()}
+                                className={cn(
+                                    "p-1.5 rounded transition-colors",
+                                    !useNeuralMapStore.getState().terminalOpen && "hover:bg-white/10 text-zinc-500 hover:text-white"
+                                )}
+                                style={useNeuralMapStore.getState().terminalOpen ? {
+                                    backgroundColor: `${accentColor}33`,
+                                    color: accentColor
+                                } : undefined}
+                                title="Terminal"
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                                    <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                                    <line x1="2" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.2" />
+                                    <rect x="2.6" y="10.6" width="10.8" height="2.8" rx="0.5" fill="currentColor" opacity="0.5" />
+                                </svg>
+                            </button>
+                        </div>
 
-                {/* Search */}
-                <button
-                    className={cn("p-1.5 rounded transition-colors", isDark ? "hover:bg-white/10 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
-                    title="Search"
-                >
-                    <Search className="w-4 h-4" />
-                </button>
+                        {/* Search */}
+                        <button
+                            className={cn("p-1.5 rounded transition-colors", isDark ? "hover:bg-white/10 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
+                            title="Search"
+                        >
+                            <Search className="w-4 h-4" />
+                        </button>
+                    </>
+                )}
 
                 {/* Profile Widget */}
                 <div className="relative">

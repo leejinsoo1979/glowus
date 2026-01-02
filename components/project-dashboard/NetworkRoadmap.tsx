@@ -12,6 +12,7 @@ import {
   Plus,
   AlertCircle,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 
 interface RoadmapNode {
   id: string
@@ -76,6 +77,8 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const { theme } = useTheme()
+  const isDark = theme === "dark"
 
   useEffect(() => {
     fetchRoadmapData()
@@ -156,7 +159,11 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
       case "in_progress":
         return { fill: "#f59e0b", stroke: "#fbbf24", glow: "rgba(245, 158, 11, 0.5)" }
       case "upcoming":
-        return { fill: "#6b7280", stroke: "#9ca3af", glow: "rgba(107, 114, 128, 0.3)" }
+        return {
+          fill: isDark ? "#6b7280" : "#d4d4d8",
+          stroke: isDark ? "#9ca3af" : "#a1a1aa",
+          glow: "rgba(107, 114, 128, 0.3)"
+        }
     }
   }
 
@@ -171,13 +178,13 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50"
+      className="relative overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 shadow-sm"
     >
       {/* Background Effects */}
       <div className="absolute inset-0">
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl opacity-50 dark:opacity-100" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl opacity-50 dark:opacity-100" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl opacity-50 dark:opacity-100" />
       </div>
 
       {/* Grid Pattern */}
@@ -185,36 +192,36 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
         className="absolute inset-0 opacity-10"
         style={{
           backgroundImage: `
-            linear-gradient(to right, #27272a 1px, transparent 1px),
-            linear-gradient(to bottom, #27272a 1px, transparent 1px)
+            linear-gradient(to right, ${isDark ? "#27272a" : "#e4e4e7"} 1px, transparent 1px),
+            linear-gradient(to bottom, ${isDark ? "#27272a" : "#e4e4e7"} 1px, transparent 1px)
           `,
           backgroundSize: "40px 40px",
         }}
       />
 
       {/* Header */}
-      <div className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-zinc-800/50">
+      <div className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800/50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-sm">
             <Rocket className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">네트워크 로드맵</h2>
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">네트워크 로드맵</h2>
             <p className="text-xs text-zinc-500">마일스톤 연결 시각화</p>
           </div>
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-emerald-500" />
-            <span className="text-zinc-400">완료</span>
+            <span className="text-zinc-500 dark:text-zinc-400">완료</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-amber-500" />
-            <span className="text-zinc-400">진행중</span>
+            <span className="text-zinc-500 dark:text-zinc-400">진행중</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-zinc-500" />
-            <span className="text-zinc-400">예정</span>
+            <div className="w-3 h-3 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+            <span className="text-zinc-500 dark:text-zinc-400">예정</span>
           </div>
         </div>
       </div>
@@ -223,7 +230,7 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
       <div className="relative z-10 p-4">
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+            <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-64 text-zinc-500">
@@ -232,9 +239,9 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
           </div>
         ) : milestones.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-zinc-500">
-            <Target className="w-12 h-12 mb-3 opacity-40" />
+            <Target className="w-12 h-12 mb-3 opacity-40 text-zinc-300 dark:text-zinc-700" />
             <p className="text-sm mb-3">아직 등록된 마일스톤이 없습니다</p>
-            <p className="text-xs text-zinc-600">로드맵 탭에서 마일스톤을 추가해보세요</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-600">로드맵 탭에서 마일스톤을 추가해보세요</p>
           </div>
         ) : (
           <svg
@@ -295,7 +302,7 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
                     y1={milestone.y}
                     x2={target.x}
                     y2={target.y}
-                    stroke={isHighlighted ? "#06b6d4" : "#3f3f46"}
+                    stroke={isHighlighted ? "#06b6d4" : (isDark ? "#3f3f46" : "#e4e4e7")}
                     strokeWidth={isHighlighted ? 2 : 1}
                     strokeDasharray={milestone.status === "upcoming" ? "5,5" : undefined}
                     markerEnd="url(#arrowhead)"
@@ -412,7 +419,7 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
                       x={milestone.x}
                       y={milestone.y + 45}
                       textAnchor="middle"
-                      className="fill-white text-xs font-medium"
+                      className="fill-zinc-900 dark:fill-white text-xs font-medium"
                     >
                       {milestone.title}
                     </text>
@@ -438,11 +445,11 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
       <div className="relative z-10 px-6 pb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-zinc-500">전체 진행률</span>
-          <span className="text-xs text-emerald-400 font-semibold">
+          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
             {totalCount > 0 ? `${progressPercent}%` : "-"}
           </span>
         </div>
-        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+        <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
           <motion.div
             className="h-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500"
             initial={{ width: 0 }}
@@ -452,11 +459,11 @@ export function NetworkRoadmap({ projectId }: NetworkRoadmapProps) {
         </div>
         <div className="flex justify-between mt-2">
           <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
             <span>{completedCount} 완료</span>
           </div>
           <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <Sparkles className="w-3 h-3 text-amber-400" />
+            <Sparkles className="w-3 h-3 text-amber-500 dark:text-amber-400" />
             <span>{inProgressCount} 진행중</span>
           </div>
           <div className="flex items-center gap-1 text-xs text-zinc-500">

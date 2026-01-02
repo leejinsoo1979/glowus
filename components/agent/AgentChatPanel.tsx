@@ -554,14 +554,14 @@ export function AgentChatPanel({
           </span>
 
           {/* Message bubble */}
-          <div className={`rounded-2xl px-4 py-2 ${
+          <div className={`rounded-2xl px-4 py-2 select-text ${
             isUser
               ? 'bg-blue-500 text-white'
               : isAgentToAgent
               ? 'bg-purple-100 dark:bg-purple-900/30 text-zinc-800 dark:text-zinc-200'
               : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200'
           }`}>
-            <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+            <p className="whitespace-pre-wrap text-sm select-text">{msg.content}</p>
           </div>
 
           {/* Timestamp */}
@@ -763,7 +763,7 @@ export function AgentChatPanel({
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap">
+              <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap select-text">
                 {pendingTask.confirmation_message}
               </div>
 
@@ -818,7 +818,7 @@ export function AgentChatPanel({
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap mb-4">
+              <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap mb-4 select-text">
                 {pendingAction.confirmation_message}
               </div>
 

@@ -11,6 +11,7 @@ interface UIState {
   agentSidebarOpen: boolean
   level2Width: number
   isResizingLevel2: boolean
+  level2Collapsed: boolean
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setActiveCategory: (category: string | null) => void
@@ -23,6 +24,8 @@ interface UIState {
   toggleAgentSidebar: () => void
   setLevel2Width: (width: number) => void
   setIsResizingLevel2: (resizing: boolean) => void
+  toggleLevel2: () => void
+  setLevel2Collapsed: (collapsed: boolean) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -36,6 +39,7 @@ export const useUIStore = create<UIState>((set) => ({
   agentSidebarOpen: false,
   level2Width: 280,
   isResizingLevel2: false,
+  level2Collapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setActiveCategory: (category) => set({ activeCategory: category }),
@@ -48,4 +52,6 @@ export const useUIStore = create<UIState>((set) => ({
   toggleAgentSidebar: () => set((state) => ({ agentSidebarOpen: !state.agentSidebarOpen })),
   setLevel2Width: (width) => set({ level2Width: width }),
   setIsResizingLevel2: (resizing) => set({ isResizingLevel2: resizing }),
+  toggleLevel2: () => set((state) => ({ level2Collapsed: !state.level2Collapsed })),
+  setLevel2Collapsed: (collapsed) => set({ level2Collapsed: collapsed }),
 }))

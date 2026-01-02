@@ -8,6 +8,66 @@ body {
   overscroll-behavior-x: none;
 }
 
+/* Global text selection prevention */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Allow drag for draggable elements (flowchart shapes, etc.) */
+[draggable="true"] {
+  -webkit-user-drag: element !important;
+  user-select: none;
+  cursor: grab;
+}
+
+[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* Allow selection only on input fields */
+input,
+textarea,
+[contenteditable="true"],
+.select-text,
+.select-text *,
+pre,
+code {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  -webkit-app-region: no-drag !important;
+}
+
+/* Text cursor only for actual text content */
+.select-text p,
+.select-text span,
+.select-text div:not(:has(button)):not(:has(a)) {
+  cursor: text;
+}
+
+/* Prevent image dragging (except in select-text areas) */
+img {
+  -webkit-user-drag: none;
+}
+
+/* Allow normal image interaction in select-text areas */
+.select-text img {
+  pointer-events: auto !important;
+  -webkit-user-drag: auto !important;
+}
+
+/* Re-enable pointer events for clickable images */
+img[role="button"],
+button img,
+a img {
+  pointer-events: auto;
+}
+
 @layer base {
   :root {
     /* Theme accent color (can be changed by user) */
@@ -62,7 +122,7 @@ body {
 
   /* Light mode variables */
   .light {
-    --background: 255 255 255;
+    --background: 250 250 250;
     --foreground: 24 24 27;
     --edge-color: #18181b;
     --card: 255 255 255;
@@ -297,7 +357,7 @@ body {
 
   /* Theme-aware background utilities */
   .bg-theme {
-    background-color: rgb(255 255 255);
+    background-color: rgb(250 250 250);
   }
 
   .bg-theme-secondary {
@@ -355,6 +415,40 @@ body {
   }
 
   .dark .text-theme-muted {
+    color: rgb(113 113 122);
+  }
+
+  /* Theme-aware border utilities */
+  .border-theme {
+    border-color: rgb(228 228 231);
+  }
+
+  .dark .border-theme {
+    border-color: rgb(63 63 70);
+  }
+
+  /* Theme-aware input utilities */
+  .bg-theme-input {
+    background-color: rgb(255 255 255);
+    border-color: rgb(212 212 216);
+  }
+
+  .dark .bg-theme-input {
+    background-color: rgb(39 39 42);
+    border-color: rgb(63 63 70);
+  }
+
+  .bg-theme-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb, 59, 130, 246), 0.2);
+  }
+
+  /* Theme-aware placeholder utilities */
+  .placeholder-theme-muted::placeholder {
+    color: rgb(161 161 170);
+  }
+
+  .dark .placeholder-theme-muted::placeholder {
     color: rgb(113 113 122);
   }
 
@@ -788,6 +882,7 @@ body {
   0% {
     stroke-dashoffset: 24;
   }
+
   100% {
     stroke-dashoffset: 0;
   }
@@ -795,10 +890,13 @@ body {
 
 /* 엣지 펄스 글로우 애니메이션 */
 @keyframes schema-edge-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.6));
     stroke-width: 2.5;
   }
+
   50% {
     filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.9)) drop-shadow(0 0 20px rgba(59, 130, 246, 0.4));
     stroke-width: 3.5;
@@ -810,15 +908,19 @@ body {
   0% {
     filter: drop-shadow(0 0 2px rgba(34, 197, 94, 0.5));
   }
+
   25% {
     filter: drop-shadow(0 0 8px rgba(34, 197, 94, 0.8)) drop-shadow(0 0 16px rgba(34, 197, 94, 0.4));
   }
+
   50% {
     filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.9)) drop-shadow(0 0 24px rgba(59, 130, 246, 0.5));
   }
+
   75% {
     filter: drop-shadow(0 0 8px rgba(34, 197, 94, 0.8)) drop-shadow(0 0 16px rgba(34, 197, 94, 0.4));
   }
+
   100% {
     filter: drop-shadow(0 0 2px rgba(34, 197, 94, 0.5));
   }
@@ -854,10 +956,13 @@ body {
 
 /* 노드 활성화 시 글로우 효과 */
 @keyframes schema-node-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 8px rgba(34, 197, 94, 0.5), 0 0 16px rgba(34, 197, 94, 0.3);
     transform: scale(1);
   }
+
   50% {
     box-shadow: 0 0 16px rgba(34, 197, 94, 0.8), 0 0 32px rgba(34, 197, 94, 0.5), 0 0 48px rgba(34, 197, 94, 0.2);
     transform: scale(1.02);
