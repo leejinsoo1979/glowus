@@ -537,22 +537,23 @@ export function Toolbar() {
   return (
     <div
       className={cn(
-        'h-14 flex items-center justify-between px-4 border-b relative z-50',
+        'h-14 flex items-center justify-between px-4 border-b relative z-50 min-w-0 overflow-hidden',
         isDark ? 'bg-zinc-900/95 border-zinc-800' : 'bg-white border-zinc-200'
       )}
     >
       {/* Left: Save & Mode & Search */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         {/* Save Button (왼쪽에 배치하여 헤더에 가려지지 않음) */}
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white shrink-0"
           style={{
             backgroundColor: saveSuccess ? '#22c55e' : currentAccent.color,
           }}
           onMouseEnter={(e) => !saveSuccess && (e.currentTarget.style.backgroundColor = currentAccent.hoverColor)}
           onMouseLeave={(e) => !saveSuccess && (e.currentTarget.style.backgroundColor = currentAccent.color)}
+          title={linkedProjectId ? '저장 (Cmd+S)' : '프로젝트에 저장'}
         >
           {isSaving ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -561,13 +562,15 @@ export function Toolbar() {
           ) : (
             <Save className="w-4 h-4" />
           )}
-          {saveSuccess ? '저장됨' : linkedProjectId ? '저장' : '프로젝트에 저장'}
+          <span className="hidden sm:inline">
+            {saveSuccess ? '저장됨' : linkedProjectId ? '저장' : '저장'}
+          </span>
         </button>
 
-        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('w-px h-6 shrink-0 hidden sm:block', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
         {/* Mode Selector */}
-        <div className="relative">
+        <div className="relative shrink-0 hidden md:block">
           <button
             onClick={() => setShowModeMenu(!showModeMenu)}
             className={cn(
@@ -577,7 +580,7 @@ export function Toolbar() {
                 : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
             )}
           >
-            Mode: Manual
+            <span className="hidden lg:inline">Mode:</span> Manual
             <ChevronDown className="w-4 h-4" />
           </button>
           {showModeMenu && (
@@ -616,7 +619,7 @@ export function Toolbar() {
         </div>
 
         {/* 🔥 Storage Mode Selector */}
-        <div className="relative">
+        <div className="relative shrink-0 hidden lg:block">
           <button
             onClick={() => setShowStorageModeMenu(!showStorageModeMenu)}
             className={cn(
@@ -630,7 +633,9 @@ export function Toolbar() {
             {storageMode === 'local' && <HardDrive className="w-4 h-4" />}
             {storageMode === 'supabase' && <Database className="w-4 h-4" />}
             {storageMode === 'gcs' && <Cloud className="w-4 h-4" />}
-            {storageMode === 'local' ? '로컬' : storageMode === 'supabase' ? 'Cloud' : 'GCS'}
+            <span className="hidden xl:inline">
+              {storageMode === 'local' ? '로컬' : storageMode === 'supabase' ? 'Cloud' : 'GCS'}
+            </span>
             <ChevronDown className="w-4 h-4" />
           </button>
           {showStorageModeMenu && (
@@ -714,7 +719,7 @@ export function Toolbar() {
         </div>
 
         {/* Search with Autocomplete */}
-        <div className="relative">
+        <div className="relative flex-1 min-w-0 max-w-xs">
           <Search
             className={cn(
               'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 z-10',
@@ -724,14 +729,14 @@ export function Toolbar() {
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="파일/노드 검색..."
+            placeholder="검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             onFocus={() => suggestions.length > 0 && setShowAutocomplete(true)}
             onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
             className={cn(
-              'no-focus-ring w-72 pl-9 pr-3 py-1.5 text-sm rounded-lg border outline-none transition-colors',
+              'no-focus-ring w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border outline-none transition-colors',
               isDark
                 ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-500'
                 : 'bg-zinc-50 border-zinc-200 text-zinc-800 placeholder:text-zinc-400'
@@ -787,11 +792,11 @@ export function Toolbar() {
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {/* Add Node / Edge */}
         <button
           onClick={() => openModal('nodeEditor')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white"
+          className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white shrink-0"
           style={{
             backgroundColor: currentAccent.color,
           }}
@@ -800,12 +805,12 @@ export function Toolbar() {
           title="노드 추가 (N)"
         >
           <Plus className="w-4 h-4" />
-          노드
+          <span className="hidden sm:inline">노드</span>
         </button>
         <button
           onClick={() => openModal('export', { mode: 'edge' })}
           className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border',
+            'flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border shrink-0',
             isDark
               ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-200'
               : 'bg-white hover:bg-zinc-50 border-zinc-300 text-zinc-700'
@@ -813,13 +818,13 @@ export function Toolbar() {
           title="연결 추가 (E)"
         >
           <Link2 className="w-4 h-4" />
-          연결
+          <span className="hidden sm:inline">연결</span>
         </button>
 
-        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('w-px h-6 shrink-0 hidden sm:block', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
-        {/* Undo/Redo */}
-        <div className="flex items-center gap-1">
+        {/* Undo/Redo - 작은 화면에서 숨김 */}
+        <div className="hidden md:flex items-center gap-1">
           <button
             className={cn(
               'p-2 rounded-lg transition-colors',
@@ -844,10 +849,10 @@ export function Toolbar() {
           </button>
         </div>
 
-        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('w-px h-6 hidden md:block', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
-        {/* Theme */}
-        <div className="relative">
+        {/* Theme - 작은 화면에서 숨김 */}
+        <div className="relative hidden lg:block">
           <button
             onClick={() => setShowThemeMenu(!showThemeMenu)}
             className={cn(
@@ -905,10 +910,10 @@ export function Toolbar() {
           )}
         </div>
 
-        {/* Import/Export */}
+        {/* Import/Export - 작은 화면에서 숨김 */}
         <button
           className={cn(
-            'p-2 rounded-lg transition-colors',
+            'p-2 rounded-lg transition-colors hidden lg:block',
             isDark
               ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
               : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
@@ -919,7 +924,7 @@ export function Toolbar() {
         </button>
         <button
           className={cn(
-            'p-2 rounded-lg transition-colors',
+            'p-2 rounded-lg transition-colors hidden lg:block',
             isDark
               ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
               : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
@@ -929,19 +934,19 @@ export function Toolbar() {
           <Download className="w-4 h-4" />
         </button>
 
-        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('w-px h-6 hidden sm:block', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
         {/* Blueprint Execution */}
         <button
           onClick={() => setShowBlueprintPanel(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white"
+          className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white shrink-0"
           style={{ backgroundColor: currentAccent.color }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = currentAccent.hoverColor}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = currentAccent.color}
           title="Blueprint 실행"
         >
           <Zap className="w-4 h-4" />
-          Blueprint
+          <span className="hidden sm:inline">Blueprint</span>
         </button>
 
         {/* Save Modal (저장 버튼은 왼쪽으로 이동됨) */}
@@ -1106,13 +1111,13 @@ export function Toolbar() {
           </>
         )}
 
-        <div className={cn('w-px h-6', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
+        <div className={cn('w-px h-6 shrink-0', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
         {/* 헤더 접기 버튼 */}
         <button
           onClick={toggleHeader}
           className={cn(
-            'p-2 rounded-lg transition-colors',
+            'p-2 rounded-lg transition-colors shrink-0',
             isDark
               ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
               : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700'
