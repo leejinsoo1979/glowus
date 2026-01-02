@@ -34,7 +34,8 @@ import {
     Share2,
     X,
     Check,
-    Upload
+    Upload,
+    Landmark
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -275,10 +276,20 @@ const INITIAL_TOOLS_DATA: ToolItem[] = [
         iconBg: 'bg-violet-100 dark:bg-violet-900/20',
         category: '학업',
         image: '/thumbnails/coding.png'
+    },
+    {
+        id: 'government-programs',
+        title: '정부지원사업',
+        description: '기업마당에서 제공하는 정부지원사업 공고를 실시간으로 확인하는 기능',
+        icon: Landmark,
+        iconColor: 'text-emerald-500',
+        iconBg: 'bg-emerald-100 dark:bg-emerald-900/20',
+        category: '지원사업',
+        image: '/thumbnails/work.png'
     }
 ]
 
-const CATEGORIES = ["전체", "즐겨찾기", "취업", "부업", "학업", "업무"]
+const CATEGORIES = ["전체", "즐겨찾기", "취업", "부업", "학업", "업무", "지원사업"]
 
 export default function AppsPage() {
     const router = useRouter()
@@ -381,6 +392,8 @@ function ToolCard({ tool, onEdit }: { tool: ToolItem, onEdit: () => void }) {
                     window.location.href = '/dashboard-group/apps/ai-blog'
                 } else if (tool.id === 'ai-slides') {
                     window.location.href = '/dashboard-group/apps/ai-slides'
+                } else if (tool.id === 'government-programs') {
+                    window.location.href = '/dashboard-group/apps/government-programs'
                 }
             }}
             onMouseLeave={() => setIsMenuOpen(false)}
