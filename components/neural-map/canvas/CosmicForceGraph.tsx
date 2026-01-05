@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralNode, NeuralEdge, NeuralFile } from '@/lib/neural-map/types'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { forceRadial, forceY } from 'd3-force-3d'
+import { forceRadial, forceY, forceCollide } from 'd3-force-3d'
 import {
   BsFiletypePdf,
   BsFiletypeJs,
@@ -32,8 +32,34 @@ import {
   BsFolder,
   BsFolderFill
 } from 'react-icons/bs'
+import {
+  Rocket,
+  Target,
+  FolderOpen,
+  CheckCircle2,
+  FileText,
+  Lightbulb,
+  Bug,
+  Star,
+  Circle
+} from 'lucide-react'
 
-// 아이콘 컴포넌트 매핑
+// 노드 타입별 아이콘 컴포넌트
+const getNodeTypeIcon = (type: string) => {
+  switch (type) {
+    case 'project': return Rocket
+    case 'decision': return Target
+    case 'folder': return FolderOpen
+    case 'task': return CheckCircle2
+    case 'note': return FileText
+    case 'idea': return Lightbulb
+    case 'bug': return Bug
+    case 'feature': return Star
+    default: return Circle
+  }
+}
+
+// 파일 확장자별 아이콘 컴포넌트 매핑
 const getIconComponent = (ext: string) => {
   const lower = ext.toLowerCase()
   switch (lower) {
@@ -93,9 +119,74 @@ const FILE_TYPE_COLORS: Record<string, number> = {
   env: 0xf59e0b,
 }
 
+// 노드 타입별 색상 (2D와 동일)
+const NODE_COLORS: Record<string, number> = {
+  self: 0x8b5cf6,      // Purple
+  concept: 0x3b82f6,   // Blue
+  project: 0x10b981,   // Green
+  doc: 0xf59e0b,       // Amber
+  idea: 0xec4899,      // Pink
+  decision: 0x8b5cf6,  // Purple
+  memory: 0x06b6d4,    // Cyan
+  task: 0xef4444,      // Red
+  person: 0xf97316,    // Orange
+  insight: 0xa855f7,   // Violet
+  agent: 0x06b6d4,     // Cyan
+  folder: 0x6b7280,    // Gray
+}
+
 // 파일 확장자 추출
 function getExtension(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() || ''
+}
+
+// ============================================
+// HARD COLLISION: 3D 공간에서 당구공처럼 겹치지 않게
+// ============================================
+function resolveHardCollisions(nodes: any[]) {
+  const iterations = 20  // 더 많은 반복
+
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i]
+        const b = nodes[j]
+
+        // 3D 거리 계산 (X, Y, Z 모두 사용)
+        const dx = (b.x || 0) - (a.x || 0)
+        const dy = (b.y || 0) - (a.y || 0)
+        const dz = (b.z || 0) - (a.z || 0)
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+        // 최소 거리 = 두 노드 크기의 합 + 여유
+        const aSize = a.nodeSize || 10
+        const bSize = b.nodeSize || 10
+        const requiredDist = (aSize + bSize) * 2 + 15
+
+        if (dist < requiredDist && dist > 0.001) {
+          const overlap = requiredDist - dist
+          const nx = dx / dist
+          const ny = dy / dist
+          const nz = dz / dist
+
+          // 3D 방향으로 밀어냄
+          a.x = (a.x || 0) - nx * overlap * 0.55
+          a.y = (a.y || 0) - ny * overlap * 0.55
+          a.z = (a.z || 0) - nz * overlap * 0.55
+          b.x = (b.x || 0) + nx * overlap * 0.55
+          b.y = (b.y || 0) + ny * overlap * 0.55
+          b.z = (b.z || 0) + nz * overlap * 0.55
+        } else if (dist <= 0.001) {
+          // 같은 위치 - 구 표면으로 밀어냄 (Golden Angle)
+          const phi = Math.acos(1 - 2 * Math.random())
+          const theta = Math.PI * (1 + Math.sqrt(5)) * Math.random()
+          b.x = (a.x || 0) + requiredDist * Math.sin(phi) * Math.cos(theta)
+          b.y = (a.y || 0) + requiredDist * Math.sin(phi) * Math.sin(theta)
+          b.z = (a.z || 0) + requiredDist * Math.cos(phi)
+        }
+      }
+    }
+  }
 }
 
 // ============================================
@@ -103,8 +194,8 @@ function getExtension(fileName: string): string {
 // ============================================
 
 // Geometry cache - shared across all nodes
-const geometryCache = new Map<string, THREE.SphereGeometry>()
-function getCachedGeometry(size: number): THREE.SphereGeometry {
+const geometryCache = new Map<string, any>()
+function getCachedGeometry(size: number, THREE: any): any {
   const key = `sphere-${size.toFixed(1)}`
   if (!geometryCache.has(key)) {
     // Lower segment count for performance (24→12)
@@ -114,24 +205,23 @@ function getCachedGeometry(size: number): THREE.SphereGeometry {
 }
 
 // Material cache - shared by color
-const materialCache = new Map<string, THREE.MeshStandardMaterial>()
-function getCachedMaterial(color: number, emissiveIntensity: number): THREE.MeshStandardMaterial {
+// Using MeshBasicMaterial for better visibility (no lighting dependency)
+const materialCache = new Map<string, any>()
+function getCachedMaterial(color: number, emissiveIntensity: number, THREE: any): any {
   const key = `mat-${color}-${emissiveIntensity.toFixed(1)}`
   if (!materialCache.has(key)) {
-    materialCache.set(key, new THREE.MeshStandardMaterial({
+    // Use MeshBasicMaterial - doesn't require lights, always visible
+    materialCache.set(key, new THREE.MeshBasicMaterial({
       color,
-      metalness: 0.3,
-      roughness: 0.5,
-      emissive: new THREE.Color(color),
-      emissiveIntensity,
+      transparent: false,
     }))
   }
   return materialCache.get(key)!
 }
 
 // Texture cache for file icons
-const textureCache = new Map<string, THREE.CanvasTexture>()
-function getCachedTexture(ext: string, color: string, IconComp: any): THREE.CanvasTexture | null {
+const textureCache = new Map<string, any>()
+function getCachedTexture(ext: string, color: string, IconComp: any, THREE: any): any | null {
   const key = `icon-${ext}-${color}`
   if (textureCache.has(key)) {
     return textureCache.get(key)!
@@ -171,9 +261,46 @@ function getCachedTexture(ext: string, color: string, IconComp: any): THREE.Canv
   }
 }
 
+// Node type icon texture cache
+const nodeTypeTextureCache = new Map<string, any>()
+function getNodeTypeTexture(type: string, THREE: any): any | null {
+  const key = `nodetype-${type}`
+  if (nodeTypeTextureCache.has(key)) {
+    return nodeTypeTextureCache.get(key)!
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 64
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  try {
+    const IconComp = getNodeTypeIcon(type)
+    const svgString = renderToStaticMarkup(<IconComp size={48} color="#FFFFFF" strokeWidth={2} style={{ display: 'block' }} />)
+    const img = new Image()
+    const svgData = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
+
+    const texture = new THREE.CanvasTexture(canvas)
+
+    img.onload = () => {
+      ctx.clearRect(0, 0, 64, 64)
+      ctx.drawImage(img, 8, 8, 48, 48)
+      texture.needsUpdate = true
+    }
+    img.src = svgData
+
+    nodeTypeTextureCache.set(key, texture)
+    return texture
+  } catch (e) {
+    console.error('Node type texture error:', e)
+    return null
+  }
+}
+
 // Ring geometry cache
-let ringGeometryCache: THREE.TorusGeometry | null = null
-function getCachedRingGeometry(): THREE.TorusGeometry {
+let ringGeometryCache: any | null = null
+function getCachedRingGeometry(THREE: any): any {
   if (!ringGeometryCache) {
     ringGeometryCache = new THREE.TorusGeometry(1, 0.08, 8, 24) // Lower segments
   }
@@ -181,8 +308,8 @@ function getCachedRingGeometry(): THREE.TorusGeometry {
 }
 
 // Ring material cache - for selection ring
-const ringMaterialCache = new Map<string, THREE.MeshBasicMaterial>()
-function getCachedRingMaterial(isSelected: boolean): THREE.MeshBasicMaterial {
+const ringMaterialCache = new Map<string, any>()
+function getCachedRingMaterial(isSelected: boolean, THREE: any): any {
   const key = isSelected ? 'selected' : 'hidden'
   if (!ringMaterialCache.has(key)) {
     ringMaterialCache.set(key, new THREE.MeshBasicMaterial({
@@ -195,8 +322,8 @@ function getCachedRingMaterial(isSelected: boolean): THREE.MeshBasicMaterial {
 }
 
 // Self node star texture cache
-let starTextureCache: THREE.CanvasTexture | null = null
-function getCachedStarTexture(): THREE.CanvasTexture {
+let starTextureCache: any | null = null
+function getCachedStarTexture(THREE: any): any {
   if (starTextureCache) return starTextureCache
 
   const canvas = document.createElement('canvas')
@@ -370,6 +497,17 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         nodeSize = 9 + Math.min((node.importance || 0), 3) // 9~12 범위
       }
 
+      // ====================================================
+      // 초기 위치: 3D 구 표면에 Fibonacci Sphere 분포
+      // ====================================================
+      const totalNodes = graph.nodes.length || 100
+      const phi = Math.acos(1 - 2 * (index + 0.5) / totalNodes)
+      const goldenRatio = (1 + Math.sqrt(5)) / 2
+      const theta = 2 * Math.PI * index / goldenRatio
+
+      // 깊이에 따라 반지름 조절 (project는 중심, 깊을수록 멀리)
+      const baseRadius = 100 + depth * 80
+
       const graphNode: GraphNode = {
         id: node.id,
         label: node.title,
@@ -379,8 +517,12 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
         fileType: ext || undefined,
         fileSize: matchedFile?.size,
         nodeSize,
-        parentId: node.parentId, // 부모 ID 추가
+        parentId: node.parentId,
         __node: node,
+        // 3D 구 표면 분포 (Fibonacci Sphere)
+        x: node.type === 'project' ? 0 : baseRadius * Math.sin(phi) * Math.cos(theta),
+        y: node.type === 'project' ? 0 : baseRadius * Math.sin(phi) * Math.sin(theta),
+        z: node.type === 'project' ? 0 : baseRadius * Math.cos(phi),
       }
 
       allNodes.push(graphNode)
@@ -510,22 +652,77 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
       import('3d-force-graph'),
       import('three'),
     ]).then(([ForceGraph3DModule, THREE]) => {
+      console.log('[CosmicForceGraph] Promise resolved, checking container...')
+
       // Prevent race conditions if unmounted
-      if (!containerRef.current) return
+      if (!containerRef.current) {
+        console.error('[CosmicForceGraph] Container ref is NULL!')
+        return
+      }
+
+      // Check container dimensions
+      const containerWidth = containerRef.current.clientWidth
+      const containerHeight = containerRef.current.clientHeight
+      console.log('[CosmicForceGraph] Container dimensions:', containerWidth, 'x', containerHeight)
+
+      if (containerWidth === 0 || containerHeight === 0) {
+        console.error('[CosmicForceGraph] Container has ZERO dimensions! Retrying in 100ms...')
+        // Retry after a short delay
+        setTimeout(() => {
+          if (containerRef.current) {
+            const w = containerRef.current.clientWidth
+            const h = containerRef.current.clientHeight
+            console.log('[CosmicForceGraph] Retry dimensions:', w, 'x', h)
+          }
+        }, 100)
+      }
 
       let Graph: any
       try {
-        const ForceGraph3D = ForceGraph3DModule.default
-        Graph = ForceGraph3D()(containerRef.current!)
-          .backgroundColor(isDark ? '#070A12' : '#f8fafc')
-          .minZoom(0.1)
-          .cooldownTicks(100) // Stop simulation after 100 ticks for performance
-          .warmupTicks(50) // Pre-calculate initial layout
+        // Handle different module export formats
+        const ForceGraph3D = ForceGraph3DModule.default || ForceGraph3DModule
+        console.log('[CosmicForceGraph] Module type:', typeof ForceGraph3D)
+        console.log('[CosmicForceGraph] Module keys:', Object.keys(ForceGraph3DModule))
+
+        // Create graph instance - 3d-force-graph uses curried API: ForceGraph3D()(container)
+        if (typeof ForceGraph3D === 'function') {
+          console.log('[CosmicForceGraph] Calling ForceGraph3D with curried API...')
+          // 3d-force-graph requires double invocation: ForceGraph3D()(container)
+          const GraphFactory = ForceGraph3D()
+          console.log('[CosmicForceGraph] GraphFactory created:', typeof GraphFactory)
+
+          const instance = GraphFactory(containerRef.current!)
+          console.log('[CosmicForceGraph] Instance created:', !!instance, typeof instance)
+
+          if (instance && typeof instance.backgroundColor === 'function') {
+            Graph = instance
+            console.log('[CosmicForceGraph] Graph instance ready!')
+          } else {
+            console.error('[CosmicForceGraph] Instance does not have expected methods!')
+          }
+        } else {
+          throw new Error('ForceGraph3D is not a function')
+        }
+
+        if (!Graph) {
+          throw new Error('Failed to create Graph instance')
+        }
+
+        console.log('[CosmicForceGraph] Graph created successfully, configuring...')
+
+        // Configure the graph - call methods separately as they may not return 'this'
+        Graph.backgroundColor(isDark ? '#070A12' : '#f8fafc')
+        Graph.cooldownTicks(300) // Increased: 100→300 for proper collision resolution
+        Graph.warmupTicks(200) // Increased: 50→200 for better initial layout
+        Graph.d3AlphaDecay(0.01) // Slower decay for more accurate positioning
+        Graph.d3VelocityDecay(0.3) // Slower velocity decay
 
         graphRef.current = Graph
         graphInstance = Graph
+        console.log('[CosmicForceGraph] Initialization COMPLETE!')
       } catch (err: any) {
         console.error('[CosmicForceGraph] WebGL initialization failed:', err)
+        console.error('[CosmicForceGraph] Error stack:', err.stack)
         setWebglError(err.message || 'WebGL 초기화 실패')
         return
       }
@@ -584,24 +781,52 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
 
   // 2. Update Effect (Runs on dependencies)
   useEffect(() => {
-    if (!threeInstance || !graphRef.current) return
+    console.log('[CosmicForceGraph] Update effect triggered:', {
+      hasThreeInstance: !!threeInstance,
+      hasGraphRef: !!graphRef.current,
+      graphNodes: graph?.nodes?.length || 0
+    })
+
+    if (!threeInstance || !graphRef.current) {
+      console.log('[CosmicForceGraph] Update effect skipped - missing dependencies')
+      return
+    }
 
     // We casts to any to avoid complex TS issues with dynamic imports
     const THREE = threeInstance as any
     const Graph = graphRef.current
     const { nodes, links } = convertToGraphData()
+    console.log('[CosmicForceGraph] Setting graph data:', { nodes: nodes.length, links: links.length })
 
     // Track zoom for LOD (Level of Detail)
-    Graph.onZoom(() => {
-      const camera = Graph.camera()
-      if (camera) {
-        zoomLevelRef.current = camera.position.length()
-      }
-    })
+    const controls = Graph.controls?.()
+    if (controls && controls.addEventListener) {
+      controls.addEventListener('change', () => {
+        const camera = Graph.camera()
+        if (camera) {
+          const newZoom = camera.position.length()
+          zoomLevelRef.current = newZoom
 
-    Graph
-      .backgroundColor(isDark ? '#070A12' : '#f8fafc')
-      .nodeLabel((n: any) => {
+          // Update icon/label visibility based on zoom
+          const showDetails = newZoom < 350
+          nodes.forEach((n: any) => {
+            if (n.__iconSprite) {
+              n.__iconSprite.visible = showDetails
+            }
+            if (n.__labelSprite) {
+              n.__labelSprite.visible = showDetails
+            }
+          })
+        }
+      })
+    }
+
+    // Track highlighted node for click interaction
+    let highlightedNodeId: string | null = null
+
+    // Configure graph - NO CHAINING (methods may not return 'this')
+    Graph.backgroundColor(isDark ? '#070A12' : '#f8fafc')
+    Graph.nodeLabel((n: any) => {
         // Hide labels when zoomed out (camera distance > 400)
         if (zoomLevelRef.current > 400) return ''
         return `
@@ -617,115 +842,265 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
             <span style="color: rgba(255,255,255,0.6);">type: ${n.type}</span>
           </div>
         `
+    })
+    // EXPLICIT node rendering with nodeThreeObject
+    // Creates sphere + icon + label sprite for each node
+    Graph.nodeThreeObject((node: any) => {
+      const size = node.type === 'project' ? 15 : (node.nodeSize || 10)
+
+      // Determine color: file extension first, then node type, then default
+      let colorHex = NODE_COLORS[node.type] || 0x6b7280
+      if (node.fileType) {
+        const ext = node.fileType.toLowerCase()
+        if (FILE_TYPE_COLORS[ext]) {
+          colorHex = FILE_TYPE_COLORS[ext]
+        }
+      }
+
+      // Create group to hold sphere + icon + label
+      const group = new THREE.Group()
+
+      // 1. Create sphere
+      const geometry = new THREE.SphereGeometry(size, 16, 16)
+      const material = new THREE.MeshBasicMaterial({
+        color: colorHex,
+        transparent: false,
       })
-      .nodeThreeObject((n: any) => {
-        const isSelected = selectedNodeIds.includes(n.id)
-        const baseSize = n.nodeSize || (n.type === 'project' ? 16 : n.depth === 1 ? 9 : 6)
-        const isZoomedOut = zoomLevelRef.current > 400
+      const sphere = new THREE.Mesh(geometry, material)
+      group.add(sphere)
 
-        // Use cached geometry (12 segments instead of 24)
-        const geom = getCachedGeometry(baseSize)
-        const colorNum = getNodeColor(n, isSelected)
-        // Increase emissive when zoomed out for twinkling star effect
-        const emissive = isZoomedOut ? 0.9 : (n.type === 'project' ? 0.8 : 0.5)
+      // 2. Create ICON sprite using Lucide icons
+      const iconTexture = getNodeTypeTexture(node.type, THREE)
+      if (iconTexture) {
+        const iconMaterial = new THREE.SpriteMaterial({
+          map: iconTexture,
+          transparent: true,
+          depthTest: false,
+          sizeAttenuation: true,
+        })
+        const iconSprite = new THREE.Sprite(iconMaterial)
 
-        // Use cached material
-        const mat = getCachedMaterial(colorNum, emissive)
-        const mesh = new THREE.Mesh(geom, mat)
+        // Position icon on sphere surface
+        iconSprite.position.set(0, 0, size * 0.5)
+        iconSprite.scale.set(size * 0.9, size * 0.9, 1)
+        group.add(iconSprite)
 
-        // Add outer glow for star-like appearance when zoomed out
-        if (isZoomedOut) {
-          const glowGeom = getCachedGeometry(baseSize * 1.3)
-          const glowMat = new THREE.MeshBasicMaterial({
-            color: colorNum,
-            transparent: true,
-            opacity: 0.2 + Math.random() * 0.1, // Slight random twinkle
-          })
-          mesh.add(new THREE.Mesh(glowGeom, glowMat))
+        // Store reference for LOD updates
+        node.__iconSprite = iconSprite
+      }
+
+      // Store sphere reference for highlight
+      node.__sphere = sphere
+      node.__material = material
+      node.__originalColor = colorHex
+
+      // 3. Create text label sprite above the node
+      const labelCanvas = document.createElement('canvas')
+      const labelCtx = labelCanvas.getContext('2d')
+      if (labelCtx) {
+        labelCanvas.width = 256
+        labelCanvas.height = 48
+        labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height)
+
+        // Text with shadow for readability
+        labelCtx.font = 'bold 24px Arial, sans-serif'
+        labelCtx.textAlign = 'center'
+        labelCtx.textBaseline = 'middle'
+
+        // Shadow
+        labelCtx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+        labelCtx.shadowBlur = 4
+        labelCtx.shadowOffsetX = 1
+        labelCtx.shadowOffsetY = 1
+
+        labelCtx.fillStyle = '#ffffff'
+
+        // Truncate long labels
+        let label = node.label || ''
+        if (label.length > 16) label = label.substring(0, 15) + '...'
+        labelCtx.fillText(label, labelCanvas.width / 2, labelCanvas.height / 2)
+
+        const labelTexture = new THREE.CanvasTexture(labelCanvas)
+        const labelMaterial = new THREE.SpriteMaterial({
+          map: labelTexture,
+          transparent: true,
+          depthTest: false,
+          sizeAttenuation: true,
+        })
+        const labelSprite = new THREE.Sprite(labelMaterial)
+
+        // Position label above the sphere
+        labelSprite.position.set(0, size + 10, 0)
+        labelSprite.scale.set(22, 4.5, 1)
+        group.add(labelSprite)
+
+        // Store reference for LOD updates
+        node.__labelSprite = labelSprite
+      }
+
+      return group
+    })
+
+    // Node click handler - highlight connected nodes, dim others
+    Graph.onNodeClick((clickedNode: any, event: MouseEvent) => {
+      if (!clickedNode) return
+
+      // Get connected node IDs
+      const connectedIds = new Set<string>()
+      connectedIds.add(clickedNode.id)
+      links.forEach((link: any) => {
+        if (link.source?.id === clickedNode.id || link.source === clickedNode.id) {
+          connectedIds.add(link.target?.id || link.target)
         }
-
-        // Selection Ring - only show when zoomed in
-        if (!isZoomedOut) {
-          const ringGeom = getCachedRingGeometry()
-          const ringMat = getCachedRingMaterial(isSelected)
-          const ring = new THREE.Mesh(ringGeom, ringMat)
-          ring.scale.set(baseSize + 3, baseSize + 3, baseSize + 3)
-          ring.rotation.x = Math.PI / 2
-          mesh.add(ring)
+        if (link.target?.id === clickedNode.id || link.target === clickedNode.id) {
+          connectedIds.add(link.source?.id || link.source)
         }
+      })
 
-        // File Type Icon - only show when zoomed in
-        if (!isZoomedOut && n.fileType) {
-          const ext = n.fileType
-          const colorHex = '#' + (FILE_TYPE_COLORS[ext.toLowerCase()] || 0x6b7280).toString(16).padStart(6, '0')
-          const IconComp = getIconComponent(ext)
-          const texture = getCachedTexture(ext, colorHex, IconComp)
-
-          if (texture) {
-            const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false })
-            const sprite = new THREE.Sprite(spriteMat)
-            sprite.scale.set(baseSize * 1.5, baseSize * 1.5, 1)
-            sprite.position.set(0, 0, baseSize * 0.6)
-            mesh.add(sprite)
+      // Update all nodes - dim non-connected
+      nodes.forEach((n: any) => {
+        if (n.__material) {
+          const isConnected = connectedIds.has(n.id)
+          if (isConnected) {
+            n.__material.color.setHex(n.__originalColor)
+            n.__material.opacity = 1
+            n.__material.transparent = false
+          } else {
+            n.__material.color.setHex(0x333333)
+            n.__material.opacity = 0.3
+            n.__material.transparent = true
           }
+          n.__material.needsUpdate = true
+        }
+        // Also dim icons/labels
+        if (n.__iconSprite) {
+          n.__iconSprite.material.opacity = connectedIds.has(n.id) ? 1 : 0.2
+        }
+        if (n.__labelSprite) {
+          n.__labelSprite.material.opacity = connectedIds.has(n.id) ? 1 : 0.2
+        }
+      })
+
+      // Update links - dim non-connected
+      Graph.linkOpacity((link: any) => {
+        const sourceId = link.source?.id || link.source
+        const targetId = link.target?.id || link.target
+        const isConnected = connectedIds.has(sourceId) && connectedIds.has(targetId)
+        return isConnected ? 0.8 : 0.05
+      })
+
+      // Also call the original onNodeClick if provided
+      if (onNodeClick) {
+        onNodeClick(clickedNode.id)
+      }
+    })
+
+    // Background click to reset highlight
+    Graph.onBackgroundClick(() => {
+      // Reset all nodes to original colors
+      nodes.forEach((n: any) => {
+        if (n.__material && n.__originalColor !== undefined) {
+          n.__material.color.setHex(n.__originalColor)
+          n.__material.opacity = 1
+          n.__material.transparent = false
+          n.__material.needsUpdate = true
+        }
+        if (n.__iconSprite) {
+          n.__iconSprite.material.opacity = 1
+        }
+        if (n.__labelSprite) {
+          n.__labelSprite.material.opacity = 1
+        }
+      })
+
+      // Reset link opacity
+      Graph.linkOpacity(0.15)
+    })
+
+    // Disable default node resolution (we're using custom objects)
+    Graph.nodeResolution(16)
+
+    // Clean minimal links like Obsidian
+    Graph.linkOpacity(0.15)  // Very subtle
+    Graph.linkWidth(0.3)     // Hair-thin
+    Graph.linkColor(() => '#ffffff')  // White/gray lines
+    Graph.linkDirectionalParticles(0)  // No particles
+    Graph.linkCurvature(0)  // Straight lines
+
+    // Update Data FIRST (forces are configured after simulation is initialized)
+    Graph.graphData({ nodes, links })
+
+    // Debug: Check what's in the scene
+    const scene = Graph.scene()
+    console.log('[CosmicForceGraph] Scene children count:', scene?.children?.length)
+
+    // CRITICAL: Position camera to see nodes
+    // Nodes are positioned in a sphere of radius ~100-260
+    // Camera needs to be far enough to see them
+    setTimeout(() => {
+      if (Graph && nodes.length > 0) {
+        // Calculate bounding sphere of nodes
+        let maxDist = 0
+        nodes.forEach((n: any) => {
+          const dist = Math.sqrt((n.x || 0) ** 2 + (n.y || 0) ** 2 + (n.z || 0) ** 2)
+          if (dist > maxDist) maxDist = dist
+        })
+
+        // Position camera at 3x the max distance to see all nodes
+        const cameraZ = Math.max(maxDist * 3, 500)
+        console.log('[CosmicForceGraph] Positioning camera at z:', cameraZ, 'maxDist:', maxDist)
+
+        Graph.cameraPosition(
+          { x: 0, y: 0, z: cameraZ }, // Camera position
+          { x: 0, y: 0, z: 0 },        // Look at center
+          0                             // Instant (no animation)
+        )
+
+        // Force graph refresh
+        try {
+          Graph.refresh()
+          console.log('[CosmicForceGraph] Graph refreshed')
+        } catch (e) {
+          console.warn('[CosmicForceGraph] refresh() error:', e)
         }
 
-        // Self Node visuals - always show but simplified when zoomed out
-        if (n.type === 'project') {
-          const glowGeom = getCachedGeometry(baseSize * 1.5)
-          const glowMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: isZoomedOut ? 0.3 : 0.15 })
-          mesh.add(new THREE.Mesh(glowGeom, glowMat))
+        // Debug: Check scene after refresh
+        const updatedScene = Graph.scene()
+        console.log('[CosmicForceGraph] After refresh - scene children:', updatedScene?.children?.length)
 
-          // Star Icon - only show when zoomed in
-          if (!isZoomedOut) {
-            const starTexture = getCachedStarTexture()
-            const ss = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTexture, transparent: true, depthTest: false, depthWrite: false }))
-            ss.scale.set(baseSize * 1.4, baseSize * 1.4, 1)
-            ss.position.set(0, 0, baseSize * 0.7)
-            mesh.add(ss)
-          }
+        // Log camera info
+        const camera = Graph.camera()
+        if (camera) {
+          console.log('[CosmicForceGraph] Camera position:', camera.position.x, camera.position.y, camera.position.z)
+          console.log('[CosmicForceGraph] Camera frustum near/far:', camera.near, camera.far)
         }
+      }
+    }, 200)
 
-        mesh.userData.__nodeId = n.id
-        return mesh
-      })
-      .linkOpacity((l: any) => l.kind === 'imports' ? 0.6 : 0.3)
-      .linkWidth((l: any) => l.kind === 'imports' ? 1.5 : 0.8)
-      .linkColor((l: any) => l.color) // Use injected color
-      // 🆕 파티클 애니메이션 비활성화
-      .linkDirectionalParticles(0)
+    console.log('[CosmicForceGraph] Graph data set with', nodes.length, 'nodes')
 
-      // Update Data
-      .graphData({ nodes, links })
+    // Interactions (separate from chain)
+    Graph.onNodeClick((node: any) => {
+      if (!node) return
+      setSelectedNodes([node.id])
+      let targetFile = files.find(f => f.id === node.id) || files.find(f => f.name === node.label)
+      if (!targetFile && node.__node?.sourceRef?.fileId) targetFile = files.find(f => f.id === node.__node.sourceRef.fileId)
+      if (targetFile) openCodePreview(targetFile)
+      Graph.cameraPosition({ x: node.x * 1.3, y: node.y * 1.3, z: (node.z ?? 0) * 1.3 + 150 }, node, 800)
+    })
+    Graph.onBackgroundClick(() => {
+      setSelectedNodes([])
+    })
 
-      // Interactions
-      .onNodeClick((node: any) => {
-        if (!node) return
-        setSelectedNodes([node.id])
-        let targetFile = files.find(f => f.id === node.id) || files.find(f => f.name === node.label)
-        if (!targetFile && node.__node?.sourceRef?.fileId) targetFile = files.find(f => f.id === node.__node.sourceRef.fileId)
-        if (targetFile) openCodePreview(targetFile)
-        Graph.cameraPosition({ x: node.x * 1.3, y: node.y * 1.3, z: (node.z ?? 0) * 1.3 + 150 }, node, 800)
-        // Removed redundant nodeThreeObject rebuild - uses cached geometry/materials
-      })
-      .onBackgroundClick(() => {
-        setSelectedNodes([])
-        // Removed redundant nodeThreeObject rebuild - uses cached geometry/materials
-      })
-
-    // Force Settings
-    const currentEffectiveDistance = graphExpanded ? radialDistance : radialDistance * 0.2
-    const currentEffectiveStrength = graphExpanded ? -radialDistance * 1.5 : -30
-    Graph.d3Force('charge')?.strength(currentEffectiveStrength)
-    Graph.d3Force('link')?.distance((l: any) => l.kind === 'parent' ? currentEffectiveDistance * 0.5 : currentEffectiveDistance)
-    Graph.d3ReheatSimulation()
+    // Force Settings DISABLED - causes tick errors
+    // Using default d3-force simulation instead
 
     // Set cleanup function on the Graph object for extraction later if needed (though resizeObserver handles most)
     // Note: React cleanup below handles component unmount
     return () => {
       window.removeEventListener('resize', () => { }) // Dummy
     }
-  }, [graph, fileMap, fileSizeRange, isNodeVisible, expandedNodeIds, currentTheme, isDark, radialDistance, graphExpanded, layoutMode])
+  }, [threeInstance, graph, fileMap, fileSizeRange, isNodeVisible, expandedNodeIds, currentTheme, isDark, radialDistance, graphExpanded, layoutMode])
 
   // Update graph data when store changes
   useEffect(() => {
@@ -735,12 +1110,12 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
   }, [graph, convertToGraphData])
 
   // 정렬 버튼 클릭 시 시뮬레이션 재시작 감지
-  useEffect(() => {
-    if (graphRef.current && isSimulationRunning) {
-      // Reheat simulation
-      graphRef.current.d3ReheatSimulation()
-    }
-  }, [isSimulationRunning])
+  // DISABLED - d3ReheatSimulation causes tick errors
+  // useEffect(() => {
+  //   if (graphRef.current && isSimulationRunning) {
+  //     graphRef.current.d3ReheatSimulation()
+  //   }
+  // }, [isSimulationRunning])
 
 
   // Update selection - only update local state, no expensive nodeThreeObject rebuild
@@ -756,63 +1131,14 @@ export function CosmicForceGraph({ className }: CosmicForceGraphProps) {
   const effectiveStrength = graphExpanded ? -radialDistance * 1.5 : -30
 
   // Update force settings when layoutMode, radialDistance or graphExpanded changes
+  // DISABLED ENTIRELY - d3Force calls cause tick errors
+  // Using default 3d-force-graph simulation instead
+  /*
   useEffect(() => {
     if (!graphRef.current || !graph?.nodes?.length) return
-
-    const graphInstance = graphRef.current
-
-    // Debug log
-    console.log('3D Layout Mode Changed:', layoutMode)
-
-    // 약간의 딜레이 후 force 설정 (그래프 초기화 완료 대기)
-    const timer = setTimeout(() => {
-      const chargeForce = graphInstance.d3Force('charge')
-      if (chargeForce && typeof chargeForce.strength === 'function') {
-        chargeForce.strength(layoutMode === 'radial' ? -50 : effectiveStrength)
-      }
-
-      const linkForce = graphInstance.d3Force('link')
-      if (linkForce && typeof linkForce.distance === 'function') {
-        linkForce.distance((l: any) => {
-          if (layoutMode === 'radial') {
-            return l.kind === 'parent' ? 40 : 100
-          }
-          if (layoutMode === 'structural') {
-            return l.kind === 'parent' ? 50 : 150
-          }
-          return l.kind === 'parent' ? effectiveDistance * 0.5 : effectiveDistance
-        })
-      }
-
-      // 'radial' 모드일 때 중심으로부터의 거리 강제
-      if (layoutMode === 'radial') {
-        graphInstance.d3Force('radial', forceRadial((n: any) => {
-          if (n.type === 'project') return 0
-          if (n.type === 'folder') return 120
-          return 240
-        }, 0, 0, 0).strength(0.8))
-        graphInstance.d3Force('y', null)
-      }
-      // 'structural' 모드
-      else if (layoutMode === 'structural') {
-        graphInstance.d3Force('radial', null)
-        // Simple hierarchy simulation: folders on top, files below
-        graphInstance.d3Force('y', forceY((n: any) => {
-          if (n.type === 'project') return -200
-          if (n.type === 'folder') return -100
-          return 100
-        }).strength(0.5))
-      }
-      else {
-        graphInstance.d3Force('radial', null)
-        graphInstance.d3Force('y', null)
-      }
-
-      graphInstance.d3ReheatSimulation()
-    }, 100)
-
-    return () => clearTimeout(timer)
+    // Force configuration disabled to prevent tick errors
   }, [layoutMode, radialDistance, graphExpanded, effectiveDistance, effectiveStrength, graph?.nodes?.length])
+  */
 
   if (!isClient) {
     return (

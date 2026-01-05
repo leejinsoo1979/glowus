@@ -5,8 +5,8 @@ import type { Database } from '@/types/database'
 
 // 개발 모드 설정
 const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true'
-// 개발용 UUID (실제 users 테이블에 있는 ID 또는 가짜 UUID)
-const DEV_USER_ID = process.env.DEV_USER_ID || '00000000-0000-0000-0000-000000000000'
+// 개발용 UUID (실제 users 테이블에 있는 ID)
+const DEV_USER_ID = process.env.DEV_USER_ID || '014524d9-d3ed-46ab-b0b5-80beb5f4b7b8'
 
 export async function createClient() {
   const cookieStore = await cookies()

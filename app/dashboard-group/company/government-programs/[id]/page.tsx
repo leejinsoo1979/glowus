@@ -334,7 +334,7 @@ export default function GovernmentProgramDetailPage() {
 
         <div className="rounded-xl p-6 mb-8" style={{ background: isDark ? '#18181b' : '#fff' }}>
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-2" style={{ color: isDark ? '#fafafa' : '#18181b' }}>
-            <FileText className="w-5 h-5" />
+            <FileText className="w-5 h-5" style={{ color: themeColor }} />
             공고 내용
           </h2>
           {program.content ? (
@@ -539,7 +539,6 @@ export default function GovernmentProgramDetailPage() {
             .government-content .k-startup-original .box_inner .tit_wrap {
               margin-bottom: 1em;
               padding-bottom: 0.75em;
-              border-bottom: 2px solid ${themeColor};
             }
             .government-content .k-startup-original .box_inner .tit_bl {
               font-size: 1.1em;
@@ -579,7 +578,6 @@ export default function GovernmentProgramDetailPage() {
               color: ${isDark ? '#fafafa' : '#18181b'};
               margin-bottom: 0.75em;
               padding-bottom: 0.5em;
-              border-bottom: 2px solid ${themeColor};
               display: inline-block;
             }
             .government-content .k-startup-original .information_list .txt,
@@ -599,7 +597,6 @@ export default function GovernmentProgramDetailPage() {
               margin-top: 1.5em;
               margin-bottom: 0.75em;
               padding-bottom: 0.5em;
-              border-bottom: 2px solid ${themeColor};
               display: inline-block;
             }
             .government-content .bizinfo-original h3:first-child {
@@ -620,7 +617,7 @@ export default function GovernmentProgramDetailPage() {
           <div className="rounded-xl p-6" style={{ background: isDark ? '#18181b' : '#fff' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: isDark ? '#fafafa' : '#18181b' }}>
-                <Download className="w-5 h-5" />
+                <Download className="w-5 h-5" style={{ color: themeColor }} />
                 첨부파일
               </h2>
               <button

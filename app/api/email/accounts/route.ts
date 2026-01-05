@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { EmailService } from '@/lib/email/email-service'
 import type { EmailProvider } from '@/types/email'
@@ -7,7 +7,7 @@ import type { EmailProvider } from '@/types/email'
 // GET /api/email/accounts - Get all email accounts for current user
 export async function GET() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getAuthUser(supabase)
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -30,7 +30,7 @@ export async function GET() {
 // POST /api/email/accounts - Add new email account
 export async function POST(request: Request) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getAuthUser(supabase)
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 // DELETE /api/email/accounts - Delete email account
 export async function DELETE(request: Request) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getAuthUser(supabase)
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

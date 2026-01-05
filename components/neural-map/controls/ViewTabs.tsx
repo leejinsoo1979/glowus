@@ -14,7 +14,6 @@ import {
   FolderTree, // Tree (파일 구조)
   FlaskConical, // Test
   Globe, // Browser
-  GitCommit, // Git
   ChevronDown,
   Workflow, // Flowchart
   ArrowLeftRight, // Sequence
@@ -24,10 +23,12 @@ import {
   CircleDot, // State
   GitFork, // GitGraph
   LayoutDashboard, // Architecture
+  Box, // 3D (Cosmic)
 } from 'lucide-react'
 
 const viewTabs: { id: ViewTab; label: string; icon: typeof Network; description: string }[] = [
-  { id: 'map', label: 'Map', icon: Network, description: '전체 노드 탐색 (2D/3D)' },
+  { id: 'map', label: 'Map', icon: Network, description: '2D 노드 그래프' },
+  { id: 'cosmic', label: 'Cosmic', icon: Box, description: '3D 우주 그래프' },
   { id: 'architecture', label: 'Architecture', icon: LayoutDashboard, description: '시스템 아키텍처 역설계 시각화' },
   { id: 'life-stream', label: 'Blueprint', icon: Activity, description: '전체 개발 현황 및 순서 (Blueprint)' },
   { id: 'agent-builder', label: 'Skill', icon: Bot, description: '스킬 워크플로우 빌더' },
@@ -84,7 +85,7 @@ export function ViewTabs() {
         isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white/80 border-zinc-200'
       )}
     >
-      {/* Regular tabs - only Map first */}
+      {/* Map Tab (2D) */}
       <button
         onClick={() => setActiveTab('map')}
         className={cn(
@@ -95,7 +96,7 @@ export function ViewTabs() {
               ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
               : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100/50'
         )}
-        title="전체 노드 탐색 (2D/3D)"
+        title="2D 노드 그래프"
       >
         {activeTab === 'map' && (
           <motion.div
@@ -106,6 +107,30 @@ export function ViewTabs() {
         )}
         <Network className="relative w-4 h-4" />
         <span className="relative">Map</span>
+      </button>
+
+      {/* Cosmic Tab (3D) */}
+      <button
+        onClick={() => setActiveTab('cosmic')}
+        className={cn(
+          'relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors electron-no-drag flex-shrink-0',
+          activeTab === 'cosmic'
+            ? isDark ? 'text-zinc-100' : 'text-zinc-900'
+            : isDark
+              ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+              : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100/50'
+        )}
+        title="3D 우주 그래프"
+      >
+        {activeTab === 'cosmic' && (
+          <motion.div
+            layoutId="activeViewTab"
+            className={cn('absolute inset-0 rounded-md', isDark ? 'bg-zinc-800' : 'bg-zinc-100')}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          />
+        )}
+        <Box className="relative w-4 h-4" />
+        <span className="relative">Cosmic</span>
       </button>
 
       {/* Mermaid Dropdown */}
@@ -195,8 +220,8 @@ export function ViewTabs() {
         </AnimatePresence>
       </div>
 
-      {/* Rest of the tabs */}
-      {viewTabs.slice(1).map((tab) => {
+      {/* Rest of the tabs (skip map and cosmic which are manually rendered above) */}
+      {viewTabs.slice(2).map((tab) => {
         const isActive = activeTab === tab.id
         return (
           <button

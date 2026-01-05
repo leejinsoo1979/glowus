@@ -6,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // POST: Add a member to the group
 export async function POST(
   request: NextRequest,
-  { params }: { params: { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -17,7 +17,7 @@ export async function POST(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { groupId } = params
+    const { groupId } = await params
     const body = await request.json()
     const { agent_id, role = 'member', speak_order } = body
 
@@ -76,7 +76,7 @@ export async function POST(
 // DELETE: Remove a member from the group
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -87,7 +87,7 @@ export async function DELETE(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { groupId } = params
+    const { groupId } = await params
     const { searchParams } = new URL(request.url)
     const agentId = searchParams.get('agent_id')
 
@@ -119,7 +119,7 @@ export async function DELETE(
 // PATCH: Update member role or speak order
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -130,7 +130,7 @@ export async function PATCH(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { groupId } = params
+    const { groupId } = await params
     const body = await request.json()
     const { agent_id, role, speak_order } = body
 

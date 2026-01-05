@@ -1,12 +1,13 @@
 export const dynamic = 'force-dynamic'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { EmailService } from '@/lib/email/email-service'
 
 // GET /api/email/messages - Get emails for an account
 export async function GET(request: Request) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const adminClient = createAdminClient()
+  const { user } = await getAuthUser(supabase)
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,8 +25,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: '계정 ID가 필요합니다.' }, { status: 400 })
   }
 
-  // Verify ownership
-  const { data: account } = await (supabase as any)
+  // Verify ownership (use adminClient to bypass RLS)
+  const { data: account } = await (adminClient as any)
     .from('email_accounts')
     .select('user_id')
     .eq('id', accountId)
@@ -50,7 +51,8 @@ export async function GET(request: Request) {
 // PATCH /api/email/messages - Update email (read, star, trash)
 export async function PATCH(request: Request) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const adminClient = createAdminClient()
+  const { user } = await getAuthUser(supabase)
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -67,8 +69,8 @@ export async function PATCH(request: Request) {
       )
     }
 
-    // Verify ownership through account
-    const { data: email } = await (supabase as any)
+    // Verify ownership through account (use adminClient to bypass RLS)
+    const { data: email } = await (adminClient as any)
       .from('email_messages')
       .select('account_id')
       .eq('id', email_id)
@@ -78,7 +80,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: '이메일을 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const { data: account } = await (supabase as any)
+    const { data: account } = await (adminClient as any)
       .from('email_accounts')
       .select('user_id')
       .eq('id', (email as any).account_id)

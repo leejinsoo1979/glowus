@@ -295,7 +295,7 @@ export interface NeuralCluster {
 // Graph Container
 // ============================================
 
-export type ViewTab = 'map' | 'life-stream' | 'agent-builder' | 'data' | 'logic' | 'test' | 'browser' | 'mermaid' | 'git' | 'architecture'
+export type ViewTab = 'map' | '3d' | 'cosmic' | 'life-stream' | 'agent-builder' | 'data' | 'logic' | 'test' | 'browser' | 'mermaid' | 'git' | 'architecture'
 export type MermaidDiagramType = 'flowchart' | 'sequence' | 'class' | 'er' | 'pie' | 'state' | 'gitgraph' | 'gantt'
 export type LayoutMode = 'force' | 'radial' | 'circular' | 'tree'
 

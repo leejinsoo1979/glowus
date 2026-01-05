@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // Team interface
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   const adminClient = createAdminClient()
 
   // Check auth
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getAuthUser(supabase)
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
   const adminClient = createAdminClient()
 
   // Check auth
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getAuthUser(supabase)
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

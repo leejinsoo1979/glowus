@@ -79,6 +79,32 @@ export function ElectronHeader() {
 
     const isDark = resolvedTheme === 'dark' || resolvedTheme === undefined
 
+    // 헤더 더블클릭 시 창 최대화/복원 (빠른 반응)
+    const handleDoubleClick = async (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement
+
+        // 버튼, 인풋, 또는 no-drag 클래스 영역에서는 무시
+        if (target.tagName === 'INPUT' ||
+            target.tagName === 'BUTTON' ||
+            target.closest('button') ||
+            target.closest('input') ||
+            target.closest('[data-no-drag]')) {
+            return
+        }
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        try {
+            if ((window as any).electron?.window?.maximize) {
+                const isMax = await (window as any).electron.window.maximize()
+                console.log('[Header] Toggle maximize:', isMax)
+            }
+        } catch (err) {
+            console.error('Failed to toggle maximize:', err)
+        }
+    }
+
     const handleLogout = async () => {
         const supabase = createClient()
         await supabase.auth.signOut()
@@ -93,11 +119,12 @@ export function ElectronHeader() {
                 isDark ? "bg-zinc-900/95 border-white/5" : "bg-white/90 border-zinc-200"
             )}
             style={{ WebkitAppRegion: 'drag' } as any}
+            onDoubleClick={handleDoubleClick}
         >
             {/* Drag area for traffic lights on Mac */}
             {isMac && <div className="w-20 h-full flex-shrink-0" />}
 
-            <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <div className="flex items-center gap-2" data-no-drag style={{ WebkitAppRegion: 'no-drag' } as any}>
                 <button
                     onClick={() => router.back()}
                     className={cn("p-1.5 rounded-md transition-colors", isDark ? "hover:bg-white/5 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900")}
@@ -124,6 +151,7 @@ export function ElectronHeader() {
                             ? "bg-white/5 border-white/10 hover:border-white/20 focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/20"
                             : "bg-zinc-100 border-zinc-200 hover:border-zinc-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20"
                     )}
+                    data-no-drag
                     style={{ WebkitAppRegion: 'no-drag' } as any}
                 >
                     <Search className="w-3.5 h-3.5 text-zinc-500" />
@@ -139,7 +167,7 @@ export function ElectronHeader() {
             </div>
 
             {/* Right Section: Layout Controls & Search - No Drag */}
-            <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <div className="flex items-center gap-2" data-no-drag style={{ WebkitAppRegion: 'no-drag' } as any}>
                 {/* Neural Map 전용 뷰 모드 아이콘들 - 마이뉴럴맵 페이지에서만 표시 */}
                 {pathname?.includes('/neural-map') && (
                     <>

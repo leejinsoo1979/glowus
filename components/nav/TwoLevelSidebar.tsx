@@ -1474,7 +1474,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
       {/* Level 1: 아이콘 사이드바 */}
       <motion.aside
         className={cn(
-          'w-16 h-full flex flex-col items-center py-4 transition-colors duration-300 z-20',
+          'w-16 h-full flex flex-col items-center py-4 border-r transition-colors duration-300 z-20',
           isDashboardRoot
             ? (isDark
               ? 'bg-black/20 backdrop-blur-xl border-white/10'
@@ -1635,7 +1635,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.15 }}
               className={cn(
-                'h-full flex items-start justify-center pt-3',
+                'h-full border-r flex items-start justify-center pt-3',
                 isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
               )}
             >
@@ -1660,7 +1660,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: isResizingLevel2 ? 0 : 0.15 }}
               className={cn(
-                'h-full overflow-hidden relative flex flex-col',
+                'h-full border-r overflow-hidden relative flex flex-col',
                 isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
               )}
               style={{ width: level2Width }}
@@ -1850,7 +1850,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className={cn(
-                'h-full overflow-hidden bg-white dark:bg-zinc-950',
+                'h-full border-r overflow-hidden bg-white dark:bg-zinc-950',
                 isDashboardRoot
                   ? (isDark ? 'border-white/10' : 'border-zinc-200/50')
                   : isDark ? 'border-zinc-800' : 'border-zinc-200'

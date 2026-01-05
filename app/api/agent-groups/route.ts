@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getAuthUser } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { InteractionMode } from '@/types/database'
 
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = await getAuthUser(supabase)
 
     if (!user) {
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = await getAuthUser(supabase)
 
     if (!user) {
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })

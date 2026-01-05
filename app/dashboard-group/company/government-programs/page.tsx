@@ -69,21 +69,22 @@ const getThemeColors = (mode: ThemeMode) => {
   return {
     bg: isDark ? 'bg-[#0a0a0f]' : 'bg-gray-50',
     card: isDark ? 'bg-white/[0.08]' : 'bg-white',
-    cardBorder: isDark ? 'border-white/10' : 'border-gray-200',
+    cardBorder: isDark ? 'border-white/10' : 'border-zinc-300',
     cardHover: isDark ? 'hover:bg-white/[0.12]' : 'hover:bg-gray-50',
     text: isDark ? 'text-white' : 'text-gray-900',
-    textSecondary: isDark ? 'text-zinc-400' : 'text-gray-500',
-    textMuted: isDark ? 'text-zinc-500' : 'text-gray-400',
-    headerBg: isDark ? 'bg-black/20' : 'bg-white/80',
-    headerBorder: isDark ? 'border-white/5' : 'border-gray-200',
-    inputBg: isDark ? 'bg-white/5' : 'bg-gray-100',
-    inputBorder: isDark ? 'border-white/10' : 'border-gray-300',
-    inputText: isDark ? 'text-white placeholder-zinc-500' : 'text-gray-900 placeholder-gray-400',
-    tooltipBg: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-    tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    textSecondary: isDark ? 'text-zinc-400' : 'text-gray-700',
+    textMuted: isDark ? 'text-zinc-500' : 'text-gray-500',
+    headerBg: isDark ? 'bg-black/20' : 'bg-white/90',
+    headerBorder: isDark ? 'border-white/5' : 'border-zinc-300',
+    inputBg: isDark ? 'bg-white/5' : 'bg-white',
+    inputBorder: isDark ? 'border-white/10' : 'border-zinc-400',
+    inputText: isDark ? 'text-white placeholder-zinc-500' : 'text-gray-900 placeholder-gray-500',
+    tooltipBg: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+    tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)',
     tooltipText: isDark ? '#fff' : '#000',
-    chartAxis: isDark ? '#71717a' : '#9ca3af',
+    chartAxis: isDark ? '#71717a' : '#4b5563',
     progressBg: isDark ? 'bg-white/5' : 'bg-gray-200',
+    divider: isDark ? 'divide-white/10' : 'divide-zinc-300',
   }
 }
 
@@ -213,7 +214,7 @@ function HeroStatCard({
         "backdrop-blur-xl border",
         isDark
           ? "bg-gradient-to-br from-white/[0.08] to-white/[0.02] border-white/10 hover:border-white/20"
-          : "bg-white border-gray-100 shadow-lg hover:shadow-xl",
+          : "bg-white border-zinc-400 shadow-md hover:shadow-lg hover:border-zinc-500",
         onClick && "cursor-pointer"
       )}
     >
@@ -289,7 +290,7 @@ function MiniStatCard({
       "flex items-center gap-3 p-3 rounded-xl backdrop-blur-sm border transition-all",
       isDark
         ? "bg-white/5 border-white/10"
-        : "bg-white border-gray-200 shadow-sm"
+        : "bg-white border-zinc-400 shadow-md"
     )}>
       <div
         className="p-2 rounded-lg flex-shrink-0"
@@ -325,10 +326,10 @@ function GlassCard({
         "relative overflow-hidden rounded-2xl border transition-all duration-300",
         isDark
           ? "bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-xl border-white/10"
-          : "bg-white border-gray-200 shadow-sm",
+          : "bg-white border-zinc-400 shadow-md",
         hover && (isDark
           ? "hover:border-white/20 hover:from-white/[0.12] hover:to-white/[0.04]"
-          : "hover:shadow-md hover:border-gray-300"),
+          : "hover:shadow-lg hover:border-zinc-500"),
         className
       )}
     >
@@ -457,21 +458,8 @@ function MonthlyTrendChart({
         />
         <YAxis hide domain={[0, 'auto']} />
         <Tooltip
-          contentStyle={{
-            backgroundColor: isDark ? 'rgba(24, 24, 27, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-            backdropFilter: 'blur(8px)',
-            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-            borderRadius: '12px',
-            color: isDark ? '#fff' : '#000',
-            fontSize: '12px',
-            padding: '8px 12px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-          }}
+          content={<CustomTooltip isDark={isDark} formatter={(value: number) => [value, '']} />}
           cursor={{ stroke: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', strokeWidth: 2 }}
-          labelStyle={{ color: isDark ? '#fff' : '#000', marginBottom: '4px', fontWeight: 'bold' }}
-          itemStyle={{ color: isDark ? '#fff' : '#000' }}
-          formatter={(value: number) => [`${value}개`, '']}
-          labelFormatter={(label) => `${label}월`}
         />
         <Area
           type="monotone"
@@ -607,18 +595,7 @@ function StatusPieChart({
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{
-                backgroundColor: isDark ? 'rgba(24, 24, 27, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-                backdropFilter: 'blur(8px)',
-                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '12px',
-                color: isDark ? '#fff' : '#000',
-                fontSize: '12px',
-                padding: '8px 12px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-              }}
-              itemStyle={{ color: isDark ? '#fff' : '#000' }}
-              formatter={(value: number) => [`${value.toLocaleString()}건`, '']}
+              content={<CustomTooltip isDark={isDark} formatter={(value: number) => [value.toLocaleString() + '건', '']} />}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -718,18 +695,7 @@ function SourcePieChart({
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{
-                backgroundColor: isDark ? 'rgba(24, 24, 27, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-                backdropFilter: 'blur(8px)',
-                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '12px',
-                color: isDark ? '#fff' : '#000',
-                fontSize: '12px',
-                padding: '8px 12px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-              }}
-              itemStyle={{ color: isDark ? '#fff' : '#000' }}
-              formatter={(value: number) => [`${value.toLocaleString()}건`, '']}
+              content={<CustomTooltip isDark={isDark} formatter={(value: number) => [value.toLocaleString() + '건', '']} />}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -757,6 +723,30 @@ function SourcePieChart({
       </div>
     </div>
   )
+}
+
+// 커스텀 툴팁 컴포넌트
+const CustomTooltip = ({ active, payload, label, isDark, formatter }: any) => {
+  if (active && payload && payload.length) {
+    const value = payload[0].value
+    const name = payload[0].name
+    const formattedValue = formatter ? formatter(value, name) : [value, name]
+
+    return (
+      <div className={cn(
+        "p-3 rounded-lg border shadow-xl backdrop-blur-sm",
+        isDark ? "bg-zinc-900/95 border-zinc-800 text-white" : "bg-white/95 border-gray-200 text-gray-900"
+      )}>
+        <p className="text-sm font-semibold mb-2">{label}</p>
+        <div className="flex items-center gap-2 text-sm">
+          <span className={cn("w-2 h-2 rounded-full", isDark ? "bg-white" : "bg-black")} />
+          <span className={isDark ? "text-zinc-400" : "text-gray-500"}>{formattedValue[1]}:</span>
+          <span className="font-mono font-bold">{formattedValue[0]}</span>
+        </div>
+      </div>
+    )
+  }
+  return null
 }
 
 // ============ 상세 분석 차트 컴포넌트 ============
@@ -803,17 +793,8 @@ function DetailedCategoryBarChart({
           width={60}
         />
         <Tooltip
-          contentStyle={{
-            backgroundColor: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-            borderRadius: '8px',
-            color: isDark ? '#fff' : '#000',
-            fontSize: '12px',
-            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.1)'
-          }}
-          labelStyle={{ color: isDark ? '#fff' : '#000' }}
-          itemStyle={{ color: isDark ? '#fff' : '#000' }}
-          formatter={(value: number) => [`${value}개`, '공고수']}
+          content={<CustomTooltip isDark={isDark} formatter={(value: number) => [value, '공고수']} />}
+          cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}
         />
         <Bar dataKey="value" fill={color} radius={[0, 4, 4, 0]} />
       </BarChart>
@@ -871,17 +852,8 @@ function DeadlineDistributionChart({
           width={40}
         />
         <Tooltip
-          contentStyle={{
-            backgroundColor: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-            borderRadius: '8px',
-            color: isDark ? '#fff' : '#000',
-            fontSize: '12px',
-            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.1)'
-          }}
-          labelStyle={{ color: isDark ? '#fff' : '#000' }}
-          itemStyle={{ color: isDark ? '#fff' : '#000' }}
-          formatter={(value: number) => [`${value}개`, '공고수']}
+          content={<CustomTooltip isDark={isDark} formatter={(value: number) => [value, '공고수']} />}
+          cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}
         />
         <Bar dataKey="count" fill={color} radius={[4, 4, 0, 0]} maxBarSize={50} />
       </BarChart>
@@ -969,16 +941,8 @@ function YearlyTrendComparisonChart({
             width={40}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-              border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-              borderRadius: '8px',
-              color: isDark ? '#fff' : '#000',
-              fontSize: '12px',
-              boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.1)'
-            }}
-            labelStyle={{ color: isDark ? '#fff' : '#000' }}
-            itemStyle={{ color: isDark ? '#fff' : '#000' }}
+            content={<CustomTooltip isDark={isDark} />}
+            cursor={{ stroke: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }}
           />
           {years.map((year) => (
             <Line
@@ -1051,17 +1015,8 @@ function SourceMonthlyChart({
           width={40}
         />
         <Tooltip
-          contentStyle={{
-            backgroundColor: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-            borderRadius: '8px',
-            color: isDark ? '#fff' : '#000',
-            fontSize: '12px',
-            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.1)'
-          }}
-          labelStyle={{ color: isDark ? '#fff' : '#000' }}
-          itemStyle={{ color: isDark ? '#fff' : '#000' }}
-          formatter={(value: number) => [`${value}개`, '수집 공고']}
+          content={<CustomTooltip isDark={isDark} formatter={(value: number) => [value, '수집 공고']} />}
+          cursor={{ fill: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}
         />
         <Bar dataKey="count" fill={color} radius={[4, 4, 0, 0]} maxBarSize={50} />
       </BarChart>
@@ -1372,7 +1327,7 @@ export default function GovernmentProgramsPage() {
   const syncPrograms = async () => {
     setSyncing(true)
     try {
-      await fetch('/api/government-programs/dashboard', { method: 'POST' })
+      await fetch('/api/government-programs/sync', { method: 'POST' })
       await fetchStats()
       await fetchPrograms()
     } catch (error) {
@@ -1438,9 +1393,18 @@ export default function GovernmentProgramsPage() {
       {/* Ambient Background Orbs (Premium Dark Theme) */}
       {isDark && (
         <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-purple-900/20 blur-[120px] mix-blend-screen" />
-          <div className="absolute bottom-[-10%] left-[-20%] w-[600px] h-[600px] rounded-full bg-blue-900/10 blur-[100px] mix-blend-screen" />
-          <div className="absolute top-[40%] left-[30%] w-[400px] h-[400px] rounded-full bg-indigo-900/10 blur-[80px] opacity-50" />
+          <div
+            className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full blur-[120px] mix-blend-screen opacity-20"
+            style={{ backgroundColor: themeColor }}
+          />
+          <div
+            className="absolute bottom-[-10%] left-[-20%] w-[600px] h-[600px] rounded-full blur-[100px] mix-blend-screen opacity-10"
+            style={{ backgroundColor: themeColor }}
+          />
+          <div
+            className="absolute top-[40%] left-[30%] w-[400px] h-[400px] rounded-full blur-[80px] opacity-10"
+            style={{ backgroundColor: themeColor }}
+          />
         </div>
       )}
 
@@ -1451,10 +1415,14 @@ export default function GovernmentProgramsPage() {
         theme.headerBorder
       )}>
         <div className="flex items-center gap-4">
-          <div className={cn(
-            "p-2.5 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/30"
-          )}>
-            <Landmark className="w-6 h-6 text-white" />
+          <div
+            className="p-2.5 rounded-2xl shadow-lg"
+            style={{
+              background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`,
+              boxShadow: `0 10px 15px -3px ${themeColor}40`
+            }}
+          >
+            <Rocket className="w-6 h-6 text-white" />
           </div>
           <div>
             <h1 className={cn("text-xl font-bold tracking-tight", theme.text)}>
@@ -1578,7 +1546,7 @@ export default function GovernmentProgramsPage() {
                       icon: Search,
                       title: '공고 검색',
                       desc: '조건에 맞는 공고 찾기',
-                      color: '#10b981',
+                      color: themeColor,
                       onClick: () => setViewMode('list')
                     },
                     {
@@ -1592,7 +1560,7 @@ export default function GovernmentProgramsPage() {
                       icon: Bell,
                       title: '알림 설정',
                       desc: '맞춤 공고 알림받기',
-                      color: '#8b5cf6',
+                      color: themeColor,
                       onClick: () => { }
                     }
                   ].map((action, idx) => (
@@ -1637,7 +1605,7 @@ export default function GovernmentProgramsPage() {
                         value={stats.totalPrograms}
                         subtitle="중기부 · K-Startup · 소진공"
                         icon={Landmark}
-                        gradient="linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)"
+                        gradient={`linear-gradient(135deg, ${themeColor}, ${themeColor}90)`}
                         onClick={() => setViewMode('list')}
                         isDark={isDark}
                       />
@@ -1646,7 +1614,7 @@ export default function GovernmentProgramsPage() {
                         value={stats.endingSoonPrograms}
                         subtitle="7일 내 마감 예정"
                         icon={Flame}
-                        gradient="linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
+                        gradient={`linear-gradient(135deg, ${themeColor}, ${themeColor}90)`}
                         onClick={() => {
                           setStatusFilter('active')
                           setViewMode('list')
@@ -1658,7 +1626,7 @@ export default function GovernmentProgramsPage() {
                         value={stats.activePrograms}
                         subtitle="지금 신청 가능"
                         icon={CheckCircle2}
-                        gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                        gradient={`linear-gradient(135deg, ${themeColor}, ${themeColor}90)`}
                         onClick={() => {
                           setStatusFilter('active')
                           setViewMode('list')
@@ -1670,7 +1638,7 @@ export default function GovernmentProgramsPage() {
                         value={userProfile ? matchedPrograms.filter(m => m.fit_score >= 80).length : '-'}
                         subtitle={userProfile ? "나에게 딱 맞는 공고" : "프로필 설정 필요"}
                         icon={Sparkles}
-                        gradient="linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)"
+                        gradient={`linear-gradient(135deg, ${themeColor}, ${themeColor}90)`}
                         onClick={() => setViewMode('matches')}
                         isDark={isDark}
                       />
@@ -1823,7 +1791,7 @@ export default function GovernmentProgramsPage() {
                             프로필 설정 후 맞춤 추천
                           </p>
                           <button
-                            onClick={() => setIsProfileModalOpen(true)}
+                            onClick={() => router.push('/dashboard-group/company/government-programs/profile')}
                             className="px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-all hover:opacity-90"
                             style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
                           >
@@ -2018,7 +1986,7 @@ export default function GovernmentProgramsPage() {
                         </div>
                       </div>
                       <button
-                        onClick={() => setIsProfileModalOpen(true)}
+                        onClick={() => router.push('/dashboard-group/company/government-programs/profile')}
                         className={cn(
                           "px-4 py-2 rounded-xl text-sm font-medium transition-all",
                           isDark
@@ -2044,7 +2012,7 @@ export default function GovernmentProgramsPage() {
                     업종, 매출, 지역 등의 정보를 입력하면<br />AI가 적합한 지원사업을 추천해드립니다
                   </p>
                   <button
-                    onClick={() => setIsProfileModalOpen(true)}
+                    onClick={() => router.push('/dashboard-group/company/government-programs/profile')}
                     className="px-8 py-3 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
                     style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
                   >
@@ -2100,7 +2068,7 @@ export default function GovernmentProgramsPage() {
                       const scoreLevel = fit_score >= 70 ? 'high' : fit_score >= 50 ? 'medium' : 'low'
                       const scoreColors = {
                         high: { ring: '#10b981', bg: 'from-emerald-500/20 to-emerald-600/5' },
-                        medium: { ring: '#f59e0b', bg: 'from-amber-500/20 to-amber-600/5' },
+                        medium: { ring: themeColor, bg: `from-[${themeColor}]/20 to-[${themeColor}]/5` },
                         low: { ring: '#71717a', bg: 'from-zinc-500/20 to-zinc-600/5' }
                       }
 

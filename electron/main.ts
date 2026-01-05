@@ -1062,6 +1062,36 @@ ipcMain.handle('app:check-for-updates', async () => {
     return { status: 'dev-mode', message: 'Update check is skipped in development mode.' };
 });
 
+// 5.5 Window Controls - 더블클릭 최대화 등 빠른 응답을 위한 IPC
+ipcMain.handle('window:maximize', () => {
+    if (mainWindow) {
+        if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize();
+            return false;
+        } else {
+            mainWindow.maximize();
+            return true;
+        }
+    }
+    return false;
+});
+
+ipcMain.handle('window:minimize', () => {
+    if (mainWindow) {
+        mainWindow.minimize();
+    }
+});
+
+ipcMain.handle('window:close', () => {
+    if (mainWindow) {
+        mainWindow.close();
+    }
+});
+
+ipcMain.handle('window:isMaximized', () => {
+    return mainWindow?.isMaximized() ?? false;
+});
+
 // 6. Open Webview DevTools (Fallback mechanism)
 ipcMain.handle('app:open-webview-devtools', async (_, webContentsId?: number) => {
     // 1. If a specific ID is provided (Best method)

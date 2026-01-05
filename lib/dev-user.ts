@@ -6,8 +6,8 @@
  */
 
 export const DEV_USER = {
-  id: '00000000-0000-0000-0000-000000000001',
-  email: 'dev@glowus.local',
+  id: '014524d9-d3ed-46ab-b0b5-80beb5f4b7b8',  // 실제 사용자 ID
+  email: 'sbbc212@gmail.com',
   name: '진수',
   role: '대표',
   avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=DevTester&backgroundColor=3B82F6',

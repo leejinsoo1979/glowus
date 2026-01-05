@@ -7,7 +7,7 @@ import type { InteractionMode } from '@/types/database'
 // GET: Get a specific agent group
 export async function GET(
   request: NextRequest,
-  { params }: { params: { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { groupId } = params
+    const { groupId } = await params
 
     const { data, error } = await (adminClient as any)
       .from('agent_groups')
@@ -50,7 +50,7 @@ export async function GET(
 // PATCH: Update an agent group
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -61,7 +61,7 @@ export async function PATCH(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { groupId } = params
+    const { groupId } = await params
     const body = await request.json()
     const { name, description, interaction_mode, agent_ids } = body
 
@@ -137,7 +137,7 @@ export async function PATCH(
 // DELETE: Delete an agent group
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -148,7 +148,7 @@ export async function DELETE(
       return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     }
 
-    const { groupId } = params
+    const { groupId } = await params
 
     // Delete will cascade to members due to foreign key constraint
     const { error } = await (adminClient as any)

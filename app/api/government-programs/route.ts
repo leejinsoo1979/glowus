@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
-import { fetchBizinfoPrograms, transformBizinfoProgram } from '@/lib/government/bizinfo'
+import { fetchBizinfoPrograms, transformBizinfoProgram, scrapeBizinfoDetail } from '@/lib/government/bizinfo'
 import { fetchKStartupPrograms, transformKStartupProgram, scrapeKStartupDetail } from '@/lib/government/kstartup'
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 /**
  * 정부지원사업 목록 조회 API
@@ -31,6 +34,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const status = searchParams.get('status') // 'active' | 'ended' | 'upcoming' | 'all'
     const source = searchParams.get('source')
+    const supportType = searchParams.get('support_type')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
@@ -52,18 +56,30 @@ export async function GET(request: NextRequest) {
       // 타입 명시
       const program = data as any
 
-      // 상세 내용이 없고 detail_url이 있으면 크롤링 시도 (또는 K-Startup이고 이전 포맷인 경우)
+      // Bizinfo 크롤링 조건 체크 (최우선)
+      const isBizinfo = program.source === 'bizinfo' || program.detail_url?.includes('bizinfo.go.kr')
+      const needsBizinfoCrawling = isBizinfo && (!program.content || !program.content.includes('bizinfo-original'))
+
+      // K-Startup 구 포맷 체크
       const isOldFormat = program.source === 'kstartup' && program.content && !program.content.includes('k-startup-section')
 
-      if ((!program.content || isOldFormat) && program.detail_url) {
+      // 크롤링 필요 여부 판단
+      const needsCrawling = (needsBizinfoCrawling || !program.content || isOldFormat) && program.detail_url
+
+      if (needsCrawling) {
         try {
           let scrapedData = null
 
+          // Bizinfo 크롤링
+          if (needsBizinfoCrawling) {
+            console.log(`[GovernmentPrograms] 기업마당 크롤링 시도 (ID: ${id})`)
+            scrapedData = await scrapeBizinfoDetail(program.detail_url) as any
+            console.log(`[GovernmentPrograms] 크롤링 결과: ${scrapedData ? '성공' : '실패'}, 길이: ${scrapedData?.content?.length || 0}`)
+          }
           // K-Startup 페이지 크롤링
-          if (program.detail_url.includes('k-startup.go.kr')) {
+          else if (program.detail_url.includes('k-startup.go.kr')) {
             scrapedData = await scrapeKStartupDetail(program.detail_url) as any
           }
-          // TODO: 기업마당 크롤러 추가
 
           if (scrapedData?.content) {
             // 응답에 반영
@@ -71,12 +87,18 @@ export async function GET(request: NextRequest) {
             if (scrapedData.attachments) {
               program.attachments_primary = scrapedData.attachments
             }
+            if (scrapedData.pdf_url) {
+              program.pdf_url = scrapedData.pdf_url
+            }
 
-            // DB 캐시 (백그라운드) - content + attachments
+            // DB 캐시 (백그라운드) - content + attachments + pdf_url
             const adminSupabase = createAdminClient()
             const updateData: any = { content: scrapedData.content }
             if (scrapedData.attachments && scrapedData.attachments.length > 0) {
               updateData.attachments_primary = scrapedData.attachments
+            }
+            if (scrapedData.pdf_url) {
+              updateData.pdf_url = scrapedData.pdf_url
             }
 
             // 1. 기본 정보 업데이트
@@ -175,6 +197,9 @@ export async function GET(request: NextRequest) {
       if (category) {
         programs = programs.filter(p => p.category === category)
       }
+      if (supportType) {
+        programs = programs.filter(p => p.support_type === supportType)
+      }
       if (search) {
         const q = search.toLowerCase()
         programs = programs.filter(p =>
@@ -200,8 +225,6 @@ export async function GET(request: NextRequest) {
           bizinfo: bizinfoPrograms.length,
           kstartup: kstartupPrograms.length
         },
-        isDemo: true,
-        message: 'DB 마이그레이션 필요 - API 직접 조회 중',
         pagination: {
           limit,
           offset,
@@ -222,6 +245,10 @@ export async function GET(request: NextRequest) {
 
     if (source) {
       query = query.eq('source', source)
+    }
+
+    if (supportType) {
+      query = query.eq('support_type', supportType)
     }
 
     if (search) {

@@ -4,6 +4,14 @@ contextBridge.exposeInMainWorld('electron', {
     // Generic IPC invoke for any channel
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
 
+    // Window controls - 빠른 응답을 위한 직접 호출
+    window: {
+        maximize: () => ipcRenderer.invoke('window:maximize'),
+        minimize: () => ipcRenderer.invoke('window:minimize'),
+        close: () => ipcRenderer.invoke('window:close'),
+        isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    },
+
     // File system operations
     fs: {
         getCwd: () => ipcRenderer.invoke('fs:get-cwd'),

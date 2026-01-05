@@ -131,9 +131,10 @@ export const FORCE_SETTINGS = {
   // Center force
   centerStrength: 0.08,    // 0.05 → 0.08 (중앙으로 더 당김)
 
-  // Collision
-  collisionRadius: 12,     // 15 → 12
-  collisionStrength: 0.7,
+  // Collision - CRITICAL for preventing node overlap
+  collisionRadius: 20,     // Increased: 12 → 20 (nodeSize 8~14 + padding)
+  collisionStrength: 1.0,  // Full strength (was 0.7)
+  collisionIterations: 3,  // More iterations for better separation
 
   // Alpha (simulation warmth)
   alphaDecay: 0.02,

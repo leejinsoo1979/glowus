@@ -175,9 +175,9 @@ export function MainAssistantButton() {
 
   if (loading) {
     return (
-      <div className="fixed bottom-6 right-6 z-50">
-        <div className="w-14 h-14 rounded-full bg-zinc-800 flex items-center justify-center animate-pulse">
-          <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+      <div className="fixed bottom-5 right-5 z-50">
+        <div className="w-11 h-11 rounded-full bg-zinc-800/80 backdrop-blur-sm flex items-center justify-center animate-pulse">
+          <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />
         </div>
       </div>
     )
@@ -197,7 +197,7 @@ export function MainAssistantButton() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-24 right-6 z-50 w-[380px] h-[520px] bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden"
+            className="fixed bottom-20 right-5 z-50 w-[360px] h-[480px] bg-zinc-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden"
             style={{
               boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px ${themeColor}20`,
             }}
@@ -317,22 +317,23 @@ export function MainAssistantButton() {
         )}
       </AnimatePresence>
 
-      {/* 플로팅 토글 버튼 */}
+      {/* 미니멀 플로팅 버튼 - hover 시 확장 */}
       <motion.button
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={handleToggle}
         className={cn(
-          "fixed bottom-6 right-6 z-50 flex items-center justify-center rounded-full text-white shadow-2xl transition-all",
-          isOpen ? "w-14 h-14" : "gap-3 px-5 py-3"
+          "fixed bottom-5 right-5 z-50 group",
+          "flex items-center justify-center rounded-full text-white",
+          "transition-all duration-300 ease-out",
+          isOpen
+            ? "w-11 h-11"
+            : "w-11 h-11 hover:w-auto hover:px-4 hover:gap-2.5"
         )}
         style={{
-          background: isOpen
-            ? `linear-gradient(135deg, ${themeColor}, ${themeColor}cc)`
-            : `linear-gradient(135deg, ${themeColor}, ${themeColor}cc)`,
-          boxShadow: `0 8px 32px ${themeColor}50`,
+          background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`,
+          boxShadow: `0 4px 20px ${themeColor}40`,
         }}
       >
         <AnimatePresence mode="wait">
@@ -344,22 +345,23 @@ export function MainAssistantButton() {
               exit={{ rotate: 90, opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </motion.div>
           ) : (
             <motion.div
               key="open"
-              initial={{ scale: 0.5, opacity: 0 }}
+              initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.5, opacity: 0 }}
+              exit={{ scale: 0.8, opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="flex items-center gap-3"
+              className="flex items-center"
             >
-              <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-white/30">
+              <div className="w-6 h-6 rounded-full overflow-hidden border border-white/30 flex-shrink-0">
                 <img src={avatarUrl} alt={assistantInfo.name} className="w-full h-full object-cover" />
               </div>
-              <span className="font-semibold text-sm">에이전트 비서</span>
-              <Sparkles className="w-4 h-4 animate-pulse" />
+              <span className="font-medium text-xs whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[100px] transition-all duration-300 ease-out opacity-0 group-hover:opacity-100">
+                AI 비서
+              </span>
             </motion.div>
           )}
         </AnimatePresence>

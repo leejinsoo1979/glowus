@@ -11,7 +11,7 @@ import {
   type ForceLink3D,
 } from 'd3-force-3d'
 import type { NeuralNode, NeuralEdge, NodeType } from './types'
-import { FORCE_SETTINGS, NODE_THRESHOLDS } from './constants'
+import { FORCE_SETTINGS } from './constants'
 
 // Simulation node with position data
 export interface SimNode extends ForceNode3D {
@@ -174,19 +174,19 @@ export class NeuralMapSimulation {
     // Center force
     sim.force('center', forceCenter<SimNode>(0, 0, 0))
 
-    // Collision force for large graphs
-    if (nodeCount > NODE_THRESHOLDS.LOD_MEDIUM) {
-      const collideForce = forceCollide<SimNode>()
-        .radius((node) => {
-          // Radius based on importance
-          const baseRadius = 2
-          return baseRadius + node.importance / 50
-        })
-        .strength(0.7)
-        .iterations(1)
+    // Collision force - ALWAYS enabled to prevent node overlap
+    // Increased radius: base 15 + importance/10 = 15~25 range
+    const collideForce = forceCollide<SimNode>()
+      .radius((node) => {
+        // Larger radius to prevent overlap (was: 2 + importance/50 = max 4)
+        // Now: 15 + importance/10 = 15~25 range
+        const baseRadius = 15
+        return baseRadius + node.importance / 10
+      })
+      .strength(1.0) // Full strength (was 0.7)
+      .iterations(3) // More iterations for better separation (was 1)
 
-      sim.force('collide', collideForce)
-    }
+    sim.force('collide', collideForce)
 
     // Radial layout for center node
     if (enableRadialLayout && centerNodeId) {
