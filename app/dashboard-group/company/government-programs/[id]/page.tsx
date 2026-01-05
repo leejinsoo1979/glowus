@@ -502,69 +502,81 @@ export default function GovernmentProgramDetailPage() {
               font-weight: 600;
             }
 
-            /* ========== K-Startup 전용 스타일 ========== */
+            /* ========== K-Startup 전용 스타일 (원본 레이아웃) ========== */
             .government-content .k-startup-original {
               padding: 0;
             }
+            /* 상단 제목 */
+            .government-content .k-startup-original .title_wrap {
+              margin-bottom: 1em;
+            }
             .government-content .k-startup-original .title h3 {
-              font-size: 1.3em;
+              font-size: 1.4em;
               font-weight: 700;
               color: ${isDark ? '#fafafa' : '#18181b'};
-              margin-bottom: 1em;
+              margin: 0;
               line-height: 1.4;
             }
+            /* 요약 정보 박스 */
             .government-content .k-startup-original .bg_box {
-              background: ${isDark ? '#27272a' : '#f4f4f5'};
-              border-radius: 12px;
-              padding: 1.25em;
+              background: ${isDark ? '#1f1f23' : '#f8f8fa'};
+              border: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
+              border-radius: 8px;
+              padding: 1.25em 1.5em;
               margin-bottom: 1.5em;
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 0;
             }
-            .government-content .k-startup-original .dot_list-wrap {
+            .government-content .k-startup-original .bg_box .dot_list-wrap {
               list-style: none;
               padding: 0;
-              margin: 0 0 0.75em 0;
-              display: grid;
-              grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-              gap: 0.5em 1.5em;
-            }
-            .government-content .k-startup-original .dot_list-wrap:last-child {
-              margin-bottom: 0;
-            }
-            .government-content .k-startup-original .dot_list {
-              list-style: none;
-              padding: 0.5em 0;
-              border-bottom: 1px dashed ${isDark ? '#3f3f46' : '#d4d4d8'};
-            }
-            .government-content .k-startup-original .dot_list:last-child {
-              border-bottom: none;
-            }
-            .government-content .k-startup-original .table_inner {
+              margin: 0;
               display: flex;
               flex-direction: column;
-              gap: 0.25em;
             }
-            .government-content .k-startup-original .table_inner .tit {
-              font-size: 0.85em;
-              font-weight: 600;
+            .government-content .k-startup-original .bg_box .dot_list {
+              display: flex;
+              align-items: flex-start;
+              padding: 0.4em 0;
+              margin: 0;
+            }
+            .government-content .k-startup-original .bg_box .dot_list::before {
+              content: "•";
               color: ${themeColor};
-              margin: 0;
+              font-weight: bold;
+              margin-right: 0.5em;
+              flex-shrink: 0;
             }
-            .government-content .k-startup-original .table_inner .txt {
-              font-size: 0.95em;
-              color: ${isDark ? '#e4e4e7' : '#27272a'};
-              margin: 0;
+            .government-content .k-startup-original .bg_box .table_inner {
+              display: flex;
+              flex-wrap: wrap;
+              align-items: baseline;
+              gap: 0.5em;
+            }
+            .government-content .k-startup-original .bg_box .table_inner .tit {
+              font-size: 0.85em;
               font-weight: 500;
+              color: ${isDark ? '#a1a1aa' : '#71717a'};
+              margin: 0;
+              white-space: nowrap;
             }
+            .government-content .k-startup-original .bg_box .table_inner .txt {
+              font-size: 0.9em;
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              margin: 0;
+              font-weight: 600;
+            }
+            /* 파란 박스 (공고 설명) */
             .government-content .k-startup-original .box {
-              background: ${isDark ? '#18181b' : '#fff'};
-              border: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
-              border-radius: 12px;
+              background: ${isDark ? 'rgba(99, 102, 241, 0.08)' : 'rgba(99, 102, 241, 0.04)'};
+              border: 1px solid ${isDark ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)'};
+              border-radius: 8px;
               padding: 1.5em;
               margin: 1.5em 0;
             }
             .government-content .k-startup-original .box_inner .tit_wrap {
               margin-bottom: 1em;
-              padding-bottom: 0.75em;
             }
             .government-content .k-startup-original .box_inner .tit_bl {
               font-size: 1.1em;
@@ -573,43 +585,75 @@ export default function GovernmentProgramDetailPage() {
               margin: 0;
               line-height: 1.5;
             }
-            .government-content .k-startup-original .box_inner .txt {
-              color: ${isDark ? '#d4d4d8' : '#3f3f46'};
+            .government-content .k-startup-original .box_inner > .txt {
+              color: ${isDark ? '#d4d4d8' : '#52525b'};
               line-height: 1.8;
               margin: 0.75em 0;
             }
             .government-content .k-startup-original .box_inner .date {
               font-size: 0.9em;
               color: ${isDark ? '#71717a' : '#a1a1aa'};
-              margin-top: 1em;
+              margin-top: 1.25em;
               text-align: right;
+              line-height: 1.6;
             }
+            /* 섹션 목록 */
             .government-content .k-startup-original .information_list-wrap {
-              margin-top: 1.5em;
+              margin-top: 2em;
             }
             .government-content .k-startup-original .information_list {
-              padding: 1.25em 0;
-              border-bottom: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
+              margin-bottom: 2em;
             }
-            .government-content .k-startup-original .information_list:first-child {
-              padding-top: 0;
-            }
-            .government-content .k-startup-original .information_list:last-child {
-              border-bottom: none;
-            }
-            .government-content .k-startup-original .information_list .ti,
-            .government-content .k-startup-original .information_list .tit {
-              font-size: 1.1em;
+            .government-content .k-startup-original .information_list > .title {
+              font-size: 1.15em;
               font-weight: 700;
               color: ${isDark ? '#fafafa' : '#18181b'};
-              margin-bottom: 0.75em;
+              margin-bottom: 1em;
               padding-bottom: 0.5em;
+              border-bottom: 2px solid ${themeColor};
               display: inline-block;
             }
-            .government-content .k-startup-original .information_list .txt,
-            .government-content .k-startup-original .information_list .con {
-              color: ${isDark ? '#d4d4d8' : '#3f3f46'};
-              line-height: 1.8;
+            /* 섹션 내 리스트 */
+            .government-content .k-startup-original .information_list .dot_list-wrap {
+              list-style: none;
+              padding: 0;
+              margin: 0;
+            }
+            .government-content .k-startup-original .information_list .dot_list {
+              padding: 0.75em 0;
+              border-bottom: 1px solid ${isDark ? '#27272a' : '#f4f4f5'};
+            }
+            .government-content .k-startup-original .information_list .dot_list:last-child {
+              border-bottom: none;
+            }
+            .government-content .k-startup-original .information_list .table_inner {
+              display: block;
+            }
+            .government-content .k-startup-original .information_list .table_inner .tit {
+              font-size: 0.9em;
+              font-weight: 600;
+              color: ${themeColor};
+              margin: 0 0 0.35em 0;
+              display: block;
+            }
+            .government-content .k-startup-original .information_list .table_inner .txt {
+              color: ${isDark ? '#e4e4e7' : '#3f3f46'};
+              line-height: 1.7;
+              margin: 0;
+            }
+            .government-content .k-startup-original .information_list .dot_list.bl .tit {
+              color: ${isDark ? '#fbbf24' : '#d97706'};
+              font-style: italic;
+              font-size: 0.85em;
+            }
+            .government-content .k-startup-original .information_list .list_wrap {
+              margin-top: 0.5em;
+              padding-left: 1em;
+            }
+            .government-content .k-startup-original .information_list .list_wrap .list {
+              color: ${isDark ? '#a1a1aa' : '#71717a'};
+              font-size: 0.9em;
+              line-height: 1.6;
             }
 
             /* ========== Bizinfo 전용 스타일 ========== */

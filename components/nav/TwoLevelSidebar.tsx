@@ -541,7 +541,7 @@ const companyMenuItems: NestedMenuItem[] = [
         href: '/dashboard-group/company/government-programs',
         icon: LayoutDashboard
       },
-      { name: '전체목록', href: '/dashboard-group/company/government-programs/search', icon: Search },
+      { name: '전체목록', href: '/dashboard-group/company/government-programs?view=list', icon: Search },
       { name: '추천 공고', href: '/dashboard-group/company/government-programs/recommended', icon: Sparkles },
       { name: '북마크', href: '/dashboard-group/company/government-programs/bookmarks', icon: BookmarkCheck },
       { name: '알림 설정', href: '/dashboard-group/company/government-programs/alerts', icon: Bell },

@@ -1410,7 +1410,7 @@ export default function GovernmentProgramsPage() {
 
       {/* 헤더 */}
       <div className={cn(
-        "sticky top-0 z-20 px-8 h-20 flex items-center justify-between transition-colors duration-200 border-b backdrop-blur-xl",
+        "sticky top-0 z-20 px-8 h-16 flex items-center justify-between transition-colors duration-200 border-b backdrop-blur-xl",
         theme.headerBg,
         theme.headerBorder
       )}>
