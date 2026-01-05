@@ -35,10 +35,12 @@ import {
 } from 'lucide-react'
 import { TbBrandWechat } from 'react-icons/tb'
 import { GrConnect } from 'react-icons/gr'
+import { RxRocket } from 'react-icons/rx'
 
 const navigation = [
   { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },
   { name: '스타트업', href: '/dashboard-group/startup', icon: Building2 },
+  { name: '정부지원사업', href: '/dashboard-group/apps/government-programs', icon: RxRocket },
   { name: '태스크', href: '/dashboard-group/tasks', icon: ListTodo },
   { name: '태스크 허브', href: '/dashboard-group/task-hub', icon: Layers },
   { name: '간트차트', href: '/dashboard-group/gantt', icon: GanttChart },
