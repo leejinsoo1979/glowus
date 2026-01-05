@@ -477,47 +477,115 @@ export default function GovernmentProgramDetailPage() {
             }
 
             /* ========== K-Startup 전용 스타일 ========== */
-            .government-content .k-startup-section {
-              padding-top: 1.5em;
-              padding-bottom: 1.5em;
-              border-bottom: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
+            .government-content .k-startup-original {
+              padding: 0;
             }
-            .government-content .k-startup-section:first-child {
-              padding-top: 0;
-            }
-            .government-content .k-startup-section:last-child {
-              border-bottom: none;
-              padding-bottom: 0;
-            }
-            .government-content .k-startup-section > div > p:first-child {
-              font-size: 1.15em;
+            .government-content .k-startup-original .title h3 {
+              font-size: 1.3em;
               font-weight: 700;
               color: ${isDark ? '#fafafa' : '#18181b'};
               margin-bottom: 1em;
+              line-height: 1.4;
+            }
+            .government-content .k-startup-original .bg_box {
+              background: ${isDark ? '#27272a' : '#f4f4f5'};
+              border-radius: 12px;
+              padding: 1.25em;
+              margin-bottom: 1.5em;
+            }
+            .government-content .k-startup-original .dot_list-wrap {
+              list-style: none;
+              padding: 0;
+              margin: 0 0 0.75em 0;
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+              gap: 0.5em 1.5em;
+            }
+            .government-content .k-startup-original .dot_list-wrap:last-child {
+              margin-bottom: 0;
+            }
+            .government-content .k-startup-original .dot_list {
+              list-style: none;
+              padding: 0.5em 0;
+              border-bottom: 1px dashed ${isDark ? '#3f3f46' : '#d4d4d8'};
+            }
+            .government-content .k-startup-original .dot_list:last-child {
+              border-bottom: none;
+            }
+            .government-content .k-startup-original .table_inner {
+              display: flex;
+              flex-direction: column;
+              gap: 0.25em;
+            }
+            .government-content .k-startup-original .table_inner .tit {
+              font-size: 0.85em;
+              font-weight: 600;
+              color: ${themeColor};
+              margin: 0;
+            }
+            .government-content .k-startup-original .table_inner .txt {
+              font-size: 0.95em;
+              color: ${isDark ? '#e4e4e7' : '#27272a'};
+              margin: 0;
+              font-weight: 500;
+            }
+            .government-content .k-startup-original .box {
+              background: ${isDark ? '#18181b' : '#fff'};
+              border: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
+              border-radius: 12px;
+              padding: 1.5em;
+              margin: 1.5em 0;
+            }
+            .government-content .k-startup-original .box_inner .tit_wrap {
+              margin-bottom: 1em;
+              padding-bottom: 0.75em;
+              border-bottom: 2px solid ${themeColor};
+            }
+            .government-content .k-startup-original .box_inner .tit_bl {
+              font-size: 1.1em;
+              font-weight: 700;
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              margin: 0;
+              line-height: 1.5;
+            }
+            .government-content .k-startup-original .box_inner .txt {
+              color: ${isDark ? '#d4d4d8' : '#3f3f46'};
+              line-height: 1.8;
+              margin: 0.75em 0;
+            }
+            .government-content .k-startup-original .box_inner .date {
+              font-size: 0.9em;
+              color: ${isDark ? '#71717a' : '#a1a1aa'};
+              margin-top: 1em;
+              text-align: right;
+            }
+            .government-content .k-startup-original .information_list-wrap {
+              margin-top: 1.5em;
+            }
+            .government-content .k-startup-original .information_list {
+              padding: 1.25em 0;
+              border-bottom: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
+            }
+            .government-content .k-startup-original .information_list:first-child {
+              padding-top: 0;
+            }
+            .government-content .k-startup-original .information_list:last-child {
+              border-bottom: none;
+            }
+            .government-content .k-startup-original .information_list .ti,
+            .government-content .k-startup-original .information_list .tit {
+              font-size: 1.1em;
+              font-weight: 700;
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              margin-bottom: 0.75em;
               padding-bottom: 0.5em;
               border-bottom: 2px solid ${themeColor};
               display: inline-block;
             }
-            .government-content .k-startup-section li > div > p:first-child {
-              font-weight: 600;
-              color: ${isDark ? '#e4e4e7' : '#27272a'};
-              margin-bottom: 0.3em;
-            }
-            .government-content .k-startup-section li > div > p:not(:first-child) {
-              color: ${isDark ? '#a1a1aa' : '#52525b'};
-              margin-bottom: 0.5em;
-            }
-            .government-content .k-startup-section ul {
-              list-style: none;
-              padding-left: 0;
-              margin: 0;
-            }
-            .government-content .k-startup-section li {
-              padding: 0.75em 0;
-              border-bottom: 1px dashed ${isDark ? '#3f3f46' : '#e4e4e7'};
-            }
-            .government-content .k-startup-section li:last-child {
-              border-bottom: none;
+            .government-content .k-startup-original .information_list .txt,
+            .government-content .k-startup-original .information_list .con {
+              color: ${isDark ? '#d4d4d8' : '#3f3f46'};
+              line-height: 1.8;
             }
 
             /* ========== Bizinfo 전용 스타일 ========== */
