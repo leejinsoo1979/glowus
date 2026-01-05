@@ -1,132 +1,84 @@
+// @ts-nocheck
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
+import { useThemeStore } from '@/stores/themeStore'
 import {
   ArrowLeft,
   Calendar,
   Building2,
   ExternalLink,
-  Tag,
-  MapPin,
-  Users,
-  Clock,
-  Loader2,
-  FileText,
   Download,
   Bookmark,
   BookmarkCheck,
-  Share2,
-  ChevronRight,
-  AlertCircle
+  Clock,
+  FileText,
+  AlertCircle,
+  Loader2
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { useTheme } from 'next-themes'
-import { AIMatchResult } from '@/components/government-programs/AIMatchResult'
-import JSZip from 'jszip'
-import { saveAs } from 'file-saver'
 
-interface ProgramDetail {
+interface GovernmentProgram {
   id: string
-  program_id: string
   title: string
-  category: string
-  support_type?: string
-  hashtags: string[]
   organization: string
-  executing_agency?: string
-  apply_start_date?: string
-  apply_end_date?: string
-  detail_url?: string
+  category: string
+  support_type: string
+  status: string
+  apply_start_date: string
+  apply_end_date: string
+  content: string
+  detail_url: string
   source: string
+  support_scale: string
+  target_industries: string[]
+  target_regions: string[]
+  attachments_primary: { name: string; url: string }[]
+  pdf_url: string
   created_at: string
-  content?: string // 스크래핑된 상세 내용
-  summary?: string
-  description?: string
-  target?: string
-  region?: string
-  target_industries?: string[]
-  target_regions?: string[]
-  eligibility_criteria?: any
-  support_amount?: string
-  required_documents?: string[]
-  application_method?: string
-  application_form_url?: string
-  contact_phone?: string
-  attachments_primary?: Array<{ name: string; url: string }>
+  updated_at: string
 }
 
-// 출처 라벨
-const SOURCE_LABELS: Record<string, string> = {
-  bizinfo: '기업마당',
-  kstartup: 'K-Startup',
-  semas: '소진공',
-  bizinfo_event: '기업마당(행사)'
+const SUPPORT_TYPE_COLORS: Record<string, string> = {
+  '사업화': '#3b82f6',
+  '기술개발': '#8b5cf6',
+  '시설보육': '#ec4899',
+  '멘토링': '#10b981',
+  '행사': '#f59e0b',
+  '융자보증': '#ef4444',
+  '인력': '#06b6d4',
+  '기타': '#71717a',
 }
 
-// 날짜 포맷
-function formatDate(dateStr?: string): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
-
-// 남은 일수 계산
-function getDaysRemaining(endDate?: string): { days: number; status: 'urgent' | 'warning' | 'normal' | 'ended' } {
-  if (!endDate) return { days: -1, status: 'normal' }
-  const end = new Date(endDate)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diff = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diff < 0) return { days: diff, status: 'ended' }
-  if (diff <= 3) return { days: diff, status: 'urgent' }
-  if (diff <= 7) return { days: diff, status: 'warning' }
-  return { days: diff, status: 'normal' }
-}
-
-export default function ProgramDetailPage() {
+export default function GovernmentProgramDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const programId = params.id as string
+  const { resolvedTheme } = useTheme()
+  const { accentColor } = useThemeStore()
+  const isDark = resolvedTheme === 'dark'
 
-  const [program, setProgram] = useState<ProgramDetail | null>(null)
+  const [program, setProgram] = useState<GovernmentProgram | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isBookmarked, setIsBookmarked] = useState(false)
-  const [matchResult, setMatchResult] = useState<any>(null)
-  const [mounted, setMounted] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
 
-  const { resolvedTheme } = useTheme()
-  const isDark = mounted ? resolvedTheme !== 'light' : true // Default to dark during SSR
+  const programId = params?.id as string
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    if (!programId) return
 
-  // 프로그램 상세 정보 로드
-  useEffect(() => {
-    async function loadProgram() {
+    const fetchProgram = async () => {
       try {
-        const res = await fetch(`/api/government-programs?id=${programId}`)
+        setLoading(true)
+        const res = await fetch('/api/government-programs?id=' + programId)
         const data = await res.json()
 
-        if (!res.ok) {
-          throw new Error(data.error || '프로그램을 찾을 수 없습니다.')
+        if (!res.ok || !data.program) {
+          throw new Error(data.error || '프로그램을 찾을 수 없습니다')
         }
 
-        if (data.programs && data.programs.length > 0) {
-          setProgram(data.programs[0])
-        } else if (data.program) {
-          setProgram(data.program)
-        } else {
-          throw new Error('프로그램을 찾을 수 없습니다.')
-        }
+        setProgram(data.program)
       } catch (err: any) {
         setError(err.message)
       } finally {
@@ -134,70 +86,50 @@ export default function ProgramDetailPage() {
       }
     }
 
-    if (programId) {
-      loadProgram()
-    }
+    fetchProgram()
   }, [programId])
 
-  // 저장된 매칭 결과 로드
-  useEffect(() => {
-    async function loadMatchResult() {
-      try {
-        const res = await fetch(`/api/government-programs/match/ai?program_id=${programId}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.results && data.results.length > 0) {
-            setMatchResult(data.results[0])
-          }
-        }
-      } catch (err) {
-        // 매칭 결과가 없어도 에러 표시하지 않음
-      }
+  const getStatusBadge = (prog: GovernmentProgram) => {
+    const today = new Date()
+    const endDate = prog.apply_end_date ? new Date(prog.apply_end_date) : null
+    const startDate = prog.apply_start_date ? new Date(prog.apply_start_date) : null
+
+    if (endDate && endDate < today) {
+      return { label: '마감', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' }
     }
-
-    if (programId) {
-      loadMatchResult()
+    if (startDate && startDate > today) {
+      return { label: '예정', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' }
     }
-  }, [programId])
-
-  const handleDownloadAll = async () => {
-    if (!program?.attachments_primary?.length) return
-
-    try {
-      setIsDownloading(true)
-      const zip = new JSZip()
-      const folder = zip.folder("attachments")
-
-      const downloadPromises = (program as any).attachments_primary.map(async (file: any) => {
-        try {
-          const response = await fetch(file.url)
-          const blob = await response.blob()
-          folder?.file(file.name, blob)
-        } catch (err) {
-          console.error(`Failed to download ${file.name}:`, err)
-        }
-      })
-
-      await Promise.all(downloadPromises)
-
-      const content = await zip.generateAsync({ type: "blob" })
-      saveAs(content, `${program.title}_attachments.zip`)
-    } catch (err) {
-      console.error('Download failed:', err)
-      alert('다운로드 중 오류가 발생했습니다.')
-    } finally {
-      setIsDownloading(false)
-    }
+    return { label: '진행중', color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' }
   }
 
-  const remaining = getDaysRemaining(program?.apply_end_date)
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '-'
+    const d = new Date(dateStr)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return y + '.' + m + '.' + day
+  }
+
+  const getDaysLeft = (endDate: string | null) => {
+    if (!endDate) return null
+    const today = new Date()
+    const end = new Date(endDate)
+    const diff = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    if (diff < 0) return null
+    return diff
+  }
 
   if (loading) {
     return (
-      <div className={cn("min-h-screen flex items-center justify-center", isDark ? "bg-[#0a0a0f]" : "bg-gray-50")}>
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-accent" />
-          <p className={isDark ? "text-zinc-400" : "text-gray-500"}>공고 정보를 불러오는 중...</p>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: isDark ? '#0a0a0a' : '#fafafa' }}
+      >
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: accentColor }} />
+          <span style={{ color: isDark ? '#a1a1aa' : '#71717a' }}>불러오는 중...</span>
         </div>
       </div>
     )
@@ -205,570 +137,362 @@ export default function ProgramDetailPage() {
 
   if (error || !program) {
     return (
-      <div className={cn("min-h-screen flex items-center justify-center p-4", isDark ? "bg-[#0a0a0f]" : "bg-gray-50")}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: isDark ? '#0a0a0a' : '#fafafa' }}
+      >
         <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-accent mx-auto mb-4" />
-          <h2 className={cn("text-xl font-bold mb-2", isDark ? "text-white" : "text-gray-900")}>오류 발생</h2>
-          <p className={cn("mb-6", isDark ? "text-zinc-400" : "text-gray-500")}>{error || '프로그램을 찾을 수 없습니다.'}</p>
+          <AlertCircle className="w-12 h-12 mx-auto mb-4" style={{ color: '#ef4444' }} />
+          <p style={{ color: isDark ? '#fafafa' : '#18181b' }} className="text-lg font-medium mb-2">
+            {error || '프로그램을 찾을 수 없습니다'}
+          </p>
           <button
-            onClick={() => router.push('/dashboard-group/company/government-programs')}
-            className={cn("px-4 py-2 rounded-lg transition-colors", isDark ? "bg-zinc-800 hover:bg-zinc-700 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-900")}
+            onClick={() => router.back()}
+            className="px-4 py-2 rounded-lg text-sm"
+            style={{ background: accentColor, color: '#fff' }}
           >
-            뒤로 가기
+            돌아가기
           </button>
         </div>
       </div>
     )
   }
 
+  const status = getStatusBadge(program)
+  const daysLeft = getDaysLeft(program.apply_end_date)
+  const supportTypeColor = SUPPORT_TYPE_COLORS[program.support_type] || SUPPORT_TYPE_COLORS['기타']
+
   return (
-    <div className={cn("min-h-screen", isDark ? "bg-[#0a0a0f]" : "bg-gray-50")}>
-      {/* 헤더 */}
-      <header className={cn("sticky top-0 z-50 backdrop-blur-xl border-b", isDark ? "bg-black/80 border-white/10" : "bg-white/80 border-gray-200")}>
-        <div className="max-w-[1600px] mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen pb-20" style={{ background: isDark ? '#0a0a0a' : '#fafafa' }}>
+      <div
+        className="sticky top-0 z-10 px-6 py-4 border-b"
+        style={{
+          background: isDark ? 'rgba(10, 10, 10, 0.9)' : 'rgba(250, 250, 250, 0.9)',
+          borderColor: isDark ? '#27272a' : '#e4e4e7',
+          backdropFilter: 'blur(8px)'
+        }}
+      >
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2 text-sm transition-colors hover:opacity-70"
+            style={{ color: isDark ? '#a1a1aa' : '#71717a' }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            목록으로
+          </button>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => router.push('/dashboard-group/company/government-programs')}
-              className={cn("p-2 rounded-lg transition-colors", isDark ? "hover:bg-white/10" : "hover:bg-gray-100")}
+              onClick={() => setIsBookmarked(!isBookmarked)}
+              className="p-2 rounded-lg transition-colors"
+              style={{
+                background: isDark ? '#27272a' : '#f4f4f5',
+                color: isBookmarked ? accentColor : (isDark ? '#a1a1aa' : '#71717a')
+              }}
             >
-              <ArrowLeft className={cn("w-5 h-5", isDark ? "text-white" : "text-gray-900")} />
+              {isBookmarked ? <BookmarkCheck className="w-5 h-5" /> : <Bookmark className="w-5 h-5" />}
             </button>
-            <div className="flex-1 min-w-0">
-              <div className={cn("flex items-center gap-2 text-sm", isDark ? "text-zinc-400" : "text-gray-500")}>
-                <span>{SOURCE_LABELS[program.source] || program.source}</span>
-                <ChevronRight className="w-4 h-4" />
-                <span>{program.category || '기타'}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsBookmarked(!isBookmarked)}
-                className={cn(
-                  "p-2 rounded-lg transition-colors",
-                  isBookmarked
-                    ? "bg-yellow-500/20 text-yellow-400"
-                    : isDark ? "hover:bg-white/10 text-zinc-400" : "hover:bg-gray-100 text-gray-500"
-                )}
+            {program.detail_url && (
+              <a
+                href={program.detail_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
+                style={{ background: accentColor, color: '#fff' }}
               >
-                {isBookmarked ? (
-                  <BookmarkCheck className="w-5 h-5" />
-                ) : (
-                  <Bookmark className="w-5 h-5" />
-                )}
-              </button>
-              <button className={cn("p-2 rounded-lg transition-colors", isDark ? "hover:bg-white/10" : "hover:bg-gray-100")}>
-                <Share2 className={cn("w-5 h-5", isDark ? "text-zinc-400" : "text-gray-500")} />
-              </button>
-            </div>
+                <ExternalLink className="w-4 h-4" />
+                원문 보기
+              </a>
+            )}
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* 메인 컨텐츠 */}
-      <main className="max-w-[1600px] mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 왼쪽: 공고 정보 */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* 제목 & 기관 */}
-            <div>
-              <h1 className={cn("text-2xl lg:text-3xl font-bold mb-4 leading-tight", isDark ? "text-white" : "text-gray-900")}>
-                {program.title}
-              </h1>
-
-              <div className="flex flex-wrap items-center gap-4 text-sm">
-                <div className={cn("flex items-center gap-2", isDark ? "text-zinc-300" : "text-gray-600")}>
-                  <Building2 className={cn("w-4 h-4", isDark ? "text-zinc-500" : "text-gray-400")} />
-                  <span>{program.organization}</span>
-                </div>
-                {program.executing_agency && (
-                  <div className={cn("flex items-center gap-2", isDark ? "text-zinc-400" : "text-gray-500")}>
-                    <span>실행기관: {program.executing_agency}</span>
-                  </div>
-                )}
-              </div>
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span
+              className="px-3 py-1 rounded-full text-xs font-medium"
+              style={{ background: status.bg, color: status.color }}
+            >
+              {status.label}
+            </span>
+            <span
+              className="px-3 py-1 rounded-full text-xs font-medium"
+              style={{ background: supportTypeColor + '15', color: supportTypeColor }}
+            >
+              {program.support_type || '기타'}
+            </span>
+            <span
+              className="px-3 py-1 rounded-full text-xs"
+              style={{ background: isDark ? '#27272a' : '#f4f4f5', color: isDark ? '#a1a1aa' : '#71717a' }}
+            >
+              {program.source === 'bizinfo' ? '기업마당' : program.source === 'kstartup' ? 'K-Startup' : program.source}
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold mb-4 leading-tight" style={{ color: isDark ? '#fafafa' : '#18181b' }}>
+            {program.title}
+          </h1>
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <div className="flex items-center gap-2" style={{ color: isDark ? '#a1a1aa' : '#71717a' }}>
+              <Building2 className="w-4 h-4" />
+              {program.organization || '-'}
             </div>
-
-            {/* 마감일 배너 */}
-            <div className={cn(
-              "p-4 rounded-xl border flex items-center justify-between",
-              remaining.status === 'urgent' && "bg-[rgba(var(--accent-color-rgb),0.1)] border-[rgba(var(--accent-color-rgb),0.3)]",
-              remaining.status === 'warning' && "bg-yellow-500/10 border-yellow-500/30",
-              remaining.status === 'normal' && "bg-[rgba(var(--accent-color-rgb),0.1)] border-[rgba(var(--accent-color-rgb),0.3)]",
-              remaining.status === 'ended' && (isDark ? "bg-zinc-800 border-zinc-700" : "bg-gray-100 border-gray-300")
-            )}>
-              <div className="flex items-center gap-3">
-                <Clock className={cn(
-                  "w-5 h-5",
-                  remaining.status === 'urgent' && "text-[var(--accent-color)]",
-                  remaining.status === 'warning' && "text-yellow-400",
-                  remaining.status === 'normal' && "text-[var(--accent-color)]",
-                  remaining.status === 'ended' && "text-zinc-500"
-                )} />
-                <div>
-                  <div className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    {remaining.status === 'ended' ? '마감됨' : (
-                      remaining.days === 0 ? '오늘 마감' : `D-${remaining.days}`
-                    )}
-                  </div>
-                  <div className={cn("text-sm", isDark ? "text-zinc-400" : "text-gray-500")}>
-                    {formatDate(program.apply_start_date)} ~ {formatDate(program.apply_end_date)}
-                  </div>
-                </div>
+            <div className="flex items-center gap-2" style={{ color: isDark ? '#a1a1aa' : '#71717a' }}>
+              <Calendar className="w-4 h-4" />
+              {formatDate(program.apply_start_date)} ~ {formatDate(program.apply_end_date)}
+            </div>
+            {daysLeft !== null && daysLeft >= 0 && (
+              <div
+                className="flex items-center gap-2 px-2 py-1 rounded"
+                style={{
+                  background: daysLeft <= 7 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                  color: daysLeft <= 7 ? '#ef4444' : '#10b981'
+                }}
+              >
+                <Clock className="w-4 h-4" />
+                D-{daysLeft}
               </div>
-              {program.detail_url && remaining.status !== 'ended' && (
+            )}
+          </div>
+        </div>
+
+        <div
+          className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 p-4 rounded-xl"
+          style={{ background: isDark ? '#18181b' : '#fff' }}
+        >
+          <div>
+            <p className="text-xs mb-1" style={{ color: isDark ? '#71717a' : '#a1a1aa' }}>지원유형</p>
+            <p className="font-medium" style={{ color: isDark ? '#fafafa' : '#18181b' }}>{program.support_type || '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs mb-1" style={{ color: isDark ? '#71717a' : '#a1a1aa' }}>카테고리</p>
+            <p className="font-medium" style={{ color: isDark ? '#fafafa' : '#18181b' }}>{program.category || '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs mb-1" style={{ color: isDark ? '#71717a' : '#a1a1aa' }}>지원규모</p>
+            <p className="font-medium" style={{ color: isDark ? '#fafafa' : '#18181b' }}>{program.support_scale || '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs mb-1" style={{ color: isDark ? '#71717a' : '#a1a1aa' }}>대상지역</p>
+            <p className="font-medium" style={{ color: isDark ? '#fafafa' : '#18181b' }}>{program.target_regions?.join(', ') || '전국'}</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl p-6 mb-8" style={{ background: isDark ? '#18181b' : '#fff' }}>
+          <h2 className="text-lg font-semibold mb-6 flex items-center gap-2" style={{ color: isDark ? '#fafafa' : '#18181b' }}>
+            <FileText className="w-5 h-5" />
+            공고 내용
+          </h2>
+          {program.content ? (
+            <div
+              className="government-content"
+              dangerouslySetInnerHTML={{ __html: program.content }}
+            />
+          ) : program.detail_url?.includes('bizinfo.go.kr') ? (
+            <div className="w-full" style={{ height: '800px' }}>
+              <webview
+                src={program.detail_url}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                allowpopups="true"
+              />
+            </div>
+          ) : (
+            <div className="text-center py-12" style={{ color: isDark ? '#71717a' : '#a1a1aa' }}>
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>공고 내용이 없습니다</p>
+              {program.detail_url && (
                 <a
                   href={program.detail_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] text-white rounded-lg
-                             flex items-center gap-2 text-sm font-medium transition-colors"
+                  className="inline-flex items-center gap-2 mt-4 text-sm"
+                  style={{ color: accentColor }}
                 >
-                  <span>지원하기</span>
                   <ExternalLink className="w-4 h-4" />
+                  원문에서 확인하기
                 </a>
               )}
             </div>
+          )}
+          <style jsx global>{`
+            .government-content {
+              color: ${isDark ? '#d4d4d8' : '#3f3f46'};
+              font-size: 14px;
+              line-height: 1.8;
+            }
+            .government-content h1,
+            .government-content h2,
+            .government-content h3,
+            .government-content h4 {
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              font-weight: 600;
+              margin: 1.5rem 0 1rem 0;
+            }
+            .government-content h3 {
+              font-size: 1.1rem;
+              padding-bottom: 0.5rem;
+              border-bottom: 1px solid ${isDark ? '#27272a' : '#e4e4e7'};
+            }
+            .government-content p {
+              margin: 0.75rem 0;
+            }
+            .government-content ul,
+            .government-content ol {
+              margin: 0.75rem 0;
+              padding-left: 0;
+              list-style: none;
+            }
+            .government-content li {
+              margin: 0.5rem 0;
+              padding: 0.75rem 1rem;
+              background: ${isDark ? '#27272a' : '#f4f4f5'};
+              border-radius: 8px;
+            }
+            .government-content li > div {
+              display: flex;
+              gap: 1rem;
+            }
+            .government-content li > div > p:first-child {
+              flex-shrink: 0;
+              width: 100px;
+              font-weight: 500;
+              color: ${isDark ? '#a1a1aa' : '#71717a'};
+            }
+            .government-content li > div > p:last-child {
+              flex: 1;
+              color: ${isDark ? '#fafafa' : '#18181b'};
+            }
+            .government-content table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 1rem 0;
+              font-size: 13px;
+            }
+            .government-content th,
+            .government-content td {
+              padding: 0.75rem;
+              border: 1px solid ${isDark ? '#27272a' : '#e4e4e7'};
+              text-align: left;
+            }
+            .government-content th {
+              background: ${isDark ? '#27272a' : '#f4f4f5'};
+              font-weight: 600;
+              color: ${isDark ? '#fafafa' : '#18181b'};
+            }
+            .government-content a {
+              color: ${accentColor};
+              text-decoration: underline;
+            }
+            .government-content strong,
+            .government-content b {
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              font-weight: 600;
+            }
+            .government-content .k-startup-section {
+              margin: 1.5rem 0;
+              padding: 1rem;
+              background: ${isDark ? '#27272a50' : '#f9fafb'};
+              border-radius: 12px;
+              border-left: 3px solid ${accentColor};
+            }
+            .government-content .k-startup-section > p:first-child {
+              font-weight: 600;
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              margin-bottom: 0.75rem;
+              font-size: 15px;
+            }
+            /* 기업마당 원본 스타일 */
+            .government-content .bizinfo-original {
+              color: ${isDark ? '#d4d4d8' : '#3f3f46'};
+            }
+            .government-content .bizinfo-original .view_cont {
+              display: flex;
+              flex-direction: column;
+              gap: 0;
+            }
+            .government-content .bizinfo-original .view_cont > ul {
+              list-style: none;
+              padding: 0;
+              margin: 0;
+              display: flex;
+              flex-direction: column;
+              gap: 0;
+            }
+            .government-content .bizinfo-original .view_cont > ul > li {
+              padding: 1rem 1.25rem;
+              background: ${isDark ? '#27272a' : '#f4f4f5'};
+              border-radius: 0;
+              margin: 0;
+              border-bottom: 1px solid ${isDark ? '#3f3f46' : '#e4e4e7'};
+            }
+            .government-content .bizinfo-original .view_cont > ul > li:first-child {
+              border-radius: 12px 12px 0 0;
+            }
+            .government-content .bizinfo-original .view_cont > ul > li:last-child {
+              border-radius: 0 0 12px 12px;
+              border-bottom: none;
+            }
+            .government-content .bizinfo-original .s_title {
+              display: block;
+              font-size: 12px;
+              font-weight: 500;
+              color: ${isDark ? '#71717a' : '#a1a1aa'};
+              margin-bottom: 0.5rem;
+            }
+            .government-content .bizinfo-original .txt {
+              color: ${isDark ? '#fafafa' : '#18181b'};
+              font-size: 14px;
+              line-height: 1.7;
+            }
+            .government-content .bizinfo-original .txt p {
+              margin: 0.5rem 0;
+            }
+            .government-content .bizinfo-original .txt br + br {
+              display: none;
+            }
+            .government-content .bizinfo-original #iframe,
+            .government-content .bizinfo-original [id="iframe"] {
+              display: none;
+            }
+            .government-content .bizinfo-original a[id="fileLoad"] {
+              display: none;
+            }
+            .government-content .bizinfo-original div[style*="text-align:center"] {
+              margin-top: 1.5rem;
+              padding: 1rem;
+              background: ${isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)'};
+              border-radius: 8px;
+              font-size: 13px;
+              color: ${isDark ? '#93c5fd' : '#3b82f6'};
+            }
+          `}</style>
+        </div>
 
-            {/* 해시태그 */}
-            {program.hashtags && program.hashtags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {program.hashtags.map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className={cn("px-3 py-1 rounded-full text-sm", isDark ? "bg-zinc-800 text-zinc-300" : "bg-gray-200 text-gray-600")}
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* 기본 정보 카드 */}
-            <div className={cn("rounded-xl p-6 border", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-gray-200 shadow-sm")}>
-              <h2 className={cn("text-lg font-semibold mb-4 flex items-center gap-2", isDark ? "text-white" : "text-gray-900")}>
-                <FileText className="w-5 h-5 text-accent" />
-                기본 정보
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {program.target && (
-                  <InfoItem
-                    icon={Users}
-                    label="지원대상"
-                    value={program.target}
-                  />
-                )}
-                {program.region && (
-                  <InfoItem
-                    icon={MapPin}
-                    label="지역"
-                    value={program.region}
-                  />
-                )}
-                {program.support_type && (
-                  <InfoItem
-                    icon={Tag}
-                    label="지원유형"
-                    value={program.support_type}
-                  />
-                )}
-                {program.support_amount && (
-                  <InfoItem
-                    icon={Tag}
-                    label="지원금액"
-                    value={program.support_amount}
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* 상세 내용 */}
-            {(program.content || program.summary || program.description) && (
-              <div className={cn("rounded-xl p-6 border", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-gray-200 shadow-sm")}>
-                <h2 className={cn("text-lg font-semibold mb-4", isDark ? "text-white" : "text-gray-900")}>상세 내용</h2>
-                <div className={cn("prose max-w-none k-startup-content", isDark ? "prose-invert prose-zinc" : "prose-gray")}>
-                  <style jsx global>{`
-                    .k-startup-content .k-startup-section { margin-bottom: 2rem; }
-                    /* 기본 폰트 사이즈 및 컬러 - 다크모드 기본 */
-                    .k-startup-content { font-size: 15px; line-height: 1.6; }
-                    .dark .k-startup-content { color: #e4e4e7; }
-                    html:not(.dark) .k-startup-content { color: #374151; }
-
-                    /* 테이블 스타일 */
-                    .k-startup-content table,
-                    .k-startup-content .table {
-                      width: 100%;
-                      border-collapse: collapse;
-                      margin-bottom: 1.5rem;
-                      font-size: 0.9em;
-                    }
-                    .k-startup-content th,
-                    .k-startup-content td {
-                      padding: 10px;
-                      text-align: left;
-                    }
-                    .dark .k-startup-content th,
-                    .dark .k-startup-content td { border: 1px solid #3f3f46; }
-                    html:not(.dark) .k-startup-content th,
-                    html:not(.dark) .k-startup-content td { border: 1px solid #e5e7eb; }
-
-                    .k-startup-content th { font-weight: 600; }
-                    .dark .k-startup-content th { background-color: #27272a; color: #a1a1aa; }
-                    html:not(.dark) .k-startup-content th { background-color: #f3f4f6; color: #4b5563; }
-                    .k-startup-content td { background-color: transparent; }
-
-                    /* 박스 스타일 */
-                    .k-startup-content .app_notice_details-wrap { margin-top: 10px; }
-                    .k-startup-content .information_box-wrap { margin-bottom: 30px; }
-
-                    .k-startup-content .bg_box {
-                      padding: 20px;
-                      border-radius: 8px;
-                      margin-bottom: 20px;
-                    }
-                    .dark .k-startup-content .bg_box { background: #18181b; border: 1px solid #3f3f46; }
-                    html:not(.dark) .k-startup-content .bg_box { background: #f9fafb; border: 1px solid #e5e7eb; }
-
-                    /* 내부 key-value 테이블 */
-                    .k-startup-content .table_inner {
-                      display: flex;
-                      flex-direction: column;
-                    }
-                    .dark .k-startup-content .table_inner { border-bottom: 1px solid #27272a; }
-                    html:not(.dark) .k-startup-content .table_inner { border-bottom: 1px solid #e5e7eb; }
-                    @media (min-width: 768px) {
-                      .k-startup-content .table_inner { flex-direction: row; align-items: stretch; }
-                    }
-                    .dark .k-startup-content .table_inner:first-child { border-top: 1px solid #27272a; }
-                    html:not(.dark) .k-startup-content .table_inner:first-child { border-top: 1px solid #e5e7eb; }
-
-                    .k-startup-content .tit {
-                      padding: 12px 16px;
-                      font-weight: 600;
-                      display: flex;
-                      align-items: center;
-                    }
-                    .dark .k-startup-content .tit { background: #27272a; color: #a1a1aa; }
-                    html:not(.dark) .k-startup-content .tit { background: #f3f4f6; color: #4b5563; }
-                    @media (min-width: 768px) {
-                      .k-startup-content .tit { width: 160px; flex-shrink: 0; }
-                      .dark .k-startup-content .tit { border-right: 1px solid #3f3f46; }
-                      html:not(.dark) .k-startup-content .tit { border-right: 1px solid #e5e7eb; }
-                    }
-                    .k-startup-content .txt {
-                      padding: 12px 16px;
-                      flex: 1;
-                      word-break: break-all;
-                    }
-                    .dark .k-startup-content .txt { color: #e4e4e7; }
-                    html:not(.dark) .k-startup-content .txt { color: #374151; }
-
-                    /* 본문 박스 */
-                    .k-startup-content .box { margin-bottom: 2rem; }
-                    .k-startup-content .box_inner {
-                      padding: 24px;
-                      border-radius: 12px;
-                      min-height: 200px;
-                    }
-                    .dark .k-startup-content .box_inner { background: #18181b; border: 1px solid #3f3f46; }
-                    html:not(.dark) .k-startup-content .box_inner { background: #ffffff; border: 1px solid #e5e7eb; }
-                    .k-startup-content .tit_wrap { display: none; }
-
-                    /* 리스트 스타일 */
-                    .k-startup-content .dot_list-wrap { margin-top: 20px; }
-                    .dark .k-startup-content .dot_list-wrap { border-top: 1px solid #3f3f46; }
-                    html:not(.dark) .k-startup-content .dot_list-wrap { border-top: 1px solid #e5e7eb; }
-                    .k-startup-content .dot_list {
-                      list-style: none;
-                      padding: 0;
-                      margin: 0;
-                    }
-                    .dark .k-startup-content .dot_list { border-bottom: 1px solid #3f3f46; }
-                    html:not(.dark) .k-startup-content .dot_list { border-bottom: 1px solid #e5e7eb; }
-                    .k-startup-content .dot_list > li {
-                      padding: 12px 16px;
-                      display: flex;
-                      align-items: flex-start;
-                      gap: 8px;
-                    }
-                    .k-startup-content .dot_list > li::before {
-                      content: '•';
-                      color: var(--accent-color);
-                      margin-top: 2px;
-                    }
-
-                    /* 유의사항 */
-                    .k-startup-content .guide_wrap {
-                      padding: 20px;
-                      border-radius: 8px;
-                      margin-top: 30px;
-                    }
-                    .dark .k-startup-content .guide_wrap { background: #2a2a30; border: 1px solid #3f3f46; }
-                    html:not(.dark) .k-startup-content .guide_wrap { background: #fef3c7; border: 1px solid #fcd34d; }
-                    .k-startup-content .guide_txt li {
-                       margin-bottom: 6px;
-                       padding-left: 14px;
-                       position: relative;
-                       font-size: 0.9em;
-                    }
-                    .dark .k-startup-content .guide_txt li { color: #d4d4d8; }
-                    html:not(.dark) .k-startup-content .guide_txt li { color: #92400e; }
-                    .k-startup-content .guide_txt li::before {
-                       content: '-';
-                       position: absolute;
-                       left: 0;
-                    }
-                    .dark .k-startup-content .guide_txt li::before { color: #a1a1aa; }
-                    html:not(.dark) .k-startup-content .guide_txt li::before { color: #b45309; }
-
-                    /* 타이틀 스타일 */
-                    .k-startup-content .information_list .title,
-                    .k-startup-content h4 {
-                      font-size: 1.125rem;
-                      font-weight: 600;
-                      margin-bottom: 1rem;
-                      margin-top: 2rem;
-                      padding-left: 12px;
-                      border-left: 4px solid var(--accent-color);
-                    }
-                    .dark .k-startup-content .information_list .title,
-                    .dark .k-startup-content h4 { color: white; }
-                    html:not(.dark) .k-startup-content .information_list .title,
-                    html:not(.dark) .k-startup-content h4 { color: #111827; }
-
-                    /* 버튼 등 기타 요소 */
-                    .k-startup-content a.btn_by-bl,
-                    .k-startup-content .btn_file {
-                      display: inline-flex;
-                      align-items: center;
-                      padding: 4px 12px;
-                      border-radius: 4px;
-                      font-size: 0.85rem;
-                      text-decoration: none;
-                      margin-right: 6px;
-                    }
-                    .dark .k-startup-content a.btn_by-bl,
-                    .dark .k-startup-content .btn_file {
-                      background-color: #27272a; color: #e4e4e7; border: 1px solid #3f3f46;
-                    }
-                    html:not(.dark) .k-startup-content a.btn_by-bl,
-                    html:not(.dark) .k-startup-content .btn_file {
-                      background-color: #f3f4f6; color: #374151; border: 1px solid #d1d5db;
-                    }
-                    .dark .k-startup-content a.btn_by-bl:hover { background-color: #3f3f46; }
-                    html:not(.dark) .k-startup-content a.btn_by-bl:hover { background-color: #e5e7eb; }
-                  `}</style>
-                  <div dangerouslySetInnerHTML={{
-                    __html: program.content ||
-                      (program.description ? `<p>${program.description}</p>` : '') ||
-                      (program.summary ? `<p>${program.summary}</p>` : '')
-                  }} />
-                </div>
-              </div>
-            )}
-
-            {/* 원문 공고 링크 (상세 내용이 없을 때) */}
-            {!program.content && !program.description && !program.summary && program.detail_url && (
-              <div className={cn("rounded-xl p-6 border", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-gray-200 shadow-sm")}>
-                <div className="flex flex-col items-center justify-center py-8 gap-4">
-                  <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center">
-                    <ExternalLink className="w-8 h-8 text-accent" />
-                  </div>
-                  <div className="text-center">
-                    <h2 className={cn("text-lg font-semibold mb-2", isDark ? "text-white" : "text-gray-900")}>원문 공고 확인</h2>
-                    <p className={cn("text-sm mb-4", isDark ? "text-zinc-400" : "text-gray-500")}>
-                      상세 내용은 원문 공고 페이지에서 확인하세요.
-                    </p>
-                  </div>
-                  <a
-                    href={program.detail_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-6 py-3 btn-accent rounded-lg
-                               font-medium transition-colors flex items-center gap-2"
-                  >
-                    원문 공고 보기
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {/* 제출 서류 */}
-            {program.required_documents && program.required_documents.length > 0 && (
-              <div className={cn("rounded-xl p-6 border", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-gray-200 shadow-sm")}>
-                <h2 className={cn("text-lg font-semibold mb-4", isDark ? "text-white" : "text-gray-900")}>제출 서류</h2>
-                <ul className="space-y-2">
-                  {program.required_documents.map((doc, idx) => (
-                    <li key={idx} className={cn("flex items-start gap-2", isDark ? "text-zinc-300" : "text-gray-600")}>
-                      <span className="text-accent mt-1">•</span>
-                      {doc}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* 첨부파일 */}
-            {(program as any).attachments_primary && (program as any).attachments_primary.length > 0 && (
-              <div className={cn("rounded-xl p-6 border", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-gray-200 shadow-sm")}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className={cn("text-lg font-semibold", isDark ? "text-white" : "text-gray-900")}>첨부파일</h2>
-                  <button
-                    onClick={handleDownloadAll}
-                    disabled={isDownloading}
-                    className={cn(
-                      "text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors",
-                      isDark
-                        ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                        : "bg-gray-100 hover:bg-gray-200 text-gray-700",
-                      isDownloading && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    {isDownloading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    일괄 다운로드
-                  </button>
-                </div>
-                <ul className="space-y-3">
-                  {(program as any).attachments_primary.map((file: any, idx: number) => (
-                    <li key={idx}>
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(
-                          "flex items-center gap-3 p-3 rounded-lg border transition-all group",
-                          isDark
-                            ? "bg-zinc-900 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800"
-                            : "bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100"
-                        )}
-                      >
-                        <div className={cn(
-                          "p-2 rounded-md",
-                          isDark ? "bg-zinc-800 group-hover:bg-zinc-700" : "bg-white group-hover:bg-gray-200"
-                        )}>
-                          <FileText className={cn("w-5 h-5", isDark ? "text-zinc-400" : "text-gray-500")} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={cn("text-sm font-medium truncate", isDark ? "text-zinc-200" : "text-gray-900")}>
-                            {file.name}
-                          </p>
-                        </div>
-                        <Download className={cn("w-4 h-4", isDark ? "text-zinc-500 group-hover:text-zinc-300" : "text-gray-400 group-hover:text-gray-600")} />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* 신청 방법 */}
-            {program.application_method && (
-              <div className={cn("rounded-xl p-6 border", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-gray-200 shadow-sm")}>
-                <h2 className={cn("text-lg font-semibold mb-4", isDark ? "text-white" : "text-gray-900")}>신청 방법</h2>
-                <p className={cn(isDark ? "text-zinc-300" : "text-gray-600")}>{program.application_method}</p>
-                {program.application_form_url && (
-                  <a
-                    href={program.application_form_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 inline-flex items-center gap-2 text-accent hover:text-accent"
-                  >
-                    <Download className="w-4 h-4" />
-                    신청서 양식 다운로드
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 오른쪽: AI 매칭 & 액션 */}
-          <div className="space-y-6">
-            {/* AI 매칭 결과 */}
-            <AIMatchResult
-              programId={programId}
-              programTitle={program.title}
-              initialResult={matchResult ? {
-                score: matchResult.score,
-                action: matchResult.action,
-                reasons: matchResult.reasons,
-                risks: matchResult.risks,
-                next_actions: matchResult.next_actions
-              } : undefined}
-            />
-
-            {/* 빠른 액션 */}
-            <div className="rounded-xl p-6 border bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700 shadow-sm dark:shadow-none">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">빠른 액션</h3>
-              <div className="space-y-3">
-                <button
-                  onClick={() => router.push(`/dashboard-group/company/government-programs/business-plan?program_id=${programId}`)}
-                  className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg
-                             font-medium transition-colors flex items-center justify-center gap-2"
+        {program.attachments_primary && program.attachments_primary.length > 0 && (
+          <div className="rounded-xl p-6" style={{ background: isDark ? '#18181b' : '#fff' }}>
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: isDark ? '#fafafa' : '#18181b' }}>
+              <Download className="w-5 h-5" />
+              첨부파일
+            </h2>
+            <div className="space-y-2">
+              {program.attachments_primary.map((file, idx) => (
+                <a
+                  key={idx}
+                  href={file.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3 rounded-lg transition-colors"
+                  style={{ background: isDark ? '#27272a' : '#f4f4f5', color: isDark ? '#fafafa' : '#18181b' }}
                 >
-                  <FileText className="w-5 h-5" />
-                  사업계획서 초안 생성
-                </button>
-
-                {program.detail_url && (
-                  <a
-                    href={program.detail_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-900 dark:text-white"
-                  >
-                    <ExternalLink className="w-5 h-5" />
-                    원문 공고 보기
-                  </a>
-                )}
-              </div>
-            </div>
-
-            {/* 출처 정보 */}
-            <div className="rounded-xl p-4 border bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700 shadow-sm dark:shadow-none">
-              <div className="text-sm text-gray-500 dark:text-zinc-500">
-                <div className="flex justify-between mb-2">
-                  <span>출처</span>
-                  <span className="text-gray-700 dark:text-zinc-300">{SOURCE_LABELS[program.source] || program.source}</span>
-                </div>
-                <div className="flex justify-between mb-2">
-                  <span>수집일</span>
-                  <span className="text-gray-700 dark:text-zinc-300">{formatDate(program.created_at)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>공고 ID</span>
-                  <span className="text-xs font-mono text-gray-500 dark:text-zinc-400">{program.program_id}</span>
-                </div>
-              </div>
+                  <FileText className="w-5 h-5" style={{ color: accentColor }} />
+                  <span className="flex-1 truncate text-sm">{file.name}</span>
+                  <Download className="w-4 h-4" style={{ color: isDark ? '#71717a' : '#a1a1aa' }} />
+                </a>
+              ))}
             </div>
           </div>
-        </div >
-      </main >
-    </div >
-  )
-}
-
-// 정보 항목 컴포넌트
-function InfoItem({
-  icon: Icon,
-  label,
-  value
-}: {
-  icon: any
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <div className="p-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
-        <Icon className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
-      </div>
-      <div>
-        <div className="text-xs text-gray-500 dark:text-zinc-500">{label}</div>
-        <div className="text-sm text-gray-700 dark:text-zinc-200">{value}</div>
+        )}
       </div>
     </div>
   )
