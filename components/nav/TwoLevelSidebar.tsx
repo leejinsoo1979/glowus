@@ -762,8 +762,20 @@ function TopLevelCardMenu({
   isExpanded: boolean
   onToggle: () => void
 }) {
+  const router = useRouter()
   const IconComponent = item.icon
   const { accentColor } = useThemeStore()
+
+  // href가 있고 children이 없으면 직접 링크
+  const isDirectLink = item.href && !item.children
+
+  const handleClick = () => {
+    if (isDirectLink && item.href) {
+      router.push(item.href)
+    } else {
+      onToggle()
+    }
+  }
 
   // 테마 색상 클래스 생성기
   const getThemeClasses = () => {
@@ -864,7 +876,7 @@ function TopLevelCardMenu({
 
   return (
     <button
-      onClick={onToggle}
+      onClick={handleClick}
       className={cn(
         'group w-full aspect-[4/5] rounded-xl border transition-all duration-200 flex flex-col items-center justify-center gap-3',
         isDark
