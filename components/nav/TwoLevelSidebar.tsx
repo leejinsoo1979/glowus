@@ -547,20 +547,6 @@ const companyMenuItems: NestedMenuItem[] = [
         icon: LayoutDashboard
       },
       { name: '전체목록', href: '/dashboard-group/company/government-programs?view=list', icon: Search },
-      // 유형별 필터
-      {
-        name: '유형별',
-        icon: Filter,
-        children: [
-          { name: '사업화', href: '/dashboard-group/company/government-programs?view=list&type=사업화', icon: Rocket },
-          { name: '기술개발', href: '/dashboard-group/company/government-programs?view=list&type=기술개발', icon: Cpu },
-          { name: '시설보육', href: '/dashboard-group/company/government-programs?view=list&type=시설보육', icon: Building },
-          { name: '멘토링', href: '/dashboard-group/company/government-programs?view=list&type=멘토링', icon: Users },
-          { name: '행사', href: '/dashboard-group/company/government-programs?view=list&type=행사', icon: Calendar },
-          { name: '융자보증', href: '/dashboard-group/company/government-programs?view=list&type=융자보증', icon: Banknote },
-          { name: '인력', href: '/dashboard-group/company/government-programs?view=list&type=인력', icon: UserPlus },
-        ]
-      },
       { name: '추천 공고', href: '/dashboard-group/company/government-programs/recommended', icon: Sparkles },
       { name: '북마크', href: '/dashboard-group/company/government-programs/bookmarks', icon: BookmarkCheck },
       { name: '알림 설정', href: '/dashboard-group/company/government-programs/alerts', icon: Bell },
