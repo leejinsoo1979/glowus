@@ -473,7 +473,7 @@ function ToolCard({ tool, onEdit, onComingSoon }: { tool: ToolItem, onEdit: () =
                 } else if (tool.id === 'ai-slides') {
                     window.location.href = '/dashboard-group/apps/ai-slides'
                 } else if (tool.id === 'government-programs') {
-                    window.location.href = '/dashboard-group/apps/government-programs'
+                    window.location.href = '/dashboard-group/company/government-programs'
                 } else if (tool.id === 'ai-docs') {
                     window.location.href = '/dashboard-group/apps/ai-docs'
                 } else if (tool.id === 'ai-sheet') {

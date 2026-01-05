@@ -10,6 +10,7 @@ import { ElectronHeader } from '@/components/nav/ElectronHeader'
 import { AgentNotificationProvider } from '@/lib/contexts/AgentNotificationContext'
 import { AgentNotificationPopup } from '@/components/notifications/AgentNotificationPopup'
 import { MainAssistantButton } from '@/components/notifications/MainAssistantButton'
+import { GovernmentProgramNotificationListener } from '@/components/notifications/GovernmentProgramNotificationListener'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { createClient } from '@/lib/supabase/client'
@@ -84,7 +85,7 @@ export default function DashboardLayout({
 
     return () => unsubscribe?.()
   }, [router])
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/apps/government-programs') || pathname?.includes('/neural-map') || pathname?.includes('/gantt')
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/company/government-programs') || pathname?.includes('/neural-map') || pathname?.includes('/gantt')
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -203,9 +204,12 @@ export default function DashboardLayout({
         <TwoLevelSidebar />
         <CommitModal />
         <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />
-        {/* 우측하단 에이전트 비서 임시 비활성화 */}
-        {/* <AgentNotificationPopup /> */}
-        {/* <MainAssistantButton /> */}
+        {/* 정부지원사업 알림 리스너 */}
+        <GovernmentProgramNotificationListener />
+        {/* 에이전트 알림 팝업 */}
+        <AgentNotificationPopup />
+        {/* 우측하단 에이전트 비서 */}
+        <MainAssistantButton />
         <main
         className={cn(
           (isFullWidthPage || isElectron) ? "flex flex-col" : "pt-16",
@@ -221,7 +225,7 @@ export default function DashboardLayout({
         }}
       >
         <div className={cn(
-          isFullWidthPage ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto p-8"
+          isFullWidthPage ? "flex-1 overflow-y-auto" : "flex-1 overflow-y-auto p-8"
         )}>
           {children}
         </div>

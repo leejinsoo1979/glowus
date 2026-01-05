@@ -508,7 +508,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '정부지원사업',
     icon: RxRocket,
-    href: '/dashboard-group/apps/government-programs',
+    href: '/dashboard-group/company/government-programs',
   },
 ]
 

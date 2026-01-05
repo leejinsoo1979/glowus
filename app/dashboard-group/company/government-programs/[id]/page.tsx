@@ -211,7 +211,7 @@ export default function ProgramDetailPage() {
           <h2 className={cn("text-xl font-bold mb-2", isDark ? "text-white" : "text-gray-900")}>오류 발생</h2>
           <p className={cn("mb-6", isDark ? "text-zinc-400" : "text-gray-500")}>{error || '프로그램을 찾을 수 없습니다.'}</p>
           <button
-            onClick={() => router.push('/dashboard-group/apps/government-programs')}
+            onClick={() => router.push('/dashboard-group/company/government-programs')}
             className={cn("px-4 py-2 rounded-lg transition-colors", isDark ? "bg-zinc-800 hover:bg-zinc-700 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-900")}
           >
             뒤로 가기
@@ -228,7 +228,7 @@ export default function ProgramDetailPage() {
         <div className="max-w-[1600px] mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push('/dashboard-group/apps/government-programs')}
+              onClick={() => router.push('/dashboard-group/company/government-programs')}
               className={cn("p-2 rounded-lg transition-colors", isDark ? "hover:bg-white/10" : "hover:bg-gray-100")}
             >
               <ArrowLeft className={cn("w-5 h-5", isDark ? "text-white" : "text-gray-900")} />
@@ -705,7 +705,7 @@ export default function ProgramDetailPage() {
               <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">빠른 액션</h3>
               <div className="space-y-3">
                 <button
-                  onClick={() => router.push(`/dashboard-group/apps/government-programs/business-plan?program_id=${programId}`)}
+                  onClick={() => router.push(`/dashboard-group/company/government-programs/business-plan?program_id=${programId}`)}
                   className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg
                              font-medium transition-colors flex items-center justify-center gap-2"
                 >

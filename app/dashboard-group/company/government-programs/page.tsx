@@ -538,7 +538,7 @@ function SourceDistribution({
   )
 }
 
-// 상태 분포 파이 차트 (Premium Theme)
+// 상태 분포 파이 차트 (Premium Gradient)
 function StatusPieChart({
   data,
   isDark = true,
@@ -576,22 +576,34 @@ function StatusPieChart({
 
   return (
     <div className="h-full flex items-center gap-6">
-      <div className="flex-1 h-full min-h-[160px]">
+      <div className="flex-1 h-full min-h-[160px] relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
+            <defs>
+              {chartData.map((entry, index) => (
+                <linearGradient id={`statusGradient-${index}`} key={`statusGradient-${index}`} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                  <stop offset="100%" stopColor={entry.color} stopOpacity={0.6} />
+                </linearGradient>
+              ))}
+            </defs>
             <Pie
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius="60%"
-              outerRadius="85%"
-              paddingAngle={4}
+              innerRadius="65%"
+              outerRadius="90%"
+              paddingAngle={5}
               dataKey="value"
-              stroke={isDark ? "rgba(0,0,0,0.5)" : "#fff"}
-              strokeWidth={2}
+              stroke="none"
+              cornerRadius={5}
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={`url(#statusGradient-${index})`}
+                  style={{ filter: 'drop-shadow(0px 4px 6px rgba(0,0,0,0.2))' }}
+                />
               ))}
             </Pie>
             <Tooltip
@@ -610,14 +622,19 @@ function StatusPieChart({
             />
           </PieChart>
         </ResponsiveContainer>
+        {/* Center Label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className={cn("text-xs font-medium", isDark ? "text-zinc-400" : "text-gray-500")}>Total</span>
+          <span className={cn("text-xl font-bold", isDark ? "text-white" : "text-gray-900")}>{total}</span>
+        </div>
       </div>
       <div className="w-32 space-y-3">
-        {chartData.map(item => (
+        {chartData.map((item, index) => (
           <div key={item.name} className="group flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div
-                className="w-2.5 h-2.5 rounded-full shadow-[0_0_8px] transition-transform group-hover:scale-125"
-                style={{ backgroundColor: item.color, boxShadow: `0 0 10px ${item.color}40` }}
+                className="w-2.5 h-2.5 rounded-full shadow-lg transition-transform group-hover:scale-125"
+                style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}88)` }}
               />
               <span className={cn("text-sm font-medium", isDark ? "text-zinc-300" : "text-gray-600")}>{item.name}</span>
             </div>
@@ -631,7 +648,7 @@ function StatusPieChart({
   )
 }
 
-// 소스 파이 차트 (Premium Theme)
+// 소스 파이 차트 (Premium Gradient)
 function SourcePieChart({
   data,
   isDark = true,
@@ -670,22 +687,34 @@ function SourcePieChart({
 
   return (
     <div className="h-full flex items-center gap-6">
-      <div className="flex-1 h-full min-h-[160px]">
+      <div className="flex-1 h-full min-h-[160px] relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
+            <defs>
+              {chartData.map((entry, index) => (
+                <linearGradient id={`sourceGradient-${index}`} key={`sourceGradient-${index}`} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                  <stop offset="100%" stopColor={entry.color} stopOpacity={0.6} />
+                </linearGradient>
+              ))}
+            </defs>
             <Pie
               data={chartData}
               cx="50%"
               cy="50%"
-              innerRadius="60%"
-              outerRadius="85%"
-              paddingAngle={4}
+              innerRadius="65%"
+              outerRadius="90%"
+              paddingAngle={5}
               dataKey="value"
-              stroke={isDark ? "rgba(0,0,0,0.5)" : "#fff"}
-              strokeWidth={2}
+              stroke="none"
+              cornerRadius={5}
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={`url(#sourceGradient-${index})`}
+                  style={{ filter: 'drop-shadow(0px 4px 6px rgba(0,0,0,0.2))' }}
+                />
               ))}
             </Pie>
             <Tooltip
@@ -704,14 +733,19 @@ function SourcePieChart({
             />
           </PieChart>
         </ResponsiveContainer>
+        {/* Center Label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className={cn("text-xs font-medium", isDark ? "text-zinc-400" : "text-gray-500")}>Total</span>
+          <span className={cn("text-xl font-bold", isDark ? "text-white" : "text-gray-900")}>{total}</span>
+        </div>
       </div>
       <div className="w-32 space-y-3">
-        {chartData.map(item => (
+        {chartData.map((item, index) => (
           <div key={item.name} className="group flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div
-                className="w-2.5 h-2.5 rounded-full shadow-[0_0_8px] transition-transform group-hover:scale-125"
-                style={{ backgroundColor: item.color, boxShadow: `0 0 10px ${item.color}40` }}
+                className="w-2.5 h-2.5 rounded-full shadow-lg transition-transform group-hover:scale-125"
+                style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}88)` }}
               />
               <span className={cn("text-sm font-medium", isDark ? "text-zinc-300" : "text-gray-600")}>{item.name}</span>
             </div>
@@ -1369,7 +1403,7 @@ export default function GovernmentProgramsPage() {
     return diff
   }
 
-  // 마감 임박 프로그램
+  // 마감 임박 프로그램 (D-0 ~ D-7, 전체 표시)
   const urgentPrograms = useMemo(() => {
     return programs
       .filter(p => {
@@ -1381,7 +1415,6 @@ export default function GovernmentProgramsPage() {
         const daysB = getDaysRemaining(b.apply_end_date) || 0
         return daysA - daysB
       })
-      .slice(0, 4)
   }, [programs])
 
   // 카테고리 목록
@@ -1553,7 +1586,7 @@ export default function GovernmentProgramsPage() {
                       title: '사업계획서 작성',
                       desc: 'AI가 자동으로 작성',
                       color: themeColor,
-                      onClick: () => router.push('/dashboard-group/apps/government-programs/business-plan')
+                      onClick: () => router.push('/dashboard-group/company/government-programs/business-plan')
                     },
                     {
                       icon: Bell,
@@ -1655,6 +1688,14 @@ export default function GovernmentProgramsPage() {
                         <div className="flex items-center gap-3">
                           <Flame className="w-6 h-6 text-orange-400" />
                           <h3 className={cn("text-lg font-semibold", theme.text)}>마감 임박 공고</h3>
+                          {urgentPrograms.length > 0 && (
+                            <span className={cn(
+                              "px-2 py-0.5 text-xs font-medium rounded-full",
+                              isDark ? "bg-orange-500/20 text-orange-400" : "bg-orange-100 text-orange-600"
+                            )}>
+                              {urgentPrograms.length}건
+                            </span>
+                          )}
                         </div>
                         <button
                           onClick={() => {
@@ -1670,7 +1711,7 @@ export default function GovernmentProgramsPage() {
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       </div>
-                      <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[500px]">
                         {urgentPrograms.length > 0 ? (
                           urgentPrograms.map(program => (
                             <UrgentProgramCard
@@ -1679,7 +1720,7 @@ export default function GovernmentProgramsPage() {
                               daysRemaining={getDaysRemaining(program.apply_end_date) || 0}
                               themeColor={themeColor}
                               isDark={isDark}
-                              onClick={() => window.location.href = `/dashboard-group/apps/government-programs/${program.id}`}
+                              onClick={() => window.location.href = `/dashboard-group/company/government-programs/${program.id}`}
                             />
                           ))
                         ) : (
@@ -2189,7 +2230,7 @@ export default function GovernmentProgramsPage() {
                             {/* 액션 버튼 */}
                             <div className="flex flex-col gap-2 flex-shrink-0">
                               <button
-                                onClick={() => router.push(`/dashboard-group/apps/government-programs/${program.id}`)}
+                                onClick={() => router.push(`/dashboard-group/company/government-programs/${program.id}`)}
                                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
                                 style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
                               >
@@ -2197,7 +2238,7 @@ export default function GovernmentProgramsPage() {
                                 <ChevronRight className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => router.push(`/dashboard-group/apps/government-programs/business-plan?program_id=${program.id}`)}
+                                onClick={() => router.push(`/dashboard-group/company/government-programs/business-plan?program_id=${program.id}`)}
                                 className={cn(
                                   "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
                                   isDark
@@ -2455,7 +2496,7 @@ export default function GovernmentProgramsPage() {
 
                           <div className="flex gap-2 flex-shrink-0">
                             <button
-                              onClick={() => router.push(`/dashboard-group/apps/government-programs/${program.id}`)}
+                              onClick={() => router.push(`/dashboard-group/company/government-programs/${program.id}`)}
                               className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-white transition-all hover:opacity-90"
                               style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
                             >
