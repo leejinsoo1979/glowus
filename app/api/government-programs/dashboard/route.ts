@@ -16,6 +16,7 @@ interface DashboardStats {
   monthlyApplications: number
   sourceCounts: Record<string, number>
   categoryCounts: Record<string, number>
+  supportTypeCounts: Record<string, number>  // 지원유형별 분포
   statusCounts: Record<string, number>
   monthlyTrend: { month: string; count: number }[]
   regionCounts: Record<string, number>
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
         monthlyApplications: 0, // 별도 조회 필요
         sourceCounts: cachedStats.source_counts || {},
         categoryCounts: cachedStats.category_counts || {},
+        supportTypeCounts: cachedStats.support_type_counts || {},
         statusCounts: cachedStats.status_counts || {},
         monthlyTrend: cachedStats.monthly_trend || [],
         regionCounts: cachedStats.region_counts || {},
@@ -142,6 +144,7 @@ async function calculateRealTimeStats(
     upcomingResult,
     sourceResult,
     categoryResult,
+    supportTypeResult,  // 지원유형별 분포
     trendResult,
     applicationResult,
     deadlineResult,  // 마감일 기준 데이터
@@ -187,6 +190,12 @@ async function calculateRealTimeStats(
     supabase
       .from('government_programs')
       .select('category')
+      .or('archived.is.null,archived.eq.false'),
+
+    // 지원유형별 분포
+    supabase
+      .from('government_programs')
+      .select('support_type')
       .or('archived.is.null,archived.eq.false'),
 
     // 월별 트렌드 (최근 12개월 - 등록일 기준)
@@ -237,6 +246,13 @@ async function calculateRealTimeStats(
   categoryResult.data?.forEach((item: any) => {
     const category = item.category || '기타'
     categoryCounts[category] = (categoryCounts[category] || 0) + 1
+  })
+
+  // 지원유형별 카운트 계산
+  const supportTypeCounts: Record<string, number> = {}
+  supportTypeResult.data?.forEach((item: any) => {
+    const supportType = item.support_type || '기타'
+    supportTypeCounts[supportType] = (supportTypeCounts[supportType] || 0) + 1
   })
 
   // 월별 트렌드 계산
@@ -310,6 +326,7 @@ async function calculateRealTimeStats(
     monthlyApplications: applicationResult.count || 0,
     sourceCounts,
     categoryCounts,
+    supportTypeCounts,
     statusCounts,
     monthlyTrend,
     regionCounts: {}, // 지역 정보는 추후 추가
@@ -339,6 +356,7 @@ async function saveStatsToCache(
       event_count: stats.eventCount,
       source_counts: stats.sourceCounts,
       category_counts: stats.categoryCounts,
+      support_type_counts: stats.supportTypeCounts,
       status_counts: stats.statusCounts,
       monthly_trend: stats.monthlyTrend,
       region_counts: stats.regionCounts,

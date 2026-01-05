@@ -150,6 +150,7 @@ interface DashboardStats {
   monthlyApplications: number
   sourceCounts: Record<string, number>
   categoryCounts: Record<string, number>
+  supportTypeCounts: Record<string, number>
   statusCounts: Record<string, number>
   monthlyTrend: { month: string; count: number }[]
   regionCounts: Record<string, number>
@@ -2350,31 +2351,38 @@ export default function GovernmentProgramsPage() {
                     } : undefined}
                   >
                     <span>전체</span>
+                    <span className="text-xs opacity-60">
+                      {Object.values(stats?.supportTypeCounts || {}).reduce((a, b) => a + b, 0)}
+                    </span>
                   </button>
-                  {Object.entries(SUPPORT_TYPE_COLORS).map(([type, color]) => (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedSupportType(type)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all",
-                        selectedSupportType === type
-                          ? ""
-                          : isDark ? "text-zinc-400 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
-                      )}
-                      style={selectedSupportType === type ? {
-                        backgroundColor: `${color}20`,
-                        color: color
-                      } : undefined}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: color }}
-                        />
-                        <span>{type}</span>
-                      </div>
-                    </button>
-                  ))}
+                  {Object.entries(SUPPORT_TYPE_COLORS).map(([type, color]) => {
+                    const count = stats?.supportTypeCounts?.[type] || 0
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => setSelectedSupportType(type)}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all",
+                          selectedSupportType === type
+                            ? ""
+                            : isDark ? "text-zinc-400 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
+                        )}
+                        style={selectedSupportType === type ? {
+                          backgroundColor: `${color}20`,
+                          color: color
+                        } : undefined}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span>{type}</span>
+                        </div>
+                        <span className="text-xs opacity-60">{count}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
