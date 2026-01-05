@@ -26,6 +26,7 @@ import { IoCalendarNumberOutline, IoRocketOutline } from 'react-icons/io5'
 import { GoPerson, GoPeople } from 'react-icons/go'
 import { TbBrandWechat } from 'react-icons/tb'
 import { CiHardDrive } from 'react-icons/ci'
+import { RxRocket } from 'react-icons/rx'
 import { ShieldCheck } from 'lucide-react'
 import {
   LayoutDashboard,
@@ -503,6 +504,11 @@ const companyMenuItems: NestedMenuItem[] = [
         ]
       },
     ]
+  },
+  {
+    name: '정부지원사업',
+    icon: RxRocket,
+    href: '/dashboard-group/apps/government-programs',
   },
 ]
 
