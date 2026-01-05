@@ -2332,6 +2332,52 @@ export default function GovernmentProgramsPage() {
                 </div>
               </div>
 
+              {/* 지원유형 필터 */}
+              <div>
+                <h3 className={cn("text-xs font-semibold uppercase tracking-wider mb-3", theme.textMuted)}>지원유형</h3>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setSelectedSupportType(null)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all",
+                      !selectedSupportType
+                        ? ""
+                        : isDark ? "text-zinc-400 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
+                    )}
+                    style={!selectedSupportType ? {
+                      backgroundColor: `${themeColor}20`,
+                      color: themeColor
+                    } : undefined}
+                  >
+                    <span>전체</span>
+                  </button>
+                  {Object.entries(SUPPORT_TYPE_COLORS).map(([type, color]) => (
+                    <button
+                      key={type}
+                      onClick={() => setSelectedSupportType(type)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all",
+                        selectedSupportType === type
+                          ? ""
+                          : isDark ? "text-zinc-400 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
+                      )}
+                      style={selectedSupportType === type ? {
+                        backgroundColor: `${color}20`,
+                        color: color
+                      } : undefined}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span>{type}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 분야 필터 */}
               <div>
                 <h3 className={cn("text-xs font-semibold uppercase tracking-wider mb-3", theme.textMuted)}>분야</h3>
