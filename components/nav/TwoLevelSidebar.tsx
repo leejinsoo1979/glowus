@@ -99,6 +99,25 @@ import {
   Github,
   LayoutGrid,
   GanttChart,
+  BookmarkCheck,
+  Bell,
+  FileCheck,
+  Upload,
+  HeartHandshake,
+  DollarSign,
+  Trophy,
+  Filter,
+  Milestone,
+  AlertTriangle,
+  FolderArchive,
+  FileSpreadsheet,
+  BadgeCheck,
+  ClipboardCheck,
+  ScrollText,
+  Banknote,
+  Award,
+  XCircle,
+  BookOpen,
 } from 'lucide-react'
 import { SiPython } from 'react-icons/si'
 
@@ -123,6 +142,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '기업 현황',
     icon: Building2,
+    href: '/dashboard-group/erp',
     children: [
       { name: 'ERP 대시보드', href: '/dashboard-group/erp', icon: PieChart },
       { name: '회사정보 관리', href: '/dashboard-group/erp/company', icon: Building2 },
@@ -135,6 +155,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '인사관리',
     icon: UserCog,
+    href: '/dashboard-group/hr',
     children: [
       {
         name: '인사',
@@ -249,6 +270,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '매출입관리',
     icon: Receipt,
+    href: '/dashboard-group/sales',
     children: [
       {
         name: '매출입',
@@ -382,6 +404,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '급여관리',
     icon: Wallet,
+    href: '/dashboard-group/payroll',
     children: [
       {
         name: '급여',
@@ -435,6 +458,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '경비관리',
     icon: CreditCard,
+    href: '/dashboard-group/expenses',
     children: [
       {
         name: '경비',
@@ -491,6 +515,7 @@ const companyMenuItems: NestedMenuItem[] = [
   {
     name: '리포트',
     icon: ClipboardList,
+    href: '/dashboard-group/reports',
     children: [
       {
         name: '리포트',
@@ -509,6 +534,96 @@ const companyMenuItems: NestedMenuItem[] = [
     name: '정부지원사업',
     icon: RxRocket,
     href: '/dashboard-group/company/government-programs',
+    children: [
+      // 0) 대시보드
+      {
+        name: '대시보드',
+        href: '/dashboard-group/company/government-programs',
+        icon: LayoutDashboard
+      },
+      // 1) 공고 탐색
+      {
+        name: '공고 탐색',
+        icon: Search,
+        children: [
+          { name: '공고 검색', href: '/dashboard-group/company/government-programs/search', icon: Search },
+          { name: '추천 공고', href: '/dashboard-group/company/government-programs/recommended', icon: Sparkles },
+          { name: '북마크', href: '/dashboard-group/company/government-programs/bookmarks', icon: BookmarkCheck },
+          { name: '알림 설정', href: '/dashboard-group/company/government-programs/alerts', icon: Bell },
+        ]
+      },
+      // 2) 신청 준비
+      {
+        name: '신청 준비',
+        icon: FileCheck,
+        children: [
+          { name: '준비 체크리스트', href: '/dashboard-group/company/government-programs/checklist', icon: ClipboardCheck },
+          { name: '구비 서류', href: '/dashboard-group/company/government-programs/documents', icon: FolderOpen },
+          { name: 'AI 자격진단', href: '/dashboard-group/company/government-programs/ai-diagnosis', icon: Bot },
+          { name: '회사 프로필', href: '/dashboard-group/company/government-programs/profile', icon: Building2 },
+          { name: '사업계획서 빌더', href: '/dashboard-group/company/government-programs/business-plan/builder', icon: FileText },
+        ]
+      },
+      // 3) 제출/접수
+      {
+        name: '제출/접수',
+        icon: Upload,
+        children: [
+          { name: '신청서 작성', href: '/dashboard-group/company/government-programs/application', icon: FileSignature },
+          { name: '제출 이력', href: '/dashboard-group/company/government-programs/submissions', icon: ScrollText },
+        ]
+      },
+      // 4) 선정/협약
+      {
+        name: '선정/협약',
+        icon: HeartHandshake,
+        children: [
+          { name: '선정 결과', href: '/dashboard-group/company/government-programs/results', icon: BadgeCheck },
+          { name: '협약서 관리', href: '/dashboard-group/company/government-programs/contracts', icon: FileSpreadsheet },
+        ]
+      },
+      // 5) 수행 관리
+      {
+        name: '수행 관리',
+        icon: GanttChart,
+        children: [
+          { name: '마일스톤', href: '/dashboard-group/company/government-programs/milestones', icon: Milestone },
+          { name: '진행 현황', href: '/dashboard-group/company/government-programs/progress', icon: Activity },
+          { name: '위험 관리', href: '/dashboard-group/company/government-programs/risks', icon: AlertTriangle },
+          { name: '자료 보관함', href: '/dashboard-group/company/government-programs/archive', icon: FolderArchive },
+        ]
+      },
+      // 6) 예산/보고
+      {
+        name: '예산/보고',
+        icon: Banknote,
+        children: [
+          { name: '예산 현황', href: '/dashboard-group/company/government-programs/budget', icon: PieChart },
+          { name: '지출 내역', href: '/dashboard-group/company/government-programs/expenses', icon: DollarSign },
+          { name: '보고서 관리', href: '/dashboard-group/company/government-programs/reports', icon: FileSpreadsheet },
+        ]
+      },
+      // 7) 성과/자산
+      {
+        name: '성과/자산',
+        icon: Award,
+        children: [
+          { name: '특허/IP', href: '/dashboard-group/company/government-programs/patents', icon: ShieldCheck },
+          { name: '논문/발표', href: '/dashboard-group/company/government-programs/publications', icon: BookOpen },
+          { name: '참여 연구원', href: '/dashboard-group/company/government-programs/researchers', icon: Users },
+        ]
+      },
+      // 8) 빠른 보기
+      {
+        name: '빠른 보기',
+        icon: Filter,
+        children: [
+          { name: '지원한 공고', href: '/dashboard-group/company/government-programs/applied', icon: Send },
+          { name: '선정된 공고', href: '/dashboard-group/company/government-programs/selected', icon: Trophy },
+          { name: '미선정 공고', href: '/dashboard-group/company/government-programs/rejected', icon: XCircle },
+        ]
+      },
+    ]
   },
 ]
 
@@ -766,14 +881,18 @@ function TopLevelCardMenu({
   const IconComponent = item.icon
   const { accentColor } = useThemeStore()
 
-  // href가 있고 children이 없으면 직접 링크
-  const isDirectLink = item.href && !item.children
-
   const handleClick = () => {
-    if (isDirectLink && item.href) {
+    // 하위 메뉴 토글
+    onToggle()
+
+    // 페이지 이동: href가 있으면 그 href로, 없으면 첫번째 자식의 href로
+    if (item.href) {
       router.push(item.href)
-    } else {
-      onToggle()
+    } else if (item.children && item.children.length > 0) {
+      const firstChildHref = item.children[0].href
+      if (firstChildHref) {
+        router.push(firstChildHref)
+      }
     }
   }
 
@@ -860,14 +979,14 @@ function TopLevelCardMenu({
       case 'blue':
       default:
         return {
-          border: 'hover:border-blue-500 focus:border-blue-500',
-          text: 'group-hover:text-blue-600 dark:group-hover:text-blue-400',
-          bg: 'hover:bg-blue-50 dark:hover:bg-blue-900/10',
-          iconBg: 'group-hover:bg-blue-100 dark:group-hover:bg-blue-500/20',
-          activeBorder: 'border-blue-600 ring-1 ring-blue-600',
-          activeText: 'text-blue-600 dark:text-blue-400',
-          activeBg: 'bg-blue-50 dark:bg-blue-900/20',
-          activeIconBg: 'bg-blue-100 dark:bg-blue-500/20'
+          border: 'hover:border-accent focus:border-accent',
+          text: 'group-hover:text-accent',
+          bg: 'hover:bg-accent/10',
+          iconBg: 'group-hover:bg-accent/20',
+          activeBorder: 'border-accent ring-1 ring-accent',
+          activeText: 'text-accent',
+          activeBg: 'bg-accent/10',
+          activeIconBg: 'bg-accent/20'
         }
     }
   }
@@ -895,9 +1014,8 @@ function TopLevelCardMenu({
       )}>
         {IconComponent && (
           <IconComponent
-            strokeWidth={1.5}
             className={cn(
-              'w-8 h-8 transition-colors', // 아이콘 크기 대폭 확대
+              'w-6 h-6 transition-colors [&>path]:stroke-[1] [&>line]:stroke-[1] [&>circle]:stroke-[1] [&>rect]:stroke-[1]',
               isDark ? 'text-zinc-400' : 'text-zinc-500',
               theme.text,
               isExpanded && theme.activeText
@@ -1090,6 +1208,13 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // 정부지원사업 페이지 진입 시 자동으로 해당 메뉴 선택
+  useEffect(() => {
+    if (pathname?.includes('/company/government-programs')) {
+      setSelectedCompanyMenu('정부지원사업')
+    }
+  }, [pathname])
 
   // Email sidebar resize effect (like ai-slides)
   useEffect(() => {
@@ -1349,7 +1474,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
       {/* Level 1: 아이콘 사이드바 */}
       <motion.aside
         className={cn(
-          'w-16 h-full flex flex-col items-center py-4 border-r transition-colors duration-300 z-20',
+          'w-16 h-full flex flex-col items-center py-4 transition-colors duration-300 z-20',
           isDashboardRoot
             ? (isDark
               ? 'bg-black/20 backdrop-blur-xl border-white/10'
@@ -1510,7 +1635,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.15 }}
               className={cn(
-                'h-full border-r flex items-start justify-center pt-3',
+                'h-full flex items-start justify-center pt-3',
                 isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
               )}
             >
@@ -1535,7 +1660,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: isResizingLevel2 ? 0 : 0.15 }}
               className={cn(
-                'h-full border-r overflow-hidden relative flex flex-col',
+                'h-full overflow-hidden relative flex flex-col',
                 isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
               )}
               style={{ width: level2Width }}
@@ -1725,7 +1850,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className={cn(
-                'h-full border-r overflow-hidden bg-white dark:bg-zinc-950',
+                'h-full overflow-hidden bg-white dark:bg-zinc-950',
                 isDashboardRoot
                   ? (isDark ? 'border-white/10' : 'border-zinc-200/50')
                   : isDark ? 'border-zinc-800' : 'border-zinc-200'
@@ -1862,7 +1987,10 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                         >
                           {/* 뒤로가기 버튼 */}
                           <button
-                            onClick={() => setSelectedCompanyMenu(null)}
+                            onClick={() => {
+                              setSelectedCompanyMenu(null)
+                              router.push('/dashboard-group/company')
+                            }}
                             className={cn(
                               'flex items-center gap-2 w-full px-2 py-2 mb-3 rounded-lg text-sm font-medium transition-colors',
                               isDark
@@ -2209,12 +2337,12 @@ function SearchPanel({ isDark }: { isDark: boolean }) {
                 className={cn(
                   "w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors",
                   index === selectedIndex
-                    ? isDark ? "bg-zinc-800 text-white" : "bg-blue-50 text-blue-900"
+                    ? isDark ? "bg-zinc-800 text-white" : "bg-accent/10 text-accent"
                     : isDark ? "hover:bg-zinc-800/50 text-zinc-300" : "hover:bg-zinc-50 text-zinc-700"
                 )}
               >
                 {suggestion.type === 'file' ? (
-                  <FileText className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                  <FileText className="w-4 h-4 flex-shrink-0 text-accent" />
                 ) : (
                   <Folder className="w-4 h-4 flex-shrink-0 text-amber-500" />
                 )}
