@@ -2159,6 +2159,11 @@ export default function AgentProfilePage() {
       title: string
       steps: WorkflowStep[]
     }
+    // 생성된 프로젝트 정보 (프로젝트 확인 버튼용)
+    createdProject?: {
+      id: string
+      name: string
+    }
   }>>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
@@ -3151,7 +3156,7 @@ export default function AgentProfilePage() {
     return parts.join('\n')
   }
 
-  // 업무 실행 (워크플로우 시각화 포함)
+  // 업무 실행 (실제 SuperAgent 모드로 동작)
   const executeTask = async (messageId: string, instruction: string) => {
     if (!agent) return
 
@@ -3162,124 +3167,118 @@ export default function AgentProfilePage() {
       msg.id === messageId ? { ...msg, taskStatus: 'running' as const } : msg
     ))
 
-    // 먼저 로딩 메시지 추가
+    // 워크플로우 시각화 메시지 추가 (실제 진행 상황만 표시)
+    const workflowSteps: WorkflowStep[] = [
+      {
+        id: 'step-execute',
+        name: '작업 실행',
+        description: 'AI가 요청을 처리합니다',
+        type: 'ai',
+        status: 'running',
+        startedAt: new Date().toISOString(),
+      },
+    ]
+
     const loadingMessage = {
       id: workflowMsgId,
       role: 'agent' as const,
-      content: '🔄 업무를 분석하고 워크플로우를 생성하는 중...',
+      content: '🔄 업무를 실행하는 중...',
       timestamp: new Date(),
       workflow: {
-        title: '워크플로우 생성 중...',
-        steps: [
-          {
-            id: 'loading',
-            name: '스킬 분석 중',
-            description: 'AI가 필요한 스킬을 조합하고 있습니다',
-            type: 'ai' as const,
-            status: 'running' as const,
-          },
-        ],
+        title: instruction.substring(0, 30) + (instruction.length > 30 ? '...' : ''),
+        steps: workflowSteps,
       },
     }
     setChatMessages(prev => [...prev, loadingMessage])
 
-    // AI 기반 워크플로우 생성 (스킬 조합)
-    const { title: workflowTitle, steps: workflowSteps, matchedSkills } = await generateWorkflowSteps(instruction)
-
-    // 워크플로우 시각화 메시지 업데이트
-    setChatMessages(prev => prev.map(msg =>
-      msg.id === workflowMsgId ? {
-        ...msg,
-        content: matchedSkills.length > 0
-          ? `📋 ${matchedSkills.map(s => s.name).join(' → ')} 스킬을 조합하여 실행합니다`
-          : '📋 업무를 실행합니다...',
-        workflow: {
-          title: workflowTitle,
-          steps: workflowSteps,
-        },
-      } : msg
-    ))
-
     try {
-      // 워크플로우 컨텍스트 (이전 단계 결과를 다음 단계에 전달)
-      let workflowContext: Record<string, any> = {
-        instruction,
-        url: instruction.match(/https?:\/\/[^\s]+/)?.[0], // URL 추출
+
+      // 🚀 실제 Amy Chat API 호출 (SuperAgent 모드)
+      const res = await fetch(`/api/agents/${agent.id}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: instruction,
+          conversation_history: chatMessages.slice(-10).map((m) => ({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.content,
+          })),
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`API 오류: ${res.status}`)
       }
-      const toolsUsed: string[] = []
-      const sources: string[] = []
 
-      // 각 단계를 순차적으로 실행 (실제 스킬 API 호출)
-      for (let i = 0; i < workflowSteps.length; i++) {
-        const step = workflowSteps[i]
+      const data = await res.json()
+      let responseContent = data.response || '응답을 생성하지 못했습니다.'
+      const toolsUsed: string[] = data.toolsUsed || []
+      let createdProjectInfo: { id: string; name: string } | undefined = undefined
 
-        // 현재 단계를 running으로 변경
-        updateWorkflowStep(workflowMsgId, step.id, {
-          status: 'running',
-          startedAt: new Date().toISOString(),
-        })
+      // SuperAgent 모드에서는 서버에서 이미 도구가 실행됨
+      // actions는 실행된 결과의 기록이므로, 클라이언트에서 중복 실행하지 않음
+      if (data.superAgentMode && data.actions && data.actions.length > 0) {
+        console.log('[TaskMode] 🤖 SuperAgent mode - actions already executed on server:', data.actions.length)
 
-        let stepResult: any = null
-        let stepError: string | undefined
+        // 프로젝트 생성 감지 (이미 실행된 결과에서 추출)
+        const projectAction = (data.actions as ToolAction[]).find(
+          (action) => action.type === 'create_project' && action.data?.projectId
+        )
+        if (projectAction && projectAction.data) {
+          createdProjectInfo = {
+            id: projectAction.data.projectId as string,
+            name: (projectAction.data.name as string) || '프로젝트',
+          }
+          console.log('[TaskMode] ✅ Project detected from server response:', createdProjectInfo)
+        }
+
+      } else if (data.actions && data.actions.length > 0) {
+        // 일반 모드에서는 클라이언트에서 액션 실행
+        console.log('[TaskMode] 🤖 Executing actions on client:', data.actions.length)
 
         try {
-          // 스킬 엔드포인트가 있으면 실제 API 호출
-          if (step.endpoint) {
-            console.log(`[Workflow] Executing step: ${step.name} (${step.endpoint})`)
-            toolsUsed.push(step.skillId || step.name)
+          const agentActions = (data.actions as ToolAction[])
+            .map((action) => convertToolAction(action))
+            .filter((a): a is AgentAction => a !== null)
 
-            // 스킬별 입력 파라미터 구성
-            const params = buildSkillParams(step.skillId || '', workflowContext)
+          const results = await executeActions(agentActions)
+          const actionSummary = formatActionResultsForChat(results)
 
-            const res = await fetch(step.endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(params),
-            })
-
-            const result = await res.json()
-
-            if (result.success) {
-              stepResult = result
-              // 결과를 컨텍스트에 저장 (다음 단계에서 사용)
-              if (result.transcript) workflowContext.transcript = result.transcript
-              if (result.summary) workflowContext.summary = result.summary
-              if (result.presentation) workflowContext.presentation = result.presentation
-              if (result.downloadUrl) workflowContext.downloadUrl = result.downloadUrl
-              if (result.url) sources.push(result.url)
-              if (result.downloadUrl) sources.push(result.downloadUrl)
-            } else {
-              stepError = result.error || '스킬 실행 실패'
-            }
-          } else if (step.type === 'ai') {
-            // AI 단계: 컨텍스트 기반 처리
-            await new Promise(resolve => setTimeout(resolve, 500))
-            stepResult = { success: true, message: step.name }
-          } else {
-            // 엔드포인트 없는 단계: 시뮬레이션
-            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500))
-            stepResult = { success: true }
+          if (actionSummary) {
+            responseContent += '\n\n---\n**실행 결과:**\n' + actionSummary
           }
 
-          // 단계 완료
-          updateWorkflowStep(workflowMsgId, step.id, {
-            status: stepError ? 'failed' : 'completed',
-            result: stepResult ? (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult).substring(0, 100)) : undefined,
-            error: stepError,
-            completedAt: new Date().toISOString(),
+          // 프로젝트 생성 감지
+          const projectResult = results.find(r =>
+            r.success && r.action.type === 'create_project' && r.result
+          )
+          if (projectResult && projectResult.result) {
+            const projectData = (projectResult.result as { project?: { id: string; name: string } }).project
+            if (projectData) {
+              createdProjectInfo = { id: projectData.id, name: projectData.name }
+            }
+          }
+
+          // 실행된 도구 추가
+          results.forEach(r => {
+            if (r.success && !toolsUsed.includes(r.action.type)) {
+              toolsUsed.push(r.action.type)
+            }
           })
-        } catch (err) {
-          stepError = err instanceof Error ? err.message : '단계 실행 오류'
-          updateWorkflowStep(workflowMsgId, step.id, {
-            status: 'failed',
-            error: stepError,
-            completedAt: new Date().toISOString(),
-          })
+
+          console.log('[TaskMode] ✅ Actions executed:', results.filter(r => r.success).length, 'succeeded')
+        } catch (actionError) {
+          console.error('[TaskMode] ❌ Action error:', actionError)
+          responseContent += '\n\n⚠️ 일부 작업 실행 중 오류가 발생했습니다.'
         }
       }
 
-      // 최종 결과 생성
-      const finalOutput = generateFinalOutput(workflowContext)
+      // 작업 실행 완료 (실제 API 응답 후)
+      updateWorkflowStep(workflowMsgId, 'step-execute', {
+        status: 'completed',
+        result: toolsUsed.length > 0 ? `사용된 도구: ${toolsUsed.join(', ')}` : '완료',
+        completedAt: new Date().toISOString(),
+      })
 
       // 원본 메시지 상태 업데이트
       setChatMessages(prev => prev.map(msg =>
@@ -3287,8 +3286,8 @@ export default function AgentProfilePage() {
           ...msg,
           taskStatus: 'completed' as const,
           taskResult: {
-            output: finalOutput,
-            sources,
+            output: responseContent,
+            sources: [],
             toolsUsed,
           },
         } : msg
@@ -3303,19 +3302,25 @@ export default function AgentProfilePage() {
       ))
 
       // 실행 결과를 별도 메시지로 추가
-      if (finalOutput) {
-        const resultMessage = {
-          id: `result-${Date.now()}`,
-          role: 'agent' as const,
-          content: finalOutput,
-          timestamp: new Date(),
-          emotion: 'happy' as EmotionType,
-        }
-        setChatMessages(prev => [...prev, resultMessage])
-        saveMessageToHistory('agent', finalOutput, undefined, 'happy')
+      const detectedEmotions = detectEmotionsInOrder(responseContent, allEmotions)
+      const detectedEmotion = detectedEmotions.length > 0 ? detectedEmotions[0] : 'happy'
+
+      const resultMessage = {
+        id: `result-${Date.now()}`,
+        role: 'agent' as const,
+        content: responseContent,
+        timestamp: new Date(),
+        emotion: detectedEmotion,
+        emotions: detectedEmotions,
+        createdProject: createdProjectInfo, // 프로젝트 확인 버튼용
       }
+      setChatMessages(prev => [...prev, resultMessage])
+      saveMessageToHistory('agent', responseContent, undefined, detectedEmotion)
+
     } catch (error) {
-      // 모든 pending 단계를 failed로 변경
+      console.error('[TaskMode] Error:', error)
+
+      // 워크플로우 실패 표시
       setChatMessages(prev => prev.map(msg => {
         if (msg.id === workflowMsgId && msg.workflow) {
           return {
@@ -3346,6 +3351,15 @@ export default function AgentProfilePage() {
           },
         } : msg
       ))
+
+      // 에러 메시지 추가
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        role: 'agent' as const,
+        content: `❌ 업무 실행 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
+        timestamp: new Date(),
+      }
+      setChatMessages(prev => [...prev, errorMessage])
     }
   }
 
@@ -3355,7 +3369,6 @@ export default function AgentProfilePage() {
 
     const instruction = chatInput.trim()
     setChatInput('')
-    setIsAnalyzingTask(true)
 
     // 사용자 메시지를 먼저 추가
     const userMessage = {
@@ -3366,59 +3379,9 @@ export default function AgentProfilePage() {
     }
     setChatMessages(prev => [...prev, userMessage])
 
-    try {
-      const response = await fetch('/api/agent-tasks/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instruction,
-          agent_id: agent.id,
-          task_model: selectedTaskModel,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('업무 분석 실패')
-      }
-
-      const data = await response.json()
-
-      // 특수 액션 타입 처리 (프로젝트 생성 등)
-      if (data.action_type && data.action_type !== 'general') {
-        // 폼 초기값 설정
-        const initialFormData: Record<string, string> = {}
-        if (data.extracted_data?.suggestedName) {
-          initialFormData.name = data.extracted_data.suggestedName
-        }
-        setActionFormData(initialFormData)
-
-        setPendingAction({
-          action_type: data.action_type,
-          confirmation_message: data.confirmation_message,
-          input_fields: data.input_fields || [],
-          extracted_data: data.extracted_data,
-        })
-      } else {
-        // 일반 업무 분석
-        setPendingTask({
-          analysis: data.analysis,
-          confirmation_message: data.confirmation_message,
-          original_instruction: instruction,
-        })
-      }
-    } catch (error) {
-      console.error('업무 분석 오류:', error)
-      // 에러 메시지 추가
-      const errorMessage = {
-        id: `error-${Date.now()}`,
-        role: 'agent' as const,
-        content: '죄송합니다. 업무 분석 중 오류가 발생했습니다. 다시 시도해주세요.',
-        timestamp: new Date(),
-      }
-      setChatMessages(prev => [...prev, errorMessage])
-    } finally {
-      setIsAnalyzingTask(false)
-    }
+    // 🚀 모든 업무 지시는 SuperAgent 모드로 자동 실행 (분석 API 호출 없이 바로 실행)
+    // 특수 액션(create_project 등)도 폼 없이 바로 워크플로우 실행
+    await executeTask(userMessage.id, instruction)
   }
 
   // 업무 실행 승인
@@ -3520,12 +3483,16 @@ export default function AgentProfilePage() {
 
         const project = await response.json()
 
-        // 성공 메시지
+        // 성공 메시지 (프로젝트 확인 버튼 포함)
         const successMessage = {
           id: `action-success-${Date.now()}`,
           role: 'agent' as const,
           content: `✅ 프로젝트를 생성했습니다!\n\n**${project.name}**\n${project.description ? `설명: ${project.description}\n` : ''}우선순위: ${project.priority}${project.deadline ? `\n마감일: ${project.deadline}` : ''}`,
           timestamp: new Date(),
+          createdProject: {
+            id: project.id,
+            name: project.name,
+          },
         }
         setChatMessages(prev => [...prev, successMessage])
         saveMessageToHistory('agent', successMessage.content)
@@ -4527,6 +4494,8 @@ export default function AgentProfilePage() {
         let responseContent = data.response || '응답을 생성하지 못했습니다.'
 
         // 🚀 Autonomous Agent 액션 실행
+        let createdProjectInfo: { id: string; name: string } | undefined = undefined
+
         if (data.actions && data.actions.length > 0) {
           console.log('[AgentChat] 🤖 Executing autonomous actions:', data.actions.length)
 
@@ -4543,6 +4512,18 @@ export default function AgentProfilePage() {
             // 액션 결과를 응답에 추가
             if (actionSummary) {
               responseContent += '\n\n---\n**실행 결과:**\n' + actionSummary
+            }
+
+            // 🚀 프로젝트 생성 액션 감지 (프로젝트 확인 버튼용)
+            const projectResult = results.find(r =>
+              r.success && r.action.type === 'create_project' && r.result
+            )
+            if (projectResult && projectResult.result) {
+              const projectData = (projectResult.result as { project?: { id: string; name: string } }).project
+              if (projectData) {
+                createdProjectInfo = { id: projectData.id, name: projectData.name }
+                console.log('[AgentChat] 📂 Project created:', createdProjectInfo.name)
+              }
             }
 
             console.log('[AgentChat] ✅ Actions executed:', results.filter(r => r.success).length, 'succeeded')
@@ -4590,6 +4571,7 @@ export default function AgentProfilePage() {
             emotion: detectedEmotion, // 하위 호환성
             emotions: detectedEmotions, // 다중 감정 (텍스트 순서)
             knowledgeSources: data.knowledgeSources, // 📚 지식베이스 출처
+            createdProject: createdProjectInfo, // 🚀 생성된 프로젝트 정보 (버튼 표시용)
           }
           setChatMessages((prev) => [...prev, agentMessage])
           setCurrentEmotion(detectedEmotion)
@@ -6388,6 +6370,22 @@ export default function AgentProfilePage() {
                                 )}
                                 <p className="text-sm whitespace-pre-wrap select-text">{msg.content}</p>
                               </div>
+                            )}
+
+                            {/* 🚀 프로젝트 확인 버튼 (프로젝트 생성 시) */}
+                            {msg.createdProject && (
+                              <button
+                                onClick={() => router.push(`/dashboard-group/projects/${msg.createdProject!.id}`)}
+                                className={cn(
+                                  'mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                                  isDark
+                                    ? 'bg-accent/20 text-accent hover:bg-accent/30 border border-accent/30'
+                                    : 'bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20'
+                                )}
+                              >
+                                <FolderOpen className="w-4 h-4" />
+                                프로젝트 확인
+                              </button>
                             )}
 
                             {/* 업무 지시 메시지: 상태 표시 (자동 실행) */}
@@ -9200,6 +9198,8 @@ export default function AgentProfilePage() {
                       let responseContent = data.response || '응답을 생성하지 못했습니다.'
 
                       // 🚀 Autonomous Agent 액션 실행
+                      let modalCreatedProject: { id: string; name: string } | undefined = undefined
+
                       if (data.actions && data.actions.length > 0) {
                         try {
                           // 🔥 ToolAction → AgentAction 변환
@@ -9211,6 +9211,17 @@ export default function AgentProfilePage() {
                           const actionSummary = formatActionResultsForChat(results)
                           if (actionSummary) {
                             responseContent += '\n\n---\n**실행 결과:**\n' + actionSummary
+                          }
+
+                          // 🚀 프로젝트 생성 액션 감지
+                          const projectResult = results.find(r =>
+                            r.success && r.action.type === 'create_project' && r.result
+                          )
+                          if (projectResult && projectResult.result) {
+                            const projectData = (projectResult.result as { project?: { id: string; name: string } }).project
+                            if (projectData) {
+                              modalCreatedProject = { id: projectData.id, name: projectData.name }
+                            }
                           }
                         } catch (actionError) {
                           console.error('[AgentChat] Action error:', actionError)
@@ -9226,6 +9237,7 @@ export default function AgentProfilePage() {
                         timestamp: new Date(),
                         emotion: detectedEmotion,
                         emotions: detectedEmotions,
+                        createdProject: modalCreatedProject, // 🚀 생성된 프로젝트 정보
                       }
                       setChatMessages((prev) => [...prev, agentMessage])
                       setCurrentEmotion(detectedEmotion)

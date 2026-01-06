@@ -117,12 +117,41 @@ export interface ToolExecutionResult {
 // ============================================
 // 1. 프로젝트 생성 도구
 // ============================================
+// 카테고리 ID 상수
+const PROJECT_CATEGORIES = {
+  development: '11111111-1111-1111-1111-111111111111', // 개발
+  document: '22222222-2222-2222-2222-222222222222',    // 문서
+  design: '33333333-3333-3333-3333-333333333333',      // 디자인
+  business: '44444444-4444-4444-4444-444444444444',    // 업무
+}
+
+// 프로젝트 이름/설명으로 카테고리 자동 분류
+function detectProjectCategory(name: string, description?: string): string {
+  const text = `${name} ${description || ''}`.toLowerCase()
+
+  // 개발 관련 키워드
+  if (/html|css|javascript|js|ts|react|vue|앱|app|웹|web|코드|code|프로그램|계산기|게임|카운터|메모장|todo|할일/.test(text)) {
+    return PROJECT_CATEGORIES.development
+  }
+  // 문서 관련 키워드
+  if (/문서|document|보고서|report|기획|plan|매뉴얼|manual|가이드|guide|readme/.test(text)) {
+    return PROJECT_CATEGORIES.document
+  }
+  // 디자인 관련 키워드
+  if (/디자인|design|ui|ux|로고|logo|아이콘|icon|이미지|image|그래픽/.test(text)) {
+    return PROJECT_CATEGORIES.design
+  }
+  // 기본값: 업무
+  return PROJECT_CATEGORIES.business
+}
+
 export const createProjectTool = new DynamicStructuredTool({
   name: 'create_project',
-  description: '새 프로젝트를 생성합니다. 프로젝트 이름, 설명, 우선순위 등을 지정할 수 있습니다.',
+  description: '새 프로젝트를 생성합니다. 프로젝트 이름, 설명, 우선순위, 카테고리 등을 지정할 수 있습니다.',
   schema: z.object({
     name: z.string().describe('프로젝트 이름 (필수)'),
     description: z.string().optional().describe('프로젝트 설명'),
+    category: z.enum(['development', 'document', 'design', 'business']).optional().describe('카테고리 (development=개발, document=문서, design=디자인, business=업무). 지정하지 않으면 자동 분류'),
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('우선순위'),
     deadline: z.string().optional().describe('마감일 (YYYY-MM-DD 형식)'),
     folderPath: z.string().optional().describe('프로젝트 폴더 경로 (Electron에서만)'),
@@ -132,12 +161,18 @@ export const createProjectTool = new DynamicStructuredTool({
     const supabase = createAdminClient()
 
     try {
+      // 카테고리 결정 (명시적 지정 또는 자동 분류)
+      const categoryId = params.category
+        ? PROJECT_CATEGORIES[params.category]
+        : detectProjectCategory(params.name, params.description)
+
       // 실제로 DB에 프로젝트 생성
       const { data, error } = await supabase
         .from('projects')
         .insert({
           name: params.name,
           description: params.description || null,
+          category_id: categoryId,
           priority: params.priority || 'medium',
           deadline: params.deadline || null,
           folder_path: params.folderPath || null,
@@ -158,7 +193,8 @@ export const createProjectTool = new DynamicStructuredTool({
         })
       }
 
-      console.log('[create_project] ✅ Created project:', data.id, data.name)
+      const categoryName = Object.entries(PROJECT_CATEGORIES).find(([, v]) => v === categoryId)?.[0] || 'unknown'
+      console.log('[create_project] ✅ Created project:', data.id, data.name, '카테고리:', categoryName)
 
       // 🔥 프로젝트용 neural_map 생성 (파일 저장용)
       const userId = ctx.userId || '00000000-0000-0000-0000-000000000001'
