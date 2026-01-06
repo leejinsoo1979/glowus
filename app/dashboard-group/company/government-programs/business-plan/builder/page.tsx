@@ -9,7 +9,7 @@ import {
   ChevronRight, ArrowLeft, RefreshCw, Pause,
   FileDown, StopCircle
 } from 'lucide-react'
-import { useThemeStore } from '@/stores/themeStore'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -122,7 +122,8 @@ export default function PipelineBuilderPage() {
   const [editContent, setEditContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { themeColor } = useThemeStore()
+  const { accentColor } = useThemeStore()
+  const themeColorHex = accentColors.find(c => c.id === accentColor)?.color || '#3b82f6'
 
   const eventSourceRef = useRef<EventSource | null>(null)
 
@@ -154,6 +155,18 @@ export default function PipelineBuilderPage() {
     try {
       const res = await fetch(`/api/business-plans/${planId}`)
       const data = await res.json()
+
+      // API 에러 응답 처리
+      if (!res.ok || data.error) {
+        setError(data.error || '사업계획서를 찾을 수 없습니다')
+        return
+      }
+
+      if (!data.plan) {
+        setError('사업계획서 데이터가 없습니다')
+        return
+      }
+
       setPlan(data.plan)
       setQuestions(data.questions || [])
     } catch (error) {
@@ -170,6 +183,13 @@ export default function PipelineBuilderPage() {
     try {
       const res = await fetch(`/api/business-plans/${planId}/pipeline`)
       const data = await res.json()
+
+      // API 에러 응답 처리
+      if (!res.ok || data.error) {
+        console.error('Pipeline status error:', data.error)
+        return
+      }
+
       if (data.stages) {
         setStages(data.stages)
       }
@@ -513,7 +533,7 @@ export default function PipelineBuilderPage() {
                 <button
                   onClick={runPipeline}
                   className="flex items-center gap-2 px-4 py-2 text-white rounded-lg"
-                  style={{ backgroundColor: themeColor }}
+                  style={{ backgroundColor: themeColorHex }}
                 >
                   <Play className="w-4 h-4" />
                   자동 생성
