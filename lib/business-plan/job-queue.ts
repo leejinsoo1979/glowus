@@ -447,9 +447,9 @@ export async function cancelJob(jobId: string): Promise<boolean> {
 // =====================================================
 
 const RATE_LIMITS = {
-  JOBS_PER_HOUR: 10,
-  JOBS_PER_DAY: 50,
-  CONCURRENT_JOBS: 3
+  JOBS_PER_HOUR: 100,   // 개발용 증가
+  JOBS_PER_DAY: 500,    // 개발용 증가
+  CONCURRENT_JOBS: 10   // 개발용 증가
 }
 
 export async function checkRateLimit(userId: string, companyId: string): Promise<{ allowed: boolean; reason?: string }> {
