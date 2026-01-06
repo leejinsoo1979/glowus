@@ -25,7 +25,7 @@ import {
 } from 'docx'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForApi } from '@/lib/supabase/server'
 import { BusinessPlanSection } from './types'
 
 interface DocumentOptions {
@@ -478,22 +478,45 @@ export async function generateDocument(
   format: 'pdf' | 'docx' | 'hwp' = 'docx',
   options: Partial<DocumentOptions> = {}
 ): Promise<GeneratedDocument> {
-  const supabase = await createClient()
+  const supabase = await createClientForApi()
 
-  // 플랜 및 섹션 조회
+  // 플랜 조회
   const { data: plan, error: planError } = await supabase
     .from('business_plans')
-    .select(`
-      *,
-      template:business_plan_templates(*),
-      program:government_programs(title, organization)
-    `)
+    .select('*')
     .eq('id', planId)
     .single()
 
   if (planError || !plan) {
-    throw new Error('사업계획서를 찾을 수 없습니다')
+    console.error('[generateDocument] Plan query error:', planError)
+    console.error('[generateDocument] Plan ID:', planId)
+    throw new Error(`사업계획서를 찾을 수 없습니다: ${planError?.message || 'Plan is null'}`)
   }
+
+  // 템플릿 조회 (있는 경우)
+  let template = null
+  if (plan.template_id) {
+    const { data: templateData } = await supabase
+      .from('business_plan_templates')
+      .select('*')
+      .eq('id', plan.template_id)
+      .single()
+    template = templateData
+  }
+
+  // 공고 정보 조회 (있는 경우)
+  let program = null
+  if (plan.program_id) {
+    const { data: programData } = await supabase
+      .from('government_programs')
+      .select('title, organization')
+      .eq('id', plan.program_id)
+      .single()
+    program = programData
+  }
+
+  // plan 객체에 추가
+  const enrichedPlan = { ...plan, template, program }
 
   const { data: sections, error: sectionsError } = await supabase
     .from('business_plan_sections')
@@ -516,14 +539,14 @@ export async function generateDocument(
 
   switch (format) {
     case 'docx':
-      result = await generateDocx(plan, sections || [], fullOptions)
+      result = await generateDocx(enrichedPlan, sections || [], fullOptions)
       break
     case 'pdf':
-      result = await generatePdf(plan, sections || [], fullOptions)
+      result = await generatePdf(enrichedPlan, sections || [], fullOptions)
       break
     case 'hwp':
       // HWP는 DOCX로 대체 (한컴 API 연동 시 별도 구현)
-      result = await generateDocx(plan, sections || [], fullOptions)
+      result = await generateDocx(enrichedPlan, sections || [], fullOptions)
       result.filename = result.filename.replace('.docx', '.docx') // HWP 변환 필요
       break
     default:
@@ -585,27 +608,79 @@ export function generatePreviewHtml(plan: any, sections: BusinessPlanSection[]):
       box-sizing: border-box;
     }
 
+    /* 라이트 모드 (기본) */
+    :root {
+      --bg-page: #f5f5f5;
+      --bg-document: #ffffff;
+      --text-primary: #333333;
+      --text-secondary: #666666;
+      --text-muted: #999999;
+      --border-color: #333333;
+      --shadow-color: rgba(0, 0, 0, 0.1);
+      --placeholder-bg: #fff3cd;
+      --warning-bg: #fff3cd;
+      --warning-border: #ffc107;
+      --error-bg: #f8d7da;
+      --error-border: #dc3545;
+    }
+
+    /* 다크 모드 */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-page: #1a1a1a;
+        --bg-document: #262626;
+        --text-primary: #e5e5e5;
+        --text-secondary: #a3a3a3;
+        --text-muted: #737373;
+        --border-color: #525252;
+        --shadow-color: rgba(0, 0, 0, 0.3);
+        --placeholder-bg: #422006;
+        --warning-bg: #422006;
+        --warning-border: #d97706;
+        --error-bg: #450a0a;
+        --error-border: #dc2626;
+      }
+    }
+
+    /* 클래스 기반 다크 모드 (html.dark) */
+    html.dark {
+      --bg-page: #1a1a1a;
+      --bg-document: #262626;
+      --text-primary: #e5e5e5;
+      --text-secondary: #a3a3a3;
+      --text-muted: #737373;
+      --border-color: #525252;
+      --shadow-color: rgba(0, 0, 0, 0.3);
+      --placeholder-bg: #422006;
+      --warning-bg: #422006;
+      --warning-border: #d97706;
+      --error-bg: #450a0a;
+      --error-border: #dc2626;
+    }
+
     body {
       font-family: 'Noto Sans KR', ${formatting.font_family || '맑은 고딕'}, sans-serif;
       font-size: ${formatting.font_size || 11}pt;
       line-height: ${formatting.line_spacing || 1.6};
-      color: #333;
-      background: #f5f5f5;
+      color: var(--text-primary);
+      background: var(--bg-page);
       padding: 20px;
+      transition: background-color 0.3s, color 0.3s;
     }
 
     .document {
       max-width: 210mm;
       margin: 0 auto;
-      background: white;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      background: var(--bg-document);
+      box-shadow: 0 2px 10px var(--shadow-color);
       padding: 25mm;
+      transition: background-color 0.3s;
     }
 
     .cover {
       text-align: center;
       padding: 50mm 0;
-      border-bottom: 2px solid #333;
+      border-bottom: 2px solid var(--border-color);
       margin-bottom: 30mm;
     }
 
@@ -613,17 +688,18 @@ export function generatePreviewHtml(plan: any, sections: BusinessPlanSection[]):
       font-size: 24pt;
       font-weight: 700;
       margin-bottom: 20px;
+      color: var(--text-primary);
     }
 
     .cover .subtitle {
       font-size: 14pt;
-      color: #666;
+      color: var(--text-secondary);
       margin-bottom: 30px;
     }
 
     .cover .date {
       font-size: 12pt;
-      color: #999;
+      color: var(--text-muted);
     }
 
     .section {
@@ -635,13 +711,15 @@ export function generatePreviewHtml(plan: any, sections: BusinessPlanSection[]):
       font-size: 14pt;
       font-weight: 700;
       padding-bottom: 8px;
-      border-bottom: 2px solid #333;
+      border-bottom: 2px solid var(--border-color);
       margin-bottom: 15px;
+      color: var(--text-primary);
     }
 
     .section-content {
       text-align: justify;
       white-space: pre-wrap;
+      color: var(--text-primary);
     }
 
     .section-content p {
@@ -649,29 +727,41 @@ export function generatePreviewHtml(plan: any, sections: BusinessPlanSection[]):
     }
 
     .placeholder {
-      background: #fff3cd;
+      background: var(--placeholder-bg);
       padding: 2px 6px;
       border-radius: 3px;
       font-weight: 500;
+      color: var(--text-primary);
     }
 
     .validation-warning {
-      background: #fff3cd;
-      border-left: 4px solid #ffc107;
+      background: var(--warning-bg);
+      border-left: 4px solid var(--warning-border);
       padding: 10px 15px;
       margin: 10px 0;
       font-size: 10pt;
+      color: var(--text-primary);
     }
 
     .validation-error {
-      background: #f8d7da;
-      border-left: 4px solid #dc3545;
+      background: var(--error-bg);
+      border-left: 4px solid var(--error-border);
       padding: 10px 15px;
       margin: 10px 0;
       font-size: 10pt;
+      color: var(--text-primary);
     }
 
     @media print {
+      :root {
+        --bg-page: white;
+        --bg-document: white;
+        --text-primary: #333333;
+        --text-secondary: #666666;
+        --text-muted: #999999;
+        --border-color: #333333;
+      }
+
       body {
         background: white;
         padding: 0;

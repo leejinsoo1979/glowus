@@ -352,23 +352,14 @@ export default function PipelineBuilderPage() {
     if (!planId) return
 
     try {
-      const res = await fetch(`/api/business-plans/${planId}/pipeline`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'generate_document',
-          options: { format }
-        })
-      })
+      // 직접 다운로드 API 호출
+      const downloadUrl = `/api/business-plans/${planId}/download?format=${format}`
 
-      const data = await res.json()
-      if (data.success) {
-        // 새로고침하여 다운로드 링크 확인
-        fetchPipelineStatus()
-        alert(`${format.toUpperCase()} 문서가 생성되었습니다`)
-      }
+      // 새 창에서 다운로드 (브라우저가 파일로 인식)
+      window.open(downloadUrl, '_blank')
     } catch (err) {
       console.error('Download failed:', err)
+      alert('다운로드 중 오류가 발생했습니다.')
     }
   }
 
@@ -435,20 +426,20 @@ export default function PipelineBuilderPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-zinc-900">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-zinc-500" />
       </div>
     )
   }
 
   if (!planId && !programId) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <FileText className="w-16 h-16 text-gray-300" />
-        <p className="text-gray-500">사업계획서 ID가 필요합니다</p>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-gray-50 dark:bg-zinc-900">
+        <FileText className="w-16 h-16 text-gray-300 dark:text-zinc-600" />
+        <p className="text-gray-500 dark:text-zinc-400">사업계획서 ID가 필요합니다</p>
         <Link
           href="/dashboard-group/company/government-programs"
-          className="px-4 py-2 text-sm bg-black text-white rounded-lg"
+          className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black rounded-lg"
         >
           공고 목록으로
         </Link>
@@ -457,22 +448,22 @@ export default function PipelineBuilderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900">
       {/* 헤더 */}
-      <div className="bg-white border-b sticky top-0 z-10">
+      <div className="bg-white dark:bg-zinc-800 border-b dark:border-zinc-700 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Link
                 href="/dashboard-group/company/government-programs"
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-lg"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-5 h-5 text-gray-700 dark:text-zinc-300" />
               </Link>
               <div>
-                <h1 className="text-lg font-semibold">{plan?.title || '새 사업계획서'}</h1>
+                <h1 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">{plan?.title || '새 사업계획서'}</h1>
                 {plan?.program && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 dark:text-zinc-400">
                     {plan.program.organization} · {plan.program.title}
                   </p>
                 )}
@@ -482,18 +473,18 @@ export default function PipelineBuilderPage() {
             <div className="flex items-center gap-3">
               {/* 진행률 */}
               {running && currentJob && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                  <span className="text-sm font-medium text-blue-600">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950 rounded-full">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
                     {currentJob.progress}%
                   </span>
                 </div>
               )}
 
               {/* 완료율 */}
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full">
-                <Zap className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-600">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-zinc-700 rounded-full">
+                <Zap className="w-4 h-4 text-gray-600 dark:text-zinc-300" />
+                <span className="text-sm text-gray-600 dark:text-zinc-300">
                   {plan?.completion_percentage || 0}% 완료
                 </span>
               </div>
@@ -502,10 +493,10 @@ export default function PipelineBuilderPage() {
               <div className="flex gap-1">
                 <button
                   onClick={() => downloadDocument('docx')}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-lg"
                   title="DOCX 다운로드"
                 >
-                  <FileDown className="w-5 h-5" />
+                  <FileDown className="w-5 h-5 text-gray-600 dark:text-zinc-300" />
                 </button>
               </div>
 
@@ -533,12 +524,12 @@ export default function PipelineBuilderPage() {
 
           {/* 에러 표시 */}
           {error && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-600" />
-              <span className="text-sm text-red-700">{error}</span>
+            <div className="mt-3 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+              <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
               <button
                 onClick={() => setError(null)}
-                className="ml-auto text-red-600 hover:text-red-800"
+                className="ml-auto text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
               >
                 ×
               </button>
@@ -557,8 +548,8 @@ export default function PipelineBuilderPage() {
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-gray-50 text-gray-900 font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 font-medium'
+                    : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200'
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
@@ -586,23 +577,23 @@ export default function PipelineBuilderPage() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className={`p-4 bg-white rounded-xl border-2 transition-all ${
+                  className={`p-4 rounded-xl border-2 transition-all ${
                     stage.status === 'completed'
-                      ? 'border-green-200 bg-green-50'
+                      ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950'
                       : stage.status === 'processing'
-                        ? 'border-blue-300 bg-blue-50 shadow-lg'
+                        ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950 shadow-lg'
                         : stage.status === 'failed'
-                          ? 'border-red-200 bg-red-50'
-                          : 'border-gray-100'
+                          ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'
+                          : 'border-gray-100 bg-white dark:border-zinc-700 dark:bg-zinc-800'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     {/* 상태 아이콘 */}
                     <div className={`p-2 rounded-lg ${
-                      stage.status === 'completed' ? 'bg-green-100' :
-                      stage.status === 'processing' ? 'bg-blue-100' :
-                      stage.status === 'failed' ? 'bg-red-100' :
-                      'bg-gray-100'
+                      stage.status === 'completed' ? 'bg-green-100 dark:bg-green-900' :
+                      stage.status === 'processing' ? 'bg-blue-100 dark:bg-blue-900' :
+                      stage.status === 'failed' ? 'bg-red-100 dark:bg-red-900' :
+                      'bg-gray-100 dark:bg-zinc-700'
                     }`}>
                       {stage.status === 'completed' ? (
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -617,37 +608,37 @@ export default function PipelineBuilderPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-gray-400">
+                        <span className="text-xs font-medium text-gray-400 dark:text-zinc-500">
                           STAGE {stage.stage}
                         </span>
                         {stage.required && (
-                          <span className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">
+                          <span className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-600 dark:bg-zinc-700 dark:text-zinc-300 rounded">
                             필수
                           </span>
                         )}
                       </div>
-                      <h3 className="font-medium mt-1">{stage.name}</h3>
-                      <p className="text-sm text-gray-500 mt-0.5">{stage.description}</p>
+                      <h3 className="font-medium mt-1 text-gray-900 dark:text-zinc-100">{stage.name}</h3>
+                      <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">{stage.description}</p>
 
                       {/* 진행률 바 */}
                       {stage.status === 'processing' && stage.progress !== undefined && (
                         <div className="mt-2">
-                          <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-blue-100 dark:bg-blue-900 rounded-full overflow-hidden">
                             <motion.div
-                              className="h-full bg-blue-500"
+                              className="h-full bg-blue-500 dark:bg-blue-400"
                               initial={{ width: 0 }}
                               animate={{ width: `${stage.progress}%` }}
                             />
                           </div>
                           {stage.message && (
-                            <p className="text-xs text-blue-600 mt-1">{stage.message}</p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{stage.message}</p>
                           )}
                         </div>
                       )}
 
                       {/* 완료 정보 */}
                       {stage.status === 'completed' && stage.log && (
-                        <div className="flex gap-3 mt-2 text-xs text-gray-500">
+                        <div className="flex gap-3 mt-2 text-xs text-gray-500 dark:text-zinc-400">
                           {stage.log.duration_ms && (
                             <span>{(stage.log.duration_ms / 1000).toFixed(1)}초</span>
                           )}
@@ -678,13 +669,13 @@ export default function PipelineBuilderPage() {
             >
               {plan?.sections?.length ? (
                 plan.sections.map(section => (
-                  <div key={section.id} className="bg-white rounded-xl border overflow-hidden">
-                    <div className="p-4 border-b flex items-center justify-between">
+                  <div key={section.id} className="bg-white dark:bg-zinc-800 rounded-xl border dark:border-zinc-700 overflow-hidden">
+                    <div className="p-4 border-b dark:border-zinc-700 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-gray-400">
+                        <span className="text-sm font-medium text-gray-400 dark:text-zinc-500">
                           {section.section_order}.
                         </span>
-                        <h3 className="font-medium">{section.section_title}</h3>
+                        <h3 className="font-medium text-gray-900 dark:text-zinc-100">{section.section_title}</h3>
                         {section.validation_status === 'valid' && (
                           <CheckCircle2 className="w-4 h-4 text-green-500" />
                         )}
@@ -696,7 +687,7 @@ export default function PipelineBuilderPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-400 dark:text-zinc-500">
                           {section.char_count?.toLocaleString()}자
                           {section.max_char_limit && ` / ${section.max_char_limit.toLocaleString()}`}
                         </span>
@@ -704,7 +695,7 @@ export default function PipelineBuilderPage() {
                           <button
                             onClick={saveSection}
                             disabled={saving}
-                            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-black text-white rounded-lg"
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-black dark:bg-white text-white dark:text-black rounded-lg"
                           >
                             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                             저장
@@ -712,9 +703,9 @@ export default function PipelineBuilderPage() {
                         ) : (
                           <button
                             onClick={() => startEditing(section)}
-                            className="p-1.5 hover:bg-gray-100 rounded-lg"
+                            className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-lg"
                           >
-                            <Edit3 className="w-4 h-4" />
+                            <Edit3 className="w-4 h-4 text-gray-600 dark:text-zinc-400" />
                           </button>
                         )}
                       </div>
@@ -724,23 +715,23 @@ export default function PipelineBuilderPage() {
                         <textarea
                           value={editContent}
                           onChange={e => setEditContent(e.target.value)}
-                          className="w-full min-h-[300px] p-3 text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-black"
+                          className="w-full min-h-[300px] p-3 text-sm border dark:border-zinc-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100"
                           placeholder="섹션 내용을 입력하세요..."
                         />
                       ) : (
-                        <div className="prose prose-sm max-w-none">
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
                           {section.content ? (
                             <div
-                              className="whitespace-pre-wrap"
+                              className="whitespace-pre-wrap text-gray-700 dark:text-zinc-300"
                               dangerouslySetInnerHTML={{
                                 __html: section.content.replace(
                                   /\{\{미확정:([^}]+)\}\}/g,
-                                  '<mark class="bg-yellow-200 px-1 rounded">[$1]</mark>'
+                                  '<mark class="bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-200 px-1 rounded">[$1]</mark>'
                                 )
                               }}
                             />
                           ) : (
-                            <p className="text-gray-400 italic">내용이 없습니다. 파이프라인을 실행하세요.</p>
+                            <p className="text-gray-400 dark:text-zinc-500 italic">내용이 없습니다. 파이프라인을 실행하세요.</p>
                           )}
                         </div>
                       )}
@@ -751,9 +742,9 @@ export default function PipelineBuilderPage() {
                           <div
                             key={i}
                             className={`flex items-center gap-2 p-2 rounded text-sm ${
-                              msg.type === 'error' ? 'bg-red-50 text-red-700' :
-                              msg.type === 'warning' ? 'bg-yellow-50 text-yellow-700' :
-                              'bg-blue-50 text-blue-700'
+                              msg.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300' :
+                              msg.type === 'warning' ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300' :
+                              'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
                             }`}
                           >
                             {msg.type === 'error' ? <XCircle className="w-4 h-4" /> :
@@ -767,8 +758,8 @@ export default function PipelineBuilderPage() {
                   </div>
                 ))
               ) : (
-                <div className="text-center py-16 text-gray-500">
-                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <div className="text-center py-16 text-gray-500 dark:text-zinc-400">
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-zinc-600" />
                   <p>생성된 섹션이 없습니다</p>
                   <p className="text-sm mt-1">파이프라인을 실행하여 섹션을 생성하세요</p>
                 </div>
@@ -793,8 +784,8 @@ export default function PipelineBuilderPage() {
                   />
                 ))
               ) : (
-                <div className="text-center py-16 text-gray-500">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <div className="text-center py-16 text-gray-500 dark:text-zinc-400">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-zinc-600" />
                   <p>미확정 질문이 없습니다</p>
                   <p className="text-sm mt-1">모든 정보가 확정되었습니다</p>
                 </div>
@@ -829,32 +820,32 @@ function QuestionCard({
   }
 
   return (
-    <div className="bg-white rounded-xl border p-4">
+    <div className="bg-white dark:bg-zinc-800 rounded-xl border dark:border-zinc-700 p-4">
       <div className="flex items-start gap-3">
-        <div className="p-2 bg-purple-100 rounded-lg">
-          <MessageSquare className="w-5 h-5 text-purple-600" />
+        <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+          <MessageSquare className="w-5 h-5 text-purple-600 dark:text-purple-400" />
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             {question.section && (
-              <span className="text-xs px-2 py-0.5 bg-gray-100 rounded-full">
+              <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-zinc-700 text-gray-700 dark:text-zinc-300 rounded-full">
                 {question.section.section_title}
               </span>
             )}
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 dark:text-zinc-500">
               우선순위 {question.priority}
             </span>
           </div>
-          <p className="font-medium">{question.question_text}</p>
+          <p className="font-medium text-gray-900 dark:text-zinc-100">{question.question_text}</p>
           {question.context && (
-            <p className="text-sm text-gray-500 mt-1">{question.context}</p>
+            <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">{question.context}</p>
           )}
 
           <div className="mt-3">
             <textarea
               value={answer}
               onChange={e => setAnswer(e.target.value)}
-              className="w-full p-3 text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full p-3 text-sm border dark:border-zinc-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100"
               placeholder="답변을 입력하세요..."
               rows={3}
             />
