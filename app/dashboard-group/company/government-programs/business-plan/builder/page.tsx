@@ -153,11 +153,38 @@ export default function PipelineBuilderPage() {
 
   const fetchPlan = async () => {
     try {
+      console.log('[Builder] Fetching plan with ID:', planId)
       const res = await fetch(`/api/business-plans/${planId}`)
       const data = await res.json()
+      console.log('[Builder] API response:', { status: res.status, ok: res.ok, error: data.error, hasPlan: !!data.plan })
 
-      // API 에러 응답 처리
+      // API 에러 응답 처리 - 404인 경우 프로그램 ID일 수 있으므로 확인
       if (!res.ok || data.error) {
+        console.log('[Builder] Error response:', { status: res.status, error: data.error })
+
+        // Plan not found - 해당 ID가 정부지원사업 ID인지 확인
+        if (res.status === 404 || data.error === 'Plan not found') {
+          console.log('[Builder] Plan not found, checking if ID is a program ID...')
+
+          // 정부지원사업 ID인지 확인
+          const progRes = await fetch(`/api/government-programs?id=${planId}`)
+          const progData = await progRes.json()
+
+          if (progData.programs?.length > 0 || progData.program) {
+            // 프로그램 ID로 확인됨 - program_id로 리다이렉트하여 새 계획 생성
+            console.log('[Builder] ID is a program ID, redirecting to create new plan...')
+            router.replace(`/dashboard-group/company/government-programs/business-plan/builder?program_id=${planId}`)
+            return
+          }
+        }
+
+        // 401 Unauthorized인 경우 로그인 페이지로 리다이렉트
+        if (res.status === 401) {
+          console.log('[Builder] Unauthorized, redirecting to login...')
+          router.push('/login')
+          return
+        }
+
         setError(data.error || '사업계획서를 찾을 수 없습니다')
         return
       }
@@ -184,9 +211,11 @@ export default function PipelineBuilderPage() {
       const res = await fetch(`/api/business-plans/${planId}/pipeline`)
       const data = await res.json()
 
-      // API 에러 응답 처리
+      // API 에러 응답 처리 - 404는 아직 사업계획서가 없는 경우이므로 무시
       if (!res.ok || data.error) {
-        console.error('Pipeline status error:', data.error)
+        if (res.status !== 404) {
+          console.error('Pipeline status error:', data.error)
+        }
         return
       }
 
@@ -457,6 +486,25 @@ export default function PipelineBuilderPage() {
       <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-gray-50 dark:bg-zinc-900">
         <FileText className="w-16 h-16 text-gray-300 dark:text-zinc-600" />
         <p className="text-gray-500 dark:text-zinc-400">사업계획서 ID가 필요합니다</p>
+        <Link
+          href="/dashboard-group/company/government-programs"
+          className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black rounded-lg"
+        >
+          공고 목록으로
+        </Link>
+      </div>
+    )
+  }
+
+  // 사업계획서를 찾을 수 없는 경우 (에러 화면)
+  if (error && !plan && !loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-gray-50 dark:bg-zinc-900">
+        <AlertCircle className="w-16 h-16 text-red-400 dark:text-red-500" />
+        <p className="text-gray-700 dark:text-zinc-300 font-medium">{error}</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-400">
+          사업계획서가 존재하지 않거나 접근 권한이 없습니다
+        </p>
         <Link
           href="/dashboard-group/company/government-programs"
           className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black rounded-lg"
