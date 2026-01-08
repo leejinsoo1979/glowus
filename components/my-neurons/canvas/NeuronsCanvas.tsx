@@ -82,7 +82,7 @@ function NodeMesh({
     return base + ((node.importance || 5) / 5)
   }, [node.type, node.importance])
 
-  // Animation
+  // Animation - floating effect
   useFrame((state) => {
     if (!meshRef.current) return
 
@@ -93,9 +93,14 @@ function NodeMesh({
       0.1
     )
 
+    // Gentle floating animation for all nodes
+    const time = state.clock.elapsedTime
+    const floatOffset = Math.sin(time * 0.5 + node.x * 0.1) * 2
+    meshRef.current.position.y = floatOffset
+
     // Self node rotation
     if (node.type === 'self') {
-      meshRef.current.rotation.y += 0.002
+      meshRef.current.rotation.y += 0.005
     }
   })
 
@@ -143,29 +148,6 @@ function NodeMesh({
         </mesh>
       )}
 
-      {/* Self node ring */}
-      {node.type === 'self' && (
-        <>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[size * 1.2, size * 1.3, 64]} />
-            <meshBasicMaterial
-              color="#FFD700"
-              transparent
-              opacity={0.6}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-          <mesh rotation={[Math.PI / 4, Math.PI / 4, 0]}>
-            <ringGeometry args={[size * 1.4, size * 1.5, 64]} />
-            <meshBasicMaterial
-              color="#FFD700"
-              transparent
-              opacity={0.3}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        </>
-      )}
 
       {/* Label - 선택/호버/Self 노드만 표시 */}
       {(isSelected || isHovered || node.type === 'self') && (
@@ -362,7 +344,7 @@ function Scene({
       edge,
     }))
 
-    // Use direct static positions - d3 force simulation was collapsing nodes to center
+    // Use static positions - simulation collapses nodes to center
     setSimNodes([...nodes])
     setSimLinks([...links])
   }, [graph?.nodes, graph?.edges, viewMode, forceConfig])
