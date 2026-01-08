@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import { SWRConfig } from 'swr'
 import { Header } from '@/components/nav/Header'
 import { TwoLevelSidebar } from '@/components/nav/TwoLevelSidebar'
 import { CommitModal } from '@/components/commits/CommitModal'
@@ -16,6 +17,15 @@ import { useUIStore } from '@/stores/uiStore'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils' // Added for conditional classes
 import type { User, Startup } from '@/types'
+
+// SWR 전역 설정 - 데이터 캐싱으로 페이지 이동 속도 향상
+const swrConfig = {
+  revalidateOnFocus: false, // 탭 포커스 시 재요청 안 함
+  revalidateOnReconnect: false, // 네트워크 재연결 시 재요청 안 함
+  dedupingInterval: 30000, // 30초간 중복 요청 방지
+  keepPreviousData: true, // 이전 데이터 유지 (빠른 페이지 전환)
+  errorRetryCount: 2, // 에러 시 2회만 재시도
+}
 
 // DEV 모드 체크 (클라이언트용)
 const DEV_BYPASS_AUTH = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === 'true'
@@ -85,7 +95,7 @@ export default function DashboardLayout({
 
     return () => unsubscribe?.()
   }, [router])
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/company/government-programs') || pathname?.includes('/neural-map') || pathname?.includes('/gantt')
+  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/company/government-programs') || pathname?.includes('/neural-map') || pathname?.includes('/neurons') || pathname?.includes('/gantt')
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -189,17 +199,21 @@ export default function DashboardLayout({
   // 2단계 사이드바: Level1(64px) + Level2(동적)
   const isEmailPage = pathname?.includes('/email')
   const isNeuralMapPage = pathname?.includes('/neural-map')
-  // Neural Map은 동적 level2Width 사용 (level2Collapsed 시 32px만 표시)
+  const isNeuronsPage = pathname?.includes('/neurons')
+  // Neural Map: 동적 level2Width 사용
+  // Neurons: 64px만 (자체 파일트리 렌더링)
+  // 기타: 304px (64 + 240)
   const sidebarWidth = sidebarOpen
-    ? (isEmailPage ? 64 : (isNeuralMapPage ? 64 + (level2Collapsed ? 32 : level2Width) : 304))
+    ? (isEmailPage ? 64 : (isNeuralMapPage ? 64 + (level2Collapsed ? 32 : level2Width) : (isNeuronsPage ? 64 : 304)))
     : 64
 
   // Check if we are on the main dashboard page
   const isDashboardRoot = pathname === '/dashboard-group'
 
   return (
-    <AgentNotificationProvider>
-      <div className={cn("h-screen flex flex-col", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
+    <SWRConfig value={swrConfig}>
+      <AgentNotificationProvider>
+        <div className={cn("h-screen flex flex-col", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
         {isElectron ? <ElectronHeader /> : <Header />}
         <TwoLevelSidebar />
         <CommitModal />
@@ -224,12 +238,13 @@ export default function DashboardLayout({
         }}
       >
         <div className={cn(
-          isFullWidthPage ? "flex-1 overflow-y-auto" : "flex-1 overflow-y-auto p-8"
+          isFullWidthPage ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto p-8"
         )}>
           {children}
         </div>
         </main>
       </div>
-    </AgentNotificationProvider>
+      </AgentNotificationProvider>
+    </SWRConfig>
   )
 }

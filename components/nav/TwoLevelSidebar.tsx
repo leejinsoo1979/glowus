@@ -123,8 +123,10 @@ import {
   Building,
   UserPlus,
   Calendar,
+  Brain,
 } from 'lucide-react'
 import { SiPython } from 'react-icons/si'
+import { FaLaptopCode } from 'react-icons/fa6'
 
 
 // 중첩 메뉴 아이템 타입
@@ -667,6 +669,15 @@ const categories: Category[] = [
       { name: 'KPI 관리', href: '/dashboard-group/kpis', icon: Target },
     ]
   },
+  // 마이뉴런
+  {
+    id: 'neurons',
+    name: '마이뉴런',
+    icon: Brain,
+    items: [
+      { name: '마이뉴런', href: '/dashboard-group/neurons', icon: Brain },
+    ]
+  },
   // 앱 (Apps) - 도구 모음
   {
     id: 'apps',
@@ -826,14 +837,14 @@ const categories: Category[] = [
       { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
     ]
   },
-  // 뉴럴맵
+  // AI 코딩
   {
     id: 'neural-map',
-    name: '뉴럴맵',
-    icon: Orbit,
+    name: 'AI 코딩',
+    icon: FaLaptopCode,
     items: [
-      { name: '내 뉴럴맵', href: '/dashboard-group/neural-map', icon: Orbit },
-      { name: '새 맵 생성', href: '/dashboard-group/neural-map/new', icon: Plus },
+      { name: 'AI 코딩', href: '/dashboard-group/neural-map', icon: FaLaptopCode },
+      { name: '새 프로젝트', href: '/dashboard-group/neural-map/new', icon: Plus },
     ]
   },
   // 마이페이지 - 클릭 시 사이드바 열림
@@ -1372,6 +1383,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
       pathname.startsWith('/dashboard-group/workflows') ||
       pathname.startsWith('/agent-builder')) return 'agents'
     if (pathname.startsWith('/dashboard-group/neural-map')) return 'neural-map'
+    if (pathname.startsWith('/dashboard-group/neurons')) return 'neurons'
     if (pathname.startsWith('/dashboard-group/works')) {
       const tab = searchParams.get('tab')
       if (tab === 'tools') return 'apps'
@@ -1840,8 +1852,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
 
 
 
-          {/* Regular menus (not email, not neural-map page) */}
-          {sidebarOpen && activeItems.length > 0 && currentCategory !== 'email' && !(currentCategory === 'neural-map' && pathname?.includes('/neural-map')) && (
+          {/* Regular menus (not email, not neural-map page, not neurons page) */}
+          {sidebarOpen && activeItems.length > 0 && currentCategory !== 'email' && currentCategory !== 'neurons' && !(currentCategory === 'neural-map' && pathname?.includes('/neural-map')) && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 240, opacity: 1 }}
