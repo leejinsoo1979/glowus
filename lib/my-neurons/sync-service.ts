@@ -32,10 +32,13 @@ interface RawProject {
   name: string
   description?: string
   status?: string
-  category?: string
+  category_id?: string
+  priority?: string
+  progress?: number
+  deadline?: string
   created_at: string
   updated_at?: string
-  user_id: string
+  owner_id: string
 }
 
 interface RawTask {
@@ -55,8 +58,11 @@ interface RawTask {
 interface RawBusinessPlan {
   id: string
   title: string
-  program_name?: string
+  program_id?: string
+  project_name?: string
   status?: string
+  pipeline_stage?: string
+  completion_percentage?: number
   created_at: string
   updated_at?: string
 }
@@ -203,18 +209,22 @@ function calculateImportance(node: Partial<MyNeuronNode>): number {
 // ============================================
 
 function transformProject(p: RawProject): MyNeuronNode {
+  const daysUntil = calculateDaysUntil(p.deadline)
   const node: MyNeuronNode = {
     id: `project-${p.id}`,
     type: 'project',
     title: p.name,
     summary: p.description,
     status: mapTaskStatus(p.status),
-    priority: 'medium',
+    priority: mapPriority(p.priority),
     importance: 5,
+    progress: p.progress,
+    deadline: p.deadline,
+    daysUntilDeadline: daysUntil,
     sourceTable: 'projects',
     sourceId: p.id,
     position: { x: 0, y: 0, z: 0 },
-    meta: { category: p.category },
+    meta: { categoryId: p.category_id },
     createdAt: p.created_at,
     updatedAt: p.updated_at,
   }
@@ -257,14 +267,16 @@ function transformBusinessPlan(bp: RawBusinessPlan): MyNeuronNode {
   const node: MyNeuronNode = {
     id: `doc-${bp.id}`,
     type: 'doc',
-    title: bp.title || bp.program_name || '사업계획서',
+    title: bp.title || bp.project_name || '사업계획서',
+    summary: bp.pipeline_stage ? `단계: ${bp.pipeline_stage}` : undefined,
     status: mapTaskStatus(bp.status),
     priority: 'medium',
     importance: 6,
+    progress: bp.completion_percentage,
     sourceTable: 'business_plans',
     sourceId: bp.id,
     position: { x: 0, y: 0, z: 0 },
-    meta: {},
+    meta: { programId: bp.program_id, pipelineStage: bp.pipeline_stage },
     createdAt: bp.created_at,
     updatedAt: bp.updated_at,
   }
@@ -672,11 +684,11 @@ export async function syncMyNeuronsGraph(
   nodes.push(selfNode)
 
   // 1. Projects (owner_id로 필터링)
-  const { data: projects } = await supabase
+  const { data: projects, error: projectsError } = await supabase
     .from('projects')
-    .select('id, name, description, status, category, created_at, updated_at, owner_id')
+    .select('id, name, description, status, category_id, priority, progress, deadline, created_at, updated_at, owner_id')
     .eq('owner_id', userId)
-    .limit(50) as { data: RawProject[] | null }
+    .limit(50)
 
   if (projects) {
     nodes.push(...projects.map(transformProject))
@@ -696,9 +708,9 @@ export async function syncMyNeuronsGraph(
   }
 
   // 3. Business Plans
-  const { data: businessPlans } = await supabase
+  const { data: businessPlans, error: bpError } = await supabase
     .from('business_plans')
-    .select('id, title, program_name, status, created_at, updated_at')
+    .select('id, title, program_id, project_name, status, pipeline_stage, completion_percentage, created_at, updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(20)
