@@ -146,6 +146,7 @@ export default function MessengerPage() {
   const [speakerMode, setSpeakerMode] = useState(false)
   const { playTTS, clearQueue, isSpeaking, currentSpeaker } = useSpeakerTTS()
   const lastMessageIdRef = useRef<string | null>(null)
+  const prevMeetingActiveRef = useRef<boolean | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -378,6 +379,22 @@ export default function MessengerPage() {
       lastMessageIdRef.current = null  // 다음에 켤 때 다시 초기화되도록
     }
   }, [speakerMode, clearQueue])
+
+  // 회의 종료 시 스피커 모드 자동 해제 + TTS 정리
+  useEffect(() => {
+    const wasMeetingActive = prevMeetingActiveRef.current
+    const isMeetingActive = meetingStatus?.is_meeting_active ?? false
+
+    // 회의가 실제로 종료된 경우에만 (true → false 전환)
+    if (wasMeetingActive === true && isMeetingActive === false) {
+      console.log('[Meeting] 회의 종료 감지 - 스피커 모드 해제 및 TTS 정리')
+      setSpeakerMode(false)
+      clearQueue()
+    }
+
+    // 현재 상태 저장
+    prevMeetingActiveRef.current = isMeetingActive
+  }, [meetingStatus?.is_meeting_active, clearQueue])
 
   // 🎤 음성 입력 → 텍스트 메시지 전송
   const handleVoiceInput = async (text: string) => {
@@ -2011,8 +2028,7 @@ export default function MessengerPage() {
               await startMeeting(topic, duration)
               // 회의 시작 후 첫 메시지 전송하여 대화 트리거
               await sendMessage(`회의를 시작합니다. 주제: ${topic || '자유 토론'} (${duration}분)`)
-              // 🔊 회의 시작 시 스피커 모드 자동 활성화
-              setSpeakerMode(true)
+              // 음성 모드는 사용자가 수동으로 활성화해야 함 (자동 활성화 제거)
             }}
           />
         )}
@@ -2379,13 +2395,27 @@ function NewChatModal({
     fetchData()
   }, [])
 
-  // 에이전트 추가
+  // 🔥 역할 자동 분배를 위한 역할 풀
+  const ROLE_ROTATION: Array<{ role: 'strategist' | 'analyst' | 'executor' | 'critic' | 'mediator'; tendency: 'aggressive' | 'conservative' | 'creative' | 'data-driven' }> = [
+    { role: 'strategist', tendency: 'creative' },     // 1번째: 전략가 (방향 제시)
+    { role: 'critic', tendency: 'conservative' },     // 2번째: 비평가 (반대 의견 필수!)
+    { role: 'executor', tendency: 'data-driven' },    // 3번째: 실행가 (현실 체크)
+    { role: 'analyst', tendency: 'data-driven' },     // 4번째: 분석가
+    { role: 'mediator', tendency: 'creative' },       // 5번째: 중재자
+  ]
+
+  // 에이전트 추가 (🔥 역할 자동 분배!)
   const addAgent = (agentId: string) => {
     if (agentConfigs.some(c => c.id === agentId)) return
+
+    // 현재 에이전트 수에 따라 다음 역할 자동 선택
+    const nextIndex = agentConfigs.length % ROLE_ROTATION.length
+    const nextConfig = ROLE_ROTATION[nextIndex]
+
     setAgentConfigs(prev => [...prev, {
       id: agentId,
-      role: 'analyst',
-      tendency: 'data-driven',
+      role: nextConfig.role,
+      tendency: nextConfig.tendency,
       canDecide: false,
     }])
   }
