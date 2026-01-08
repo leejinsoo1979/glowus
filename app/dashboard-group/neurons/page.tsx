@@ -30,7 +30,7 @@ import {
   Target,
   Workflow,
   Route,
-  Map,
+  Map as MapIcon,
   BarChart3,
   X,
   Info,
@@ -55,7 +55,7 @@ import {
   Sparkles,
   Circle,
 } from 'lucide-react'
-import type { MyNeuronType } from '@/lib/my-neurons/types'
+import type { MyNeuronType, ViewMode } from '@/lib/my-neurons/types'
 import dynamic from 'next/dynamic'
 
 // Dynamic import for 3D canvas (SSR 비활성화)
@@ -75,17 +75,15 @@ const NeuronsCanvas = dynamic(
 )
 
 // ============================================
-// View Tabs
+// View Tabs (uses ViewMode from types)
 // ============================================
 
-type ViewTab = 'radial' | 'clusters' | 'pathfinder' | 'roadmap' | 'insights'
-
-const VIEW_TABS: { id: ViewTab; label: string; icon: React.ComponentType<any> }[] = [
-  { id: 'radial', label: 'Radial', icon: Target },
-  { id: 'clusters', label: 'Clusters', icon: Workflow },
-  { id: 'pathfinder', label: 'Pathfinder', icon: Route },
-  { id: 'roadmap', label: 'Roadmap', icon: Map },
-  { id: 'insights', label: 'Insights', icon: BarChart3 },
+const VIEW_TABS: { id: ViewMode; label: string; icon: React.ComponentType<any>; description: string }[] = [
+  { id: 'radial', label: 'Radial', icon: Target, description: '중심에서 방사형으로 펼쳐지는 기본 뷰' },
+  { id: 'clusters', label: 'Clusters', icon: Workflow, description: '타입별로 클러스터링된 뷰' },
+  { id: 'pathfinder', label: 'Pathfinder', icon: Route, description: '의존성과 연결 경로 강조 뷰' },
+  { id: 'roadmap', label: 'Roadmap', icon: MapIcon, description: '시간/우선순위 기반 로드맵 뷰' },
+  { id: 'insights', label: 'Insights', icon: BarChart3, description: '병목과 중요도 중심 분석 뷰' },
 ]
 
 // ============================================
@@ -227,7 +225,9 @@ export default function NeuronsPage() {
   const [bottlenecks, setBottlenecksLocal] = useState<BottleneckInsight[]>([])
   const [priorities, setPrioritiesLocal] = useState<MyNeuronNode[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [activeViewTab, setActiveViewTab] = useState<ViewTab>('radial')
+  // viewMode from store
+  const viewMode = useMyNeuronsStore((s) => s.viewMode)
+  const setViewMode = useMyNeuronsStore((s) => s.setViewMode)
   const [rightTab, setRightTab] = useState<RightTab>('inspector')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['projects', 'tasks']))
@@ -405,10 +405,11 @@ export default function NeuronsPage() {
           {VIEW_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveViewTab(tab.id)}
+              onClick={() => setViewMode(tab.id)}
+              title={tab.description}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1 rounded text-xs transition-colors',
-                activeViewTab === tab.id
+                viewMode === tab.id
                   ? 'bg-blue-600 text-white'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
               )}
@@ -625,10 +626,11 @@ export default function NeuronsPage() {
             {VIEW_TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveViewTab(tab.id)}
+                onClick={() => setViewMode(tab.id)}
+                title={tab.description}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2 rounded text-sm transition-colors',
-                  activeViewTab === tab.id
+                  viewMode === tab.id
                     ? 'bg-blue-600 text-white'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                 )}
