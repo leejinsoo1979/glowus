@@ -219,7 +219,7 @@ export default function NeuronsPage() {
 
   // Local state
   const [leftPanelOpen, setLeftPanelOpen] = useState(true)
-  const [rightPanelOpen, setRightPanelOpen] = useState(true)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [leftPanelWidth, setLeftPanelWidth] = useState(280)
   const [rightPanelWidth, setRightPanelWidth] = useState(360)
   const [bottlenecks, setBottlenecksLocal] = useState<BottleneckInsight[]>([])
@@ -365,7 +365,7 @@ export default function NeuronsPage() {
     groupedNodes.forEach((nodes, categoryId) => {
       const matchingNodes = nodes.filter(node =>
         node.title.toLowerCase().includes(query) ||
-        node.description?.toLowerCase().includes(query)
+        node.summary?.toLowerCase().includes(query)
       )
       filtered.set(categoryId, matchingNodes)
     })
@@ -619,26 +619,6 @@ export default function NeuronsPage() {
                 onBackgroundClick={clearSelection}
               />
             )}
-          </div>
-
-          {/* View Tabs (Bottom) */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-900/90 backdrop-blur rounded-lg p-1 border border-zinc-800">
-            {VIEW_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setViewMode(tab.id)}
-                title={tab.description}
-                className={cn(
-                  'flex items-center gap-1.5 px-4 py-2 rounded text-sm transition-colors',
-                  viewMode === tab.id
-                    ? 'bg-blue-600 text-white'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                )}
-              >
-                <tab.icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            ))}
           </div>
 
           {/* Stats Overlay */}
