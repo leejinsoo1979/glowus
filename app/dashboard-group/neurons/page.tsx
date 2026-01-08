@@ -90,7 +90,6 @@ const VIEW_TABS: { id: ViewMode; label: string; icon: React.ComponentType<any>; 
 // Right Panel Tabs
 // ============================================
 
-type RightTab = 'inspector' | 'actions' | 'chat'
 
 // ============================================
 // FileTree Categories (그래프 노드 타입별 분류)
@@ -219,16 +218,11 @@ export default function NeuronsPage() {
 
   // Local state
   const [leftPanelOpen, setLeftPanelOpen] = useState(true)
-  const [rightPanelOpen, setRightPanelOpen] = useState(false)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(280)
-  const [rightPanelWidth, setRightPanelWidth] = useState(360)
-  const [bottlenecks, setBottlenecksLocal] = useState<BottleneckInsight[]>([])
-  const [priorities, setPrioritiesLocal] = useState<MyNeuronNode[]>([])
+  const [leftPanelWidth] = useState(280)
   const [error, setError] = useState<string | null>(null)
   // viewMode from store
   const viewMode = useMyNeuronsStore((s) => s.viewMode)
   const setViewMode = useMyNeuronsStore((s) => s.setViewMode)
-  const [rightTab, setRightTab] = useState<RightTab>('inspector')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['projects', 'tasks']))
 
@@ -246,8 +240,6 @@ export default function NeuronsPage() {
       const data = await res.json()
       if (data.success) {
         setGraph(data.data)
-        setBottlenecksLocal(data.bottlenecks || [])
-        setPrioritiesLocal(data.priorities || [])
         setBottlenecks(data.bottlenecks || [])
         setPriorities(data.priorities || [])
       } else {
@@ -651,284 +643,6 @@ export default function NeuronsPage() {
           )}
         </main>
 
-        {/* Right Panel Toggle - 패널 닫혔을 때도 항상 보이도록 fixed 사용 */}
-        <button
-          onClick={() => setRightPanelOpen(!rightPanelOpen)}
-          className={cn(
-            'z-30 p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-all',
-            rightPanelOpen
-              ? 'absolute top-1/2 -translate-y-1/2 rounded-l-lg border-r-0'
-              : 'fixed top-1/2 -translate-y-1/2 rounded-l-lg border-r-0'
-          )}
-          style={{ right: rightPanelOpen ? rightPanelWidth : 0 }}
-        >
-          {rightPanelOpen ? (
-            <PanelRightClose className="w-4 h-4 text-zinc-400" />
-          ) : (
-            <PanelRightOpen className="w-4 h-4 text-zinc-400" />
-          )}
-        </button>
-
-        {/* ===== Right Panel - Inspector/Actions/Chat ===== */}
-        <aside
-          className={cn(
-            'flex-shrink-0 bg-[#0a0a12] transition-all duration-300 overflow-hidden flex flex-col',
-            rightPanelOpen ? 'border-l border-zinc-800' : 'w-0'
-          )}
-          style={{ width: rightPanelOpen ? rightPanelWidth : 0 }}
-        >
-          {rightPanelOpen && (
-            <>
-              {/* Tab Header */}
-              <div className="flex border-b border-zinc-800">
-                <button
-                  onClick={() => setRightTab('inspector')}
-                  className={cn(
-                    'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-                    rightTab === 'inspector'
-                      ? 'text-white border-b-2 border-blue-500'
-                      : 'text-zinc-400 hover:text-white'
-                  )}
-                >
-                  Inspector
-                </button>
-                <button
-                  onClick={() => setRightTab('actions')}
-                  className={cn(
-                    'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-                    rightTab === 'actions'
-                      ? 'text-white border-b-2 border-blue-500'
-                      : 'text-zinc-400 hover:text-white'
-                  )}
-                >
-                  Actions
-                </button>
-                <button
-                  onClick={() => setRightTab('chat')}
-                  className={cn(
-                    'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-                    rightTab === 'chat'
-                      ? 'text-white border-b-2 border-blue-500'
-                      : 'text-zinc-400 hover:text-white'
-                  )}
-                >
-                  Chat
-                </button>
-              </div>
-
-              {/* Tab Content */}
-              <div className="flex-1 overflow-y-auto">
-                {rightTab === 'inspector' && (
-                  <div className="p-4">
-                    {selectedNode ? (
-                      <div className="space-y-4">
-                        {/* Title */}
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">제목</label>
-                          <input
-                            type="text"
-                            value={selectedNode.title}
-                            readOnly
-                            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white text-sm"
-                          />
-                        </div>
-
-                        {/* Type */}
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">타입</label>
-                          <div className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-300 capitalize">
-                            {selectedNode.type}
-                          </div>
-                        </div>
-
-                        {/* Status */}
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">상태</label>
-                          <div className={cn(
-                            'px-3 py-2 rounded text-sm capitalize',
-                            selectedNode.status === 'blocked' && 'bg-red-500/20 text-red-400',
-                            selectedNode.status === 'urgent' && 'bg-orange-500/20 text-orange-400',
-                            selectedNode.status === 'active' && 'bg-emerald-500/20 text-emerald-400',
-                            selectedNode.status === 'completed' && 'bg-zinc-500/20 text-zinc-400',
-                            selectedNode.status === 'waiting' && 'bg-amber-500/20 text-amber-400',
-                          )}>
-                            {selectedNode.status}
-                          </div>
-                        </div>
-
-                        {/* Summary */}
-                        {selectedNode.summary && (
-                          <div>
-                            <label className="block text-xs text-zinc-500 mb-1">요약</label>
-                            <p className="text-sm text-zinc-300">{selectedNode.summary}</p>
-                          </div>
-                        )}
-
-                        {/* Tags */}
-                        {selectedNode.tags && selectedNode.tags.length > 0 && (
-                          <div>
-                            <label className="block text-xs text-zinc-500 mb-1">태그</label>
-                            <div className="flex flex-wrap gap-1">
-                              {selectedNode.tags.map((tag, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-400"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Importance */}
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">
-                            중요도: {selectedNode.importance}/10
-                          </label>
-                          <div className="w-full bg-zinc-800 rounded-full h-2">
-                            <div
-                              className="bg-blue-500 rounded-full h-2"
-                              style={{ width: `${selectedNode.importance * 10}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Progress */}
-                        {selectedNode.progress !== undefined && (
-                          <div>
-                            <label className="block text-xs text-zinc-500 mb-1">
-                              진행률: {selectedNode.progress}%
-                            </label>
-                            <div className="w-full bg-zinc-800 rounded-full h-2">
-                              <div
-                                className="bg-emerald-500 rounded-full h-2"
-                                style={{ width: `${selectedNode.progress}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Connected Nodes */}
-                        {connectedNodes.length > 0 && (
-                          <div>
-                            <label className="block text-xs text-zinc-500 mb-2">
-                              연결된 노드 ({connectedNodes.length})
-                            </label>
-                            <div className="space-y-1 max-h-40 overflow-y-auto">
-                              {connectedNodes.map((node) => (
-                                <div
-                                  key={node.id}
-                                  className="flex items-center gap-2 px-2 py-1.5 bg-zinc-800 rounded text-sm cursor-pointer hover:bg-zinc-700"
-                                >
-                                  <div
-                                    className="w-2 h-2 rounded-full"
-                                    style={{
-                                      backgroundColor:
-                                        node.status === 'blocked'
-                                          ? '#EF4444'
-                                          : node.status === 'urgent'
-                                          ? '#F97316'
-                                          : '#3B82F6',
-                                    }}
-                                  />
-                                  <span className="text-zinc-300 truncate">{node.title}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Navigate to Source */}
-                        <button
-                          onClick={() => handleNavigate(selectedNode.sourceTable, selectedNode.sourceId)}
-                          className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm transition-colors"
-                        >
-                          원본으로 이동
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-64 text-zinc-500 text-sm">
-                        <Info className="w-8 h-8 mb-2 text-zinc-600" />
-                        <p>노드를 선택하세요</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {rightTab === 'actions' && (
-                  <div className="p-4">
-                    {selectedNode ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <button className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                          <Expand className="w-4 h-4" />
-                          확장
-                        </button>
-                        <button className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                          <Shrink className="w-4 h-4" />
-                          축소
-                        </button>
-                        <button className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                          <Plus className="w-4 h-4" />
-                          자식 추가
-                        </button>
-                        <button className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                          <Link className="w-4 h-4" />
-                          연결
-                        </button>
-                        <button className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors">
-                          <Pin className="w-4 h-4" />
-                          고정
-                        </button>
-                        <button className="flex items-center justify-center gap-2 px-3 py-2.5 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-red-400 text-sm transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                          삭제
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-64 text-zinc-500 text-sm">
-                        <Zap className="w-8 h-8 mb-2 text-zinc-600" />
-                        <p>노드를 선택하여 액션을 실행하세요</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {rightTab === 'chat' && (
-                  <div className="flex flex-col h-full">
-                    {/* Chat Messages */}
-                    <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-                      <div className="flex gap-2">
-                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                          <Brain className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="flex-1 bg-zinc-800 rounded-lg p-3">
-                          <p className="text-sm text-zinc-300">
-                            안녕하세요! 선택된 노드나 클러스터에 대해 질문해주세요.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Chat Input */}
-                    <div className="p-4 border-t border-zinc-800">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="이 노드에 대해 질문하세요..."
-                          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-blue-500"
-                        />
-                        <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm transition-colors">
-                          전송
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </aside>
       </div>
     </div>
   )
