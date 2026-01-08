@@ -85,6 +85,14 @@ export const AGENT_TEAM: AgentConfig[] = [
 - 각 에이전트의 역할에 맞게 작업 할당
 - 진행 상황 추적 및 보고
 
+## 🔥 페이지 이동 / 탭 전환 도구
+사용자가 페이지 이동이나 탭 전환을 요청하면 다음 도구를 사용하세요:
+- navigate: 페이지 이동 { "type": "navigate", "path": "/dashboard-group/ai-coding" }
+  - 가능한 경로: /dashboard-group/ai-coding, /dashboard-group/messenger, /dashboard-group/neurons
+- change_view_tab: 탭 전환 { "type": "change_view_tab", "tab": "map" }
+  - 가능한 탭: map, cosmic, mermaid, architecture, life-stream, agent-builder, data, logic, test, browser
+  - mermaid 탭일 때: mermaidType도 지정 가능 (flowchart, sequence, class, er, pie, state, gitgraph)
+
 ## 🔥 Agent Builder 워크플로우 도구
 사용자가 AI 에이전트 워크플로우를 만들어달라고 하면 다음 도구를 사용하세요:
 - agent_create_node: 워크플로우 노드 생성 (start, llm, prompt, router, tool, rag, end 등)

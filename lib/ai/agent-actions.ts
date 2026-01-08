@@ -58,6 +58,9 @@ export type AgentAction =
   | AgentBuilderGetWorkflowAction
   | AgentBuilderDeployAction
   | AgentBuilderClearAction
+  // 🔥 페이지 네비게이션 액션
+  | NavigateAction
+  | ChangeViewTabAction
 
 export interface WriteFileAction {
   type: 'write_file'
@@ -425,6 +428,18 @@ export interface AgentBuilderClearAction {
   type: 'agent_clear'
 }
 
+// 🔥 페이지 네비게이션 액션
+export interface NavigateAction {
+  type: 'navigate'
+  path: string  // e.g., '/dashboard-group/ai-coding', '/dashboard-group/messenger'
+}
+
+export interface ChangeViewTabAction {
+  type: 'change_view_tab'
+  tab: 'map' | 'cosmic' | 'mermaid' | 'architecture' | 'life-stream' | 'agent-builder' | 'data' | 'logic' | 'test' | 'browser'
+  mermaidType?: 'flowchart' | 'sequence' | 'class' | 'er' | 'pie' | 'state' | 'gitgraph'
+}
+
 // 액션 실행 결과
 export interface ActionResult {
   action: AgentAction
@@ -446,11 +461,16 @@ export async function executeAction(action: AgentAction): Promise<ActionResult> 
     // 🔥 Agent Builder 워크플로우 액션 (웹 전용 - BroadcastChannel 통신)
     'agent_create_node', 'agent_connect_nodes', 'agent_delete_node', 'agent_update_node',
     'agent_generate_workflow', 'agent_get_workflow', 'agent_deploy', 'agent_clear',
+    // 🔥 파일 액션도 웹에서 지원 (메모리 저장 또는 다운로드)
+    'write_file', 'create_file', 'read_file',
   ]
 
-  // Electron 필요한 액션인데 없으면 에러
+  // 웹/Electron 환경 체크
+  const isElectron = typeof window !== 'undefined' && !!window.electron
+
+  // Electron 필요한 액션인데 없으면 에러 (터미널, 파일 수정 등)
   if (!webOnlyActions.includes(action.type)) {
-    if (typeof window === 'undefined' || !window.electron) {
+    if (!isElectron) {
       return {
         action,
         success: false,
@@ -461,21 +481,41 @@ export async function executeAction(action: AgentAction): Promise<ActionResult> 
 
   try {
     switch (action.type) {
-      case 'write_file': {
-        await window.electron?.fs?.writeFile?.(action.path, action.content)
-        return {
-          action,
-          success: true,
-          result: { path: action.path, bytesWritten: action.content.length }
-        }
-      }
-
+      case 'write_file':
       case 'create_file': {
-        await window.electron?.fs?.writeFile?.(action.path, action.content)
+        // 🔥 Electron 환경이면 파일 시스템 사용
+        if (isElectron) {
+          await window.electron?.fs?.writeFile?.(action.path, action.content)
+          return {
+            action,
+            success: true,
+            result: { path: action.path, bytesWritten: action.content.length }
+          }
+        }
+
+        // 🔥 웹 환경이면 메모리에 저장하고 다운로드 링크 제공
+        const fileName = action.path.split('/').pop() || 'file.txt'
+
+        // 글로벌 파일 저장소에 저장 (다른 컴포넌트에서 접근 가능)
+        if (typeof window !== 'undefined') {
+          (window as any).__generatedFiles = (window as any).__generatedFiles || {}
+          ;(window as any).__generatedFiles[action.path] = {
+            content: action.content,
+            createdAt: Date.now(),
+            fileName,
+          }
+        }
+
         return {
           action,
           success: true,
-          result: { path: action.path, created: true }
+          result: {
+            path: action.path,
+            created: true,
+            webMode: true,
+            message: `파일이 생성되었습니다: ${fileName}`,
+            content: action.content,
+          }
         }
       }
 
@@ -501,11 +541,30 @@ export async function executeAction(action: AgentAction): Promise<ActionResult> 
       }
 
       case 'read_file': {
-        const content = await window.electron?.fs?.readFile?.(action.path)
+        // 🔥 Electron 환경이면 파일 시스템 사용
+        if (isElectron) {
+          const content = await window.electron?.fs?.readFile?.(action.path)
+          return {
+            action,
+            success: true,
+            result: { path: action.path, content }
+          }
+        }
+
+        // 🔥 웹 환경이면 메모리에서 읽기
+        const storedFile = (window as any).__generatedFiles?.[action.path]
+        if (storedFile) {
+          return {
+            action,
+            success: true,
+            result: { path: action.path, content: storedFile.content, webMode: true }
+          }
+        }
+
         return {
           action,
-          success: true,
-          result: { path: action.path, content }
+          success: false,
+          error: `파일을 찾을 수 없습니다: ${action.path}`
         }
       }
 
@@ -1566,6 +1625,68 @@ export async function executeAction(action: AgentAction): Promise<ActionResult> 
         }
       }
 
+      // 🔥 페이지 네비게이션
+      case 'navigate': {
+        const navAction = action as NavigateAction
+        if (typeof window !== 'undefined') {
+          // Next.js router 사용
+          const { default: Router } = await import('next/router')
+          try {
+            // App Router 방식 (window.location 사용)
+            window.location.href = navAction.path
+            return {
+              action,
+              success: true,
+              result: { navigatedTo: navAction.path }
+            }
+          } catch {
+            // Pages Router fallback
+            Router.push(navAction.path)
+            return {
+              action,
+              success: true,
+              result: { navigatedTo: navAction.path }
+            }
+          }
+        }
+        return {
+          action,
+          success: false,
+          error: '브라우저 환경에서만 네비게이션 가능'
+        }
+      }
+
+      // 🔥 ViewTab 변경 (AI 코딩 페이지 내 탭 전환)
+      case 'change_view_tab': {
+        const tabAction = action as ChangeViewTabAction
+        const channel = new BroadcastChannel('neural-map')
+        channel.postMessage({
+          type: 'CHANGE_TAB',
+          payload: {
+            tab: tabAction.tab,
+            mermaidType: tabAction.mermaidType
+          }
+        })
+        channel.close()
+
+        // Zustand store 직접 업데이트
+        try {
+          const store = useNeuralMapStore.getState()
+          store.setActiveTab(tabAction.tab as any)
+          if (tabAction.mermaidType) {
+            store.setMermaidDiagramType(tabAction.mermaidType as any)
+          }
+        } catch (e) {
+          console.warn('[change_view_tab] Store update failed:', e)
+        }
+
+        return {
+          action,
+          success: true,
+          result: { tab: tabAction.tab, mermaidType: tabAction.mermaidType }
+        }
+      }
+
       default:
         return {
           action,
@@ -1895,6 +2016,20 @@ export function convertToolAction(toolAction: ToolAction): AgentAction | null {
         type: 'agent_clear',
       }
 
+    // 🔥 네비게이션 액션
+    case 'navigate':
+      return {
+        type: 'navigate',
+        path: data.path as string,
+      }
+
+    case 'change_view_tab':
+      return {
+        type: 'change_view_tab',
+        tab: data.tab as ChangeViewTabAction['tab'],
+        mermaidType: data.mermaidType as ChangeViewTabAction['mermaidType'],
+      }
+
     default:
       console.warn(`Unknown tool action type: ${type}`)
       return null
@@ -2144,6 +2279,16 @@ export function formatActionResultsForChat(results: ActionResult[]): string {
 
       case 'agent_clear':
         lines.push(`${status} 워크플로우 초기화`)
+        break
+
+      // 🔥 네비게이션
+      case 'navigate':
+        lines.push(`${status} 페이지 이동: ${(r.action as NavigateAction).path}`)
+        break
+
+      case 'change_view_tab':
+        const tabAction = r.action as ChangeViewTabAction
+        lines.push(`${status} 탭 변경: ${tabAction.tab}${tabAction.mermaidType ? ` (${tabAction.mermaidType})` : ''}`)
         break
 
       default: {
