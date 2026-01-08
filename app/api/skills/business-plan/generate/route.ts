@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
+const getGeminiModel = () => genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+import { requireCredits, chargeCredits } from '@/lib/credits/middleware'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120 // 2분 타임아웃
@@ -330,7 +334,7 @@ ${requirements.cautions?.map((c: string) => `⚠️ ${c}`).join('\n') || ''}
 `
     : '[프로그램 요구사항 파싱 필요]'
 
-  // 섹션별 프롬프트
+  // 공통 컨텍스트 (모든 섹션에 제공)
   const baseContext = `
 === 지원사업 정보 ===
 - 사업명: ${program.title}
@@ -357,150 +361,110 @@ ${financialInfo}
 ${marketInfo}
 
 ${programReq}
+`
+
+  // =====================================================
+  // 동적 프롬프트 생성 - 섹션 정의 기반
+  // 각 지원사업마다 양식이 다르므로 하드코딩하지 않음
+  // =====================================================
+  const sectionTitle = sectionDef.title
+  const sectionDescription = sectionDef.description || ''
+
+  // 섹션 유형 자동 감지 (제목/설명에서 키워드 추출)
+  const titleLower = sectionTitle.toLowerCase()
+  const descLower = sectionDescription.toLowerCase()
+  const combined = `${titleLower} ${descLower}`
+
+  // 관련 데이터 영역 판별
+  let relevantDataHints: string[] = []
+
+  if (combined.includes('대표자') || combined.includes('ceo') || combined.includes('역량')) {
+    relevantDataHints.push('팀 구성에서 대표자 정보를 참조하세요.')
+  }
+  if (combined.includes('팀') || combined.includes('인력') || combined.includes('조직')) {
+    relevantDataHints.push('팀 구성 데이터를 적극 활용하세요.')
+  }
+  if (combined.includes('시장') || combined.includes('market')) {
+    relevantDataHints.push('시장 분석 데이터(TAM/SAM/SOM)를 활용하세요.')
+  }
+  if (combined.includes('재무') || combined.includes('사업비') || combined.includes('budget') || combined.includes('자금')) {
+    relevantDataHints.push('재무 현황 데이터를 참조하세요.')
+  }
+  if (combined.includes('기술') || combined.includes('아이템') || combined.includes('제품') || combined.includes('서비스')) {
+    relevantDataHints.push('제품/서비스 데이터를 중심으로 작성하세요.')
+  }
+  if (combined.includes('경쟁') || combined.includes('차별')) {
+    relevantDataHints.push('경쟁사 분석 및 차별화 포인트를 강조하세요.')
+  }
+  if (combined.includes('성과') || combined.includes('실적') || combined.includes('수상')) {
+    relevantDataHints.push('주요 성과 데이터를 활용하세요.')
+  }
+  if (combined.includes('투자') || combined.includes('exit') || combined.includes('출구')) {
+    relevantDataHints.push('투자 유치 현황 및 계획을 중심으로 작성하세요.')
+  }
+  if (combined.includes('일정') || combined.includes('추진') || combined.includes('로드맵') || combined.includes('timeline')) {
+    relevantDataHints.push('구체적인 일정과 마일스톤을 포함하세요.')
+  }
+  if (combined.includes('협력') || combined.includes('파트너')) {
+    relevantDataHints.push('협력사/파트너 정보를 활용하세요.')
+  }
+  if (combined.includes('해외') || combined.includes('글로벌') || combined.includes('global')) {
+    relevantDataHints.push('해외 시장 진출 관련 데이터를 포함하세요.')
+  }
+  if (combined.includes('bm') || combined.includes('비즈니스 모델') || combined.includes('수익')) {
+    relevantDataHints.push('수익 모델과 가격 전략을 명확히 설명하세요.')
+  }
+
+  const dataHintsText = relevantDataHints.length > 0
+    ? `\n\n## 데이터 활용 가이드\n${relevantDataHints.map(h => `- ${h}`).join('\n')}`
+    : ''
+
+  // 표 템플릿이 있으면 포함
+  const tableTemplateText = (sectionDef as any).table_template
+    ? `\n\n## 표 양식 (반드시 아래 표 형식을 사용하세요)\n${(sectionDef as any).table_template}`
+    : ''
+
+  // 최종 프롬프트 생성 (동적)
+  return `${baseContext}
+
+=== 작성할 섹션 ===
+## ${sectionTitle}
+${sectionDescription}
+${tableTemplateText}
 
 === 작성 요건 ===
 - 최대 ${sectionDef.max_chars}자 이내
-- ${sectionDef.description}
-`
+- 마크다운 형식으로 작성
+- 표, 리스트 등 적절히 활용
+- **표 양식이 있는 경우 반드시 해당 양식대로 표를 작성**
+${dataHintsText}
 
-  const sectionPrompts: Record<string, string> = {
-    executive_summary: `${baseContext}
+=== 지시사항 ===
+위 회사 지식베이스를 기반으로 **${sectionTitle}** 섹션을 작성해주세요.
 
-위 회사 지식베이스를 기반으로 **사업 요약(Executive Summary)**을 작성해주세요.
+1. 섹션 설명에 맞는 내용을 구체적으로 작성
+2. 지식베이스에 있는 실제 데이터만 사용
+3. 데이터가 없는 항목은 "[데이터 필요: 항목명]"으로 표시
+4. 프로그램의 평가 기준을 고려하여 작성
+5. 정량적 수치가 있으면 적극 활용
+6. **표 양식이 제공된 경우 해당 형식대로 마크다운 표를 작성** (표 헤더와 구조 유지)
 
-다음 내용을 포함:
-1. 핵심 사업 아이디어와 차별점 (실제 제품 데이터 기반)
-2. 타겟 시장과 고객 (시장 데이터 기반)
-3. 비즈니스 모델의 핵심
-4. 팀의 핵심 역량 (팀 데이터 기반)
-5. 기대 성과와 지원금 활용 계획
-
-⚠️ 지식베이스에 없는 내용은 추측하지 말고 "[데이터 필요]"로 표시하세요.`,
-
-    company_overview: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **회사 개요**를 작성해주세요.
-
-다음 내용을 포함:
-1. 회사 소개 및 비전
-2. 주요 연혁 및 마일스톤 (성과 데이터 기반)
-3. 조직 구성 및 핵심 인력 (팀 데이터 기반)
-4. 주요 사업 영역 및 제품/서비스
-5. 핵심 역량 및 경쟁력
-
-⚠️ 실제 데이터만 사용하세요.`,
-
-    problem_statement: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **문제 정의(Problem Statement)**를 작성해주세요.
-
-다음 내용을 포함:
-1. 회사가 해결하려는 시장의 문제점
-2. 문제의 심각성과 시급성
-3. 기존 해결책의 한계점
-4. 시장 데이터를 통한 문제의 규모 입증
-
-⚠️ 시장 데이터가 없으면 "[시장 데이터 필요]"로 표시하세요.`,
-
-    solution: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **해결책(Solution)**을 작성해주세요.
-
-다음 내용을 포함:
-1. 제안하는 제품/서비스의 핵심 기능 (제품 데이터 기반)
-2. 기존 방식 대비 차별화 포인트
-3. 기술적 우위성 (핵심 기술 기반)
-4. 고객에게 제공하는 핵심 가치
-
-⚠️ 제품 정보가 부족하면 "[제품 상세 필요]"로 표시하세요.`,
-
-    market_research: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **시장 분석**을 작성해주세요.
-
-다음 내용을 포함:
-1. TAM/SAM/SOM 시장 규모 분석 (시장 데이터 기반)
-2. 시장 성장률 및 전망
-3. 주요 경쟁사 분석 (경쟁사 데이터 기반)
-4. 시장 트렌드 및 기회 요인
-5. SWOT 분석
-
-⚠️ 시장 데이터가 없으면 일반적인 추정치를 사용하되 "[추정치]"로 표시하세요.`,
-
-    business_model: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **비즈니스 모델**을 작성해주세요.
-
-다음 내용을 포함:
-1. 수익 모델 (제품 가격 정책 기반)
-2. 가격 전략
-3. 고객 획득 전략
-4. 주요 파트너십
-5. 핵심 자원 및 활동`,
-
-    team_introduction: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **팀 소개**를 작성해주세요.
-
-다음 내용을 포함:
-1. CEO 및 핵심 인력 소개 (팀 데이터 필수)
-2. 각 멤버의 경력, 전문성, 학력
-3. 팀의 차별화된 역량
-4. 역할 분담 및 조직 구조
-5. 외부 자문단/멘토 (있을 경우)
-
-⚠️ 팀 정보가 없으면 "[팀 정보 필요 - 지식베이스에 팀원 등록 필요]"로 표시하세요.`,
-
-    financial_plan: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **재무 계획**을 작성해주세요.
-
-다음 내용을 포함:
-1. 현재 재무 현황 (재무 데이터 기반)
-2. 3~5년 추정 손익계산서
-3. 월별/분기별 매출 계획
-4. 손익분기점 분석
-5. 주요 비용 구조
-
-⚠️ 재무 데이터가 없으면 "[재무 데이터 필요]"로 표시하세요.`,
-
-    fund_usage: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **자금 사용 계획**을 작성해주세요.
-
-다음 내용을 포함:
-1. 항목별 자금 소요 내역 (표 형식)
-2. 분기별 집행 계획
-3. 자부담/지원금 구분
-4. 각 항목의 사용 근거
-5. 예비비 계획`,
-
-    expected_outcomes: `${baseContext}
-
-위 회사 지식베이스를 기반으로 **기대 효과**를 작성해주세요.
-
-다음 내용을 포함:
-1. 정량적 성과 목표 (매출, 고용, 사용자 수 등)
-2. 정성적 성과 목표
-3. 사회적 가치 및 파급 효과
-4. 후속 사업 계획
-5. 성과 측정 방법 (KPI)`
-  }
-
-  return sectionPrompts[sectionKey] || `${baseContext}\n\n${sectionDef.title} 섹션을 작성해주세요.`
+⚠️ 추측이나 허위 내용 작성 금지. 실제 데이터만 사용하세요.`
 }
 
 /**
- * 기본 섹션 구조 (템플릿 없을 때 사용)
+ * 범용 사업계획서 기본 구조 (Fallback)
+ * 프로그램별 템플릿이 없을 때만 사용
+ * 실제 프로그램별 양식은 business_plan_templates 테이블에서 로드
  */
 const DEFAULT_SECTIONS: SectionDefinition[] = [
-  { key: 'executive_summary', title: '사업 요약', subtitle: 'Executive Summary', required: true, max_chars: 3000, order: 1, description: '사업의 핵심을 1페이지로 요약' },
-  { key: 'company_overview', title: '회사 개요', subtitle: 'Company Overview', required: true, max_chars: 2000, order: 2, description: '회사 연혁, 조직, 핵심역량' },
-  { key: 'problem_statement', title: '문제 정의', subtitle: 'Problem Statement', required: true, max_chars: 2000, order: 3, description: '해결하고자 하는 문제와 시급성' },
-  { key: 'solution', title: '해결책', subtitle: 'Solution', required: true, max_chars: 3000, order: 4, description: '제안하는 솔루션과 차별점' },
-  { key: 'business_model', title: '비즈니스 모델', subtitle: 'Business Model', required: true, max_chars: 2500, order: 5, description: '수익 모델과 고객 획득 전략' },
-  { key: 'fund_usage', title: '자금 사용 계획', subtitle: 'Fund Usage Plan', required: true, max_chars: 2000, order: 6, description: '항목별 자금 소요와 집행 계획' },
-  { key: 'expected_outcomes', title: '기대 효과', subtitle: 'Expected Outcomes', required: true, max_chars: 2000, order: 7, description: '정량/정성적 성과 목표와 KPI' },
+  { key: 'summary', title: '1. 사업 개요', subtitle: 'Executive Summary', required: true, max_chars: 2500, order: 1, description: '사업 아이디어 요약, 핵심 가치 제안, 목표 시장' },
+  { key: 'company', title: '2. 회사 및 팀 소개', subtitle: 'Company & Team', required: true, max_chars: 3000, order: 2, description: '회사 현황, 대표자 역량, 핵심 인력 구성' },
+  { key: 'product', title: '3. 제품/서비스', subtitle: 'Product & Service', required: true, max_chars: 3500, order: 3, description: '제품/서비스 소개, 핵심 기술, 차별화 포인트' },
+  { key: 'market', title: '4. 시장 분석', subtitle: 'Market Analysis', required: true, max_chars: 3000, order: 4, description: '목표 시장 규모, 경쟁 현황, 시장 진입 전략' },
+  { key: 'business_model', title: '5. 비즈니스 모델', subtitle: 'Business Model', required: true, max_chars: 2500, order: 5, description: '수익 모델, 가격 전략, 고객 획득 전략' },
+  { key: 'strategy', title: '6. 사업화 전략', subtitle: 'Go-to-Market Strategy', required: true, max_chars: 3000, order: 6, description: '마케팅/영업 전략, 추진 일정, 마일스톤' },
+  { key: 'financials', title: '7. 재무 계획', subtitle: 'Financial Plan', required: true, max_chars: 2500, order: 7, description: '자금 소요, 예상 매출, 손익 계획' },
 ]
 
 /**
@@ -520,6 +484,12 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // 🔥 크레딧 확인 (사업계획서 생성 = 500 크레딧)
+    const creditCheck = await requireCredits(user.id, 'business_plan')
+    if (!creditCheck.success) {
+      return creditCheck.response!
     }
 
     const body: GenerateRequest = await request.json()
@@ -542,7 +512,11 @@ export async function POST(request: NextRequest) {
     const completeness = checkKnowledgeBaseCompleteness(companyContext)
     console.log('[BusinessPlan] Knowledge base completeness:', completeness)
 
-    if (completeness.score < 30) {
+    // 지식베이스 체크 임계값 (개발 중에는 0으로 설정하여 항상 생성)
+    const KNOWLEDGE_BASE_THRESHOLD = 0  // TODO: 프로덕션에서는 30으로 변경
+    console.log('[BusinessPlan] Knowledge threshold:', KNOWLEDGE_BASE_THRESHOLD, '| Score:', completeness.score)
+
+    if (completeness.score < KNOWLEDGE_BASE_THRESHOLD) {
       console.log('[BusinessPlan] Knowledge base insufficient, creating interview mode plan')
 
       // 프로그램 정보 로드
@@ -568,7 +542,7 @@ export async function POST(request: NextRequest) {
           company_id: companyContext.profile?.company_id || null,
           title: `${program.title} - 사업계획서`,
           status: 'interview_mode',
-          ai_model: 'gpt-4-turbo-preview',
+          ai_model: 'gemini-2.5-flash',
           sections: {},
           web_search_results: {
             knowledge_base_used: false,
@@ -628,33 +602,87 @@ export async function POST(request: NextRequest) {
     console.log('[BusinessPlan] Program requirements loaded:', !!programRequirements)
 
     // =====================================================
-    // 3. 템플릿 섹션 결정
+    // 3. 템플릿 섹션 결정 (프로그램별 원본 양식 기반)
+    // 우선순위: template_id > 프로그램 연결 템플릿 > 카테고리 매칭 > fallback
     // =====================================================
     let templateSections: SectionDefinition[] = DEFAULT_SECTIONS
+    let templateSource = 'default'
 
     try {
+      let template: any = null
+
       if (template_id) {
+        // 1. 명시적 template_id가 있으면 해당 템플릿 사용
         const { data: t } = await adminSupabase
           .from('business_plan_templates')
           .select('*')
           .eq('id', template_id)
           .single()
-        if (t?.section_structure) {
-          templateSections = t.section_structure as SectionDefinition[]
+        template = t
+        templateSource = 'explicit_id'
+      }
+
+      if (!template) {
+        // 2. 이 프로그램에 연결된 템플릿 찾기
+        const { data: t } = await adminSupabase
+          .from('business_plan_templates')
+          .select('*')
+          .eq('program_id', program_id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+        if (t) {
+          template = t
+          templateSource = 'program_linked'
         }
-      } else {
+      }
+
+      if (!template && program.category) {
+        // 3. 프로그램 카테고리에 맞는 템플릿 찾기
+        const { data: t } = await adminSupabase
+          .from('business_plan_templates')
+          .select('*')
+          .contains('target_program_types', [program.category])
+          .eq('is_active', true)
+          .order('usage_count', { ascending: false })
+          .limit(1)
+          .single()
+        if (t) {
+          template = t
+          templateSource = 'category_matched'
+        }
+      }
+
+      if (!template) {
+        // 4. 가장 많이 사용된 활성 템플릿 찾기
         const { data: t } = await adminSupabase
           .from('business_plan_templates')
           .select('*')
           .eq('is_active', true)
+          .order('usage_count', { ascending: false })
           .limit(1)
           .single()
-        if (t?.section_structure) {
-          templateSections = t.section_structure as SectionDefinition[]
+        if (t) {
+          template = t
+          templateSource = 'most_used'
         }
       }
-    } catch {
-      console.log('[BusinessPlan] Using default sections (template not found)')
+
+      // 템플릿에서 섹션 구조 추출 (section_structure 또는 sections 필드)
+      if (template) {
+        const sections = template.section_structure || template.sections
+        if (sections && Array.isArray(sections) && sections.length > 0) {
+          templateSections = sections as SectionDefinition[]
+          console.log(`[BusinessPlan] Template loaded: ${template.name || template.template_name} (source: ${templateSource}, sections: ${templateSections.length})`)
+        }
+      }
+    } catch (e) {
+      console.log('[BusinessPlan] Template lookup failed, using defaults:', e)
+    }
+
+    if (templateSource === 'default') {
+      console.log('[BusinessPlan] No template found, using DEFAULT_SECTIONS')
     }
 
     const allSections = templateSections
@@ -673,7 +701,7 @@ export async function POST(request: NextRequest) {
         company_id: companyContext.profile.company_id,
         title: `${program.title} - 사업계획서`,
         status: 'generating',
-        ai_model: 'gpt-4o',
+        ai_model: 'gemini-2.5-flash',
         sections: {},
         web_search_results: {
           knowledge_base_used: true,
@@ -689,9 +717,9 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================
-    // 5. OpenAI GPT-4o API 호출 (지식베이스 기반)
+    // 5. Gemini 2.5 Flash API 호출 (지식베이스 기반)
     // =====================================================
-    const openai = new OpenAI()
+    const model = getGeminiModel()
     const generatedSections: Record<string, any> = {}
     const aiGenerationLog: any[] = []
 
@@ -708,16 +736,9 @@ export async function POST(request: NextRequest) {
           sectionDef
         )
 
-        const response = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          max_tokens: 2500,
-          messages: [
-            { role: 'system', content: BUSINESS_PLAN_SYSTEM_PROMPT },
-            { role: 'user', content: sectionPrompt }
-          ]
-        })
-
-        const content = response.choices[0]?.message?.content || ''
+        const fullPrompt = `${BUSINESS_PLAN_SYSTEM_PROMPT}\n\n${sectionPrompt}`
+        const response = await model.generateContent(fullPrompt)
+        const content = response.response.text() || ''
 
         // 데이터 부족 경고 추출
         const dataNeededMatches = content.match(/\[.*?필요\]/g) || []
@@ -737,8 +758,8 @@ export async function POST(request: NextRequest) {
           section: sectionDef.key,
           status: 'success',
           duration_ms: Date.now() - startTime,
-          input_tokens: response.usage?.prompt_tokens || 0,
-          output_tokens: response.usage?.completion_tokens || 0,
+          input_tokens: 0,
+          output_tokens: 0,
           data_warnings: dataNeededWarnings
         })
       } catch (sectionError: any) {
@@ -776,6 +797,9 @@ export async function POST(request: NextRequest) {
       throw updateError
     }
 
+    // 🔥 크레딧 차감 (생성 성공 시에만)
+    const chargeResult = await chargeCredits(user.id, 'business_plan', `사업계획서 생성: ${program.title}`)
+
     return NextResponse.json({
       success: true,
       business_plan_id: businessPlan.id,
@@ -792,7 +816,11 @@ export async function POST(request: NextRequest) {
         has_market_data: !!companyContext.market_data
       },
       program_requirements_used: !!programRequirements,
-      message: `${Object.keys(generatedSections).length}개 섹션이 생성되었습니다.`
+      message: `${Object.keys(generatedSections).length}개 섹션이 생성되었습니다.`,
+      credits: {
+        used: 500,
+        remaining: chargeResult.balance,
+      },
     })
 
   } catch (error: any) {

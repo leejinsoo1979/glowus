@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText, Play, CheckCircle2, XCircle, Clock,
@@ -12,6 +12,7 @@ import {
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { PIPELINE_STAGES as SHARED_PIPELINE_STAGES } from '@/lib/business-plan/types'
 
 // =====================================================
 // 타입 정의
@@ -88,16 +89,15 @@ interface Job {
   error?: string
 }
 
-const PIPELINE_STAGES = [
-  { stage: 1, name: '공고문 양식 파싱', description: '공고문에서 작성 양식 및 요령 추출', required: true },
-  { stage: 2, name: '회사 데이터 수집', description: '회사 내부 문서 및 데이터 수집/정제', required: true },
-  { stage: 3, name: '팩트카드 추출', description: 'Company Pack 팩트카드 생성', required: true },
-  { stage: 4, name: '섹션-팩트 매핑', description: '공고 항목과 팩트 간 매핑', required: true },
-  { stage: 5, name: '섹션별 초안 생성', description: 'AI 기반 섹션별 콘텐츠 생성', required: true },
-  { stage: 6, name: '자동 검증', description: '작성요령/분량/양식 기준 검증', required: true },
-  { stage: 7, name: '미확정 정보 질문', description: '누락된 정보에 대한 질문 생성', required: false },
-  { stage: 8, name: '최종 문서 생성', description: 'DOCX/PDF 형식으로 최종 출력', required: true },
-]
+// 실제로 실행되는 스테이지 (1-8)만 필터링
+const EXECUTABLE_STAGES = SHARED_PIPELINE_STAGES
+  .filter(s => s.stage >= 1 && s.stage <= 8)
+  .map(s => ({
+    stage: s.stage,
+    name: s.name,
+    description: s.description,
+    required: s.required
+  }))
 
 // =====================================================
 // 메인 컴포넌트
@@ -111,7 +111,7 @@ export default function PipelineBuilderPage() {
 
   const [plan, setPlan] = useState<BusinessPlan | null>(null)
   const [stages, setStages] = useState<PipelineStage[]>(
-    PIPELINE_STAGES.map(s => ({ ...s, status: 'pending' as const }))
+    EXECUTABLE_STAGES.map(s => ({ ...s, status: 'pending' as const }))
   )
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,16 +125,54 @@ export default function PipelineBuilderPage() {
   const { accentColor } = useThemeStore()
   const themeColorHex = accentColors.find(c => c.id === accentColor)?.color || '#3b82f6'
 
-  const eventSourceRef = useRef<EventSource | null>(null)
-
-  // 컴포넌트 언마운트 시 SSE 연결 해제
+  // 파이프라인 실행 중 폴링 (2초마다)
   useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
+    if (!running || !planId) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/business-plans/${planId}/pipeline`)
+        const data = await res.json()
+
+        // 스테이지 상태 업데이트
+        if (data.stages) {
+          const apiStages = data.stages.filter((s: any) => s.stage >= 1 && s.stage <= 8)
+          setStages(prev => prev.map(s => {
+            const apiStage = apiStages.find((as: any) => as.stage === s.stage)
+            if (apiStage) {
+              return {
+                ...s,
+                status: (apiStage.status === 'completed' ? 'completed'
+                  : apiStage.status === 'failed' ? 'failed'
+                  : apiStage.status === 'skipped' ? 'skipped'
+                  : apiStage.status === 'running' ? 'processing'
+                  : 'pending') as PipelineStage['status'],
+                progress: apiStage.progress || (apiStage.status === 'completed' ? 100 : 0),
+                message: apiStage.message,
+                log: apiStage.log
+              }
+            }
+            return s
+          }))
+        }
+
+        // Job 상태 확인
+        const runningJob = data.jobs?.find((j: Job) => j.status === 'running')
+        if (runningJob) {
+          setCurrentJob(runningJob)
+        } else {
+          // 완료 또는 실패
+          setRunning(false)
+          setCurrentJob(null)
+          fetchPlan()
+        }
+      } catch (e) {
+        console.error('[Polling] Failed:', e)
       }
-    }
-  }, [])
+    }, 2000) // 2초마다 폴링
+
+    return () => clearInterval(pollInterval)
+  }, [running, planId])
 
   useEffect(() => {
     console.log('[Builder] useEffect triggered - planId:', planId, 'programId:', programId)
@@ -230,12 +268,28 @@ export default function PipelineBuilderPage() {
       }
 
       if (data.stages) {
-        setStages(data.stages)
+        // API 스테이지에서 1-8만 필터링하여 상태 업데이트
+        const apiStages = data.stages.filter((s: any) => s.stage >= 1 && s.stage <= 8)
+        setStages(prev => prev.map(s => {
+          const apiStage = apiStages.find((as: any) => as.stage === s.stage)
+          if (apiStage) {
+            return {
+              ...s,
+              status: apiStage.status || 'pending',
+              progress: apiStage.progress,
+              message: apiStage.message,
+              log: apiStage.log
+            }
+          }
+          return s
+        }))
       }
-      // 실행 중인 Job이 있으면 SSE 연결
+
+      // 실행 중인 Job이 있으면 running 상태로
       if (data.jobs?.find((j: Job) => j.status === 'running')) {
         const runningJob = data.jobs.find((j: Job) => j.status === 'running')
-        connectToJobStream(runningJob.id)
+        setRunning(true)
+        setCurrentJob(runningJob)
       }
     } catch (error) {
       console.error('Failed to fetch pipeline status:', error)
@@ -279,74 +333,6 @@ export default function PipelineBuilderPage() {
   }
 
   // =====================================================
-  // SSE 실시간 연결
-  // =====================================================
-
-  const connectToJobStream = useCallback((jobId: string) => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-    }
-
-    const eventSource = new EventSource(
-      `/api/business-plans/${planId}/stream?job_id=${jobId}`
-    )
-    eventSourceRef.current = eventSource
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        handleStreamData(data)
-      } catch (e) {
-        console.error('SSE parse error:', e)
-      }
-    }
-
-    eventSource.onerror = () => {
-      console.log('SSE connection closed')
-      eventSource.close()
-      eventSourceRef.current = null
-      setRunning(false)
-      // 새로고침하여 최종 상태 확인
-      fetchPipelineStatus()
-      fetchPlan()
-    }
-  }, [planId])
-
-  const handleStreamData = (data: any) => {
-    if (data.type === 'stage_progress') {
-      setStages(prev => prev.map(s =>
-        s.stage === data.stage
-          ? {
-              ...s,
-              status: data.status === 'completed' ? 'completed'
-                : data.status === 'failed' ? 'failed'
-                : data.status === 'skipped' ? 'skipped'
-                : 'processing',
-              progress: data.progress,
-              message: data.message
-            }
-          : s
-      ))
-    }
-
-    if (data.status === 'completed') {
-      setRunning(false)
-      setCurrentJob(prev => prev ? { ...prev, status: 'completed', progress: 100 } : null)
-      fetchPlan()
-    }
-
-    if (data.status === 'failed') {
-      setRunning(false)
-      setCurrentJob(prev => prev ? { ...prev, status: 'failed', error: data.error } : null)
-      setError(data.error || '파이프라인 실행 실패')
-    }
-
-    if (data.progress !== undefined) {
-      setCurrentJob(prev => prev ? { ...prev, progress: data.progress } : null)
-    }
-  }
-
-  // =====================================================
   // 파이프라인 실행
   // =====================================================
 
@@ -357,8 +343,13 @@ export default function PipelineBuilderPage() {
     try {
       setRunning(true)
 
-      // 스테이지 상태 초기화
-      setStages(prev => prev.map(s => ({ ...s, status: 'pending' as const, progress: 0 })))
+      // 스테이지 상태 초기화 (EXECUTABLE_STAGES 기준)
+      setStages(EXECUTABLE_STAGES.map(s => ({
+        ...s,
+        status: 'pending' as const,
+        progress: 0,
+        message: undefined
+      })))
 
       const res = await fetch(`/api/business-plans/${planId}/pipeline`, {
         method: 'POST',
@@ -380,7 +371,7 @@ export default function PipelineBuilderPage() {
           current_stage: 0,
           stage_progress: {}
         })
-        connectToJobStream(data.job_id)
+        // 폴링이 자동으로 시작됨 (useEffect에서)
       }
     } catch (err: any) {
       setError(err.message)
@@ -396,9 +387,7 @@ export default function PipelineBuilderPage() {
         method: 'DELETE'
       })
       setRunning(false)
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-      }
+      setCurrentJob(null)
     } catch (err) {
       console.error('Cancel failed:', err)
     }

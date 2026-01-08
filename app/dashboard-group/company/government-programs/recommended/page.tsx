@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import Link from 'next/link'
+import { useGovernmentMatches, useGovernmentBookmarks } from '@/lib/hooks/use-cached-fetch'
 
 interface MatchResult {
   fit_score: number
@@ -33,42 +34,24 @@ interface MatchResult {
 }
 
 export default function RecommendedPage() {
-  const [matches, setMatches] = useState<MatchResult[]>([])
-  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
   const [minScore, setMinScore] = useState(50)
   const { accentColor } = useThemeStore()
   const themeColor = accentColors.find(c => c.id === accentColor)?.color || '#3b82f6'
 
+  // SWR 캐싱 적용
+  const { data: matchesData, isLoading: loading, refresh: refreshMatches } = useGovernmentMatches(minScore, 50)
+  const { data: bookmarksData, refresh: refreshBookmarks } = useGovernmentBookmarks()
+  const matches: MatchResult[] = matchesData?.matches || []
+
+  // 북마크 ID 세트 업데이트
   useEffect(() => {
-    fetchMatches()
-    fetchBookmarks()
-  }, [minScore])
-
-  const fetchMatches = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch(`/api/government-programs/match?min_score=${minScore}&limit=50`)
-      const data = await res.json()
-      setMatches(data.matches || [])
-    } catch (error) {
-      console.error('Failed to fetch matches:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchBookmarks = async () => {
-    try {
-      const res = await fetch('/api/government-programs/bookmarks')
-      const data = await res.json()
-      const ids = new Set<string>(data.bookmarks?.map((b: any) => b.program_id) || [])
+    if (bookmarksData?.bookmarks) {
+      const ids = new Set<string>(bookmarksData.bookmarks.map((b: any) => b.program_id))
       setBookmarkedIds(ids)
-    } catch (error) {
-      console.error('Failed to fetch bookmarks:', error)
     }
-  }
+  }, [bookmarksData])
 
   const toggleBookmark = async (programId: string) => {
     try {
@@ -108,7 +91,7 @@ export default function RecommendedPage() {
 
   const refresh = async () => {
     setRefreshing(true)
-    await fetchMatches()
+    await Promise.all([refreshMatches(), refreshBookmarks()])
     setRefreshing(false)
   }
 

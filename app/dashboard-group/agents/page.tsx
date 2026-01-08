@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
+import { useAgents, useAgentGroups } from "@/lib/hooks/use-cached-fetch"
 import {
   Bot,
   Plus,
@@ -61,10 +62,13 @@ const categories = [
 export default function AgentsPage() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
-  const [agents, setAgents] = useState<DeployedAgent[]>([])
-  const [groups, setGroups] = useState<(AgentGroup & { members?: any[] })[]>([])
-  const [loading, setLoading] = useState(true)
+
+  // SWR 캐싱 사용 - 30초간 캐시, 페이지 재방문 시 즉시 표시
+  const { data: agents = [], isLoading: agentsLoading, refresh: refreshAgents } = useAgents()
+  const { data: groups = [], isLoading: groupsLoading, refresh: refreshGroups } = useAgentGroups()
+  const loading = agentsLoading || groupsLoading
   const [error, setError] = useState<string | null>(null)
+
   const { accentColor } = useThemeStore()
   const [activeTab, setActiveTab] = useState<TabType>("agents")
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
@@ -75,25 +79,11 @@ export default function AgentsPage() {
 
   useEffect(() => {
     setMounted(true)
-    fetchData()
   }, [])
 
-  const fetchData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const [agentsRes, groupsRes] = await Promise.all([
-        fetch("/api/agents"),
-        fetch("/api/agent-groups"),
-      ])
-
-      if (agentsRes.ok) setAgents(await agentsRes.json())
-      if (groupsRes.ok) setGroups(await groupsRes.json())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "알 수 없는 오류")
-    } finally {
-      setLoading(false)
-    }
+  const refreshData = () => {
+    refreshAgents()
+    refreshGroups()
   }
 
   const handleSaveGroup = async (groupData: Partial<AgentGroup> & { agent_ids?: string[] }) => {
@@ -105,14 +95,14 @@ export default function AgentsPage() {
       body: JSON.stringify(groupData),
     })
     if (!response.ok) throw new Error("그룹 저장 실패")
-    await fetchData()
+    refreshData()
   }
 
   const handleDeleteGroup = async (groupId: string) => {
     if (!confirm("정말 이 그룹을 삭제하시겠습니까?")) return
     try {
       const response = await fetch(`/api/agent-groups/${groupId}`, { method: "DELETE" })
-      if (response.ok) setGroups(groups.filter(g => g.id !== groupId))
+      if (response.ok) refreshGroups()
     } catch (error) {
       console.error("그룹 삭제 실패:", error)
     }
@@ -123,7 +113,7 @@ export default function AgentsPage() {
     if (!confirm("정말 이 에이전트를 삭제하시겠습니까?")) return
     try {
       const res = await fetch(`/api/agents/${agentId}`, { method: "DELETE" })
-      if (res.ok) fetchData()
+      if (res.ok) refreshData()
     } catch (err) {
       alert(err instanceof Error ? err.message : "삭제 오류")
     }
@@ -138,7 +128,7 @@ export default function AgentsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (res.ok) fetchData()
+      if (res.ok) refreshData()
     } catch (err) {
       alert(err instanceof Error ? err.message : "상태 변경 오류")
     }
@@ -342,7 +332,7 @@ export default function AgentsPage() {
               <AlertCircle className="w-8 h-8 text-red-500" />
             </div>
             <p className="text-zinc-500">{error}</p>
-            <Button variant="outline" className="mt-4" onClick={fetchData}>
+            <Button variant="outline" className="mt-4" onClick={refreshData}>
               다시 시도
             </Button>
           </div>
@@ -435,7 +425,7 @@ export default function AgentsPage() {
                         <div>
                           <h3 className="font-semibold text-zinc-900 dark:text-white">{group.name}</h3>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                            {interactionModeLabels[group.interaction_mode]}
+                            {interactionModeLabels[group.interaction_mode as InteractionMode] || group.interaction_mode}
                           </span>
                         </div>
                       </div>

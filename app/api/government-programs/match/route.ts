@@ -5,6 +5,7 @@ import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
 import { getGrokClient } from '@/lib/llm/client'
 import crypto from 'crypto'
+import { checkCredits, deductCredits, CREDIT_PRICING } from '@/lib/credits'
 
 export const dynamic = 'force-dynamic'
 
@@ -1514,9 +1515,26 @@ export async function GET(request: NextRequest) {
     const skipCache = searchParams.get('skip_cache') === 'true'  // 캐시 무시 옵션
 
     // 🧠 상위 매칭에 AI 분석 적용 (캐싱 포함)
+    let creditsUsed = 0
+    let creditsRemaining = 0
+
     if (useAI && matchedPrograms.length > 0) {
       const topMatches = matchedPrograms.slice(0, Math.min(aiLimit, matchedPrograms.length))
       const profileHash = generateProfileHash(profile)
+
+      // 💰 크레딧 확인 (AI 매칭 1회 = 50 크레딧)
+      const matchingCredits = CREDIT_PRICING.matching || 50
+      const creditCheck = await checkCredits(user.id, matchingCredits)
+
+      if (!creditCheck.canUse) {
+        return NextResponse.json({
+          error: '크레딧이 부족합니다',
+          code: 'INSUFFICIENT_CREDITS',
+          required: matchingCredits,
+          balance: creditCheck.balance + creditCheck.dailyBalance,
+          tier: creditCheck.tier,
+        }, { status: 402 })
+      }
 
       console.log(`[AI Analysis] Starting analysis for ${topMatches.length} programs (cache: ${skipCache ? 'disabled' : 'enabled'})`)
 
@@ -1561,6 +1579,19 @@ export async function GET(request: NextRequest) {
             await new Promise(resolve => setTimeout(resolve, 300))
           }
         }
+      }
+
+      // 💰 API 호출한 만큼만 크레딧 차감 (캐시 히트는 무료)
+      if (apiCalls > 0) {
+        const chargeResult = await deductCredits(user.id, matchingCredits, {
+          type: 'usage',
+          category: 'matching',
+          description: `AI 매칭 분석 (${apiCalls}개 프로그램)`,
+          model: MODEL_VERSION,
+        })
+        creditsUsed = matchingCredits
+        creditsRemaining = chargeResult.balance
+        console.log(`[AI Analysis] Credits charged: ${matchingCredits}, remaining: ${creditsRemaining}`)
       }
 
       console.log(`[AI Analysis] Complete: ${cacheHits} cache hits, ${apiCalls} API calls`)

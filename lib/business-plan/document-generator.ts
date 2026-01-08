@@ -44,6 +44,43 @@ interface GeneratedDocument {
 }
 
 // =====================================================
+// 파일명 유틸리티
+// =====================================================
+
+/**
+ * 안전한 파일명 생성 (한글 및 특수문자 처리)
+ * - 한글은 제거하고 영문/숫자만 유지
+ * - 특수문자는 언더스코어로 대체
+ * - 연속된 언더스코어 정리
+ * - 최대 50자로 제한
+ */
+function sanitizeFilename(title: string): string {
+  if (!title) return 'business-plan'
+
+  // 1. 한글을 제거하고 영문/숫자/공백만 유지
+  let safe = title.replace(/[^\w\s-]/g, '')
+
+  // 2. 공백과 하이픈을 언더스코어로 대체
+  safe = safe.replace(/[\s-]+/g, '_')
+
+  // 3. 연속된 언더스코어 정리
+  safe = safe.replace(/_+/g, '_')
+
+  // 4. 앞뒤 언더스코어 제거
+  safe = safe.replace(/^_+|_+$/g, '')
+
+  // 5. 빈 문자열이면 기본값 사용
+  if (!safe) return 'business-plan'
+
+  // 6. 최대 50자로 제한
+  if (safe.length > 50) {
+    safe = safe.substring(0, 50).replace(/_+$/, '')
+  }
+
+  return safe
+}
+
+// =====================================================
 // DOCX 생성
 // =====================================================
 
@@ -103,6 +140,42 @@ export async function generateDocx(
     })
   )
 
+  // 본문 섹션 - 템플릿 구조 사용
+  const templateSections = template?.sections || template?.section_structure || []
+
+  // 섹션 제목 매핑 함수: 템플릿 원본 제목 반환
+  const getOriginalTitle = (section: BusinessPlanSection): string => {
+    // 1. section_key로 매칭 시도 (타입 변환 처리 - section_id는 숫자, section_key는 문자열일 수 있음)
+    const byKey = templateSections.find((ts: any) =>
+      String(ts.section_id) === String(section.section_key)
+    )
+    if (byKey?.title) return byKey.title
+
+    // 2. 정확한 제목 매칭
+    const byExactTitle = templateSections.find((ts: any) => ts.title === section.section_title)
+    if (byExactTitle?.title) return byExactTitle.title
+
+    // 3. 순서 기반 매칭 (같은 순서의 템플릿 섹션 사용)
+    const orderMatch = templateSections.find((ts: any) =>
+      Number(ts.order) === Number(section.section_order)
+    )
+    if (orderMatch?.title) return orderMatch.title
+
+    // 4. 부분 매칭 (템플릿 제목이 섹션 제목 포함)
+    const byPartialMatch = templateSections.find((ts: any) =>
+      ts.title?.includes(section.section_title) ||
+      section.section_title?.includes(ts.title?.replace(/^[IVX]+\.\s*|\d+\.\s*/, ''))
+    )
+    if (byPartialMatch?.title) return byPartialMatch.title
+
+    // 5. 인덱스 기반 (마지막 폴백)
+    const templateByIndex = templateSections[section.section_order - 1]
+    if (templateByIndex?.title) return templateByIndex.title
+
+    // 최종 폴백: 원래 섹션 제목 사용
+    return section.section_title
+  }
+
   // 목차 (옵션)
   if (options.includeTableOfContents) {
     children.push(
@@ -119,12 +192,13 @@ export async function generateDocx(
       })
     )
 
-    sections.forEach((section, index) => {
+    sections.forEach((section) => {
+      const originalTitle = getOriginalTitle(section)
       children.push(
         new Paragraph({
           children: [
             new TextRun({
-              text: `${index + 1}. ${section.section_title}`,
+              text: originalTitle,
               size: 24
             })
           ],
@@ -140,14 +214,16 @@ export async function generateDocx(
     )
   }
 
-  // 본문 섹션
-  sections.forEach((section, index) => {
-    // 섹션 제목
+  sections.forEach((section) => {
+    // 원본 템플릿 제목 사용
+    const sectionTitle = getOriginalTitle(section)
+
+    // 섹션 제목 (원본 번호 포함된 제목 그대로 사용)
     children.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: `${index + 1}. ${section.section_title}`,
+            text: sectionTitle,
             bold: true,
             size: 28, // 14pt
             font: formatting.font_family || '맑은 고딕'
@@ -236,37 +312,37 @@ export async function generateDocx(
         },
         headers: options.includePageNumbers
           ? {
-              default: new Header({
-                children: [
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        text: plan.title || '사업계획서',
-                        size: 18,
-                        color: '666666'
-                      })
-                    ],
-                    alignment: AlignmentType.RIGHT
-                  })
-                ]
-              })
-            }
+            default: new Header({
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: plan.title || '사업계획서',
+                      size: 18,
+                      color: '666666'
+                    })
+                  ],
+                  alignment: AlignmentType.RIGHT
+                })
+              ]
+            })
+          }
           : undefined,
         footers: options.includePageNumbers
           ? {
-              default: new Footer({
-                children: [
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        children: [PageNumber.CURRENT, ' / ', PageNumber.TOTAL_PAGES]
-                      })
-                    ],
-                    alignment: AlignmentType.CENTER
-                  })
-                ]
-              })
-            }
+            default: new Footer({
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      children: [PageNumber.CURRENT, ' / ', PageNumber.TOTAL_PAGES]
+                    })
+                  ],
+                  alignment: AlignmentType.CENTER
+                })
+              ]
+            })
+          }
           : undefined,
         children
       }
@@ -277,7 +353,7 @@ export async function generateDocx(
 
   return {
     buffer: Buffer.from(buffer),
-    filename: `${plan.title || 'business-plan'}_${Date.now()}.docx`,
+    filename: `${sanitizeFilename(plan.title)}_${Date.now()}.docx`,
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     size: buffer.byteLength
   }
@@ -402,14 +478,45 @@ export async function generatePdf(
   currentPage = pdfDoc.addPage([pageWidth, pageHeight])
   yPosition = pageHeight - margin
 
+  // 템플릿 섹션 구조 (PDF용)
+  const pdfTemplateSections = plan.template?.sections || plan.template?.section_structure || []
+
+  // PDF용 원본 제목 가져오기 함수
+  const getPdfOriginalTitle = (section: BusinessPlanSection): string => {
+    const byKey = pdfTemplateSections.find((ts: any) =>
+      String(ts.section_id) === String(section.section_key)
+    )
+    if (byKey?.title) return byKey.title
+
+    const byExactTitle = pdfTemplateSections.find((ts: any) => ts.title === section.section_title)
+    if (byExactTitle?.title) return byExactTitle.title
+
+    const orderMatch = pdfTemplateSections.find((ts: any) =>
+      Number(ts.order) === Number(section.section_order)
+    )
+    if (orderMatch?.title) return orderMatch.title
+
+    const byPartialMatch = pdfTemplateSections.find((ts: any) =>
+      ts.title?.includes(section.section_title) ||
+      section.section_title?.includes(ts.title?.replace(/^[IVX]+\.\s*|\d+\.\s*/, ''))
+    )
+    if (byPartialMatch?.title) return byPartialMatch.title
+
+    const templateByIndex = pdfTemplateSections[section.section_order - 1]
+    if (templateByIndex?.title) return templateByIndex.title
+
+    return section.section_title
+  }
+
   // 본문 섹션
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i]
+    const sectionTitle = getPdfOriginalTitle(section)
 
     // 섹션 제목
     ensureSpace(lineHeight * 3)
 
-    currentPage.drawText(`${i + 1}. ${section.section_title}`, {
+    currentPage.drawText(sectionTitle, {
       x: margin,
       y: yPosition,
       size: 14,
@@ -463,7 +570,7 @@ export async function generatePdf(
 
   return {
     buffer: Buffer.from(pdfBytes),
-    filename: `${plan.title || 'business-plan'}_${Date.now()}.pdf`,
+    filename: `${sanitizeFilename(plan.title)}_${Date.now()}.pdf`,
     mimeType: 'application/pdf',
     size: pdfBytes.byteLength
   }
@@ -545,9 +652,7 @@ export async function generateDocument(
       result = await generatePdf(enrichedPlan, sections || [], fullOptions)
       break
     case 'hwp':
-      // HWP는 DOCX로 대체 (한컴 API 연동 시 별도 구현)
-      result = await generateDocx(enrichedPlan, sections || [], fullOptions)
-      result.filename = result.filename.replace('.docx', '.docx') // HWP 변환 필요
+      result = await generateHwp(enrichedPlan, sections || [], fullOptions)
       break
     default:
       throw new Error(`지원하지 않는 형식: ${format}`)
@@ -582,6 +687,137 @@ export async function generateDocument(
     .eq('id', planId)
 
   return result
+}
+
+// =====================================================
+// HWP 생성 (Java Bridge)
+// =====================================================
+
+import { spawn } from 'child_process'
+import path from 'path'
+import fs from 'fs/promises'
+
+export async function generateHwp(
+  plan: any,
+  sections: BusinessPlanSection[],
+  options: DocumentOptions
+): Promise<GeneratedDocument> {
+  // 1. 템플릿 파일 준비
+  let templatePath = path.resolve(process.cwd(), 'templates', 'startup_package_template.hwp')
+  const tempTemplatePath = path.resolve(process.cwd(), 'temp', `template_${Date.now()}.hwp`)
+
+  // 동적 템플릿 로딩 지원
+  if (plan.template?.template_file_url) {
+    console.log('[generateHwp] Downloading dynamic template:', plan.template.template_file_url)
+    try {
+      const response = await fetch(plan.template.template_file_url)
+      if (!response.ok) throw new Error(`Template download failed: ${response.statusText}`)
+
+      const buffer = await response.arrayBuffer()
+      await fs.mkdir(path.dirname(tempTemplatePath), { recursive: true })
+      await fs.writeFile(tempTemplatePath, Buffer.from(buffer))
+
+      templatePath = tempTemplatePath
+      console.log('[generateHwp] Using downloaded template:', templatePath)
+    } catch (downloadError) {
+      console.warn('[generateHwp] Failed to download template, using default:', downloadError)
+      // Fallback to default
+    }
+  }
+
+  // 템플릿 파일이 없으면 에러
+  try {
+    await fs.access(templatePath)
+  } catch {
+    console.warn('HWP Template not found locally, using Fallback DOCX')
+    // 템플릿이 없으면 DOCX로 폴백하거나 에러 처리
+    throw new Error(`HWP 템플릿 파일을 찾을 수 없습니다: ${templatePath}`)
+  }
+
+  // 2. 데이터 JSON 생성
+  // 섹션 데이터를 HWP 누름틀 필드명으로 매핑해야 함
+  // 예: "1. 아이템 개요" -> "item_overview"
+  const data: Record<string, string> = {
+    "project_name": plan.project_name || '',
+    "company_name": "주식회사 글로우어스", // TODO: 실제 회사명 조회 필요
+    "ceo_name": "이진수", // TODO: 실제 대표자명
+    "submission_date": new Date().toLocaleDateString(),
+  }
+
+  // 섹션 데이터 매핑
+  sections.forEach(section => {
+    // 섹션 타이틀이나 ID 기반으로 필드명 매핑 (임시 로직)
+    // 실제로는 BusinessPlanSection에 `field_name` 프로퍼티가 있거나 매핑 테이블이 있어야 함
+    if (section.content) {
+      // 간단한 규칙: 섹션 순서대로 field_1, field_2... 또는 특정 키워드 매칭
+      data[`section_${section.section_order}`] = section.content
+
+      // 또는 제목 기반 매핑
+      if (section.section_title.includes("개요")) data["item_summay"] = section.content
+      if (section.section_title.includes("배경")) data["Biz_Background"] = section.content
+      if (section.section_title.includes("목표")) data["Biz_Objective"] = section.content
+    }
+  })
+
+  const tempId = Date.now().toString()
+  const inputJsonPath = path.resolve(process.cwd(), 'temp', `data_${tempId}.json`)
+  const outputHwpPath = path.resolve(process.cwd(), 'temp', `output_${tempId}.hwp`)
+
+  // temp 디렉토리 확인
+  await fs.mkdir(path.dirname(inputJsonPath), { recursive: true })
+
+  await fs.writeFile(inputJsonPath, JSON.stringify(data), 'utf8')
+
+  // 3. Java Process 실행
+  const jarPath = path.resolve(process.cwd(), 'lib/bin/hwp-filler.jar')
+
+  // Java 경로 (환경변수 또는 절대경로)
+  // Mac/Linux는 'java', Windows는 'java.exe'
+  let javaCommand = process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/java` : 'java'
+
+  // MacOS Homebrew Fallback
+  if (process.platform === 'darwin' && !process.env.JAVA_HOME) {
+    try {
+      await fs.access('/opt/homebrew/opt/openjdk/bin/java')
+      javaCommand = '/opt/homebrew/opt/openjdk/bin/java'
+    } catch { }
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(javaCommand, ['-jar', jarPath, templatePath, outputHwpPath, inputJsonPath])
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (data) => stdout += data.toString())
+    child.stderr.on('data', (data) => stderr += data.toString())
+
+    child.on('close', async (code) => {
+      // 임시 데이터 파일 삭제
+      try { await fs.unlink(inputJsonPath) } catch { }
+
+      if (code === 0) {
+        // 성공
+        try {
+          const buffer = await fs.readFile(outputHwpPath)
+          // 임시 결과 파일 삭제
+          await fs.unlink(outputHwpPath)
+
+          resolve({
+            buffer,
+            filename: `${sanitizeFilename(plan.title)}_${Date.now()}.hwp`,
+            mimeType: 'application/x-hwp',
+            size: buffer.length
+          })
+        } catch (readErr) {
+          reject(new Error(`HWP 생성 후 읽기 실패: ${readErr}`))
+        }
+      } else {
+        console.error('HWP Generator Failed:', stderr)
+        reject(new Error(`HWP 생성 실패 (Code ${code}): ${stderr}`))
+      }
+    })
+  })
 }
 
 // =====================================================
@@ -784,37 +1020,66 @@ export function generatePreviewHtml(plan: any, sections: BusinessPlanSection[]):
       <h1>${plan.title || '사업계획서'}</h1>
       <div class="subtitle">${plan.project_name || ''}</div>
       <div class="date">${new Date().toLocaleDateString('ko-KR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}</div>
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })}</div>
     </div>
 
-    ${sections
-      .map(
-        (section, index) => `
+    ${(() => {
+      // 템플릿 섹션 구조 (HTML용)
+      const htmlTemplateSections = template?.sections || template?.section_structure || []
+
+      // HTML용 원본 제목 가져오기 함수
+      const getHtmlOriginalTitle = (section: any): string => {
+        const byKey = htmlTemplateSections.find((ts: any) =>
+          String(ts.section_id) === String(section.section_key)
+        )
+        if (byKey?.title) return byKey.title
+
+        const byExactTitle = htmlTemplateSections.find((ts: any) => ts.title === section.section_title)
+        if (byExactTitle?.title) return byExactTitle.title
+
+        const orderMatch = htmlTemplateSections.find((ts: any) =>
+          Number(ts.order) === Number(section.section_order)
+        )
+        if (orderMatch?.title) return orderMatch.title
+
+        const byPartialMatch = htmlTemplateSections.find((ts: any) =>
+          ts.title?.includes(section.section_title) ||
+          section.section_title?.includes(ts.title?.replace(/^[IVX]+\.\s*|\d+\.\s*/, ''))
+        )
+        if (byPartialMatch?.title) return byPartialMatch.title
+
+        const templateByIndex = htmlTemplateSections[section.section_order - 1]
+        if (templateByIndex?.title) return templateByIndex.title
+
+        return section.section_title
+      }
+
+      return sections.map((section) => {
+        const sectionTitle = getHtmlOriginalTitle(section)
+        return `
       <div class="section">
-        <h2 class="section-title">${index + 1}. ${section.section_title}</h2>
+        <h2 class="section-title">${sectionTitle}</h2>
         <div class="section-content">
           ${(section.content || '')
             .split('\n\n')
             .map(para => `<p>${para.replace(/\{\{미확정:([^}]+)\}\}/g, '<span class="placeholder">[$1]</span>')}</p>`)
             .join('')}
         </div>
-        ${
-          section.validation_status === 'warning'
+        ${section.validation_status === 'warning'
             ? `<div class="validation-warning">⚠️ ${section.validation_messages?.map((m: any) => m.message).join(', ')}</div>`
             : ''
-        }
-        ${
-          section.validation_status === 'invalid'
+          }
+        ${section.validation_status === 'invalid'
             ? `<div class="validation-error">❌ ${section.validation_messages?.map((m: any) => m.message).join(', ')}</div>`
             : ''
-        }
+          }
       </div>
     `
-      )
-      .join('')}
+      }).join('')
+    })()}
   </div>
 </body>
 </html>

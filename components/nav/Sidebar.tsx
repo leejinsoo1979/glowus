@@ -32,6 +32,7 @@ import {
   Layers,
   Orbit,
   GanttChart,
+  Brain,
 } from 'lucide-react'
 import { TbBrandWechat } from 'react-icons/tb'
 import { GrConnect } from 'react-icons/gr'
@@ -49,6 +50,7 @@ const navigation = [
   { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
   { name: 'AI 에이전트', href: '/dashboard-group/agents', icon: BrainCircuit },
   { name: '뉴럴맵', href: '/dashboard-group/neural-map', icon: Orbit },
+  { name: '마이뉴런', href: '/dashboard-group/neurons', icon: Brain },
   { name: '리포트', href: '/dashboard-group/reports', icon: FileText },
   { name: '커넥트', href: '/dashboard-group/connect', icon: GrConnect },
   { name: '팀 관리', href: '/dashboard-group/team', icon: Users },

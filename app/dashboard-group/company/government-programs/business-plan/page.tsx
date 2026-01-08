@@ -28,15 +28,18 @@ import {
   MessageSquare,
   Check,
   Zap,
-  Clock
+  Clock,
+  Globe
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 // docx, file-saver, html2pdf는 동적으로 import (SSR 문제 방지)
 
 // 섹션 아이콘 매핑
 const SECTION_ICONS: Record<string, any> = {
+  // 옛날 키 (호환성)
   executive_summary: Sparkles,
   company_overview: Building2,
   problem_statement: AlertCircle,
@@ -46,7 +49,35 @@ const SECTION_ICONS: Record<string, any> = {
   team_introduction: Users,
   financial_plan: TrendingUp,
   fund_usage: Target,
-  expected_outcomes: CheckCircle2
+  expected_outcomes: CheckCircle2,
+  // DIPS 원본 HWP 템플릿 키
+  '1-1': Users,           // 대표자 현황
+  '1-2': Building2,       // 기업 현황 및 팀
+  '2-1': Sparkles,        // 개발 동기
+  '2-2': Lightbulb,       // 아이템 차별성
+  '2-3': DollarSign,      // 비즈니스 모델
+  '2-4': Target,          // 개선과제
+  '3-1': BarChart3,       // 내수시장
+  '3-1-1': BarChart3,
+  '3-1-2': BarChart3,
+  '3-2': Globe,           // 해외시장
+  '3-2-1': Globe,
+  '3-2-2': Globe,
+  '3-2-3': Globe,
+  '3-3': Clock,           // 추진일정
+  '3-3-1': Clock,
+  '3-4': TrendingUp,      // 사업비
+  '4-1': Building2,       // 대중견기업 협력
+  '4-1-1': Building2,
+  '4-1-2': Building2,
+  '5-1': DollarSign,      // 투자유치
+  '5-1-1': DollarSign,
+  '5-1-2': DollarSign,
+  '6-1': Target,          // 출구전략
+  '6-1-1': Target,
+  '6-1-2': Target,
+  '6-1-3': Target,
+  '6-1-4': Target,
 }
 
 interface Section {
@@ -133,6 +164,9 @@ export default function BusinessPlanPage() {
     suggestions: string[]
     completeness_score: number
   } | null>(null)
+  const [autoGenerateTriggered, setAutoGenerateTriggered] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState(0)
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null)
 
   // 프로그램 정보 로드
   const fetchProgram = useCallback(async () => {
@@ -195,6 +229,35 @@ export default function BusinessPlanPage() {
     fetchBusinessPlan()
   }, [fetchProgram, fetchBusinessPlan])
 
+  // 기존 계획서 없으면 자동 생성 시작 (1회만)
+  useEffect(() => {
+    if (
+      programId &&
+      !loading &&
+      !generating &&
+      !businessPlan &&
+      !autoGenerateTriggered &&
+      program
+    ) {
+      setAutoGenerateTriggered(true)
+      generatePlan()
+    }
+  }, [programId, loading, generating, businessPlan, autoGenerateTriggered, program])
+
+  // 생성 중 진행률 업데이트 (예상 시간 2분 기준)
+  useEffect(() => {
+    if (!generating || !generationStartTime) return
+
+    const ESTIMATED_DURATION = 120000 // 2분
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - generationStartTime
+      const progress = Math.min(95, Math.floor((elapsed / ESTIMATED_DURATION) * 100))
+      setGenerationProgress(progress)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [generating, generationStartTime])
+
   // 사업계획서 생성
   const generatePlan = async () => {
     if (!programId) return
@@ -210,16 +273,30 @@ export default function BusinessPlanPage() {
       const data = await res.json()
 
       if (data.success) {
-        // 생성된 사업계획서 로드
-        const planRes = await fetch(`/api/skills/business-plan/${data.business_plan_id}`)
-        const planData = await planRes.json()
+        // 생성된 사업계획서 바로 사용 (추가 API 호출 없이)
+        const newPlan: BusinessPlan = {
+          id: data.business_plan_id,
+          title: program?.title ? `${program.title} - 사업계획서` : '사업계획서',
+          status: 'completed',
+          sections: data.sections || {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          government_programs: program ? {
+            id: program.id,
+            title: program.title,
+            organization: program.organization,
+            category: program.category || ''
+          } : undefined
+        }
 
-        if (planData.success) {
-          setBusinessPlan(planData.business_plan)
-          const sections = Object.keys(planData.business_plan.sections || {})
-          if (sections.length > 0) {
-            setSelectedSection(sections[0])
-          }
+        setBusinessPlan(newPlan)
+        const sectionKeys = Object.keys(newPlan.sections)
+        if (sectionKeys.length > 0) {
+          const firstSection = sectionKeys[0]
+          setSelectedSection(firstSection)
+          // 자동으로 편집 모드 진입
+          setEditContent(newPlan.sections[firstSection]?.content || '')
+          setEditMode(true)
         }
       } else if (data.needs_interview) {
         // 지식베이스 부족 - 인터뷰 모드 안내
@@ -506,8 +583,17 @@ export default function BusinessPlanPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {businessPlan && (
+          {/* 사업계획서가 있고 섹션에 내용이 있을 때만 다운로드 버튼 표시 */}
+          {businessPlan && Object.keys(businessPlan.sections || {}).length > 0 && (
             <div className="flex gap-2">
+              <button
+                onClick={() => window.open(`/api/business-plans/${businessPlan.id}/hwp`, '_blank')}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+                style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
+              >
+                <Download className="w-4 h-4" />
+                HWP 다운로드
+              </button>
               <button
                 onClick={handleExportPDF}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white/5 text-zinc-300 hover:bg-white/10 transition-all"
@@ -610,13 +696,12 @@ export default function BusinessPlanPage() {
 
                   {/* 진행 상태 */}
                   <div className="space-y-4 max-w-sm mx-auto">
-                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden relative">
                       <div
-                        className="h-full rounded-full animate-pulse"
+                        className="absolute inset-0 rounded-full"
                         style={{
-                          background: `linear-gradient(90deg, ${themeColor}, ${themeColor}60)`,
-                          width: '60%',
-                          animation: 'loading-progress 3s ease-in-out infinite'
+                          background: `linear-gradient(90deg, transparent, ${themeColor}, transparent)`,
+                          animation: 'loading-slide 1.5s ease-in-out infinite'
                         }}
                       />
                     </div>
@@ -718,7 +803,7 @@ export default function BusinessPlanPage() {
                   <div className="flex items-center justify-center gap-6 text-sm text-zinc-500">
                     <span className="flex items-center gap-1.5">
                       <Zap className="w-4 h-4" style={{ color: themeColor }} />
-                      GPT-4 기반
+                      Gemini 2.5 Flash 기반
                     </span>
                     <span className="flex items-center gap-1.5">
                       <Clock className="w-4 h-4" />
@@ -731,10 +816,9 @@ export default function BusinessPlanPage() {
 
             {/* CSS 애니메이션 */}
             <style jsx>{`
-              @keyframes loading-progress {
-                0% { width: 20%; }
-                50% { width: 80%; }
-                100% { width: 20%; }
+              @keyframes loading-slide {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
               }
             `}</style>
           </div>
@@ -876,8 +960,8 @@ export default function BusinessPlanPage() {
                         placeholder="내용을 입력하세요..."
                       />
                     ) : currentSection.content ? (
-                      <div className="prose prose-invert prose-sm max-w-none">
-                        <ReactMarkdown>
+                      <div className="prose prose-invert prose-sm max-w-none prose-table:border-collapse prose-th:border prose-th:border-zinc-600 prose-th:bg-zinc-800 prose-th:p-2 prose-td:border prose-td:border-zinc-700 prose-td:p-2">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {currentSection.content}
                         </ReactMarkdown>
                       </div>

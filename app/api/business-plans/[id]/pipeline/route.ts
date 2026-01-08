@@ -121,25 +121,50 @@ export async function GET(
     // Job 이력 조회
     const jobs = await getJobsByPlan(id)
 
-    // 진행률 계산
+    // 진행률 계산 (로그 기반)
     const completedStages = logs?.filter(l => l.status === 'completed').map(l => l.stage) || []
     const failedStages = logs?.filter(l => l.status === 'failed').map(l => l.stage) || []
 
+    // 실행 중인 Job이 있으면 그 job의 stage_progress 우선 사용
+    // 없으면 가장 최근 완료된 Job의 stage_progress 사용
+    const runningJob = jobs.find(j => j.status === 'running')
+    const latestCompletedJob = jobs.find(j => j.status === 'completed')
+    const activeJob = runningJob || latestCompletedJob
+    const jobStageProgress = activeJob?.stage_progress || {}
+
     return NextResponse.json({
       plan_id: id,
-      current_stage: plan.pipeline_stage,
-      stage_name: PIPELINE_STAGES[plan.pipeline_stage]?.name || '',
-      status: plan.pipeline_status,
-      completion_percentage: plan.completion_percentage,
-      stages: PIPELINE_STAGES.map(stage => ({
-        ...stage,
-        status: completedStages.includes(stage.stage)
-          ? 'completed'
-          : failedStages.includes(stage.stage)
-            ? 'failed'
-            : 'pending',
-        log: logs?.find(l => l.stage === stage.stage)
-      })),
+      current_stage: runningJob?.current_stage || plan.pipeline_stage,
+      stage_name: PIPELINE_STAGES[runningJob?.current_stage || plan.pipeline_stage]?.name || '',
+      status: runningJob ? 'running' : plan.pipeline_status,
+      completion_percentage: runningJob?.progress || plan.completion_percentage,
+      stages: PIPELINE_STAGES.map(stage => {
+        // 실행 중인 Job의 stage_progress 우선 사용
+        const jobStage = jobStageProgress[String(stage.stage)]
+        if (jobStage) {
+          return {
+            ...stage,
+            status: jobStage.status === 'completed' ? 'completed'
+              : jobStage.status === 'failed' ? 'failed'
+              : jobStage.status === 'skipped' ? 'skipped'
+              : jobStage.status === 'running' ? 'processing'
+              : 'pending',
+            progress: jobStage.progress,
+            message: jobStage.message,
+            log: logs?.find(l => l.stage === stage.stage)
+          }
+        }
+        // 실행 중인 Job이 없으면 로그 기반
+        return {
+          ...stage,
+          status: completedStages.includes(stage.stage)
+            ? 'completed'
+            : failedStages.includes(stage.stage)
+              ? 'failed'
+              : 'pending',
+          log: logs?.find(l => l.stage === stage.stage)
+        }
+      }),
       total_tokens_used: plan.total_tokens_used,
       total_cost: plan.generation_cost,
       document: plan.generated_document_url ? {

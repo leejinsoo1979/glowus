@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
+const getGeminiModel = () => genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
 export const dynamic = 'force-dynamic'
 
@@ -210,8 +213,8 @@ export async function POST(
     // 기존 섹션 정보
     const existingSection = plan.sections?.[section_key]
 
-    // OpenAI GPT-4o로 재생성
-    const openai = new OpenAI()
+    // Gemini로 재생성
+    const model = getGeminiModel()
 
     const systemPrompt = `당신은 정부지원사업 사업계획서 작성 전문가입니다.
 기존 작성된 내용을 개선하거나, 추가 지시사항을 반영해 수정해주세요.
@@ -243,16 +246,9 @@ ${existingSection?.content || '(없음)'}
 
     userPrompt += `\n위 내용을 바탕으로 ${existingSection?.title || section_key} 섹션을 ${existingSection?.content ? '개선' : '작성'}해주세요.`
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      max_tokens: 2000,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
-    })
-
-    const newContent = response.choices[0]?.message?.content || ''
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`
+    const response = await model.generateContent(fullPrompt)
+    const newContent = response.response.text() || ''
 
     // 섹션 업데이트
     const sections = plan.sections || {}

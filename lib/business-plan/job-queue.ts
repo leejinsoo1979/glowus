@@ -168,8 +168,19 @@ export async function executePipelineJob(jobId: string): Promise<void> {
           case 1:
             if (plan.program_id) {
               await updateStageProgress(jobId, stage, 'running', '공고문 분석 중...', 30)
-              await parseAnnouncementTemplate(plan.program_id)
-              await updateStageProgress(jobId, stage, 'completed', '공고문 분석 완료', 100)
+              const parsedTemplate = await parseAnnouncementTemplate(plan.program_id)
+
+              // 중요: 파싱된 템플릿을 plan에 연결
+              if (parsedTemplate?.id) {
+                await supabase
+                  .from('business_plans')
+                  .update({ template_id: parsedTemplate.id })
+                  .eq('id', job.plan_id)
+                console.log(`[JobQueue] Stage 1: 템플릿 연결 완료 (template_id: ${parsedTemplate.id})`)
+                await updateStageProgress(jobId, stage, 'completed', `공고문 분석 완료 (${parsedTemplate.sections?.length || 0}개 섹션)`, 100)
+              } else {
+                await updateStageProgress(jobId, stage, 'completed', '공고문 분석 완료', 100)
+              }
             } else {
               await updateStageProgress(jobId, stage, 'skipped', '공고문 ID 없음', 100)
             }
@@ -256,6 +267,13 @@ export async function executePipelineJob(jobId: string): Promise<void> {
       completedStages++
       const overallProgress = Math.round((completedStages / totalStages) * 100)
 
+      // 현재 stage_progress 상태 조회
+      const { data: currentJobData } = await supabase
+        .from('pipeline_jobs')
+        .select('stage_progress')
+        .eq('id', jobId)
+        .single()
+
       // 전체 진행률 업데이트
       await supabase
         .from('pipeline_jobs')
@@ -265,10 +283,14 @@ export async function executePipelineJob(jobId: string): Promise<void> {
         })
         .eq('id', jobId)
 
+      // 전체 진행률과 함께 현재 stage_progress 상태도 브로드캐스트
       broadcastProgress(jobId, {
         stage,
         progress: overallProgress,
-        status: 'running'
+        status: 'running',
+        stage_progress: currentJobData?.stage_progress || {},
+        completed_stages: completedStages,
+        total_stages: totalStages
       })
     }
 

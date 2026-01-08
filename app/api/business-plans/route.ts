@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
       .from('business_plans')
       .select(`
         *,
-        template:business_plan_templates(id, template_name),
         program:government_programs(id, title, organization)
       `)
       .eq('company_id', companyId)

@@ -1,6 +1,9 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { generateSuperAgentResponse, SuperAgentMessage } from '@/lib/ai/super-agent-chat'
+import { requireCredits, chargeCredits } from '@/lib/credits/middleware'
 
 // 기본 Super Agent 설정
 const SUPER_AGENT_CONFIG = {
@@ -27,11 +30,28 @@ const SUPER_AGENT_CONFIG = {
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. 인증 확인
+    const supabase = await createClient()
+    let user: any = isDevMode() ? DEV_USER : null
+    if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser()
+      if (authError || !data.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = data.user
+    }
+
     const body = await request.json()
     const { message, chatHistory = [] } = body
 
     if (!message) {
       return NextResponse.json({ error: 'message is required' }, { status: 400 })
+    }
+
+    // 2. 크레딧 확인 (GPT-4o 사용 = 10 크레딧)
+    const creditCheck = await requireCredits(user.id, 'chat_gpt4o')
+    if (!creditCheck.success) {
+      return creditCheck.response
     }
 
     // 채팅 히스토리를 SuperAgentMessage 형식으로 변환
@@ -40,7 +60,7 @@ export async function POST(request: NextRequest) {
       content: m.content,
     }))
 
-    console.log('[Super Agent Chat] Message:', message)
+    console.log('[Super Agent Chat] Message:', message, '| User:', user.id)
 
     // Super Agent 응답 생성 (도구 사용 가능)
     const response = await generateSuperAgentResponse(
@@ -49,15 +69,22 @@ export async function POST(request: NextRequest) {
       formattedHistory,
     )
 
+    // 3. 크레딧 차감
+    const chargeResult = await chargeCredits(user.id, 'chat_gpt4o', `Super Agent 채팅`)
+
     console.log('[Super Agent Chat] Response:', response.message?.substring(0, 100))
     console.log('[Super Agent Chat] Tools used:', response.toolsUsed)
-    console.log('[Super Agent Chat] Browser URL:', response.browserUrl)
+    console.log('[Super Agent Chat] Credits remaining:', chargeResult.balance)
 
     return NextResponse.json({
       response: response.message,
       actions: response.actions,
       toolsUsed: response.toolsUsed,
-      browserUrl: response.browserUrl,  // 🔥 브라우저 최종 URL
+      browserUrl: response.browserUrl,
+      credits: {
+        used: 10,
+        remaining: chargeResult.balance,
+      },
     })
 
   } catch (error: any) {

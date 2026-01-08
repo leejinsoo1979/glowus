@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useThemeStore } from '@/stores/themeStore'
@@ -17,6 +17,7 @@ import {
   Check,
   Settings,
 } from 'lucide-react'
+import { useERPDashboard, useApprovalStats, useGoogleCalendarEvents } from '@/lib/hooks/use-cached-fetch'
 
 // 위젯 헤더 컴포넌트 (보기 버튼 포함)
 function WidgetHeader({
@@ -1352,70 +1353,65 @@ interface ApprovalStats {
 }
 
 export default function CompanyDashboardPage() {
+  const [mounted, setMounted] = useState(false)
   const { resolvedTheme } = useTheme()
   const { accentColor } = useThemeStore() // Call hook here too for container styling
-  const isDark = resolvedTheme === 'dark'
+  const isDark = mounted ? resolvedTheme === 'dark' : false
   const [isWidgetBarOpen, setIsWidgetBarOpen] = useState(true)
 
-  // API 데이터 상태
-  const [erpData, setErpData] = useState<ERPDashboardData | null>(null)
-  const [approvalStats, setApprovalStats] = useState<ApprovalStats | null>(null)
-  const [calendarEvents, setCalendarEvents] = useState<number[]>([])
-  const [upcomingEvents, setUpcomingEvents] = useState<Array<{ date: number; title: string }>>([])
-
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const router = useRouter()
 
-  // 데이터 로드
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // ERP 대시보드 데이터
-        const erpRes = await fetch('/api/erp/dashboard')
-        if (erpRes.ok) {
-          const data = await erpRes.json()
-          if (data.success) setErpData(data.data)
-        }
+  // SWR hooks로 데이터 로드 (캐시 적용)
+  const { data: erpResponse } = useERPDashboard()
+  const { data: approvalResponse } = useApprovalStats()
 
-        // 결재 통계
-        const approvalRes = await fetch('/api/erp/approval/stats')
-        if (approvalRes.ok) {
-          const data = await approvalRes.json()
-          if (data.success) setApprovalStats(data.data)
-        }
-
-        // Google 캘린더
-        const now = new Date()
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-        const calRes = await fetch(`/api/google-calendar/events?timeMin=${firstDay.toISOString()}&timeMax=${lastDay.toISOString()}`)
-        if (calRes.ok) {
-          const data = await calRes.json()
-          if (data.events) {
-            const eventDays = data.events.map((e: any) => new Date(e.start_time).getDate())
-            setCalendarEvents(eventDays)
-
-            // 오늘 이후 3일간의 이벤트 추출
-            const today = now.getDate()
-            const upcoming = data.events
-              .filter((e: any) => {
-                const eventDate = new Date(e.start_time).getDate()
-                return eventDate >= today && eventDate <= today + 2
-              })
-              .slice(0, 3)
-              .map((e: any) => ({
-                date: new Date(e.start_time).getDate(),
-                title: e.summary || '일정'
-              }))
-            setUpcomingEvents(upcoming)
-          }
-        }
-      } catch (err) {
-        console.error('[Company Dashboard] Load error:', err)
-      }
+  // Google 캘린더 날짜 범위 계산
+  const calendarDateRange = useMemo(() => {
+    const now = new Date()
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return {
+      timeMin: firstDay.toISOString(),
+      timeMax: lastDay.toISOString()
     }
-    loadData()
   }, [])
+
+  const { data: calendarResponse } = useGoogleCalendarEvents(
+    calendarDateRange.timeMin,
+    calendarDateRange.timeMax
+  )
+
+  // 데이터 추출
+  const erpData: ERPDashboardData | null = erpResponse?.success ? erpResponse.data : null
+  const approvalStats: ApprovalStats | null = approvalResponse?.success ? approvalResponse.data : null
+
+  // 캘린더 이벤트 처리
+  const { calendarEvents, upcomingEvents } = useMemo(() => {
+    if (!calendarResponse?.events) {
+      return { calendarEvents: [] as number[], upcomingEvents: [] as Array<{ date: number; title: string }> }
+    }
+
+    const eventDays = calendarResponse.events.map((e: any) => new Date(e.start_time).getDate())
+    const now = new Date()
+    const today = now.getDate()
+
+    const upcoming = calendarResponse.events
+      .filter((e: any) => {
+        const eventDate = new Date(e.start_time).getDate()
+        return eventDate >= today && eventDate <= today + 2
+      })
+      .slice(0, 3)
+      .map((e: any) => ({
+        date: new Date(e.start_time).getDate(),
+        title: e.summary || '일정'
+      }))
+
+    return { calendarEvents: eventDays, upcomingEvents: upcoming }
+  }, [calendarResponse])
 
   const widgetPreviews = [
     { id: 'calendar', title: '자금 캘린더', href: '/dashboard-group/company/calendar', preview: <MiniCalendarPreview isDark={isDark} /> },

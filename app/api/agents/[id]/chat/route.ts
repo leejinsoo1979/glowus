@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { generateAgentChatResponse } from '@/lib/langchain/agent-chat'
 import { generateSuperAgentResponse, SuperAgentMessage } from '@/lib/ai/super-agent-chat'
 import { runAutonomousAgent } from '@/lib/ai/autonomous-agent'
+import { checkCredits, deductCredits } from '@/lib/credits'
 import {
   loadAgentWorkContext,
   formatContextForPrompt,
@@ -541,15 +542,52 @@ export async function POST(
 
     // 🔥 사용자의 LLM API 키 가져오기
     let userApiKey: string | undefined
+    let useUserKey = false  // 사용자 키 사용 여부 (크레딧 차감 결정용)
     try {
       const provider = agent.llm_provider || 'grok'
       const llmConfig = await getLLMConfigForAgent(user.id, provider)
       userApiKey = llmConfig.apiKey
+      useUserKey = llmConfig.useUserKey
       if (llmConfig.useUserKey) {
-        console.log(`[AgentChat] Using user's ${provider} API key`)
+        console.log(`[AgentChat] Using user's ${provider} API key (no credits charged)`)
       }
     } catch (keyError) {
       console.warn('[AgentChat] Failed to fetch user LLM key:', keyError)
+    }
+
+    // 🔥 크레딧 확인 (사용자 키 사용 시 스킵)
+    let creditCost = 0
+    let creditAction = ''
+    if (!useUserKey) {
+      // 모델별 크레딧 비용 결정
+      const provider = agent.llm_provider || 'grok'
+      const model = agent.model || ''
+
+      if (provider === 'grok' || model.includes('grok')) {
+        creditCost = 1  // Grok Fast = 1 크레딧
+        creditAction = 'chat_grok_fast'
+      } else if (provider === 'openai' || model.includes('gpt-4')) {
+        creditCost = 10  // GPT-4o = 10 크레딧
+        creditAction = 'chat_gpt4o'
+      } else if (provider === 'anthropic' || model.includes('claude')) {
+        creditCost = 15  // Claude = 15 크레딧
+        creditAction = 'chat_claude'
+      } else {
+        creditCost = 3  // 기타 (Gemini 등) = 3 크레딧
+        creditAction = 'chat_other'
+      }
+
+      const creditCheck = await checkCredits(user.id, creditCost)
+      if (!creditCheck.canUse) {
+        return NextResponse.json({
+          error: '크레딧이 부족합니다',
+          code: 'INSUFFICIENT_CREDITS',
+          required: creditCost,
+          balance: creditCheck.balance + creditCheck.dailyBalance,
+          tier: creditCheck.tier,
+        }, { status: 402 })
+      }
+      console.log(`[AgentChat] Credit check passed: ${creditCost} credits required`)
     }
 
     // 에이전트 응답 생성 (타임아웃 처리)
@@ -789,7 +827,15 @@ export async function POST(
     // 이모티콘 매칭
     const gifUrl = await findEmoticonForResponse(adminClient, user.id, response)
 
-    // 🔥 에이전트 응답: 액션 + 지식 출처 포함
+    // 🔥 크레딧 차감 (응답 성공 + 사용자 키 미사용 시에만)
+    let creditBalance = 0
+    if (!useUserKey && creditCost > 0) {
+      const chargeResult = await deductCredits(user.id, creditCost, { description: `에이전트 채팅: ${agent.name}` })
+      creditBalance = chargeResult.balance
+      console.log(`[AgentChat] Credits charged: ${creditCost}, remaining: ${creditBalance}`)
+    }
+
+    // 🔥 에이전트 응답: 액션 + 지식 출처 + 크레딧 정보 포함
     return NextResponse.json({
       response,
       gif_url: gifUrl,
@@ -799,6 +845,12 @@ export async function POST(
       autonomousMode: useAutonomousAgent,
       // 📚 지식베이스 출처 (어떤 문서에서 정보를 가져왔는지)
       knowledgeSources: knowledgeSources.length > 0 ? knowledgeSources : undefined,
+      // 💰 크레딧 정보 (사용자 키 사용 시 null)
+      credits: useUserKey ? null : {
+        used: creditCost,
+        remaining: creditBalance,
+        usingUserKey: false,
+      },
     })
   } catch (error) {
     console.error('Agent chat error:', error)

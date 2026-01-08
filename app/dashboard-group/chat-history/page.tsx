@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { MessageSquare, Search, User, Bot, ChevronRight, Loader2, Users, Video } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { useChatRooms } from '@/lib/hooks/use-cached-fetch'
 
 interface Participant {
   id: string
@@ -46,28 +47,9 @@ interface ChatRoom {
 
 export default function ChatHistoryPage() {
   const router = useRouter()
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: chatRoomsData, isLoading: loading } = useChatRooms()
+  const chatRooms: ChatRoom[] = Array.isArray(chatRoomsData) ? chatRoomsData : []
   const [searchQuery, setSearchQuery] = useState('')
-
-  useEffect(() => {
-    fetchChatRooms()
-  }, [])
-
-  const fetchChatRooms = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch('/api/chat/rooms')
-      if (res.ok) {
-        const data = await res.json()
-        setChatRooms(Array.isArray(data) ? data : [])
-      }
-    } catch (error) {
-      console.error('Failed to fetch chat rooms:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   // 채팅방 이름 결정
   const getRoomDisplayName = (room: ChatRoom) => {

@@ -94,6 +94,7 @@ export interface BusinessPlanTemplate {
   template_name: string
   template_version: string
   source_document_url?: string
+  template_file_url?: string // HWP template file URL for auto-filling
   sections: TemplateSection[]
   evaluation_criteria: EvaluationCriterion[]
   required_attachments: RequiredAttachment[]
