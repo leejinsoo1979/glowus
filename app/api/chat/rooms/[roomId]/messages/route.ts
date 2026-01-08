@@ -1654,6 +1654,48 @@ ${pdfPageText.slice(0, 3000)}${pdfPageText.length > 3000 ? '\n... (이하 생략
 현재 재생 위치(${formattedTime})를 기준으로 답변하세요.
 답변 시 반드시 [Evidence: ${sharedViewer.media_name} ${formattedTime}] 형식으로 근거를 표기하세요.
 근거 없이 "봤다/확인했다" 표현 금지!`
+      } else if (sharedViewer.media_type === 'weblink') {
+        // 웹링크: 페이지 내용 추출 및 전달
+        let webPageText = ''
+
+        try {
+          // 프록시를 통해 웹페이지 내용 가져오기
+          const proxyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/proxy?url=${encodeURIComponent(sharedViewer.media_url)}`
+          const webResponse = await fetch(proxyUrl, {
+            signal: AbortSignal.timeout(10000) // 10초 타임아웃
+          })
+
+          if (webResponse.ok) {
+            const html = await webResponse.text()
+            // HTML에서 텍스트만 추출 (간단한 방식)
+            webPageText = html
+              .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // 스크립트 제거
+              .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')   // 스타일 제거
+              .replace(/<[^>]+>/g, ' ')                          // HTML 태그 제거
+              .replace(/\s+/g, ' ')                              // 공백 정리
+              .trim()
+              .slice(0, 5000) // 최대 5000자
+            console.log(`[generateAgentResponse] 🌐 웹페이지 텍스트 추출 완료 (${webPageText.length}자)`)
+          }
+        } catch (webError) {
+          console.warn('[generateAgentResponse] 웹페이지 텍스트 추출 실패:', webError)
+        }
+
+        sharedContentContext = `
+## 📎 현재 공유 중인 웹페이지
+- URL: ${sharedViewer.media_url}
+- 사이트: ${sharedViewer.media_name}
+- 줌: ${sharedViewer.zoom_level || 1}x
+
+${webPageText ? `### 페이지 내용 (발췌):
+---
+${webPageText.slice(0, 3000)}${webPageText.length > 3000 ? '\n... (이하 생략)' : ''}
+---` : '(페이지 내용을 추출할 수 없습니다. X-Frame-Options 또는 접근 제한이 있을 수 있습니다.)'}
+
+⚠️ 위 웹페이지가 현재 회의 참가자들에게 공유되고 있습니다.
+페이지 내용을 기반으로 답변하세요.
+답변 시 반드시 [Evidence: ${sharedViewer.media_name} "인용문"] 형식으로 근거를 표기하세요.
+근거 없이 "봤다/확인했다" 표현 금지!`
       }
 
       // 🔥 Selection 정보 추가 (v2)
