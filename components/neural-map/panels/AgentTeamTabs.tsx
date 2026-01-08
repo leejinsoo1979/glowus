@@ -365,8 +365,94 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
     return response.json()
   }
 
+  // 🔥 Flowchart에 에이전트 워크플로우 시각화
+  const visualizeWorkflowInCanvas = async () => {
+    // 1. Flowchart 탭으로 전환
+    const store = useNeuralMapStore.getState()
+    store.setActiveTab('mermaid')
+    store.setMermaidDiagramType('flowchart')
+
+    // 2. 기존 워크플로우 노드 삭제 후 새로 생성
+    const projectPath = store.projectPath || 'default'
+    const baseX = 150
+    const baseY = 100
+    const spacing = 180
+
+    // 에이전트 노드 생성
+    for (let i = 0; i < AGENT_WORKFLOW.length; i++) {
+      const agentRole = AGENT_WORKFLOW[i]
+      const agent = AGENT_TEAM.find((a) => a.id === agentRole)!
+
+      try {
+        await fetch('/api/flowchart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectPath,
+            action: 'create_node',
+            nodeId: `agent-${agentRole}`,
+            label: `${agent.nameKr}\n(대기중)`,
+            shape: 'round',
+            position: { x: baseX + i * spacing, y: baseY },
+            style: { backgroundColor: '#3f3f46', borderColor: agent.color },
+          }),
+        })
+
+        // 이전 노드와 연결 (첫 번째 제외)
+        if (i > 0) {
+          const prevRole = AGENT_WORKFLOW[i - 1]
+          await fetch('/api/flowchart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectPath,
+              action: 'create_edge',
+              sourceId: `agent-${prevRole}`,
+              targetId: `agent-${agentRole}`,
+              edgeLabel: '',
+            }),
+          })
+        }
+      } catch (e) {
+        console.warn(`[Workflow] 노드 생성 실패: ${agentRole}`, e)
+      }
+    }
+  }
+
+  // 🔥 에이전트 상태 업데이트 (Flowchart 노드 색상 변경)
+  const updateAgentNodeStatus = async (
+    agentRole: AgentRole,
+    status: 'working' | 'complete' | 'error'
+  ) => {
+    const agent = AGENT_TEAM.find((a) => a.id === agentRole)!
+    const store = useNeuralMapStore.getState()
+    const projectPath = store.projectPath || 'default'
+
+    const statusLabel = status === 'working' ? '작업중...' : status === 'complete' ? '완료 ✓' : '오류 ✗'
+    const bgColor = status === 'working' ? '#3b82f6' : status === 'complete' ? '#22c55e' : '#ef4444'
+
+    try {
+      await fetch('/api/flowchart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectPath,
+          action: 'update_node',
+          nodeId: `agent-${agentRole}`,
+          label: `${agent.nameKr}\n(${statusLabel})`,
+          style: { backgroundColor: bgColor, borderColor: agent.color },
+        }),
+      })
+    } catch (e) {
+      console.warn(`[Workflow] 노드 업데이트 실패: ${agentRole}`, e)
+    }
+  }
+
   // 🔥 전체 워크플로우 실행 (Orchestrator에서 시작할 때)
   const runFullWorkflow = async (userInput: string) => {
+    // 메인 캔버스에 워크플로우 시각화
+    await visualizeWorkflowInCanvas()
+
     let previousResult = ''
 
     for (let i = 0; i < AGENT_WORKFLOW.length; i++) {
@@ -375,6 +461,9 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
 
       // 현재 에이전트로 탭 전환
       setActiveAgent(agentRole)
+
+      // 🔥 Flowchart 노드 상태: 작업중
+      await updateAgentNodeStatus(agentRole, 'working')
 
       // 시작 메시지 표시
       const startMsg: AgentMessage = {
@@ -399,6 +488,9 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
           actionResultsText = formatActionResultsForChat(results)
         }
 
+        // 🔥 Flowchart 노드 상태: 완료
+        await updateAgentNodeStatus(agentRole, 'complete')
+
         // 결과 메시지
         const resultMsg: AgentMessage = {
           id: `${Date.now()}-${agentRole}-result`,
@@ -420,6 +512,9 @@ export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
         // 잠시 대기 (UI 업데이트용)
         await new Promise((r) => setTimeout(r, 500))
       } catch (error) {
+        // 🔥 Flowchart 노드 상태: 오류
+        await updateAgentNodeStatus(agentRole, 'error')
+
         const errorMsg: AgentMessage = {
           id: `${Date.now()}-${agentRole}-error`,
           role: 'assistant',
