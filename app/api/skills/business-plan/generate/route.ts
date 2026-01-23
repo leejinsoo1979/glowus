@@ -471,6 +471,7 @@ const DEFAULT_SECTIONS: SectionDefinition[] = [
  * POST: 사업계획서 생성 (지식베이스 기반)
  */
 export async function POST(request: NextRequest) {
+  console.log('[BusinessPlan API] POST request received')
   try {
     const supabase = await createClient()
     const adminSupabase = createAdminClient()

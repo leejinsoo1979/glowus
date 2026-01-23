@@ -8,8 +8,19 @@ const DEV_MODE = process.env.NODE_ENV === 'development' && process.env.DEV_BYPAS
 const protectedRoutes = ['/dashboard-group']
 // 인증된 사용자가 접근하면 안되는 경로 (이미 로그인한 경우)
 const authRoutes = ['/auth-group/login', '/auth-group/signup']
+// 인증 확인이 필요 없는 공개 경로 (성능 최적화)
+const publicRoutes = ['/auth/callback', '/api/', '/_next/', '/favicon']
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // 공개 경로는 인증 확인 없이 바로 통과 (성능 최적화)
+  if (publicRoutes.some(route => pathname.startsWith(route))) {
+    return NextResponse.next({
+      request: { headers: request.headers },
+    })
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -62,9 +73,16 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired
-  const { data: { user } } = await supabase.auth.getUser()
-  const pathname = request.nextUrl.pathname
+  // 인증 필요 여부 확인 (불필요한 getUser 호출 방지)
+  const needsAuthCheck =
+    protectedRoutes.some(route => pathname.startsWith(route)) ||
+    authRoutes.some(route => pathname.startsWith(route)) ||
+    pathname === '/'
+
+  // 인증 확인이 필요한 경우에만 getUser 호출 (성능 최적화)
+  const user = needsAuthCheck
+    ? (await supabase.auth.getUser()).data.user
+    : null
   const userAgent = request.headers.get('user-agent') || ''
   // Electron environment detection (assuming standard Electron UA or custom one)
   const isElectron = userAgent.includes('Electron') || userAgent.includes('GlowUS')

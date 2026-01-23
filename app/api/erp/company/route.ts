@@ -89,7 +89,7 @@ export async function PUT(request: NextRequest) {
       'phone', 'fax', 'email', 'website',
       'postal_code', 'address', 'address_detail',
       'business_type', 'business_category', 'establishment_date',
-      'fiscal_year_start', 'logo_url', 'settings'
+      'fiscal_year_start', 'logo_url', 'business_registration_url', 'settings'
     ]
 
     const filteredBody: Record<string, any> = {}

@@ -3,28 +3,29 @@
 import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react'
 import { useMyNeuronsStore } from '@/lib/my-neurons/store'
 import type { MyNeuronNode, MyNeuronType } from '@/lib/my-neurons/types'
+import { useThemeStore, accentColors } from '@/stores/themeStore'
 
 // ForceGraph2D를 React 외부에서 직접 관리 (Graph2DView 방식)
 let ForceGraph2DClass: any = null
 
-// 노드 타입별 색상
+// 노드 타입별 색상 (모던 다크 테마)
 const NODE_COLORS: Record<MyNeuronType, string> = {
-  self: '#f59e0b',
-  project: '#3b82f6',
-  task: '#22c55e',
-  doc: '#f97316',
-  person: '#a855f7',
-  agent: '#06b6d4',
-  objective: '#ef4444',
-  key_result: '#ec4899',
-  decision: '#eab308',
-  memory: '#6366f1',
-  workflow: '#f97316',
-  insight: '#d946ef',
-  program: '#10b981',
-  application: '#14b8a6',
-  milestone: '#8b5cf6',
-  budget: '#84cc16',
+  self: '#8b5cf6',      // 보라색 (중앙 노드)
+  project: '#3b82f6',   // 파란색
+  task: '#22c55e',      // 녹색
+  doc: '#f97316',       // 오렌지
+  person: '#a855f7',    // 연보라
+  agent: '#06b6d4',     // 청록
+  objective: '#ef4444', // 빨강
+  key_result: '#ec4899',// 핑크
+  decision: '#6366f1',  // 인디고
+  memory: '#64748b',    // 슬레이트
+  workflow: '#f97316',  // 오렌지
+  insight: '#d946ef',   // 마젠타
+  program: '#10b981',   // 에메랄드
+  application: '#14b8a6',// 틸
+  milestone: '#8b5cf6', // 보라
+  budget: '#22d3ee',    // 시안
 }
 
 // 노드 타입별 크기
@@ -75,7 +76,25 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
   const isGraphReadyRef = useRef(false)
   const graphDataRef = useRef<{ nodes: GraphNode[]; links: GraphLink[] }>({ nodes: [], links: [] })
 
+  // 콜백을 ref로 관리하여 최신 버전 유지
+  const onNodeClickRef = useRef(onNodeClick)
+  const onBackgroundClickRef = useRef(onBackgroundClick)
+
+  // 테마 색상 적용
+  const accentColor = useThemeStore((s) => s.accentColor)
+  const themeConfig = useMemo(() => {
+    return accentColors.find(c => c.id === accentColor) || accentColors[0]
+  }, [accentColor])
+
   const graph = useMyNeuronsStore((s) => s.graph)
+  const graphRef = useRef(graph) // graph도 ref로 관리
+
+  // ref 업데이트
+  useEffect(() => {
+    onNodeClickRef.current = onNodeClick
+    onBackgroundClickRef.current = onBackgroundClick
+    graphRef.current = graph
+  }, [onNodeClick, onBackgroundClick, graph])
   const selectedNodeIds = useMyNeuronsStore((s) => s.selectedNodeIds)
   const selectNode = useMyNeuronsStore((s) => s.selectNode)
 
@@ -132,7 +151,7 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
           name: node.title,
           type: node.type,
           val: NODE_SIZES[node.type] || 5,
-          color: NODE_COLORS[node.type] || '#6b7280',
+          color: themeConfig.color, // 사용자 선택 테마 색상 적용
           fx: 0, fy: 0, x: 0, y: 0,
         }
       }
@@ -166,7 +185,7 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
       .map(e => ({ source: e.source, target: e.target }))
 
     return { nodes, links }
-  }, [graph])
+  }, [graph, themeConfig.color])
 
   // graphDataRef 업데이트
   useEffect(() => {
@@ -236,14 +255,30 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
     }
   }, [selectedNodeIds, hoveredNodeId, connectedNodeIds])
 
-  // 노드 클릭
+  // 노드 클릭 핸들러 - 직접 props 콜백을 호출
   const handleNodeClick = useCallback((node: any) => {
+    console.log('[Neurons2DCanvas] handleNodeClick called:', node.id, node.name)
     selectNode(node.id)
+
+    // props로 전달된 onNodeClick 콜백 직접 호출
     if (onNodeClick && graph?.nodes) {
-      const orig = graph.nodes.find(n => n.id === node.id)
-      if (orig) onNodeClick(orig)
+      const orig = graph.nodes.find((n: MyNeuronNode) => n.id === node.id)
+      if (orig) {
+        console.log('[Neurons2DCanvas] Calling onNodeClick with:', orig.id, orig.title)
+        onNodeClick(orig)
+      } else {
+        console.log('[Neurons2DCanvas] Node not found in graph:', node.id)
+      }
+    } else {
+      console.log('[Neurons2DCanvas] Missing callback or nodes:', !!onNodeClick, !!graph?.nodes)
     }
   }, [selectNode, onNodeClick, graph?.nodes])
+
+  // handleNodeClick을 ref로 저장하여 force-graph에서 최신 버전 사용
+  const handleNodeClickRef = useRef(handleNodeClick)
+  useEffect(() => {
+    handleNodeClickRef.current = handleNodeClick
+  }, [handleNodeClick])
 
   // 그래프 초기화
   useEffect(() => {
@@ -275,9 +310,9 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
           })
           .linkColor(() => 'rgba(255,255,255,0.3)')
           .linkWidth(1)
-          .onNodeClick(handleNodeClick)
+          .onNodeClick((node: any) => handleNodeClickRef.current?.(node))
           .onNodeHover((node: any) => setHoveredNodeId(node?.id || null))
-          .onBackgroundClick(() => onBackgroundClick?.())
+          .onBackgroundClick(() => onBackgroundClickRef.current?.())
           .onNodeDragEnd((node: any) => {
             node.fx = node.x
             node.fy = node.y
@@ -301,12 +336,16 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
         graphInstanceRef.current = fg
         isGraphReadyRef.current = true
 
-        // 데이터 로드
+        // 데이터 로드 후 self 노드 중심으로 배치
         setTimeout(() => {
           if (mounted && graphInstanceRef.current && graphDataRef.current.nodes.length > 0) {
             graphInstanceRef.current.graphData(graphDataRef.current)
-            graphInstanceRef.current.centerAt(0, 0, 300)
-            graphInstanceRef.current.zoom(0.8, 300)
+            // self 노드 위치로 중앙 정렬
+            const selfNode = graphDataRef.current.nodes.find((n: any) => n.type === 'self')
+            const centerX = selfNode?.x ?? 0
+            const centerY = selfNode?.y ?? 0
+            graphInstanceRef.current.centerAt(centerX, centerY, 500)
+            graphInstanceRef.current.zoom(1.0, 500)
           }
         }, 100)
       } catch (error) {
@@ -327,24 +366,34 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
 
     graphInstanceRef.current.graphData(graphData)
 
+    // self 노드 위치로 중앙 정렬
     setTimeout(() => {
-      graphInstanceRef.current?.centerAt(0, 0, 300)
-      graphInstanceRef.current?.zoom(0.8, 300)
+      const selfNode = graphData.nodes.find((n: any) => n.type === 'self')
+      const centerX = selfNode?.x ?? 0
+      const centerY = selfNode?.y ?? 0
+      graphInstanceRef.current?.centerAt(centerX, centerY, 500)
+      graphInstanceRef.current?.zoom(1.0, 500)
     }, 200)
   }, [graphData])
 
-  // 리사이즈
+  // 리사이즈 - 부모 컨테이너 크기 변화 감지
   useEffect(() => {
-    if (!graphContainerRef.current || !graphInstanceRef.current) return
+    if (!graphContainerRef.current) return
+
+    const container = graphContainerRef.current
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        graphInstanceRef.current?.width(entry.contentRect.width)
-        graphInstanceRef.current?.height(entry.contentRect.height)
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0 && graphInstanceRef.current) {
+          console.log('[Neurons2DCanvas] Resize detected:', width, height)
+          graphInstanceRef.current.width(width)
+          graphInstanceRef.current.height(height)
+        }
       }
     })
 
-    observer.observe(graphContainerRef.current)
+    observer.observe(container)
     return () => observer.disconnect()
   }, [])
 
@@ -353,11 +402,38 @@ export function Neurons2DCanvas({ onNodeClick, onBackgroundClick }: Neurons2DCan
     graphInstanceRef.current?.nodeCanvasObject((node: any, ctx: any, scale: number) => renderNode(node, ctx, scale))
   }, [renderNode])
 
+  // 화면 초기화 함수 (self 노드 중심으로 리셋)
+  const resetView = useCallback(() => {
+    if (!graphInstanceRef.current) return
+    const selfNode = graphDataRef.current.nodes.find((n: any) => n.type === 'self')
+    const centerX = selfNode?.x ?? 0
+    const centerY = selfNode?.y ?? 0
+    graphInstanceRef.current.centerAt(centerX, centerY, 500)
+    graphInstanceRef.current.zoom(1.0, 500)
+    console.log('[Neurons2DCanvas] View reset to center')
+  }, [])
+
+  // 스페이스바로 화면 초기화
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 입력 필드에서는 무시
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      if (e.code === 'Space') {
+        e.preventDefault()
+        resetView()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [resetView])
+
   return (
     <div
       ref={graphContainerRef}
-      className="w-full h-full bg-[#0d1117]"
-      style={{ position: 'relative' }}
+      className="absolute inset-0 bg-[#0d1117]"
+      tabIndex={0}
     />
   )
 }

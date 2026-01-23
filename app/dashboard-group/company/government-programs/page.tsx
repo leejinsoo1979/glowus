@@ -1264,6 +1264,10 @@ export default function GovernmentProgramsPage() {
   const [profileLoading, setProfileLoading] = useState(false)
   const [minMatchScore, setMinMatchScore] = useState(30)  // 기본 30점 이상
 
+  // 작성중인 사업계획서 상태
+  const [myBusinessPlans, setMyBusinessPlans] = useState<any[]>([])
+  const [businessPlansLoading, setBusinessPlansLoading] = useState(false)
+
   // URL 파라미터에서 view 모드 및 type 필터 초기화
   useEffect(() => {
     const view = searchParams.get('view')
@@ -1329,6 +1333,22 @@ export default function GovernmentProgramsPage() {
     }
   }, [])
 
+  // 작성중인 사업계획서 로드
+  const fetchMyBusinessPlans = useCallback(async () => {
+    setBusinessPlansLoading(true)
+    try {
+      const response = await fetch('/api/skills/business-plan/generate')
+      const data = await response.json()
+      if (data.success && data.business_plans) {
+        setMyBusinessPlans(data.business_plans)
+      }
+    } catch (error) {
+      console.error('사업계획서 로드 실패:', error)
+    } finally {
+      setBusinessPlansLoading(false)
+    }
+  }, [])
+
   // 프로그램 목록 로드
   const fetchPrograms = useCallback(async () => {
     setLoading(true)
@@ -1357,7 +1377,8 @@ export default function GovernmentProgramsPage() {
     fetchStats()
     fetchPrograms()
     fetchProfile()
-  }, [fetchStats, fetchPrograms, fetchProfile])
+    fetchMyBusinessPlans()
+  }, [fetchStats, fetchPrograms, fetchProfile, fetchMyBusinessPlans])
 
   useEffect(() => {
     // 대시보드에서 AI 매칭 카운트 표시를 위해 프로필이 있으면 항상 로드
@@ -1834,6 +1855,11 @@ export default function GovernmentProgramsPage() {
                         <div className="flex items-center gap-3">
                           <FileEdit className="w-6 h-6" style={{ color: themeColor }} />
                           <h3 className={cn("text-lg font-semibold", theme.text)}>작성중 지원사업</h3>
+                          {myBusinessPlans.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: `${themeColor}20`, color: themeColor }}>
+                              {myBusinessPlans.length}
+                            </span>
+                          )}
                         </div>
                         <button
                           onClick={() => setViewMode('list')}
@@ -1846,20 +1872,90 @@ export default function GovernmentProgramsPage() {
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       </div>
-                      <div className={cn("text-center py-8", theme.textMuted)}>
-                        <FileEdit className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                        <p className="text-sm mb-4">작성중인 사업계획서가 없습니다</p>
-                        <button
-                          onClick={() => setViewMode('list')}
-                          className="px-5 py-2.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
-                          style={{
-                            background: `${themeColor}20`,
-                            color: themeColor
-                          }}
-                        >
-                          지원사업 둘러보기
-                        </button>
-                      </div>
+
+                      {businessPlansLoading ? (
+                        <div className={cn("text-center py-8", theme.textMuted)}>
+                          <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin opacity-50" />
+                          <p className="text-sm">불러오는 중...</p>
+                        </div>
+                      ) : myBusinessPlans.length > 0 ? (
+                        <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
+                          {myBusinessPlans.slice(0, 5).map((plan) => (
+                            <div
+                              key={plan.id}
+                              onClick={() => router.push(`/dashboard-group/company/government-programs/business-plan?program_id=${plan.program_id}`)}
+                              className={cn(
+                                "p-4 rounded-xl cursor-pointer transition-all border",
+                                isDark
+                                  ? "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+                                  : "bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300"
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className={cn("font-medium text-sm truncate", theme.text)}>
+                                    {plan.government_programs?.title || '사업계획서'}
+                                  </p>
+                                  <p className={cn("text-xs mt-1 truncate", theme.textMuted)}>
+                                    {plan.government_programs?.organization || '정부지원사업'}
+                                  </p>
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <span
+                                    className="px-2 py-0.5 rounded-full text-xs font-medium"
+                                    style={{
+                                      background: plan.status === 'completed' ? '#10b98120' : plan.status === 'draft' ? `${themeColor}20` : '#f59e0b20',
+                                      color: plan.status === 'completed' ? '#10b981' : plan.status === 'draft' ? themeColor : '#f59e0b'
+                                    }}
+                                  >
+                                    {plan.status === 'completed' ? '완료' : plan.status === 'draft' ? '작성중' : '생성중'}
+                                  </span>
+                                  <span className={cn("text-xs", theme.textMuted)}>
+                                    {new Date(plan.updated_at || plan.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                                  </span>
+                                </div>
+                              </div>
+                              {/* 섹션 진행률 */}
+                              {plan.sections && Object.keys(plan.sections).length > 0 && (
+                                <div className="mt-3">
+                                  <div className={cn("h-1.5 rounded-full overflow-hidden", isDark ? "bg-white/10" : "bg-gray-200")}>
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{
+                                        width: `${Math.min(100, (Object.keys(plan.sections).length / 10) * 100)}%`,
+                                        background: `linear-gradient(90deg, ${themeColor}, ${themeColor}80)`
+                                      }}
+                                    />
+                                  </div>
+                                  <p className={cn("text-xs mt-1", theme.textMuted)}>
+                                    {Object.keys(plan.sections).length}개 섹션 작성됨
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {myBusinessPlans.length > 5 && (
+                            <p className={cn("text-xs text-center pt-2", theme.textMuted)}>
+                              외 {myBusinessPlans.length - 5}개 더보기
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className={cn("text-center py-8", theme.textMuted)}>
+                          <FileEdit className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                          <p className="text-sm mb-4">작성중인 사업계획서가 없습니다</p>
+                          <button
+                            onClick={() => setViewMode('list')}
+                            className="px-5 py-2.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
+                            style={{
+                              background: `${themeColor}20`,
+                              color: themeColor
+                            }}
+                          >
+                            지원사업 둘러보기
+                          </button>
+                        </div>
+                      )}
                     </GlassCard>
                   </div>
                 </div>

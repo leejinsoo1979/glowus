@@ -1074,7 +1074,16 @@ export default function NeuralMapPage() {
   }, [linkedProjectId]) // 🔥 프로젝트 변경 시 재실행
 
 
-  if (!mounted) return null
+  // 마운트 전에도 기본 레이아웃은 보여줌 (빈 화면 방지)
+  if (!mounted) {
+    return (
+      <div className="flex flex-col h-full w-full overflow-hidden bg-zinc-900">
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-accent animate-spin" />
+        </div>
+      </div>
+    )
+  }
 
   // Group nodes button logic
   const canGroup = selectedNodeIds.length > 1

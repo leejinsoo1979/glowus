@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useTheme } from 'next-themes'
-import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useNeuralMapApi } from '@/lib/neural-map/useNeuralMapApi'
@@ -67,10 +66,8 @@ import { ExportModal } from '../editor/ExportModal'
 import { PropertiesPanel } from './properties'
 import { useAutoPropertiesSync } from '@/lib/neural-map/usePropertiesSync'
 
-// CodeMirror 에디터 동적 로드 (SSR 방지)
-const MarkdownEditor = lazy(() =>
-  import('../editor/MarkdownEditor').then(mod => ({ default: mod.MarkdownEditor }))
-)
+// CodeMirror 에디터 직접 import (forwardRef 컴포넌트라 dynamic 사용 불가)
+import { MarkdownEditor } from '../editor/MarkdownEditor'
 
 interface MarkdownEditorPanelProps {
   isOpen: boolean
@@ -966,25 +963,22 @@ ${additionalContext}
         isDark={isDark}
       />
 
-      <AnimatePresence mode="wait">
+      {/* 창 분할 레이아웃 - isOpen이 true면 너비를 가짐, false면 0 */}
+      <div
+        ref={panelRef}
+        className={cn(
+          'h-full border-l flex flex-col overflow-hidden flex-shrink-0 relative transition-[width] duration-200',
+          isFullScreen && 'fixed inset-0 z-50 border-l-0',
+          isDark ? 'bg-[#09090b] border-zinc-800' : 'bg-white border-zinc-200'
+        )}
+        style={{
+          width: !isOpen ? 0 : isCollapsed ? 40 : isFullScreen ? '100vw' : panelWidth,
+        }}
+      >
         {isOpen && (
-        <motion.div
-          ref={panelRef}
-          initial={{ width: 0, opacity: 0 }}
-          animate={{
-            width: isCollapsed ? 40 : isFullScreen ? '100vw' : panelWidth,
-            opacity: 1
-          }}
-          exit={{ width: 0, opacity: 0 }}
-          transition={{ duration: isResizing ? 0 : 0.2 }}
-          className={cn(
-            'h-full border-l flex flex-col overflow-hidden flex-shrink-0 relative',
-            isFullScreen && 'fixed inset-0 z-50 border-l-0',
-            isDark ? 'bg-[#09090b] border-zinc-800' : 'bg-white border-zinc-200'
-          )}
-        >
-          {/* 리사이즈 핸들 */}
-          {!isCollapsed && (
+          <>
+            {/* 리사이즈 핸들 */}
+            {!isCollapsed && (
             <div
               onMouseDown={handleResizeStart}
               className={cn(
@@ -1162,7 +1156,16 @@ ${additionalContext}
                 {/* 뷰 모드 */}
                 <div className={cn('flex items-center gap-0.5 p-0.5 rounded', isDark ? 'bg-zinc-800' : 'bg-zinc-100')}>
                   <button
-                    onClick={() => setViewMode('edit')}
+                    onClick={() => {
+                      setViewMode('edit')
+                      // edit 모드로 전환 시 에디터에 현재 content 동기화
+                      setTimeout(() => {
+                        if (editorRef.current && content) {
+                          editorRef.current.setMarkdown(content)
+                          editorRef.current.focus()
+                        }
+                      }, 50)
+                    }}
                     className={cn(
                       'px-2 py-0.5 rounded text-xs transition-colors',
                       viewMode === 'edit'
@@ -1173,7 +1176,15 @@ ${additionalContext}
                     Edit
                   </button>
                   <button
-                    onClick={() => setViewMode('split')}
+                    onClick={() => {
+                      setViewMode('split')
+                      // split 모드로 전환 시 에디터에 현재 content 동기화
+                      setTimeout(() => {
+                        if (editorRef.current && content) {
+                          editorRef.current.setMarkdown(content)
+                        }
+                      }, 50)
+                    }}
                     className={cn(
                       'p-1 rounded transition-colors',
                       viewMode === 'split'
@@ -1222,27 +1233,19 @@ ${additionalContext}
                 {/* 에디터 (edit 또는 split 모드) */}
                 {(viewMode === 'edit' || viewMode === 'split') && (
                   <div className={cn('overflow-hidden', viewMode === 'split' ? 'w-1/2 border-r' : 'w-full', isDark ? 'border-[#27272a]' : 'border-zinc-200')}>
-                    <Suspense
-                      fallback={
-                        <div className="flex items-center justify-center h-full">
-                          <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
-                        </div>
-                      }
-                    >
-                      <MarkdownEditor
-                        ref={editorRef}
-                        defaultValue={content}
-                        onChange={handleContentChange}
-                        onWikiLinkClick={handleWikiLinkClick}
-                        onTagClick={handleTagClick}
-                        onSave={handleSave}
-                        onImageDrop={handleImageDrop}
-                        isDark={isDark}
-                        placeholder="마크다운으로 작성하세요... [[위키링크]]로 연결, #태그로 분류"
-                        files={editorFiles}
-                        existingTags={existingTags}
-                      />
-                    </Suspense>
+                    <MarkdownEditor
+                      ref={editorRef}
+                      defaultValue={content}
+                      onChange={handleContentChange}
+                      onWikiLinkClick={handleWikiLinkClick}
+                      onTagClick={handleTagClick}
+                      onSave={handleSave}
+                      onImageDrop={handleImageDrop}
+                      isDark={isDark}
+                      placeholder="마크다운으로 작성하세요... [[위키링크]]로 연결, #태그로 분류"
+                      files={editorFiles}
+                      existingTags={existingTags}
+                    />
                   </div>
                 )}
 
@@ -1479,9 +1482,9 @@ ${additionalContext}
               </div>
             </>
           )}
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </>
+        )}
+      </div>
     </>
   )
 }

@@ -36,12 +36,15 @@ export function CompanyPage() {
       if (logoUrl) {
         setCompanyLogo(logoUrl)
       }
-      // 사업자등록증 로드: DB → localStorage
+      // 사업자등록증 로드: DB 컬럼 → settings → localStorage
       const businessRegUrl = company.business_registration_url ||
         (company.settings as any)?.business_registration_url ||
         (typeof window !== 'undefined' ? localStorage.getItem(`company_${company.id}_business_registration_url`) : null)
       if (businessRegUrl) {
         setUploadedImage(businessRegUrl)
+        console.log('✅ 사업자등록증 URL 로드:', businessRegUrl)
+      } else {
+        console.log('⚠️ 사업자등록증 URL 없음. company:', company)
       }
     }
   }, [company])
@@ -241,6 +244,17 @@ export function CompanyPage() {
             business_registration_url: uploadedUrl
           }
         }))
+        // DB에 즉시 저장 (business_registration_url 컬럼에 직접)
+        if (company?.id) {
+          try {
+            await mutate('PUT', {
+              business_registration_url: uploadedUrl
+            })
+            console.log('✅ DB에 사업자등록증 URL 저장 완료')
+          } catch (err) {
+            console.error('DB 저장 실패:', err)
+          }
+        }
         // DB에서 최신 데이터 가져오기
         refresh()
       }
@@ -335,13 +349,10 @@ export function CompanyPage() {
 
   const handleDeleteBusinessRegistration = async () => {
     setUploadedImage(null)
-    // formData.settings도 업데이트
+    // formData도 업데이트
     setFormData(prev => ({
       ...prev,
-      settings: {
-        ...(prev.settings as Record<string, any> || {}),
-        business_registration_url: null
-      }
+      business_registration_url: null
     }))
     // localStorage에서 삭제
     if (company?.id && typeof window !== 'undefined') {
@@ -350,9 +361,8 @@ export function CompanyPage() {
     // DB에서도 삭제
     if (company?.id) {
       try {
-        const currentSettings = (company.settings as Record<string, any>) || {}
         await mutate('PUT', {
-          settings: { ...currentSettings, business_registration_url: null }
+          business_registration_url: null
         })
         refresh()
       } catch (err) {

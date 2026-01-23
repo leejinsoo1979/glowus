@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useState, useCallback } from 'react'
+import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { MyNeuronNode, MyNeuronType } from '@/lib/my-neurons/types'
 import ReactMarkdown from 'react-markdown'
@@ -120,11 +120,13 @@ export function NodeDetailPanel({
   const [isSaving, setIsSaving] = useState(false)
 
   // 노드 변경 시 content 초기화
-  useMemo(() => {
+  useEffect(() => {
     if (node) {
+      console.log('[NodeDetailPanel] Node changed, setting content:', node.id, node.title, 'content:', node.content?.slice(0, 50), 'summary:', node.summary?.slice(0, 50))
       setContent(node.content || node.summary || '')
+      setIsEditing(false) // 노드 변경 시 편집 모드 해제
     }
-  }, [node?.id])
+  }, [node?.id, node?.content, node?.summary])
 
   // 마크다운 툴바 버튼
   const insertMarkdown = useCallback((prefix: string, suffix: string = '') => {
@@ -168,14 +170,15 @@ export function NodeDetailPanel({
   const typeLabel = NODE_TYPE_LABELS[node.type] || node.type
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ width: 0, opacity: 0 }}
-        animate={{ width, opacity: 1 }}
-        exit={{ width: 0, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="h-full border-l border-zinc-800 bg-zinc-900/95 flex flex-col overflow-hidden"
-      >
+    <motion.div
+      key="node-detail-panel"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.2 }}
+      className="h-full border-l border-zinc-800 bg-zinc-900/95 flex flex-col overflow-hidden flex-shrink-0"
+      style={{ width }}
+    >
         {/* Header */}
         <div className="flex-shrink-0 p-4 border-b border-zinc-800">
           <div className="flex items-start justify-between gap-3">
@@ -537,7 +540,6 @@ export function NodeDetailPanel({
           )}
         </div>
       </motion.div>
-    </AnimatePresence>
   )
 }
 

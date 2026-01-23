@@ -683,154 +683,171 @@ export async function syncMyNeuronsGraph(
   const selfNode = createSelfNode(userId, userName)
   nodes.push(selfNode)
 
-  // 1. Projects (owner_id로 필터링)
-  const { data: projects, error: projectsError } = await supabase
-    .from('projects')
-    .select('id, name, description, status, category_id, priority, progress, deadline, created_at, updated_at, owner_id')
-    .eq('owner_id', userId)
-    .limit(50)
+  // ============================================
+  // Phase 1: 독립적인 쿼리들 병렬 실행 (성능 최적화)
+  // ============================================
+  const [
+    projectsResult,
+    tasksResult,
+    businessPlansResult,
+    teamMembersResult,
+    agentsResult,
+    objectivesResult,
+    bookmarksResult,
+    applicationsResult,
+  ] = await Promise.all([
+    // 1. Projects
+    supabase
+      .from('projects')
+      .select('id, name, description, status, category_id, priority, progress, deadline, created_at, updated_at, owner_id')
+      .eq('owner_id', userId)
+      .limit(50),
+    // 2. Tasks
+    supabase
+      .from('unified_tasks')
+      .select('id, title, description, status, priority, deadline, progress, project_id, assigned_agent_id, created_at, updated_at')
+      .eq('user_id', userId)
+      .neq('status', 'done')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    // 3. Business Plans
+    supabase
+      .from('business_plans')
+      .select('id, title, program_id, project_name, status, pipeline_stage, completion_percentage, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    // 4. Team Members
+    supabase
+      .from('team_members')
+      .select('id, name, email, role, user_id')
+      .eq('user_id', userId)
+      .limit(30),
+    // 5. Deployed Agents
+    supabase
+      .from('deployed_agents')
+      .select('id, name, persona, status, created_at')
+      .eq('user_id', userId)
+      .limit(20),
+    // 6. Objectives
+    supabase
+      .from('objectives')
+      .select('id, title, description, status, progress, created_at')
+      .eq('user_id', userId)
+      .limit(20),
+    // 7. Program Bookmarks
+    supabase
+      .from('program_bookmarks')
+      .select('program_id')
+      .eq('user_id', userId)
+      .limit(20),
+    // 8. Applications
+    supabase
+      .from('program_applications')
+      .select('id, program_id, status, created_at')
+      .eq('user_id', userId)
+      .limit(20),
+  ])
 
-  if (projects) {
-    nodes.push(...projects.map(transformProject))
-  }
+  // Phase 1 결과 처리
+  const projects = projectsResult.data as RawProject[] | null
+  const tasks = tasksResult.data as RawTask[] | null
+  const businessPlans = businessPlansResult.data as RawBusinessPlan[] | null
+  const teamMembers = teamMembersResult.data as RawTeamMember[] | null
+  const agents = agentsResult.data as RawAgent[] | null
+  const objectives = objectivesResult.data as RawObjective[] | null
+  const bookmarks = bookmarksResult.data as { program_id: string }[] | null
+  const applications = applicationsResult.data as RawApplication[] | null
 
-  // 2. Tasks
-  const { data: tasks } = await supabase
-    .from('unified_tasks')
-    .select('id, title, description, status, priority, deadline, progress, project_id, assigned_agent_id, created_at, updated_at')
-    .eq('user_id', userId)
-    .neq('status', 'done')
-    .order('created_at', { ascending: false })
-    .limit(100)
+  if (projects) nodes.push(...projects.map(transformProject))
+  if (tasks) nodes.push(...tasks.map(transformTask))
+  if (businessPlans) nodes.push(...businessPlans.map(transformBusinessPlan))
+  if (teamMembers) nodes.push(...teamMembers.map(transformTeamMember))
+  if (agents) nodes.push(...agents.map(transformAgent))
+  if (objectives) nodes.push(...objectives.map(transformObjective))
 
-  if (tasks) {
-    nodes.push(...tasks.map(transformTask))
-  }
-
-  // 3. Business Plans
-  const { data: businessPlans, error: bpError } = await supabase
-    .from('business_plans')
-    .select('id, title, program_id, project_name, status, pipeline_stage, completion_percentage, created_at, updated_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(20)
-
-  if (businessPlans) {
-    nodes.push(...businessPlans.map(transformBusinessPlan))
-  }
-
-  // 4. Team Members
-  const { data: teamMembers } = await supabase
-    .from('team_members')
-    .select('id, name, email, role, user_id')
-    .eq('user_id', userId)
-    .limit(30)
-
-  if (teamMembers) {
-    nodes.push(...teamMembers.map(transformTeamMember))
-  }
-
-  // 5. Deployed Agents
-  const { data: agents } = await supabase
-    .from('deployed_agents')
-    .select('id, name, persona, status, created_at')
-    .eq('user_id', userId)
-    .limit(20)
-
-  if (agents) {
-    nodes.push(...agents.map(transformAgent))
-  }
-
-  // 6. Objectives
-  const { data: objectives } = await supabase
-    .from('objectives')
-    .select('id, title, description, status, progress, created_at')
-    .eq('user_id', userId)
-    .limit(20) as { data: RawObjective[] | null }
-
-  if (objectives) {
-    nodes.push(...objectives.map(transformObjective))
-  }
-
-  // 7. Key Results
+  // ============================================
+  // Phase 2: 의존성 있는 쿼리들 병렬 실행
+  // ============================================
   const objectiveIds = objectives?.map((o) => o.id) || []
+  const projectIds = projects?.map((p) => p.id) || []
+  const bookmarkProgramIds = bookmarks?.map((b) => b.program_id) || []
+  const appProgramIds = [...new Set(applications?.map((a) => a.program_id) || [])]
+
+  // Key Results (objectives 의존)
   if (objectiveIds.length > 0) {
     const { data: keyResults } = await supabase
       .from('key_results')
       .select('id, title, objective_id, current_value, target_value, status')
       .in('objective_id', objectiveIds)
       .limit(50)
-
-    if (keyResults) {
-      nodes.push(...keyResults.map(transformKeyResult))
-    }
+    if (keyResults) nodes.push(...keyResults.map(transformKeyResult))
   }
 
-  // 8. Government Programs (북마크된 것만)
-  const { data: bookmarks } = await supabase
-    .from('program_bookmarks')
-    .select('program_id')
-    .eq('user_id', userId)
-    .limit(20) as { data: { program_id: string }[] | null }
+  // Phase 2: 나머지 쿼리들 병렬 실행
+  const phase2Results = await Promise.all([
+    // Government Programs (bookmarks 의존)
+    bookmarkProgramIds.length > 0
+      ? supabase
+          .from('government_programs')
+          .select('id, title, status, deadline, support_type')
+          .in('id', bookmarkProgramIds)
+      : Promise.resolve({ data: null }),
+    // Application Program Titles
+    appProgramIds.length > 0
+      ? supabase
+          .from('government_programs')
+          .select('id, title')
+          .in('id', appProgramIds)
+      : Promise.resolve({ data: null }),
+    // Milestones
+    projectIds.length > 0
+      ? supabase
+          .from('project_milestones')
+          .select('id, project_id, application_id, title, due_date, status')
+          .in('project_id', projectIds)
+          .limit(50)
+      : Promise.resolve({ data: null }),
+    // Budgets
+    projectIds.length > 0
+      ? supabase
+          .from('project_budgets')
+          .select('id, project_id, application_id, name, total_amount, spent_amount')
+          .in('project_id', projectIds)
+          .limit(30)
+      : Promise.resolve({ data: null }),
+  ])
 
-  if (bookmarks && bookmarks.length > 0) {
-    const programIds = bookmarks.map((b) => b.program_id)
-    const { data: programs } = await supabase
-      .from('government_programs')
-      .select('id, title, status, deadline, support_type')
-      .in('id', programIds)
+  const [programsResult, appProgramsResult, milestonesResult, budgetsResult] = phase2Results
 
-    if (programs) {
-      nodes.push(...programs.map(transformProgram))
-    }
+  // Government Programs
+  if (programsResult.data) {
+    nodes.push(...programsResult.data.map(transformProgram))
   }
 
-  // 9. Applications
-  const { data: applications } = await supabase
-    .from('program_applications')
-    .select('id, program_id, status, created_at')
-    .eq('user_id', userId)
-    .limit(20) as { data: RawApplication[] | null }
-
-  if (applications) {
-    // Get program titles for applications
-    const appProgramIds = [...new Set(applications.map((a) => a.program_id))]
-    const { data: appPrograms } = await supabase
-      .from('government_programs')
-      .select('id, title')
-      .in('id', appProgramIds) as { data: { id: string; title: string }[] | null }
-
-    const programTitleMap = new Map(appPrograms?.map((p) => [p.id, p.title]) || [])
-    nodes.push(
-      ...applications.map((a) => transformApplication(a, programTitleMap.get(a.program_id)))
+  // Program Title Map for Applications
+  let programTitleMap = new Map<string, string>()
+  if (appProgramsResult.data) {
+    programTitleMap = new Map(
+      appProgramsResult.data.map((p: { id: string; title: string }) => [p.id, p.title])
     )
   }
 
-  // 10. Milestones
-  const projectIds = (projects as { id: string }[] | null)?.map((p) => p.id) || []
-  if (projectIds.length > 0) {
-    const { data: milestones } = await supabase
-      .from('project_milestones')
-      .select('id, project_id, application_id, title, due_date, status')
-      .in('project_id', projectIds)
-      .limit(50)
-
-    if (milestones) {
-      nodes.push(...milestones.map(transformMilestone))
-    }
+  // Milestones
+  if (milestonesResult.data) {
+    nodes.push(...milestonesResult.data.map(transformMilestone))
   }
 
-  // 11. Budgets
-  if (projectIds.length > 0) {
-    const { data: budgets } = await supabase
-      .from('project_budgets')
-      .select('id, project_id, application_id, name, total_amount, spent_amount')
-      .in('project_id', projectIds)
-      .limit(30)
+  // Budgets
+  if (budgetsResult.data) {
+    nodes.push(...budgetsResult.data.map(transformBudget))
+  }
 
-    if (budgets) {
-      nodes.push(...budgets.map(transformBudget))
-    }
+  // Applications 노드 추가 (programTitleMap 사용)
+  if (applications) {
+    nodes.push(
+      ...applications.map((a) => transformApplication(a, programTitleMap.get(a.program_id)))
+    )
   }
 
   // 엣지 생성

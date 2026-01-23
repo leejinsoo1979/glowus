@@ -92,6 +92,16 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
     const [pastedImages, setPastedImages] = useState<Array<{id: string, dataUrl: string, file: File}>>([])
     const [attachedFiles, setAttachedFiles] = useState<Array<{id: string, name: string, size: number, file: File}>>([])
     const [streamingText, setStreamingText] = useState('') // 스트리밍 중인 AI 응답 텍스트
+    const [currentPhase, setCurrentPhase] = useState<string>('') // 현재 에이전트 단계
+    const [agentSteps, setAgentSteps] = useState<Array<{
+        id: string
+        agent: 'planner' | 'coder' | 'reviewer' | 'fixer'
+        status: 'pending' | 'running' | 'done' | 'error'
+        title: string
+        content: string
+        icon: string
+        color: string
+    }>>([])
 
     const welcomeMessage = getWelcomeMessage(projectType)
 
@@ -451,11 +461,23 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
         setIsAiLoading(true)
         setStreamingText('') // 스트리밍 텍스트 초기화
 
+        // 에이전트 스텝 초기화 - Genspark 스타일
+        setAgentSteps([
+            { id: 'planner', agent: 'planner', status: 'pending', title: 'Planner Agent', content: '요구사항 분석 대기 중...', icon: '📋', color: 'purple' },
+            { id: 'coder', agent: 'coder', status: 'pending', title: 'Coder Agent', content: '코드 작성 대기 중...', icon: '🛠️', color: 'cyan' },
+            { id: 'reviewer', agent: 'reviewer', status: 'pending', title: 'Reviewer Agent', content: '코드 리뷰 대기 중...', icon: '🔍', color: 'yellow' },
+            { id: 'fixer', agent: 'fixer', status: 'pending', title: 'Fixer Agent', content: '수정 대기 중...', icon: '🔧', color: 'orange' },
+        ])
+
         // 코드 탭으로 전환 및 스트리밍 코드 표시 준비
         setRightPanelTab('code')
         setCode('')
 
         let fullResponse = ''
+        let plannerContent = ''
+        let coderContent = ''
+        let reviewerContent = ''
+        let fixerContent = ''
 
         try {
             // AI API 호출 (스트리밍)
@@ -477,7 +499,7 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
 
             if (!reader) throw new Error('스트림 읽기 실패')
 
-            // 스트리밍 읽기
+            // 스트리밍 읽기 (멀티 에이전트 지원)
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
@@ -492,29 +514,103 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
 
                         try {
                             const parsed = JSON.parse(data)
+
+                            // 에이전트 단계 업데이트
+                            if (parsed.phase) {
+                                setCurrentPhase(parsed.phase)
+
+                                // Genspark 스타일 에이전트 스텝 상태 업데이트
+                                if (parsed.phase === 'planning') {
+                                    plannerContent = ''
+                                    setAgentSteps(prev => prev.map(s =>
+                                        s.agent === 'planner' ? { ...s, status: 'running', content: '요구사항 분석 중...' } : s
+                                    ))
+                                } else if (parsed.phase === 'coding') {
+                                    coderContent = ''
+                                    setAgentSteps(prev => prev.map(s => {
+                                        if (s.agent === 'planner') return { ...s, status: 'done', content: plannerContent || '분석 완료' }
+                                        if (s.agent === 'coder') return { ...s, status: 'running', content: '코드 작성 중...' }
+                                        return s
+                                    }))
+                                } else if (parsed.phase === 'reviewing') {
+                                    reviewerContent = ''
+                                    setAgentSteps(prev => prev.map(s => {
+                                        if (s.agent === 'coder') return { ...s, status: 'done', content: '코드 작성 완료' }
+                                        if (s.agent === 'reviewer') return { ...s, status: 'running', content: '코드 검토 중...' }
+                                        return s
+                                    }))
+                                } else if (parsed.phase === 'fixing') {
+                                    fixerContent = ''
+                                    setAgentSteps(prev => prev.map(s => {
+                                        if (s.agent === 'reviewer') return { ...s, status: 'done', content: reviewerContent || '리뷰 완료' }
+                                        if (s.agent === 'fixer') return { ...s, status: 'running', content: '이슈 수정 중...' }
+                                        return s
+                                    }))
+                                } else if (parsed.phase === 'complete') {
+                                    setAgentSteps(prev => prev.map(s => {
+                                        if (s.status === 'running') return { ...s, status: 'done', content: '완료' }
+                                        return s
+                                    }))
+                                } else if (parsed.phase === 'review_issues') {
+                                    setAgentSteps(prev => prev.map(s =>
+                                        s.agent === 'reviewer' ? { ...s, content: '⚠️ 이슈 발견' } : s
+                                    ))
+                                }
+                            }
+
                             if (parsed.content) {
                                 fullResponse += parsed.content
 
-                                // 채팅창에 실시간 스트리밍 텍스트 표시 (코드블록 제외)
-                                const displayText = fullResponse.replace(/```[\s\S]*?```/g, '').replace(/```[\s\S]*/g, '').trim()
-                                setStreamingText(displayText || '코드를 작성하고 있어요...')
-
-                                // 실시간으로 코드 에디터에 표시 (타이핑 효과)
-                                // ``` 시작 이후의 모든 내용 추출 (완료되지 않은 블록도 포함)
-                                const codeStartIndex = fullResponse.indexOf('```')
-                                if (codeStartIndex !== -1) {
-                                    const afterCodeStart = fullResponse.slice(codeStartIndex)
-                                    // 첫 번째 줄(언어:파일명) 이후의 내용 추출
-                                    const firstNewline = afterCodeStart.indexOf('\n')
-                                    if (firstNewline !== -1) {
-                                        let codeContent = afterCodeStart.slice(firstNewline + 1)
-                                        // 완료된 코드 블록이면 닫는 ``` 제거
-                                        const closingIndex = codeContent.lastIndexOf('```')
-                                        if (closingIndex !== -1) {
-                                            codeContent = codeContent.slice(0, closingIndex)
+                                // 단계별 콘텐츠 수집 및 UI 업데이트
+                                if (parsed.phase === 'planning') {
+                                    plannerContent += parsed.content
+                                    // Planner 스텝 콘텐츠 업데이트
+                                    setAgentSteps(prev => prev.map(s =>
+                                        s.agent === 'planner' ? { ...s, content: plannerContent.slice(0, 200) + (plannerContent.length > 200 ? '...' : '') } : s
+                                    ))
+                                    setStreamingText(fullResponse)
+                                } else if (parsed.phase === 'coding') {
+                                    coderContent += parsed.content
+                                    // 코딩 단계: 코드 에디터에 실시간 표시
+                                    const codeStartIndex = fullResponse.indexOf('```')
+                                    if (codeStartIndex !== -1) {
+                                        const afterCodeStart = fullResponse.slice(codeStartIndex)
+                                        const firstNewline = afterCodeStart.indexOf('\n')
+                                        if (firstNewline !== -1) {
+                                            let codeContent = afterCodeStart.slice(firstNewline + 1)
+                                            const closingIndex = codeContent.lastIndexOf('```')
+                                            if (closingIndex !== -1) {
+                                                codeContent = codeContent.slice(0, closingIndex)
+                                            }
+                                            setCode(codeContent)
                                         }
-                                        setCode(codeContent)
                                     }
+                                    // 채팅창에는 코드 블록 제외하고 표시
+                                    const displayText = fullResponse.replace(/```[\s\S]*?```/g, '').replace(/```[\s\S]*/g, '').trim()
+                                    setStreamingText(displayText || '🛠️ 코드 작성 중...')
+                                } else if (parsed.phase === 'fixing') {
+                                    // 수정 단계: 코드 에디터에 실시간 표시
+                                    const codeStartIndex = fullResponse.indexOf('```')
+                                    if (codeStartIndex !== -1) {
+                                        const afterCodeStart = fullResponse.slice(codeStartIndex)
+                                        const firstNewline = afterCodeStart.indexOf('\n')
+                                        if (firstNewline !== -1) {
+                                            let codeContent = afterCodeStart.slice(firstNewline + 1)
+                                            const closingIndex = codeContent.lastIndexOf('```')
+                                            if (closingIndex !== -1) {
+                                                codeContent = codeContent.slice(0, closingIndex)
+                                            }
+                                            setCode(codeContent)
+                                        }
+                                    }
+                                    const displayText = fullResponse.replace(/```[\s\S]*?```/g, '').replace(/```[\s\S]*/g, '').trim()
+                                    setStreamingText(displayText || '🔧 코드 수정 중...')
+                                } else if (parsed.phase === 'reviewing' || parsed.phase === 'complete' || parsed.phase === 'review_issues') {
+                                    // 리뷰 단계: 채팅창에 표시
+                                    const displayText = fullResponse.replace(/```[\s\S]*?```/g, '').replace(/```[\s\S]*/g, '').trim()
+                                    setStreamingText(displayText)
+                                } else if (parsed.phase === 'error') {
+                                    setStreamingText('❌ 오류가 발생했습니다: ' + parsed.content)
                                 }
                             }
                         } catch {
@@ -576,6 +672,7 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
         } finally {
             setIsAiLoading(false)
             setStreamingText('') // 스트리밍 완료 후 초기화
+            setCurrentPhase('') // 에이전트 단계 초기화
         }
     }, [chatInput, pastedImages, attachedFiles, isAiLoading, projectType, files, parseCodeBlocks])
 
@@ -656,109 +753,87 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
     }, [activeFile, handleFileSelect])
 
     return (
-        <div className="h-full flex flex-col bg-[#0a0a0f]">
-            {/* 상단 툴바 - 글래스모피즘 */}
-            <div className="h-14 flex items-center justify-between px-5 border-b border-white/5 bg-gradient-to-r from-zinc-900/90 via-zinc-900/80 to-zinc-900/90 backdrop-blur-xl flex-shrink-0">
-                <div className="flex items-center gap-4">
+        <div className="h-full flex flex-col bg-zinc-950">
+            {/* 상단 툴바 */}
+            <div className="h-12 flex items-center justify-between px-4 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+                <div className="flex items-center gap-3">
                     <button
                         onClick={onBack}
-                        className="p-2 hover:bg-white/5 rounded-xl transition-all duration-200 group"
+                        className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors"
                     >
-                        <ArrowLeft className="w-5 h-5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+                        <ArrowLeft className="w-5 h-5 text-zinc-400" />
                     </button>
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-                            <Code2 className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="font-semibold text-white/90">{projectTitle}</span>
+                    <div className="flex items-center gap-2">
+                        <Code2 className="w-5 h-5 text-cyan-400" />
+                        <span className="font-medium text-zinc-200">{projectTitle}</span>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleRun}
-                        className="flex items-center gap-2 px-4 py-2 text-white rounded-xl font-medium transition-all duration-200 hover:scale-105 shadow-lg"
-                        style={{
-                            background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`,
-                            boxShadow: `0 4px 20px ${themeColor}40`
-                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 text-white rounded-md transition-colors hover:opacity-90"
+                        style={{ backgroundColor: themeColor }}
                     >
                         <Play className="w-4 h-4" />
                         실행
                     </button>
-                    <button className="p-2.5 hover:bg-white/5 rounded-xl transition-all duration-200 group">
-                        <RotateCcw className="w-5 h-5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+                    <button className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors">
+                        <RotateCcw className="w-5 h-5 text-zinc-400" />
                     </button>
-                    <button className="p-2.5 hover:bg-white/5 rounded-xl transition-all duration-200 group">
-                        <Download className="w-5 h-5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+                    <button className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors">
+                        <Download className="w-5 h-5 text-zinc-400" />
                     </button>
-                    <button className="p-2.5 hover:bg-white/5 rounded-xl transition-all duration-200 group">
-                        <Share2 className="w-5 h-5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+                    <button className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors">
+                        <Share2 className="w-5 h-5 text-zinc-400" />
                     </button>
                 </div>
             </div>
 
             {/* 메인 영역: 왼쪽 채팅 + 오른쪽 뷰어 */}
             <div className="flex-1 flex overflow-hidden">
-                {/* 왼쪽: AI 채팅 - 프리미엄 스타일 */}
+                {/* 왼쪽: AI 채팅 */}
                 <div
-                    className="flex flex-col bg-gradient-to-b from-[#0d0d12] to-[#0a0a0f] flex-shrink-0 relative"
+                    className="flex flex-col bg-zinc-900 flex-shrink-0 relative"
                     style={{ width: chatPanelWidth }}
                 >
-                    {/* 채팅 헤더 - 글로우 라인 */}
-                    <div className="h-12 flex items-center justify-between px-4 border-b border-white/5 relative">
-                        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-sm font-medium text-zinc-300">AI 어시스턴트</span>
-                        </div>
-                        <span className="text-[10px] text-zinc-600 font-mono">GPT-4 TURBO</span>
+                    {/* 채팅 헤더 */}
+                    <div className="h-10 flex items-center px-4 border-b border-zinc-800">
+                        <span className="text-sm font-medium text-zinc-300">AI 채팅</span>
                     </div>
 
                     {/* 채팅 메시지 영역 */}
                     <div
                         ref={chatContainerRef}
-                        className="flex-1 overflow-y-auto p-5 space-y-5"
+                        className="flex-1 overflow-y-auto p-4 space-y-4"
                     >
-                        {/* 환영 메시지 - 프리미엄 */}
+                        {/* 환영 메시지 */}
                         {chatMessages.length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                                {/* 아이콘 */}
-                                <div className="relative mb-6">
-                                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center border border-white/10">
-                                        <Bot className="w-10 h-10 text-cyan-400" />
-                                    </div>
-                                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                                        <span className="text-[10px] text-white font-bold">AI</span>
-                                    </div>
-                                </div>
-                                <h3 className="text-xl font-bold text-white mb-2">
-                                    무엇을 만들어볼까요?
+                                <h3 className="text-base font-semibold text-zinc-200 mb-2">
+                                    {projectTitle}
                                 </h3>
-                                <p className="text-sm text-zinc-500 mb-6 max-w-[280px]">
-                                    웹사이트, 앱, 게임, 유틸리티 등 원하는 것을 설명해주세요
+                                <p className="text-sm text-zinc-400 mb-4">
+                                    {welcomeMessage}
                                 </p>
-                                <div className="flex flex-col gap-2 w-full max-w-[280px]">
+                                <div className="flex flex-wrap gap-2 justify-center">
                                     <button
-                                        onClick={() => setChatInput('반응형 랜딩페이지 만들어줘')}
-                                        className="px-4 py-3 text-sm bg-white/5 hover:bg-white/10 text-zinc-300 rounded-xl transition-all duration-200 border border-white/5 hover:border-cyan-500/30 text-left flex items-center gap-3"
+                                        onClick={() => setChatInput('간단한 웹페이지 만들어줘')}
+                                        className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full transition-colors"
                                     >
-                                        <span className="text-lg">🌐</span>
-                                        <span>반응형 랜딩페이지</span>
+                                        웹페이지
                                     </button>
                                     <button
-                                        onClick={() => setChatInput('대시보드 UI 만들어줘')}
-                                        className="px-4 py-3 text-sm bg-white/5 hover:bg-white/10 text-zinc-300 rounded-xl transition-all duration-200 border border-white/5 hover:border-purple-500/30 text-left flex items-center gap-3"
+                                        onClick={() => setChatInput('Todo 앱 만들어줘')}
+                                        className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full transition-colors"
                                     >
-                                        <span className="text-lg">📊</span>
-                                        <span>대시보드 UI</span>
+                                        Todo 앱
                                     </button>
                                     <button
-                                        onClick={() => setChatInput('인터랙티브 게임 만들어줘')}
-                                        className="px-4 py-3 text-sm bg-white/5 hover:bg-white/10 text-zinc-300 rounded-xl transition-all duration-200 border border-white/5 hover:border-green-500/30 text-left flex items-center gap-3"
+                                        onClick={() => setChatInput('계산기 만들어줘')}
+                                        className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full transition-colors"
                                     >
-                                        <span className="text-lg">🎮</span>
-                                        <span>인터랙티브 게임</span>
+                                        계산기
                                     </button>
                                 </div>
                             </div>
@@ -791,18 +866,101 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
                             </div>
                         ))}
 
-                        {/* 실시간 AI 응답 스트리밍 */}
-                        {isAiLoading && (
-                            <div className="flex gap-3">
-                                <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center flex-shrink-0">
-                                    <Bot className="w-4 h-4 text-zinc-300" />
-                                </div>
-                                <div className="max-w-[85%] bg-zinc-800 text-zinc-200 px-3 py-2 rounded-2xl rounded-bl-md text-sm">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
-                                        <span className="text-xs text-cyan-400">생성 중</span>
+                        {/* 🎯 Genspark 스타일 멀티 에이전트 UI */}
+                        {isAiLoading && agentSteps.length > 0 && (
+                            <div className="space-y-3">
+                                {/* 에이전트 파이프라인 카드 */}
+                                <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-800/50 rounded-2xl border border-white/10 p-4 backdrop-blur-sm">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+                                            <Bot className="w-3.5 h-3.5 text-white" />
+                                        </div>
+                                        <span className="text-sm font-semibold text-white">AI 에이전트 파이프라인</span>
+                                        <div className="ml-auto flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="text-[10px] text-zinc-500">진행 중</span>
+                                        </div>
                                     </div>
-                                    <p className="whitespace-pre-wrap">{streamingText || '코드를 작성하고 있어요...'}</p>
+
+                                    {/* 에이전트 스텝 리스트 */}
+                                    <div className="space-y-2">
+                                        {agentSteps.map((step, idx) => (
+                                            <motion.div
+                                                key={step.id}
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: idx * 0.1 }}
+                                                className={cn(
+                                                    "relative flex items-start gap-3 p-3 rounded-xl transition-all duration-300",
+                                                    step.status === 'running' && "bg-gradient-to-r from-cyan-500/10 to-transparent border border-cyan-500/30",
+                                                    step.status === 'done' && "bg-white/5 border border-white/5",
+                                                    step.status === 'pending' && "bg-transparent border border-transparent opacity-50",
+                                                    step.status === 'error' && "bg-red-500/10 border border-red-500/30"
+                                                )}
+                                            >
+                                                {/* 스텝 아이콘 */}
+                                                <div className={cn(
+                                                    "w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 transition-all",
+                                                    step.status === 'running' && "bg-gradient-to-br from-cyan-500/30 to-blue-600/30 shadow-lg shadow-cyan-500/20",
+                                                    step.status === 'done' && "bg-gradient-to-br from-green-500/20 to-emerald-600/20",
+                                                    step.status === 'pending' && "bg-zinc-800/50",
+                                                    step.status === 'error' && "bg-red-500/20"
+                                                )}>
+                                                    {step.status === 'running' ? (
+                                                        <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+                                                    ) : step.status === 'done' ? (
+                                                        <span className="text-green-400">✓</span>
+                                                    ) : step.status === 'error' ? (
+                                                        <span>❌</span>
+                                                    ) : (
+                                                        <span className="opacity-50">{step.icon}</span>
+                                                    )}
+                                                </div>
+
+                                                {/* 스텝 정보 */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={cn(
+                                                            "text-sm font-medium",
+                                                            step.status === 'running' && "text-cyan-300",
+                                                            step.status === 'done' && "text-green-300",
+                                                            step.status === 'pending' && "text-zinc-500",
+                                                            step.status === 'error' && "text-red-300"
+                                                        )}>
+                                                            {step.icon} {step.title}
+                                                        </span>
+                                                        {step.status === 'running' && (
+                                                            <span className="px-1.5 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 rounded-full">
+                                                                실행 중
+                                                            </span>
+                                                        )}
+                                                        {step.status === 'done' && (
+                                                            <span className="px-1.5 py-0.5 text-[10px] bg-green-500/20 text-green-300 rounded-full">
+                                                                완료
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className={cn(
+                                                        "text-xs mt-1 line-clamp-2",
+                                                        step.status === 'running' && "text-zinc-300",
+                                                        step.status === 'done' && "text-zinc-400",
+                                                        step.status === 'pending' && "text-zinc-600",
+                                                        step.status === 'error' && "text-red-300"
+                                                    )}>
+                                                        {step.content}
+                                                    </p>
+                                                </div>
+
+                                                {/* 연결선 (마지막 제외) */}
+                                                {idx < agentSteps.length - 1 && (
+                                                    <div className={cn(
+                                                        "absolute left-7 top-14 w-0.5 h-4",
+                                                        step.status === 'done' ? "bg-gradient-to-b from-green-500/50 to-transparent" : "bg-zinc-700/30"
+                                                    )} />
+                                                )}
+                                            </motion.div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         )}

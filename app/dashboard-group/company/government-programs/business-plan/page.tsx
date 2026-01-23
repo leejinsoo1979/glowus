@@ -35,7 +35,245 @@ import { cn } from '@/lib/utils'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
+} from 'recharts'
+import { Image as ImageIcon, Upload, BarChart2, PieChart as PieChartIcon, TrendingUp as LineChartIcon, Activity } from 'lucide-react'
 // docx, file-saver, html2pdf는 동적으로 import (SSR 문제 방지)
+
+// 차트 색상 팔레트
+const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899']
+
+// 차트 렌더링 컴포넌트
+function ChartRenderer({ data }: { data: any }) {
+  try {
+    const chartData = typeof data === 'string' ? JSON.parse(data) : data
+    const { type, title, data: chartValues } = chartData
+
+    if (!chartValues || !Array.isArray(chartValues)) {
+      return <div className="p-4 bg-red-50 text-red-600 rounded text-sm">차트 데이터 형식 오류</div>
+    }
+
+    const renderChart = () => {
+      switch (type) {
+        case 'bar':
+          return (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={chartValues} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]}>
+                  {chartValues.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )
+        case 'line':
+          return (
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={chartValues} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={{ fill: '#6366f1' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )
+        case 'pie':
+          return (
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={chartValues}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {chartValues.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          )
+        case 'area':
+          return (
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={chartValues} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
+                <Tooltip />
+                <Legend />
+                <Area type="monotone" dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )
+        default:
+          return <div className="p-4 bg-yellow-50 text-yellow-700 rounded text-sm">지원하지 않는 차트 유형: {type}</div>
+      }
+    }
+
+    return (
+      <div className="my-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+        {title && (
+          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            {type === 'bar' && <BarChart2 className="w-4 h-4" />}
+            {type === 'pie' && <PieChartIcon className="w-4 h-4" />}
+            {type === 'line' && <LineChartIcon className="w-4 h-4" />}
+            {type === 'area' && <Activity className="w-4 h-4" />}
+            {title}
+          </h4>
+        )}
+        {renderChart()}
+      </div>
+    )
+  } catch (e) {
+    console.error('Chart parsing error:', e)
+    return <div className="p-4 bg-red-50 text-red-600 rounded text-sm">차트 파싱 오류</div>
+  }
+}
+
+// 이미지 플레이스홀더 컴포넌트
+function ImagePlaceholder({ data }: { data: any }) {
+  try {
+    const imageData = typeof data === 'string' ? JSON.parse(data) : data
+    const { type, description } = imageData
+
+    const typeLabels: Record<string, string> = {
+      product: '제품 이미지',
+      diagram: '다이어그램',
+      screenshot: '스크린샷',
+      logo: '로고',
+      team: '팀 사진',
+      infographic: '인포그래픽'
+    }
+
+    return (
+      <div className="my-4 border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/30 transition-colors cursor-pointer group">
+        <div className="flex flex-col items-center justify-center text-center">
+          <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+            <ImageIcon className="w-6 h-6 text-gray-400 group-hover:text-blue-500" />
+          </div>
+          <p className="text-sm font-medium text-gray-600 mb-1">
+            {typeLabels[type] || '이미지'} 삽입 영역
+          </p>
+          <p className="text-xs text-gray-500 mb-3">{description}</p>
+          <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors">
+            <Upload className="w-3 h-3" />
+            이미지 업로드
+          </button>
+        </div>
+      </div>
+    )
+  } catch (e) {
+    console.error('Image placeholder parsing error:', e)
+    return <div className="p-4 bg-red-50 text-red-600 rounded text-sm">이미지 플레이스홀더 오류</div>
+  }
+}
+
+// Mermaid 다이어그램 렌더링 (간단한 텍스트 표시, 실제 렌더링은 추후 구현)
+function MermaidDiagram({ code }: { code: string }) {
+  return (
+    <div className="my-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-6 h-6 rounded bg-purple-100 flex items-center justify-center">
+          <svg className="w-4 h-4 text-purple-600" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span className="text-sm font-medium text-slate-700">다이어그램</span>
+      </div>
+      <pre className="text-xs text-slate-600 bg-white p-3 rounded border border-slate-200 overflow-x-auto whitespace-pre-wrap">
+        {code}
+      </pre>
+      <p className="text-xs text-slate-500 mt-2 italic">* 다이어그램은 문서 내보내기 시 렌더링됩니다</p>
+    </div>
+  )
+}
+
+// 커스텀 마크다운 코드 블록 렌더러
+function CustomCodeBlock({ node, inline, className, children, ...props }: any) {
+  const match = /language-(\w+)/.exec(className || '')
+  const language = match ? match[1] : ''
+  const codeContent = String(children).replace(/\n$/, '')
+
+  // 차트 블록
+  if (language === 'chart') {
+    return <ChartRenderer data={codeContent} />
+  }
+
+  // 이미지 플레이스홀더 블록
+  if (language === 'image') {
+    return <ImagePlaceholder data={codeContent} />
+  }
+
+  // Mermaid 다이어그램
+  if (language === 'mermaid') {
+    return <MermaidDiagram code={codeContent} />
+  }
+
+  // 기본 코드 블록
+  return inline ? (
+    <code className={cn("bg-gray-100 px-1 py-0.5 rounded text-sm", className)} {...props}>
+      {children}
+    </code>
+  ) : (
+    <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto my-3">
+      <code className={cn("text-sm", className)} {...props}>
+        {children}
+      </code>
+    </pre>
+  )
+}
+
+// 커스텀 마크다운 컴포넌트 타입
+type MarkdownComponentProps = {
+  children?: React.ReactNode
+  [key: string]: any
+}
+
+// 커스텀 테이블 렌더러 (HWP 스타일)
+const markdownComponents = {
+  code: CustomCodeBlock,
+  table: ({ children }: MarkdownComponentProps) => (
+    <div className="my-4 overflow-x-auto">
+      <table className="w-full border-collapse border border-gray-400 text-sm">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }: MarkdownComponentProps) => (
+    <thead className="bg-gray-100">{children}</thead>
+  ),
+  tr: ({ children }: MarkdownComponentProps) => (
+    <tr className="border-b border-gray-300">{children}</tr>
+  ),
+  th: ({ children }: MarkdownComponentProps) => (
+    <th className="border border-gray-300 px-3 py-2 text-left font-bold bg-gray-100 text-gray-700">
+      {children}
+    </th>
+  ),
+  td: ({ children }: MarkdownComponentProps) => (
+    <td className="border border-gray-300 px-3 py-2 text-left">
+      {children}
+    </td>
+  ),
+}
 
 // 섹션 아이콘 매핑
 const SECTION_ICONS: Record<string, any> = {
@@ -160,6 +398,7 @@ export default function BusinessPlanPage() {
   const [editContent, setEditContent] = useState('')
   const [regenerateInstructions, setRegenerateInstructions] = useState('')
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
+  const [showExistingPlanModal, setShowExistingPlanModal] = useState(false)
   const [showInterviewPrompt, setShowInterviewPrompt] = useState(false)
   const [interviewData, setInterviewData] = useState<{
     message: string
@@ -170,6 +409,12 @@ export default function BusinessPlanPage() {
   const [autoGenerateTriggered, setAutoGenerateTriggered] = useState(false)
   const [generationProgress, setGenerationProgress] = useState(0)
   const [generationStartTime, setGenerationStartTime] = useState<number | null>(null)
+
+  // 스트리밍 상태
+  const [streamingSections, setStreamingSections] = useState<Record<string, { title: string; content: string; complete: boolean }>>({})
+  const [currentStreamingSection, setCurrentStreamingSection] = useState<string | null>(null)
+  const [streamingStatus, setStreamingStatus] = useState<string>('')
+  const [generationError, setGenerationError] = useState<string | null>(null)
 
   // 리사이징 상태
   const [sidebarWidth, setSidebarWidth] = useState(420)
@@ -236,16 +481,20 @@ export default function BusinessPlanPage() {
     fetchBusinessPlan()
   }, [fetchProgram, fetchBusinessPlan])
 
-  // 기존 계획서 없으면 자동 생성 시작 (1회만)
+  // 기존 계획서 체크 - 있으면 선택 모달, 없으면 자동 생성
   useEffect(() => {
-    if (
-      programId &&
-      !loading &&
-      !generating &&
-      !businessPlan &&
-      !autoGenerateTriggered &&
-      program
-    ) {
+    if (!programId || loading || generating || autoGenerateTriggered || !program) return
+
+    const hasSections = businessPlan && Object.keys(businessPlan.sections || {}).length > 0
+
+    if (hasSections) {
+      // 기존 계획서가 있으면 선택 모달 표시
+      console.log('[BusinessPlan] Existing plan found, showing modal')
+      setShowExistingPlanModal(true)
+      setAutoGenerateTriggered(true) // 모달 중복 방지
+    } else {
+      // 기존 계획서가 없으면 자동 생성
+      console.log('[BusinessPlan] No existing plan, auto-generating')
       setAutoGenerateTriggered(true)
       generatePlan()
     }
@@ -265,63 +514,178 @@ export default function BusinessPlanPage() {
     return () => clearInterval(interval)
   }, [generating, generationStartTime])
 
-  // 사업계획서 생성
-  const generatePlan = async () => {
-    if (!programId) return
+  // 현재 스트리밍 섹션으로 자동 스크롤
+  useEffect(() => {
+    if (currentStreamingSection && generating) {
+      const element = document.getElementById(`streaming-section-${currentStreamingSection}`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }, [currentStreamingSection, generating])
 
+  // 사업계획서 생성 (스트리밍)
+  const generatePlan = async () => {
+    if (!programId) {
+      console.error('[BusinessPlan] generatePlan called without programId')
+      return
+    }
+
+    console.log('[BusinessPlan] Starting streaming generation for program:', programId)
     setGenerating(true)
+    setGenerationStartTime(Date.now())
+    setGenerationProgress(0)
+    setStreamingSections({})
+    setCurrentStreamingSection(null)
+    setStreamingStatus('초기화 중...')
+    setGenerationError(null)
+
     try {
-      const res = await fetch('/api/skills/business-plan/generate', {
+      const res = await fetch('/api/skills/business-plan/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ program_id: programId })
       })
 
-      const data = await res.json()
+      if (!res.ok) {
+        throw new Error('스트리밍 API 오류')
+      }
 
-      if (data.success) {
-        // 생성된 사업계획서 바로 사용 (추가 API 호출 없이)
-        const newPlan: BusinessPlan = {
-          id: data.business_plan_id,
-          title: program?.title ? `${program.title} - 사업계획서` : '사업계획서',
-          status: 'completed',
-          sections: data.sections || {},
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          government_programs: program ? {
-            id: program.id,
-            title: program.title,
-            organization: program.organization,
-            category: program.category || ''
-          } : undefined
-        }
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+      let businessPlanId: string | null = null
+      const sectionsData: Record<string, any> = {}
 
-        setBusinessPlan(newPlan)
-        const sectionKeys = Object.keys(newPlan.sections)
-        if (sectionKeys.length > 0) {
-          const firstSection = sectionKeys[0]
-          setSelectedSection(firstSection)
-          // 자동으로 편집 모드 진입
-          setEditContent(newPlan.sections[firstSection]?.content || '')
-          setEditMode(true)
+      while (reader) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value)
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              switch (data.type) {
+                case 'start':
+                  setStreamingStatus('프로그램 정보 로드 완료')
+                  break
+
+                case 'status':
+                  setStreamingStatus(data.message)
+                  break
+
+                case 'plan_created':
+                  businessPlanId = data.business_plan_id
+                  setStreamingStatus('사업계획서 생성 시작')
+                  break
+
+                case 'section_start':
+                  setCurrentStreamingSection(data.section_key)
+                  setStreamingStatus(`${data.section_title} 작성 중...`)
+                  setGenerationProgress(data.progress)
+                  setStreamingSections(prev => ({
+                    ...prev,
+                    [data.section_key]: {
+                      title: data.section_title,
+                      content: '',
+                      complete: false
+                    }
+                  }))
+                  break
+
+                case 'section_chunk':
+                  setStreamingSections(prev => ({
+                    ...prev,
+                    [data.section_key]: {
+                      ...prev[data.section_key],
+                      content: data.full_content
+                    }
+                  }))
+                  break
+
+                case 'section_complete':
+                  sectionsData[data.section_key] = {
+                    content: data.content,
+                    title: data.section_title,
+                    order: Object.keys(sectionsData).length + 1,
+                    generated_at: new Date().toISOString(),
+                    char_count: data.char_count
+                  }
+                  setGenerationProgress(data.progress)
+                  setStreamingSections(prev => ({
+                    ...prev,
+                    [data.section_key]: {
+                      ...prev[data.section_key],
+                      content: data.content,
+                      complete: true
+                    }
+                  }))
+                  break
+
+                case 'section_error':
+                  setStreamingSections(prev => ({
+                    ...prev,
+                    [data.section_key]: {
+                      ...prev[data.section_key],
+                      content: `[생성 실패: ${data.error}]`,
+                      complete: true
+                    }
+                  }))
+                  break
+
+                case 'complete':
+                  setStreamingStatus('생성 완료!')
+                  setGenerationProgress(100)
+
+                  // 최종 사업계획서 설정
+                  const newPlan: BusinessPlan = {
+                    id: businessPlanId || data.business_plan_id,
+                    title: program?.title ? `${program.title} - 사업계획서` : '사업계획서',
+                    status: 'completed',
+                    sections: data.sections || sectionsData,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    government_programs: program ? {
+                      id: program.id,
+                      title: program.title,
+                      organization: program.organization,
+                      category: program.category || ''
+                    } : undefined
+                  }
+
+                  setBusinessPlan(newPlan)
+                  const sectionKeys = Object.keys(newPlan.sections)
+                  if (sectionKeys.length > 0) {
+                    setSelectedSection(sectionKeys[0])
+                    setEditContent(newPlan.sections[sectionKeys[0]]?.content || '')
+                    setEditMode(true)
+                  }
+                  break
+
+                case 'error':
+                  setGenerationError(data.message || '생성 실패')
+                  setStreamingStatus('')
+                  setGenerating(false)
+                  setGenerationStartTime(null)
+                  break
+              }
+            } catch (e) {
+              // JSON 파싱 실패는 무시
+            }
+          }
         }
-      } else if (data.needs_interview) {
-        // 지식베이스 부족 - 인터뷰 모드 안내
-        setInterviewData({
-          message: data.message,
-          missing_data: data.missing_data || [],
-          suggestions: data.suggestions || [],
-          completeness_score: data.completeness_score || 0
-        })
-        setShowInterviewPrompt(true)
-      } else {
-        alert(data.error || '생성 실패')
       }
     } catch (error) {
-      console.error('생성 실패:', error)
+      console.error('[BusinessPlan] Generation error:', error)
       alert('사업계획서 생성 중 오류가 발생했습니다.')
     } finally {
+      console.log('[BusinessPlan] Generation complete')
       setGenerating(false)
+      setGenerationStartTime(null)
+      setCurrentStreamingSection(null)
     }
   }
 
@@ -350,6 +714,36 @@ export default function BusinessPlanPage() {
       }
     } catch (error) {
       console.error('저장 실패:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 전체 사업계획서 저장 (현재 상태 그대로 저장)
+  const handleSaveAll = async () => {
+    if (!businessPlan) return
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/skills/business-plan/${businessPlan.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'draft'
+        })
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        setBusinessPlan(data.business_plan)
+        alert('사업계획서가 저장되었습니다.')
+      } else {
+        alert(data.error || '저장 실패')
+      }
+    } catch (error) {
+      console.error('저장 실패:', error)
+      alert('저장 중 오류가 발생했습니다.')
     } finally {
       setSaving(false)
     }
@@ -551,17 +945,6 @@ export default function BusinessPlanPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f]">
-      {/* 배경 그라데이션 */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div
-          className="absolute top-0 right-1/4 w-[500px] h-[500px] rounded-full opacity-15 blur-[120px]"
-          style={{ background: `radial-gradient(circle, ${themeColor} 0%, transparent 70%)` }}
-        />
-        <div
-          className="absolute bottom-0 left-1/4 w-[400px] h-[400px] rounded-full opacity-10 blur-[100px]"
-          style={{ background: `radial-gradient(circle, #8b5cf6 0%, transparent 70%)` }}
-        />
-      </div>
 
       {/* 헤더 */}
       <div className="relative z-10 h-16 border-b border-white/5 px-6 flex items-center justify-between backdrop-blur-xl bg-black/20">
@@ -615,234 +998,276 @@ export default function BusinessPlanPage() {
                 <Download className="w-4 h-4" />
                 Word
               </button>
+              <button
+                onClick={handleSaveAll}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-all disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                저장
+              </button>
             </div>
           )}
         </div>
       </div>
 
       {/* 메인 콘텐츠 */}
-      <div className="relative z-10 flex h-[calc(100vh-64px)]">
+      <div className="flex h-[calc(100vh-64px)]">
         {!businessPlan || Object.keys(businessPlan.sections || {}).length === 0 ? (
-          /* 사업계획서 없음 또는 섹션 없음 - 생성 유도 (새 디자인) */
-          <div className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
-            {/* 배경 애니메이션 */}
-            <div className="absolute inset-0 overflow-hidden">
-              {/* 그라데이션 오브 */}
+          /* 사업계획서 없음 또는 섹션 없음 - 생성 UI */
+          generating ? (
+            /* 스트리밍 생성 UI - 왼쪽 섹션트리거 + 오른쪽 콘텐츠 */
+            <>
+              {/* 왼쪽: 섹션 트리거 사이드바 */}
               <div
-                className="absolute -top-40 -right-40 w-96 h-96 rounded-full blur-3xl opacity-20 animate-pulse"
-                style={{ background: `radial-gradient(circle, ${themeColor}, transparent)` }}
-              />
-              <div
-                className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full blur-3xl opacity-15 animate-pulse"
-                style={{ background: `radial-gradient(circle, ${themeColor}80, transparent)`, animationDelay: '1s' }}
-              />
-              {/* 플로팅 파티클 */}
-              {generating && (
-                <>
-                  {[...Array(6)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="absolute w-2 h-2 rounded-full animate-bounce"
-                      style={{
-                        background: themeColor,
-                        left: `${20 + i * 12}%`,
-                        top: `${30 + (i % 3) * 20}%`,
-                        animationDelay: `${i * 0.2}s`,
-                        animationDuration: `${1.5 + i * 0.3}s`,
-                        opacity: 0.6
-                      }}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
-
-            <div className="relative z-10 text-center max-w-xl">
-              {generating ? (
-                /* 생성 중 화면: Split View (좌: 상태 / 우: 공고 내용 참조) */
-                <div className="w-full h-full flex flex-row items-stretch text-left">
-                  {/* Left: Status Panel */}
-                  <div className="w-[400px] flex-shrink-0 flex flex-col justify-center p-8 border-r border-white/10 relative">
-                    <div className="space-y-8 relative z-10">
-                      {/* 로딩 애니메이션 (축소판) */}
-                      <div className="relative w-24 h-24">
-                        <div className="absolute inset-0 rounded-full border-4 border-transparent animate-spin"
-                          style={{ borderTopColor: themeColor, borderRightColor: `${themeColor}50` }} />
-                        <div className="absolute inset-3 rounded-full border-4 border-transparent animate-spin"
-                          style={{ borderBottomColor: themeColor, borderLeftColor: `${themeColor}30`, animationDirection: 'reverse' }} />
-                        <div className="absolute inset-6 rounded-full flex items-center justify-center bg-white/5">
-                          <Sparkles className="w-8 h-8 animate-pulse" style={{ color: themeColor }} />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h2 className="text-2xl font-bold text-white leading-tight">
-                          AI가 사업계획서를<br />생성하고 있습니다
-                        </h2>
-                        <p className="text-zinc-400 text-sm">
-                          공고문 내용을 분석하여<br />최적의 전략을 수립하는 중입니다.
-                        </p>
-                      </div>
-
-                      {/* 진행 로그 시뮬레이션 */}
-                      <div className="bg-black/40 rounded-xl p-4 border border-white/5 space-y-3 font-mono text-xs">
-                        <div className="flex items-center gap-2 text-green-400">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>공고문 PDF 텍스트 추출 완료</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-green-400">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>기업 데이터(마이뉴런) 로드 완료</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-zinc-300 animate-pulse">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>섹션별 초안 작성 중... ({Math.floor(generationProgress)}%)</span>
-                        </div>
-                        <div className="h-1 bg-zinc-800 rounded-full overflow-hidden mt-2">
-                          <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${generationProgress}%` }} />
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                        <p className="text-blue-200 text-xs flex gap-2">
-                          <Lightbulb className="w-4 h-4 flex-shrink-0" />
-                          잠시만 기다려주세요. 약 1-2분 정도 소요됩니다.
-                        </p>
-                      </div>
+                style={{ width: sidebarWidth }}
+                className="bg-black/40 backdrop-blur-xl border-r border-white/5 flex flex-col h-full font-sans flex-shrink-0"
+              >
+                {/* 헤더 */}
+                <div className="p-6 border-b border-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-yellow-400" />
+                      AI 생성 중
+                    </h2>
+                    <div className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                      <span className="text-xs font-mono text-zinc-500 bg-white/5 px-2 py-1 rounded">
+                        {generationProgress}%
+                      </span>
                     </div>
                   </div>
+                  <p className="text-xs text-zinc-400 mb-3">{streamingStatus}</p>
+                  {/* 진행률 바 */}
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${generationProgress}%`, background: themeColor }}
+                    />
+                  </div>
+                </div>
 
-                  {/* Right: Content Preview Panel */}
-                  <div className="flex-1 bg-white/[0.02] p-8 overflow-y-auto">
-                    <div className="max-w-3xl mx-auto">
-                      <h3 className="text-lg font-semibold text-zinc-400 mb-6 flex items-center gap-2">
-                        <FileText className="w-5 h-5" />
-                        참조 중인 공고 내용
-                      </h3>
+                {/* 섹션 트리거 목록 */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {/* 기본 섹션 목록 (스트리밍 데이터 기반) */}
+                  {Object.entries(streamingSections).length > 0 ? (
+                    Object.entries(streamingSections).map(([key, section], idx) => {
+                      const isActive = currentStreamingSection === key
+                      const isComplete = section.complete
+                      const Icon = SECTION_ICONS[key] || FileText
 
-                      <div className="bg-white rounded-xl shadow-xl overflow-hidden min-h-[600px] text-zinc-900">
-                        {/* 공고 헤더 */}
-                        <div className="border-b border-zinc-100 p-6 bg-zinc-50">
-                          <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded mb-2">
-                            {program?.organization || '기관명'}
-                          </span>
-                          <h1 className="text-xl font-bold text-zinc-900 leading-snug">
-                            {program?.title}
-                          </h1>
+                      return (
+                        <div
+                          key={key}
+                          className={cn(
+                            "relative pl-6 pb-4 border-l-2 last:border-0 ml-4 transition-all",
+                            isComplete ? "border-green-500/50" : isActive ? "border-yellow-500" : "border-zinc-800"
+                          )}
+                        >
+                          {/* 타임라인 노드 */}
+                          <div className={cn(
+                            "absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 transition-all",
+                            isComplete
+                              ? "bg-green-500 border-green-500"
+                              : isActive
+                                ? "bg-yellow-500 border-yellow-500 animate-pulse"
+                                : "bg-black border-zinc-700"
+                          )} />
+
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between">
+                              <span className={cn(
+                                "text-xs font-bold uppercase tracking-wider",
+                                isComplete ? "text-green-400" : isActive ? "text-yellow-400" : "text-zinc-500"
+                              )}>
+                                Step {idx + 1}
+                              </span>
+                              {isComplete && (
+                                <span className="text-[10px] text-zinc-600 font-mono">
+                                  {section.content.length.toLocaleString()}자
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Icon className={cn(
+                                "w-4 h-4",
+                                isComplete ? "text-green-400" : isActive ? "text-yellow-400" : "text-zinc-500"
+                              )} />
+                              <h3 className={cn(
+                                "text-sm font-medium",
+                                isComplete ? "text-white" : isActive ? "text-yellow-100" : "text-zinc-400"
+                              )}>
+                                {section.title}
+                              </h3>
+                            </div>
+
+                            {/* 상태 표시 */}
+                            {isActive && (
+                              <div className="mt-2 text-xs text-yellow-400/80 font-mono bg-yellow-500/10 p-2 rounded border border-yellow-500/20 flex items-center gap-2">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                작성 중...
+                              </div>
+                            )}
+                            {isComplete && (
+                              <div className="mt-2 text-xs text-green-400/80 font-mono bg-green-500/10 p-2 rounded border border-green-500/20 flex items-center gap-2">
+                                <CheckCircle2 className="w-3 h-3" />
+                                완료
+                              </div>
+                            )}
+                          </div>
                         </div>
+                      )
+                    })
+                  ) : (
+                    /* 대기 중 - 기본 섹션 표시 */
+                    <div className="text-center py-10 text-zinc-500">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3" style={{ color: themeColor }} />
+                      <p className="text-sm">섹션 생성 준비 중...</p>
+                    </div>
+                  )}
+                </div>
 
-                        {/* 공고 본문/WebView */}
-                        <div className="p-6">
-                          {program?.content ? (
-                            <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: program.content }} />
-                          ) : program?.detail_url ? (
-                            <div className="w-full h-[600px] bg-zinc-100 rounded-lg flex items-center justify-center">
-                              <iframe
-                                src={program.detail_url}
-                                className="w-full h-full border-none rounded-lg"
-                                title="Government Program Detail"
-                              />
-                            </div>
+                {/* 하단 상태 */}
+                <div className="p-4 bg-black border-t border-white/10 font-mono text-[10px] text-zinc-400">
+                  <div className="flex justify-between mb-1">
+                    <span>SECTIONS</span>
+                    <span className="text-green-400">
+                      {Object.values(streamingSections).filter(s => s.complete).length} / {Object.keys(streamingSections).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>TOTAL_CHARS</span>
+                    <span className="text-blue-400">
+                      {Object.values(streamingSections).reduce((acc, s) => acc + (s.content?.length || 0), 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 오른쪽: 콘텐츠 영역 */}
+              <div className="flex-1 overflow-y-auto p-6 bg-[#1a1a1f]">
+                <div className="max-w-4xl mx-auto space-y-6">
+                  {Object.entries(streamingSections).map(([key, section], idx) => (
+                    <div
+                      key={key}
+                      id={`streaming-section-${key}`}
+                      className={cn(
+                        "rounded-xl border transition-all",
+                        section.complete
+                          ? "bg-white/5 border-white/10"
+                          : currentStreamingSection === key
+                            ? "bg-yellow-500/5 border-yellow-500/30"
+                            : "bg-white/[0.02] border-white/10"
+                      )}
+                    >
+                      {/* 섹션 헤더 */}
+                      <div className={cn(
+                        "px-5 py-3 border-b flex items-center justify-between",
+                        section.complete ? "border-white/10" : "border-yellow-500/20"
+                      )}>
+                        <div className="flex items-center gap-3">
+                          {section.complete ? (
+                            <CheckCircle2 className="w-5 h-5 text-green-400" />
                           ) : (
-                            <div className="text-center py-20 text-zinc-400">
-                              공고 상세 내용이 없습니다.
-                            </div>
+                            <Loader2 className="w-5 h-5 animate-spin text-yellow-400" />
+                          )}
+                          <h3 className="text-base font-semibold text-white">{section.title}</h3>
+                        </div>
+                        {section.complete && (
+                          <span className="text-xs text-zinc-500">{section.content.length.toLocaleString()}자</span>
+                        )}
+                      </div>
+
+                      {/* 섹션 콘텐츠 */}
+                      <div className="p-5">
+                        <div className="prose prose-invert prose-sm max-w-none">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={markdownComponents}
+                          >
+                            {section.content || '생성 중...'}
+                          </ReactMarkdown>
+                          {!section.complete && section.content && (
+                            <span className="inline-block w-2 h-5 bg-yellow-400/50 animate-pulse ml-0.5" />
                           )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              ) : (
-                /* 초기 화면 */
-                <div className="space-y-8">
-                  {/* 아이콘 */}
-                  <div
-                    className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto shadow-2xl"
-                    style={{
-                      background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)`,
-                      boxShadow: `0 20px 50px ${themeColor}40`
-                    }}
-                  >
-                    <Wand2 className="w-12 h-12 text-white" />
-                  </div>
+                  ))}
 
-                  {/* 제목 */}
-                  <div className="space-y-3">
-                    <h2 className="text-4xl font-bold text-white">
-                      AI 사업계획서
-                    </h2>
-                    <p className="text-zinc-400 text-lg max-w-md mx-auto">
-                      {program ? (
-                        <>지원사업에 최적화된 사업계획서를<br />AI가 자동으로 작성해드립니다</>
-                      ) : (
-                        '지원사업을 선택한 후 사업계획서를 생성할 수 있습니다'
-                      )}
-                    </p>
-                  </div>
-
-                  {/* 프로그램 정보 */}
-                  {program && (
-                    <div
-                      className="inline-flex items-center gap-3 px-5 py-3 rounded-2xl max-w-md"
-                      style={{ background: `${themeColor}15`, border: `1px solid ${themeColor}30` }}
-                    >
-                      <FileText className="w-5 h-5 flex-shrink-0" style={{ color: themeColor }} />
-                      <span className="text-white text-sm font-medium text-left line-clamp-2">{program.title}</span>
+                  {/* 대기 중 표시 */}
+                  {Object.keys(streamingSections).length === 0 && (
+                    <div className="text-center py-20 text-zinc-500">
+                      <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" style={{ color: themeColor }} />
+                      <p>AI가 회사 정보를 분석하고 있습니다...</p>
                     </div>
                   )}
-
-                  {/* 버튼 */}
-                  {program ? (
-                    <button
-                      onClick={generatePlan}
-                      className="group inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-white font-semibold text-lg transition-all hover:scale-105 hover:shadow-2xl"
-                      style={{
-                        background: `linear-gradient(135deg, ${themeColor}, ${themeColor}90)`,
-                        boxShadow: `0 10px 40px ${themeColor}50`
-                      }}
-                    >
-                      <Sparkles className="w-6 h-6 group-hover:animate-spin" />
-                      사업계획서 생성하기
-                      <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => router.push('/dashboard-group/company/government-programs')}
-                      className="group inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-white font-semibold text-lg transition-all hover:scale-105"
-                      style={{
-                        background: `linear-gradient(135deg, ${themeColor}, ${themeColor}90)`,
-                        boxShadow: `0 10px 40px ${themeColor}50`
-                      }}
-                    >
-                      지원사업 선택하기
-                      <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  {/* 하단 정보 */}
-                  <div className="flex items-center justify-center gap-6 text-sm text-zinc-500">
-                    <span className="flex items-center gap-1.5">
-                      <Zap className="w-4 h-4" style={{ color: themeColor }} />
-                      Gemini 2.5 Flash 기반
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4" />
-                      1-2분 소요
-                    </span>
-                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            </>
+          ) : (
+            /* 초기 화면 - 심플하게 */
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className="text-center max-w-lg space-y-6">
+                <div
+                  className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto"
+                  style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
+                >
+                  <Wand2 className="w-10 h-10 text-white" />
+                </div>
 
-            {/* CSS 애니메이션 */}
-            <style jsx>{`
-              @keyframes loading-slide {
-                0% { transform: translateX(-100%); }
-                100% { transform: translateX(100%); }
-              }
-            `}</style>
-          </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-2">AI 사업계획서</h2>
+                  <p className="text-zinc-400">
+                    {program ? '지원사업에 최적화된 사업계획서를 AI가 작성합니다' : '지원사업을 선택해주세요'}
+                  </p>
+                </div>
+
+                {generationError && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-2 text-red-400 text-sm">
+                      <AlertCircle className="w-4 h-4" />
+                      {generationError}
+                    </div>
+                  </div>
+                )}
+
+                {program && (
+                  <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                    <p className="text-sm text-zinc-300">{program.title}</p>
+                    <p className="text-xs text-zinc-500 mt-1">{program.organization}</p>
+                  </div>
+                )}
+
+                {program ? (
+                  <button
+                    onClick={generatePlan}
+                    className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-white font-medium transition-all hover:opacity-90"
+                    style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    생성하기
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => router.push('/dashboard-group/company/government-programs')}
+                    className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-white font-medium transition-all hover:opacity-90"
+                    style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
+                  >
+                    지원사업 선택
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
+
+                <p className="text-xs text-zinc-600">Gemini 2.5 Flash · 약 1-2분 소요</p>
+              </div>
+            </div>
+          )
         ) : (
           <>
             {/* 왼쪽: AI 작업 루프 (Agent Loop) */}
@@ -1078,7 +1503,7 @@ export default function BusinessPlanPage() {
                             </div>
                           ) : (
                             <div
-                              className="p-4 min-h-[150px] text-sm leading-relaxed whitespace-pre-wrap hover:bg-zinc-50 transition-colors cursor-text prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-black prose-strong:text-black"
+                              className="p-4 min-h-[150px] text-sm leading-relaxed hover:bg-zinc-50 transition-colors cursor-text prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-black prose-strong:text-black"
                               onClick={() => {
                                 setSelectedSection(key);
                                 setEditMode(true);
@@ -1086,7 +1511,10 @@ export default function BusinessPlanPage() {
                               }}
                             >
                               {content ? (
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={markdownComponents}
+                                >
                                   {content}
                                 </ReactMarkdown>
                               ) : (
@@ -1114,6 +1542,104 @@ export default function BusinessPlanPage() {
           </>
         )}
       </div>
+
+      {/* 기존 계획서 선택 모달 */}
+      {showExistingPlanModal && businessPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExistingPlanModal(false)} />
+          <GlassCard className="relative w-full max-w-lg p-6" hover={false}>
+            {/* 헤더 */}
+            <div className="flex items-center gap-4 mb-6">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
+              >
+                <FileText className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">기존 사업계획서 발견</h3>
+                <p className="text-sm text-zinc-400">이미 작성된 사업계획서가 있습니다</p>
+              </div>
+            </div>
+
+            {/* 기존 계획서 정보 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-white">{program?.title || '사업계획서'}</span>
+                <span className={cn(
+                  "px-2 py-0.5 rounded text-xs font-medium",
+                  businessPlan.status === 'completed' ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"
+                )}>
+                  {businessPlan.status === 'completed' ? '완료' : '작성중'}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-zinc-500">
+                <span>{Object.keys(businessPlan.sections || {}).length}개 섹션</span>
+                <span>·</span>
+                <span>
+                  마지막 수정: {new Date(businessPlan.updated_at).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </span>
+              </div>
+            </div>
+
+            {/* 선택 옵션 */}
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setShowExistingPlanModal(false)
+                  // 기존 계획서로 편집 모드 진입
+                  const sections = Object.keys(businessPlan.sections || {})
+                  if (sections.length > 0) {
+                    setSelectedSection(sections[0])
+                    setEditContent(businessPlan.sections[sections[0]]?.content || '')
+                    setEditMode(true)
+                  }
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all text-white hover:opacity-90"
+                style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}80)` }}
+              >
+                <Edit3 className="w-5 h-5" />
+                <div>
+                  <span className="font-medium">수정/편집하기</span>
+                  <p className="text-xs text-white/70">기존 내용을 유지하고 수정합니다</p>
+                </div>
+                <ChevronRight className="w-4 h-4 ml-auto" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowExistingPlanModal(false)
+                  // 새로 생성
+                  setBusinessPlan(null)
+                  generatePlan()
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left bg-white/5 text-zinc-300 hover:bg-white/10 transition-all"
+              >
+                <RefreshCw className="w-5 h-5" />
+                <div>
+                  <span className="font-medium">새로 작성하기</span>
+                  <p className="text-xs text-zinc-500">기존 내용을 삭제하고 새로 생성합니다</p>
+                </div>
+                <ChevronRight className="w-4 h-4 ml-auto" />
+              </button>
+            </div>
+
+            {/* 닫기 버튼 */}
+            <button
+              onClick={() => setShowExistingPlanModal(false)}
+              className="w-full mt-4 px-4 py-2 rounded-xl text-sm font-medium bg-white/5 text-zinc-400 hover:bg-white/10 transition-all"
+            >
+              취소
+            </button>
+          </GlassCard>
+        </div>
+      )}
 
       {/* 재생성 모달 */}
       {

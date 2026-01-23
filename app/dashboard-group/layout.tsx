@@ -2,20 +2,41 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { SWRConfig } from 'swr'
 import { Header } from '@/components/nav/Header'
-import { TwoLevelSidebar } from '@/components/nav/TwoLevelSidebar'
-import { CommitModal } from '@/components/commits/CommitModal'
-import { GlobalAgentSidebar } from '@/components/nav/GlobalAgentSidebar'
-import { ElectronHeader } from '@/components/nav/ElectronHeader'
 import { AgentNotificationProvider } from '@/lib/contexts/AgentNotificationContext'
-import { AgentNotificationPopup } from '@/components/notifications/AgentNotificationPopup'
-import { GovernmentProgramNotificationListener } from '@/components/notifications/GovernmentProgramNotificationListener'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils' // Added for conditional classes
+import { cn } from '@/lib/utils'
 import type { User, Startup } from '@/types'
+
+// 동적 임포트 - 초기 번들 크기 감소 (60MB → 예상 10-15MB)
+const TwoLevelSidebar = dynamic(
+  () => import('@/components/nav/TwoLevelSidebar').then(mod => ({ default: mod.TwoLevelSidebar })),
+  { ssr: false }
+)
+const CommitModal = dynamic(
+  () => import('@/components/commits/CommitModal').then(mod => ({ default: mod.CommitModal })),
+  { ssr: false }
+)
+const GlobalAgentSidebar = dynamic(
+  () => import('@/components/nav/GlobalAgentSidebar').then(mod => ({ default: mod.GlobalAgentSidebar })),
+  { ssr: false }
+)
+const ElectronHeader = dynamic(
+  () => import('@/components/nav/ElectronHeader').then(mod => ({ default: mod.ElectronHeader })),
+  { ssr: false }
+)
+const AgentNotificationPopup = dynamic(
+  () => import('@/components/notifications/AgentNotificationPopup').then(mod => ({ default: mod.AgentNotificationPopup })),
+  { ssr: false }
+)
+const GovernmentProgramNotificationListener = dynamic(
+  () => import('@/components/notifications/GovernmentProgramNotificationListener').then(mod => ({ default: mod.GovernmentProgramNotificationListener })),
+  { ssr: false }
+)
 
 // SWR 전역 설정 - 데이터 캐싱으로 페이지 이동 속도 향상
 const swrConfig = {
@@ -96,7 +117,8 @@ export default function DashboardLayout({
   }, [router])
   const isTaskHistoryPage = pathname?.includes('/task-history')
   const isCodingWorkspace = pathname?.includes('/works/coding')
-  const isFullWidthPage = pathname?.includes('/messenger') || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/company/government-programs') || pathname?.includes('/ai-coding') || pathname?.includes('/neurons') || pathname?.includes('/gantt') || isTaskHistoryPage || isCodingWorkspace
+  const isMeetingsPage = pathname?.includes('/messenger/meetings')
+  const isFullWidthPage = (pathname?.includes('/messenger') && !isMeetingsPage) || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/company/government-programs') || pathname?.includes('/ai-coding') || pathname?.includes('/neurons') || pathname?.includes('/gantt') || isTaskHistoryPage || isCodingWorkspace
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -106,7 +128,7 @@ export default function DashboardLayout({
   useEffect(() => {
     const supabase = createClient()
 
-    // Get initial session
+    // Get initial session - 병렬 처리로 로그인 속도 최적화
     const getUser = async () => {
       try {
         // DEV 모드: 인증 바이패스
@@ -124,15 +146,23 @@ export default function DashboardLayout({
           return
         }
 
-        // Fetch user profile
-        const { data: profile } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', authUser.id)
-          .single()
+        // 병렬로 프로필과 스타트업 동시 조회 (성능 최적화)
+        const [profileResult, startupResult] = await Promise.all([
+          supabase
+            .from('users')
+            .select('*')
+            .eq('id', authUser.id)
+            .single() as unknown as Promise<{ data: User | null; error: unknown }>,
+          supabase
+            .from('startups')
+            .select('*')
+            .eq('founder_id', authUser.id)
+            .single() as unknown as Promise<{ data: Startup | null; error: unknown }>
+        ])
 
-        if (profile) {
-          setUser(profile as User)
+        // 프로필 설정
+        if (profileResult.data) {
+          setUser(profileResult.data)
         } else {
           // Create profile from auth metadata
           setUser({
@@ -146,19 +176,9 @@ export default function DashboardLayout({
           } as User)
         }
 
-        // Fetch user's startup
-        try {
-          const { data: startup, error: startupError } = await supabase
-            .from('startups')
-            .select('*')
-            .eq('founder_id', authUser.id)
-            .single()
-
-          if (startup && !startupError) {
-            setCurrentStartup(startup as Startup)
-          }
-        } catch (startupErr) {
-          console.warn('Startup fetch failed:', startupErr)
+        // 스타트업 설정
+        if (startupResult.data && !startupResult.error) {
+          setCurrentStartup(startupResult.data)
         }
       } catch (error) {
         console.error('Failed to fetch user data:', error)
@@ -219,7 +239,8 @@ export default function DashboardLayout({
         {isElectron ? <ElectronHeader /> : <Header />}
         <TwoLevelSidebar />
         <CommitModal />
-        <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />
+        {/* neurons 페이지에서는 GlobalAgentSidebar 렌더링 안함 - 자체 마크다운 에디터 사용 */}
+        {!isNeuronsPage && <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />}
         {/* 정부지원사업 알림 리스너 */}
         <GovernmentProgramNotificationListener />
         {/* 에이전트 알림 팝업 */}

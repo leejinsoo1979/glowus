@@ -55,18 +55,11 @@ export async function POST(request: NextRequest) {
           .update({ logo_url: publicUrl, updated_at: new Date().toISOString() })
           .eq('id', companyId)
       } else if (folder === 'business-registration') {
-        // settings JSONB에 business_registration_url 저장
-        const { data: company } = await supabase
-          .from('companies')
-          .select('settings')
-          .eq('id', companyId)
-          .single()
-
-        const currentSettings = (company?.settings as Record<string, any>) || {}
+        // business_registration_url 컬럼에 직접 저장
         await supabase
           .from('companies')
           .update({
-            settings: { ...currentSettings, business_registration_url: publicUrl },
+            business_registration_url: publicUrl,
             updated_at: new Date().toISOString()
           })
           .eq('id', companyId)

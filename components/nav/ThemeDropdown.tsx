@@ -54,8 +54,8 @@ export function ThemeDropdown({ trigger, align = 'right' }: ThemeDropdownProps) 
         <motion.button
           onClick={() => setIsOpen(!isOpen)}
           className={`relative p-2.5 rounded-xl transition-colors ${isDark
-              ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
-              : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900'
+            ? 'hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+            : 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900'
             }`}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -80,8 +80,8 @@ export function ThemeDropdown({ trigger, align = 'right' }: ThemeDropdownProps) 
             {/* Dropdown */}
             <motion.div
               className={`absolute w-72 backdrop-blur-xl rounded-2xl shadow-2xl py-3 z-50 overflow-hidden ${align === 'left-start'
-                  ? 'left-full bottom-0 ml-4'
-                  : 'right-0 mt-2 top-full'
+                ? 'left-full bottom-0 ml-4'
+                : 'right-0 mt-2 top-full'
                 } ${isDark
                   ? 'bg-zinc-900/95 border border-zinc-700/50'
                   : 'bg-white/95 border border-zinc-200'
@@ -109,10 +109,10 @@ export function ThemeDropdown({ trigger, align = 'right' }: ThemeDropdownProps) 
                           // setIsOpen(false) // Keep open for multi-select feel? Or close? User said "이전처럼"... usually theme switcher keeps open or closes. Let's keep it open for consistency with accent color.
                         }}
                         className={`flex-1 flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all border ${isActive
-                            ? 'bg-accent/20 text-accent border-accent/30'
-                            : isDark
-                              ? 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 border-transparent'
-                              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 border-transparent'
+                          ? 'bg-accent/20 text-accent border-accent/30'
+                          : isDark
+                            ? 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 border-transparent'
+                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 border-transparent'
                           }`}
                       >
                         <Icon className="w-5 h-5" />
@@ -139,12 +139,12 @@ export function ThemeDropdown({ trigger, align = 'right' }: ThemeDropdownProps) 
                           // setIsOpen(false)
                         }}
                         className={`relative flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${isActive
-                            ? isDark
-                              ? 'bg-zinc-800 ring-2 ring-offset-2 ring-offset-zinc-900'
-                              : 'bg-zinc-100 ring-2 ring-offset-2 ring-offset-white'
-                            : isDark
-                              ? 'hover:bg-zinc-800/50'
-                              : 'hover:bg-zinc-100'
+                          ? isDark
+                            ? 'bg-zinc-800 ring-2 ring-offset-2 ring-offset-zinc-900'
+                            : 'bg-zinc-100 ring-2 ring-offset-2 ring-offset-white'
+                          : isDark
+                            ? 'hover:bg-zinc-800/50'
+                            : 'hover:bg-zinc-100'
                           }`}
                         style={
                           isActive ? { ['--tw-ring-color' as string]: color.color } : undefined

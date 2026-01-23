@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useTransition } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -332,8 +332,13 @@ function NestedMenuItemComponent({
       <Link
         href={item.href}
         prefetch={true}
+        onClick={(e) => {
+          // Link 기본 동작 유지하면서 명시적으로 이동 처리
+          e.preventDefault()
+          router.push(item.href!)
+        }}
         className={cn(
-          'w-full flex items-center gap-2 py-1.5 text-xs transition-colors duration-100 rounded-md',
+          'w-full flex items-center gap-2 py-1.5 text-xs transition-colors duration-100 rounded-md cursor-pointer',
           isActive
             ? 'bg-accent text-white font-medium'
             : isDark
@@ -372,6 +377,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [isPending, startTransition] = useTransition()
+  const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null)
   const { user, currentTeam, logout: clearAuth } = useAuthStore()
   const { accentColor } = useThemeStore()
   const [isResizingHover, setIsResizingHover] = useState(false)
@@ -629,11 +636,12 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
     }
   }, [currentCategory, activeCategory, setActiveCategory])
 
-  // 메뉴 경로 prefetch
+  // 메뉴 경로 prefetch (페이지 JS 번들 미리 로드)
   useEffect(() => {
     const paths = [
       '/dashboard-group',
       '/dashboard-group/company',
+      '/dashboard-group/company/government-programs',
       '/dashboard-group/mypage',
       '/dashboard-group/tasks',
       '/dashboard-group/workflows',
@@ -642,9 +650,20 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
       '/dashboard-group/messenger',
       '/dashboard-group/agents',
       '/dashboard-group/agents/create',
+      '/dashboard-group/ai-coding',
+      '/dashboard-group/neurons',
+      '/dashboard-group/works',
+      '/dashboard-group/calendar',
     ]
     paths.forEach(path => router.prefetch(path))
   }, [router])
+
+  // 페이지 전환 완료 시 로딩 상태 초기화
+  useEffect(() => {
+    if (!isPending) {
+      setPendingCategoryId(null)
+    }
+  }, [isPending])
 
   const toggleExpand = (name: string) => {
     setExpandedItems(prev => {
@@ -719,12 +738,6 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               <button
                 key={category.id}
                 onClick={() => {
-                  setActiveCategory(category.id)
-                  setSelectedCompanyMenu(null)
-
-                  // 모든 카테고리는 사이드바를 열고, 첫 번째 메뉴로 이동
-                  setSidebarOpen(true)
-
                   // 이동할 경로 결정
                   let targetPath = ''
                   if (category.id === 'home') {
@@ -742,16 +755,21 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                   } else if (category.id === 'messenger') {
                     targetPath = '/dashboard-group/messenger'
                   } else {
-                    // 첫 번째 아이템의 href 사용 (# 시작하는 건 제외)
                     const firstItem = category.items.find(item => item.href && !item.href.startsWith('#'))
                     targetPath = firstItem?.href || ''
                   }
 
-                  // 페이지 이동
-                  if (category.id === 'home') {
-                    router.push('/dashboard-group/works')
-                  } else if (targetPath && pathname !== targetPath) {
-                    router.push(targetPath)
+                  // 즉시 UI 반응: 사이드바 열기 및 카테고리 선택
+                  setActiveCategory(category.id)
+                  setSelectedCompanyMenu(null)
+                  setSidebarOpen(true)
+
+                  // 페이지 이동 (startTransition으로 감싸서 블로킹 없이 처리)
+                  if (targetPath && pathname !== targetPath) {
+                    setPendingCategoryId(category.id)
+                    startTransition(() => {
+                      router.push(targetPath)
+                    })
                   }
                 }}
                 className={cn(
@@ -767,7 +785,12 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                         : 'text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700'
                 )}
               >
-                <category.icon className="w-5 h-5" />
+                {/* 로딩 인디케이터 - 클릭한 카테고리에 표시 */}
+                {isPending && pendingCategoryId === category.id ? (
+                  <div className="w-5 h-5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                ) : (
+                  <category.icon className="w-5 h-5" />
+                )}
                 {/* Tooltip */}
                 <div className={cn(
                   'absolute left-full ml-2 px-2 py-1 text-xs rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50',
@@ -1356,7 +1379,10 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                                         key={child.name}
                                         onClick={() => {
                                           if (child.href && child.href !== '#') {
-                                            router.push(child.href)
+                                            const href = child.href
+                                            startTransition(() => {
+                                              router.push(href)
+                                            })
                                           }
                                         }}
                                         className={cn(
@@ -1365,7 +1391,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                                             ? 'bg-accent text-white'
                                             : isDark
                                               ? 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                                              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700',
+                                          isPending && 'opacity-70'
                                         )}
                                       >
                                         {ChildIcon && (
@@ -1421,7 +1448,10 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                               if (item.href === '#task-history') {
                                 openTaskHistory()
                               } else if (item.href && item.href !== '#') {
-                                router.push(item.href)
+                                const href = item.href
+                                startTransition(() => {
+                                  router.push(href)
+                                })
                               }
                             }}
                             className={cn(
@@ -1430,7 +1460,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                                 ? 'bg-accent text-white shadow-md shadow-accent/20'
                                 : isDark
                                   ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
+                              isPending && 'opacity-70'
                             )}
                           >
                             {IconComponent && (

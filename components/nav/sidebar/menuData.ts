@@ -492,6 +492,7 @@ export const companyMenuItems: NestedMenuItem[] = [
           { name: 'AI 자격진단', href: '/dashboard-group/company/government-programs/ai-diagnosis', icon: Bot },
           { name: '회사 프로필', href: '/dashboard-group/company/government-programs/profile', icon: Building2 },
           { name: '사업계획서 빌더', href: '/dashboard-group/company/government-programs/business-plan/builder', icon: FileText },
+          { name: '작성중 사업계획서', href: '/dashboard-group/company/government-programs/business-plan/my-plans', icon: FileSignature },
         ]
       },
       {

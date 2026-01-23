@@ -190,7 +190,7 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
+    <div className={`min-h-full overflow-y-auto pb-20 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
       {/* 헤더 */}
       <div className={`sticky top-0 z-10 ${isDark ? 'bg-zinc-950/80' : 'bg-zinc-50/80'} backdrop-blur-xl border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
         <div className="max-w-6xl mx-auto px-6 py-4">
