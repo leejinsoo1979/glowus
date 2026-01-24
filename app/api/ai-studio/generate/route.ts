@@ -738,8 +738,21 @@ ${sourceContext.slice(0, 8000)}
 자연스럽게 이어지는 하나의 대본. 슬라이드 번호 표시 없이!`
 
       const creatorScriptResult = await model.generateContent(creatorScriptPrompt)
-      const creatorScript = await creatorScriptResult.response.text()
-      console.log(`[Generate] 크리에이터 대본 생성 완료`)
+      const creatorScriptRaw = await creatorScriptResult.response.text()
+
+      // TTS용 대본: 마크다운 기호 제거
+      const creatorScript = creatorScriptRaw
+        .replace(/^#{1,6}\s+/gm, '')  // # 헤딩 제거
+        .replace(/\*\*([^*]+)\*\*/g, '$1')  // **굵은글씨** → 굵은글씨
+        .replace(/\*([^*]+)\*/g, '$1')  // *기울임* → 기울임
+        .replace(/^[-*]\s+/gm, '')  // - 또는 * 리스트 마커 제거
+        .replace(/^---+$/gm, '')  // --- 구분선 제거
+        .replace(/`([^`]+)`/g, '$1')  // `코드` → 코드
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [링크](url) → 링크
+        .replace(/\n{3,}/g, '\n\n')  // 연속 줄바꿈 정리
+        .trim()
+
+      console.log(`[Generate] 크리에이터 대본 생성 완료 (TTS용 정리됨)`)
 
       // ===== 3단계: Gemini 2.5 Flash TTS (Single Voice) =====
       let audioUrl: string | undefined
@@ -796,14 +809,14 @@ ${s.details.length > 0 ? s.details.map(d => `- ${d}`).join('\n') : ''}
 
 ## 크리에이터 대본
 
-${creatorScript}`
+${creatorScriptRaw}`
 
       return NextResponse.json({
         success: true,
         content: formattedContent,
         type,
         slideStructure, // 프론트엔드에서 슬라이드 구조 활용 가능
-        script: creatorScript, // 순수 대본만
+        script: creatorScriptRaw, // 화면 표시용 원본 대본
         audioUrl
       })
     }
