@@ -266,6 +266,7 @@ function parseSlides(content: string): SlideData[] {
       number: idx + 1,
       title: title,
       content: contentLines.length > 0 ? contentLines : ['내용 없음'],
+      bulletPoints: contentLines.length > 0 ? contentLines : undefined,  // SlidesPreview와 호환을 위해 추가
       notes,
       type: idx === 0 ? 'title' : 'content'
     })
@@ -898,8 +899,8 @@ export default function AIStudioPage() {
         title: s.title
       }))
 
-    // Add other generated contents - 완료된 콘텐츠만 포함 (생성 중인 건 위에 로딩 UI로 표시)
-    generatedContents.filter(gc => gc.status === 'ready' && gc.content).forEach(gc => {
+    // Add other generated contents - 생성 중인 콘텐츠도 포함 (로딩 UI 표시)
+    generatedContents.filter(gc => gc.status === 'generating' || (gc.status === 'ready' && gc.content)).forEach(gc => {
       const typeMap: Record<string, StudioContent['type']> = {
         'slides': 'slides',
         'video-overview': 'video-overview',

@@ -28,6 +28,39 @@ interface ImageSource {
   imageDataUrl: string // base64 data URL
 }
 
+// Raw PCM을 WAV로 변환 (Gemini TTS는 audio/L16 PCM을 반환)
+function pcmToWav(pcmBuffer: Buffer, sampleRate: number = 24000, channels: number = 1, bitsPerSample: number = 16): Buffer {
+  const byteRate = sampleRate * channels * (bitsPerSample / 8)
+  const blockAlign = channels * (bitsPerSample / 8)
+  const dataSize = pcmBuffer.length
+  const headerSize = 44
+  const fileSize = headerSize + dataSize - 8
+
+  const wavBuffer = Buffer.alloc(headerSize + dataSize)
+
+  // RIFF header
+  wavBuffer.write('RIFF', 0)
+  wavBuffer.writeUInt32LE(fileSize, 4)
+  wavBuffer.write('WAVE', 8)
+
+  // fmt chunk
+  wavBuffer.write('fmt ', 12)
+  wavBuffer.writeUInt32LE(16, 16) // fmt chunk size
+  wavBuffer.writeUInt16LE(1, 20) // PCM format
+  wavBuffer.writeUInt16LE(channels, 22)
+  wavBuffer.writeUInt32LE(sampleRate, 24)
+  wavBuffer.writeUInt32LE(byteRate, 28)
+  wavBuffer.writeUInt16LE(blockAlign, 32)
+  wavBuffer.writeUInt16LE(bitsPerSample, 34)
+
+  // data chunk
+  wavBuffer.write('data', 36)
+  wavBuffer.writeUInt32LE(dataSize, 40)
+  pcmBuffer.copy(wavBuffer, 44)
+
+  return wavBuffer
+}
+
 type GenerationType = 'briefing' | 'faq' | 'timeline' | 'study-guide' | 'deep-dive' | 'slides' | 'video-overview' | 'briefing-doc' | 'audio-overview' | 'mindmap' | 'report' | 'flashcard' | 'quiz' | 'infographic' | 'data-table'
 
 const GENERATION_PROMPTS: Record<GenerationType, { systemPrompt: string; outputFormat: string }> = {
@@ -668,113 +701,79 @@ ${sourceContext}
 세부: ${s.details.join(', ')}`
       ).join('\n\n')
 
-      const creatorScriptPrompt = `당신은 100만 구독자 유튜브 크리에이터입니다.
-아래 슬라이드 구조에 맞춰 실제로 촬영할 대본을 작성하세요.
+      const creatorScriptPrompt = `당신은 100만 구독자 유튜브 크리에이터입니다. 친구한테 설명하듯이 편하게 대본을 작성하세요.
 
 ## 슬라이드 구조
 ${slidesForScript}
 
-## 원본 자료 (참고용)
+## 원본 자료
 ${sourceContext.slice(0, 8000)}
 
-## 대본 작성 규칙
+## 핵심 규칙: 진짜 사람처럼!
 
-### 말투 (매우 중요!)
-- "~입니다/~합니다" 절대 금지!
+### 호흡과 리듬 (필수!)
+- 문장 중간에 쉼표로 호흡: "그러니까요, 이게 뭐냐면요,"
+- 생각하는 듯한 멈춤: "음..." "어..." "그게요..."
+- 말 늘이기: "그렇죠~" "맞아요~" "진짜예요~"
+
+### 감정 표현 (과장 OK!)
+- 놀람: "와 진짜요?" "헐 대박" "오오 이거 신기하네요"
+- 강조: "이게요, 진짜 중요한 건데요," "핵심은요!"
+- 공감: "다들 그렇게 생각하시죠?" "저도 처음엔 몰랐거든요"
+
+### 말투
 - "~거든요", "~잖아요", "~죠", "~네요", "~예요" 사용
-- "여러분", "자", "근데요", "진짜", "완전", "대박" 등 구어체
-- 감탄사: "와", "우와", "헐", "오" 자연스럽게 사용
+- "~입니다", "~합니다" 절대 금지!!!
+- "자", "근데요", "아", "그래서요" 자연스럽게
 
-### 구조
-1. 오프닝 (15초): 시청자 인사 + 오늘 영상 주제 + 왜 중요한지
-2. 본론 (각 슬라이드당 20-40초): 슬라이드 내용을 자연스럽게 설명
-3. 마무리 (15초): 핵심 요약 + 마무리 인사
+### 구조 (1.5-2분 분량)
+1. 인사 + 주제 소개 (10초)
+2. 핵심 내용 설명 (60-80초)
+3. 마무리 요약 (10초)
 
-### 예시 어투
-"안녕하세요 여러분! 오늘 진짜 재밌는 거 가져왔거든요. 뭐냐면요..."
-"자, 첫 번째로 얘기할 건요, [주제]인데요. 이게 왜 중요하냐면요..."
-"근데 여기서 진짜 핵심은요, [포인트]거든요. 대박이죠?"
-"쉽게 말하면요, [비유]랑 비슷한 거예요. 이해 되시죠?"
-"정리하자면요! [요약]. 오늘 영상 여기까지고요, 유익했다면 좋아요 눌러주세요!"
-
-### 금지 사항
-- "이 슬라이드에서는...", "보시면...", "이 그림은..." 같은 슬라이드 언급 금지
-- 딱딱한 문어체, 강연체 금지
-- "~입니다", "~합니다" 금지
+### 예시
+"자, 오늘 얘기할 건요, 음... [주제]인데요. 이거 진짜 재밌거든요? 왜냐면요, [이유] 때문이에요. 아, 근데 여기서 중요한 게요, [포인트]라는 거예요. 쉽게 말하면요, 그러니까... [쉬운 설명]이랑 비슷한 거죠. 와 이해 되시죠? 정리하면요, [요약]! 오늘은 여기까지고요, 도움 됐으면 좋겠어요~"
 
 ## 출력
-슬라이드 번호 표시 없이, 자연스럽게 이어지는 하나의 대본으로 작성하세요.
-총 2-3분 분량 (약 600-900자)의 크리에이터 스타일 대본.`
+자연스럽게 이어지는 하나의 대본. 슬라이드 번호 표시 없이!`
 
       const creatorScriptResult = await model.generateContent(creatorScriptPrompt)
       const creatorScript = await creatorScriptResult.response.text()
       console.log(`[Generate] 크리에이터 대본 생성 완료`)
 
-      // ===== 3단계: TTS 생성 =====
+      // ===== 3단계: Gemini 2.5 Flash TTS (Single Voice) =====
       let audioUrl: string | undefined
-      const ttsApiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
 
-      if (ttsApiKey && creatorScript.length > 0) {
+      if (creatorScript.length > 0 && genAI) {
         try {
-          // 대본 텍스트 정규화
-          const normalizeText = (text: string) => {
-            let result = text
-            // 마크다운 제거
-            result = result.replace(/\*\*([^*]+)\*\*/g, '$1')
-            result = result.replace(/\*([^*]+)\*/g, '$1')
-            result = result.replace(/[#*_~`|]/g, '')
-            result = result.replace(/\n+/g, ' ')
-            // 약어 변환
-            const abbreviations: Record<string, string> = {
-              'AI': '에이아이', 'API': '에이피아이', 'LLM': '엘엘엠',
-              'GPT': '지피티', 'CEO': '씨이오', 'CTO': '씨티오',
-              'B2B': '비투비', 'B2C': '비투씨', 'MVP': '엠브이피',
-              'SaaS': '사스', 'ESG': '이에스지', 'R&D': '알앤디',
-              'KPI': '케이피아이', 'ROI': '알오아이', 'VC': '브이씨'
-            }
-            for (const [abbr, reading] of Object.entries(abbreviations)) {
-              result = result.replace(new RegExp(`\\b${abbr}\\b`, 'g'), reading)
-            }
-            return result.trim()
-          }
+          console.log(`[Generate] Gemini 2.5 Flash TTS 시작...`)
 
-          const normalizedScript = normalizeText(creatorScript)
+          const ttsModel = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash-preview-tts',
+          })
 
-          // Google Cloud TTS API - Neural2 (가장 자연스러운 음성)
-          const ttsResponse = await fetch(
-            `https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsApiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                input: { text: normalizedScript.slice(0, 5000) },
-                voice: {
-                  languageCode: 'ko-KR',
-                  name: 'ko-KR-Neural2-C' // Neural2 남성 (가장 자연스러움)
-                },
-                audioConfig: {
-                  audioEncoding: 'MP3',
-                  pitch: 0,
-                  speakingRate: 1.05, // 약간 빠르게 (유튜브 느낌)
-                  effectsProfileId: ['large-home-entertainment-class-device']
+          const ttsResponse = await ttsModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: creatorScript }] }],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Kore' } // 한국어 자연스러운 남성
                 }
-              })
-            }
-          )
+              }
+            } as any
+          })
 
-          if (ttsResponse.ok) {
-            const ttsData = await ttsResponse.json()
-            const audioData = ttsData.audioContent
-            if (audioData) {
-              audioUrl = `data:audio/mp3;base64,${audioData}`
-              console.log(`[Generate] TTS 생성 완료`)
-            }
-          } else {
-            const errorText = await ttsResponse.text()
-            console.error('[Generate] TTS API error:', errorText)
+          const audioData = ttsResponse.response.candidates?.[0]?.content?.parts?.[0]
+          if (audioData && 'inlineData' in audioData && audioData.inlineData?.data) {
+            // Gemini TTS는 raw PCM 반환 → WAV로 변환
+            const pcmBuffer = Buffer.from(audioData.inlineData.data, 'base64')
+            const wavBuffer = pcmToWav(pcmBuffer, 24000, 1, 16)
+            audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`
+            console.log(`[Generate] Gemini TTS 완료, WAV 크기: ${wavBuffer.length} bytes`)
           }
         } catch (err) {
-          console.error('[Generate] TTS generation error:', err)
+          console.error('[Generate] Gemini TTS error:', err)
         }
       }
 
