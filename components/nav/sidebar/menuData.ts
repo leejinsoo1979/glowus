@@ -77,7 +77,7 @@ import {
   BookOpen,
   Brain,
 } from 'lucide-react'
-import { FaLaptopCode } from 'react-icons/fa6'
+import { FaLaptopCode, FaCodeBranch } from 'react-icons/fa6'
 import type { Category, NestedMenuItem } from './types'
 
 // 회사 메뉴 구조
@@ -765,7 +765,16 @@ export const categories: Category[] = [
     items: [
       { name: '에이전트 목록', href: '/dashboard-group/agents', icon: Bot },
       { name: '슈퍼 에이전트 생성', href: '/dashboard-group/agents/create', icon: Plus },
-      { name: '워크플로우', href: '/dashboard-group/workflows', icon: Workflow },
+    ]
+  },
+  // 워크플로우 빌더
+  {
+    id: 'workflow-builder',
+    name: '워크플로우 빌더',
+    icon: FaCodeBranch,
+    items: [
+      { name: '워크플로우 에디터', href: '/dashboard-group/workflow-builder', icon: FaCodeBranch },
+      { name: '새 워크플로우', href: '/dashboard-group/workflow-builder/new', icon: Plus },
     ]
   },
   // AI 코딩

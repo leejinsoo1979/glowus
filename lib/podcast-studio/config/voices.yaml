@@ -1,0 +1,116 @@
+# Voice Casting Configuration for Podcast Studio
+# Defines voice profiles for two-host Korean podcast format
+
+version: "1.0.0"
+
+# Default casting for Korean two-host format
+default_casting:
+  host_a: "calm_male_ko"
+  host_b: "energetic_female_ko"
+
+# Voice Profiles
+profiles:
+  # Host A: Calm, clear, authoritative male voice
+  calm_male_ko:
+    id: "calm_male_ko"
+    name: "진행자 민수"
+    provider: "google"
+    voice_id: "ko-KR-Neural2-C"
+    language: "ko-KR"
+    gender: "male"
+    personality: "차분하고 신뢰감 있는 진행자. 복잡한 내용을 명확하게 설명한다."
+    pitch_offset: -1.0
+    speaking_rate: 0.95
+    characteristics:
+      - "authoritative"
+      - "calm"
+      - "clear"
+      - "professional"
+    audio_effects:
+      pitch: -1.0
+      speaking_rate: 0.95
+      effects_profile: "headphone-class-device"
+
+  # Host B: Curious, energetic female voice
+  energetic_female_ko:
+    id: "energetic_female_ko"
+    name: "게스트 수진"
+    provider: "google"
+    voice_id: "ko-KR-Neural2-A"
+    language: "ko-KR"
+    gender: "female"
+    personality: "호기심 많고 활발한 게스트. 질문을 잘 던지고 청취자 관점에서 이야기한다."
+    pitch_offset: 1.5
+    speaking_rate: 1.0
+    characteristics:
+      - "curious"
+      - "energetic"
+      - "friendly"
+      - "engaging"
+    audio_effects:
+      pitch: 1.5
+      speaking_rate: 1.0
+      effects_profile: "headphone-class-device"
+
+  # Alternative voices
+  warm_male_ko:
+    id: "warm_male_ko"
+    name: "진행자 현우"
+    provider: "google"
+    voice_id: "ko-KR-Neural2-D"
+    language: "ko-KR"
+    gender: "male"
+    personality: "따뜻하고 친근한 목소리. 이야기를 잘 풀어나간다."
+    pitch_offset: 0
+    speaking_rate: 0.98
+    characteristics:
+      - "warm"
+      - "friendly"
+      - "storyteller"
+
+  professional_female_ko:
+    id: "professional_female_ko"
+    name: "게스트 지영"
+    provider: "google"
+    voice_id: "ko-KR-Neural2-B"
+    language: "ko-KR"
+    gender: "female"
+    personality: "전문적이고 분석적인 여성 진행자."
+    pitch_offset: 0.5
+    speaking_rate: 0.95
+    characteristics:
+      - "professional"
+      - "analytical"
+      - "confident"
+
+# Provider-specific settings
+providers:
+  google:
+    api_endpoint: "https://texttospeech.googleapis.com/v1/text:synthesize"
+    audio_encoding: "MP3"
+    sample_rate: 24000
+
+  openai:
+    model: "tts-1-hd"
+    response_format: "mp3"
+
+  elevenlabs:
+    model_id: "eleven_multilingual_v2"
+    output_format: "mp3_44100_128"
+
+# Casting presets for different podcast styles
+presets:
+  two_host_balanced:
+    description: "균형 잡힌 두 진행자 스타일"
+    host_a: "calm_male_ko"
+    host_b: "energetic_female_ko"
+
+  two_host_professional:
+    description: "전문적인 두 진행자 스타일"
+    host_a: "warm_male_ko"
+    host_b: "professional_female_ko"
+
+  interview_style:
+    description: "인터뷰 형식 (한 명이 주로 질문)"
+    host_a: "calm_male_ko"  # Interviewer
+    host_b: "warm_male_ko"  # Guest expert

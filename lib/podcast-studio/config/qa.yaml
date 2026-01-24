@@ -1,0 +1,138 @@
+# QA Thresholds Configuration for Podcast Studio
+# Defines quality gates and thresholds for automated QA
+
+version: "1.0.0"
+
+# Overall threshold - podcast must meet this to pass
+overall:
+  min_score: 75
+  require_all_categories_pass: false
+  critical_categories:
+    - pronunciation
+    - artifacts
+
+# Category-specific thresholds
+thresholds:
+  pronunciation:
+    min_score: 70
+    description: "Measures correct pronunciation of Korean text, numbers, and foreign terms"
+    metrics:
+      oov_threshold: 5          # Max out-of-vocabulary tokens before warning
+      foreign_word_ratio: 0.15  # Max ratio of foreign words
+      number_error_max: 2       # Max number pronunciation errors
+    weights:
+      oov_penalty: -5           # Per OOV token
+      foreign_word_penalty: -2  # Per excessive foreign word
+      number_error_penalty: -10 # Per number pronunciation error
+
+  rhythm:
+    min_score: 65
+    description: "Measures natural rhythm, pause distribution, and pacing"
+    metrics:
+      pause_variance_threshold: 0.3     # Std dev of pause durations (normalized)
+      min_pause_ms: 150                 # Minimum pause between turns
+      max_pause_ms: 600                 # Maximum pause between turns
+      long_sentence_threshold: 50       # Characters before flagging
+      uniform_pause_penalty: true       # Penalize if all pauses are identical
+    weights:
+      uniform_pause_penalty: -15
+      long_sentence_penalty: -3         # Per long sentence
+      awkward_pause_penalty: -5         # Per awkward pause
+
+  repetition:
+    min_score: 70
+    description: "Detects and penalizes repeated phrases and monotonous patterns"
+    metrics:
+      max_repeated_phrases: 3           # Max times same phrase can appear
+      phrase_min_length: 4              # Min words to consider as phrase
+      consecutive_same_structure: 3     # Max consecutive same sentence structures
+    weights:
+      phrase_repetition_penalty: -8     # Per repeated phrase over threshold
+      structure_repetition_penalty: -5  # Per consecutive same structure
+
+  artifacts:
+    min_score: 75
+    description: "Detects audio artifacts, clipping, and technical issues"
+    metrics:
+      clipping_threshold: 0.98          # Signal level for clipping detection
+      sibilance_threshold: -6           # dB threshold for harsh sibilance
+      volume_jump_threshold: 6          # dB change considered sudden
+      silence_gap_threshold_ms: 1000    # Max silence before flagging
+    weights:
+      clipping_penalty: -20             # Per clipping instance
+      sibilance_penalty: -10            # Per harsh sibilance
+      volume_jump_penalty: -8           # Per sudden volume change
+      silence_gap_penalty: -5           # Per excessive silence
+
+  naturalness:
+    min_score: 70
+    description: "Overall naturalness assessment based on combined metrics"
+    metrics:
+      turn_length_ideal_min: 3          # Minimum ideal turn length (seconds)
+      turn_length_ideal_max: 15         # Maximum ideal turn length (seconds)
+      interjection_ratio_min: 0.05      # Min ratio of interjection turns
+      interjection_ratio_max: 0.20      # Max ratio of interjection turns
+    weights:
+      turn_length_penalty: -5           # Per turn outside ideal range
+      interjection_imbalance_penalty: -10
+
+# Regeneration rules
+regeneration:
+  enabled: true
+  max_attempts: 3
+  strategies:
+    - trigger:
+        category: pronunciation
+        score_below: 60
+      action: "re_normalize"
+      description: "Re-run normalization with stricter rules"
+
+    - trigger:
+        category: rhythm
+        score_below: 55
+      action: "adjust_script"
+      description: "Adjust pause values and sentence lengths in script"
+
+    - trigger:
+        category: repetition
+        score_below: 60
+      action: "regenerate_script"
+      description: "Regenerate script with anti-repetition constraints"
+
+    - trigger:
+        category: artifacts
+        score_below: 65
+      action: "re_synthesize"
+      description: "Re-synthesize with different voice settings"
+
+    - trigger:
+        category: overall
+        score_below: 70
+      action: "full_regeneration"
+      description: "Full pipeline regeneration with adjusted parameters"
+
+# Issue severity classification
+severity_rules:
+  critical:
+    - "clipping detected"
+    - "pronunciation error in key term"
+    - "audio gap > 2000ms"
+
+  warning:
+    - "repeated phrase detected"
+    - "uniform pause pattern"
+    - "long sentence detected"
+    - "foreign word without lexicon entry"
+
+  info:
+    - "turn length slightly outside ideal"
+    - "interjection ratio at boundary"
+
+# Reporting
+reporting:
+  include_timestamps: true
+  include_suggestions: true
+  include_audio_waveform: false
+  export_formats:
+    - json
+    - markdown

@@ -44,7 +44,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/dashboard-group')
+      router.push('/dashboard-group/works')
       router.refresh()
     } catch {
       setError('로그인 중 오류가 발생했습니다.')
@@ -60,7 +60,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=/dashboard-group/works`,
         },
       })
       if (error) {
@@ -87,7 +87,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/dashboard-group')
+      router.push('/dashboard-group/works')
       router.refresh()
     } catch {
       setError('개발자 계정 로그인 중 오류가 발생했습니다.')

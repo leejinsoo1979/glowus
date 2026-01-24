@@ -614,6 +614,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
     if (pathname.startsWith('/dashboard-group/agents') ||
       pathname.startsWith('/dashboard-group/workflows') ||
       pathname.startsWith('/agent-builder')) return 'agents'
+    // 🔥 워크플로우 빌더
+    if (pathname.startsWith('/dashboard-group/workflow-builder')) return 'workflow-builder'
     if (pathname.startsWith('/dashboard-group/ai-coding')) return 'ai-coding'
     if (pathname.startsWith('/dashboard-group/neurons')) return 'neurons'
     if (pathname.startsWith('/dashboard-group/works')) {
@@ -654,6 +656,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
       '/dashboard-group/neurons',
       '/dashboard-group/works',
       '/dashboard-group/calendar',
+      '/dashboard-group/workflow-builder',
     ]
     paths.forEach(path => router.prefetch(path))
   }, [router])
@@ -754,6 +757,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                     targetPath = '/dashboard-group/ai-coding'
                   } else if (category.id === 'messenger') {
                     targetPath = '/dashboard-group/messenger'
+                  } else if (category.id === 'workflow-builder') {
+                    targetPath = '/dashboard-group/workflow-builder'
                   } else {
                     const firstItem = category.items.find(item => item.href && !item.href.startsWith('#'))
                     targetPath = firstItem?.href || ''

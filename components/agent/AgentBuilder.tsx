@@ -422,19 +422,55 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
               setDeploySpeakOrder(data.speak_order)
             }
 
-            // 워크플로우 노드와 엣지 로드 (position 검증)
+            // 워크플로우 노드와 엣지 로드 (position + type 검증)
             if (data.workflow_nodes && data.workflow_nodes.length > 0) {
-              // 노드에 position이 없으면 기본값 추가
-              const validatedNodes = data.workflow_nodes.map((node: any, index: number) => ({
-                ...node,
-                position: node.position && typeof node.position.x === 'number'
-                  ? node.position
-                  : { x: 100 + (index * 200), y: 100 + (index * 100) }
-              }))
+              // 유효한 노드 타입 목록
+              const validNodeTypes = Object.keys(nodeTypes)
+
+              // 노드에 필수 속성 검증 및 기본값 추가
+              const validatedNodes = data.workflow_nodes
+                .filter((node: any) => {
+                  // id와 type이 있어야 함
+                  if (!node.id) {
+                    console.warn('[AgentBuilder] 노드 ID 누락:', node)
+                    return false
+                  }
+                  return true
+                })
+                .map((node: any, index: number) => {
+                  // type이 없거나 유효하지 않으면 기본값 사용
+                  const nodeType = node.type && validNodeTypes.includes(node.type)
+                    ? node.type
+                    : (node.data?.type && validNodeTypes.includes(node.data.type)
+                      ? node.data.type
+                      : 'input')
+
+                  return {
+                    ...node,
+                    type: nodeType,
+                    position: node.position && typeof node.position.x === 'number'
+                      ? node.position
+                      : { x: 100 + (index * 200), y: 100 + (index * 100) },
+                    data: {
+                      ...(node.data || {}),
+                      type: nodeType,
+                      label: node.data?.label || node.label || nodeType,
+                    },
+                  }
+                })
+
+              console.log('[AgentBuilder] 검증된 노드 로드:', validatedNodes.length, '개')
               setNodes(validatedNodes)
             }
             if (data.workflow_edges && data.workflow_edges.length > 0) {
-              setEdges(data.workflow_edges)
+              // 엣지도 필수 속성 검증
+              const validatedEdges = data.workflow_edges
+                .filter((edge: any) => edge.id && edge.source && edge.target)
+                .map((edge: any) => ({
+                  ...edge,
+                  type: edge.type || 'default',
+                }))
+              setEdges(validatedEdges)
             }
 
             // 화면에 맞춤
@@ -1023,9 +1059,19 @@ function AgentBuilderInner({ agentId }: AgentBuilderInnerProps) {
     (templateId: string) => {
       const template = AGENT_TEMPLATES.find((t) => t.id === templateId)
       if (template) {
-        setNodes(template.nodes)
+        // nodeConfigs가 있으면 노드 데이터에 적용
+        const nodesWithConfig = template.nodes.map((node) => {
+          if (template.nodeConfigs && template.nodeConfigs[node.id]) {
+            return {
+              ...node,
+              data: { ...node.data, ...template.nodeConfigs[node.id] },
+            }
+          }
+          return node
+        })
+        setNodes(nodesWithConfig)
         setEdges(template.edges as Edge[])
-        fitView()
+        setTimeout(() => fitView({ padding: 0.2 }), 100)
         setShowTemplates(false)
       }
     },

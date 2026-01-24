@@ -118,7 +118,8 @@ export default function DashboardLayout({
   const isTaskHistoryPage = pathname?.includes('/task-history')
   const isCodingWorkspace = pathname?.includes('/works/coding')
   const isMeetingsPage = pathname?.includes('/messenger/meetings')
-  const isFullWidthPage = (pathname?.includes('/messenger') && !isMeetingsPage) || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/company/government-programs') || pathname?.includes('/ai-coding') || pathname?.includes('/neurons') || pathname?.includes('/gantt') || isTaskHistoryPage || isCodingWorkspace
+  const isWorkflowBuilderPage = pathname?.includes('/workflow-builder')
+  const isFullWidthPage = (pathname?.includes('/messenger') && !isMeetingsPage) || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/apps/ai-studio') || pathname?.includes('/company/government-programs') || pathname?.includes('/ai-coding') || pathname?.includes('/neurons') || pathname?.includes('/gantt') || isTaskHistoryPage || isCodingWorkspace || isWorkflowBuilderPage
 
   // Prevent hydration mismatch
   useEffect(() => {

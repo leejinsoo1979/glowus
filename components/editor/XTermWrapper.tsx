@@ -174,8 +174,25 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
       console.log(`[XTerm] Container has size: ${container.offsetWidth}x${container.offsetHeight}`)
       if (intervalId) clearInterval(intervalId)
 
-      // 기존 내용 클리어
-      container.innerHTML = ''
+      // 기존 xterm 인스턴스가 있으면 정리
+      if (xtermRef.current) {
+        try {
+          xtermRef.current.dispose()
+          xtermRef.current = null
+        } catch (e) {
+          console.warn('[XTerm] Failed to dispose existing terminal:', e)
+        }
+      }
+
+      // xterm이 생성한 자식 요소만 제거 (React 관리 요소는 유지)
+      const xtermElements = container.querySelectorAll('.xterm')
+      xtermElements.forEach(el => {
+        try {
+          el.remove()
+        } catch (e) {
+          // ignore
+        }
+      })
 
       isInitializedRef.current = true
       setIsLoading(false)
@@ -490,13 +507,11 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
 
   return (
     <div
-      ref={terminalRef}
       className="w-full bg-white dark:bg-black"
       style={{
         height: '100%',
         minHeight: '150px',
         minWidth: '200px',
-        padding: '4px',
         position: 'absolute',
         top: 0,
         left: 0,
@@ -505,11 +520,24 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
       }}
       onKeyDown={(e) => e.stopPropagation()}
     >
+      {/* 로딩 오버레이 - xterm 컨테이너와 분리 */}
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center text-zinc-500 dark:text-zinc-400 text-sm z-10">
+        <div
+          className="absolute inset-0 flex items-center justify-center text-zinc-500 dark:text-zinc-400 text-sm z-10 bg-white dark:bg-black"
+          style={{ pointerEvents: 'none' }}
+        >
           터미널 연결 대기 중... (tabId: {tabId})
         </div>
       )}
+      {/* xterm 전용 컨테이너 - React가 건드리지 않음 */}
+      <div
+        ref={terminalRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          padding: '4px',
+        }}
+      />
     </div>
   )
 }

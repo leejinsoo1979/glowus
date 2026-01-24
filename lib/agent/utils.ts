@@ -483,6 +483,106 @@ export function importAgentFromJson(json: string): {
 // Agent templates
 export const AGENT_TEMPLATES: AgentTemplate[] = [
   {
+    id: "business-plan-loop",
+    name: "Business Plan Generator",
+    nameKo: "사업계획서 작성 루프",
+    description: "Generate comprehensive business plan with AI loop",
+    descriptionKo: "AI 루프로 사업계획서 섹션별 자동 작성",
+    category: "assistant",
+    nodes: [
+      createAgentNode({ type: "start", position: { x: 50, y: 250 }, id: "start-bp" }),
+      createAgentNode({ type: "prompt", position: { x: 250, y: 250 }, id: "prompt-info" }),
+      createAgentNode({ type: "llm", position: { x: 450, y: 100 }, id: "llm-summary" }),
+      createAgentNode({ type: "llm", position: { x: 450, y: 250 }, id: "llm-market" }),
+      createAgentNode({ type: "llm", position: { x: 450, y: 400 }, id: "llm-model" }),
+      createAgentNode({ type: "llm", position: { x: 700, y: 100 }, id: "llm-marketing" }),
+      createAgentNode({ type: "llm", position: { x: 700, y: 250 }, id: "llm-finance" }),
+      createAgentNode({ type: "llm", position: { x: 700, y: 400 }, id: "llm-team" }),
+      createAgentNode({ type: "llm", position: { x: 950, y: 250 }, id: "llm-compile" }),
+      createAgentNode({ type: "end", position: { x: 1150, y: 250 }, id: "end-bp" }),
+    ],
+    edges: [
+      { id: "e-bp-1", source: "start-bp", target: "prompt-info" },
+      { id: "e-bp-2", source: "prompt-info", target: "llm-summary" },
+      { id: "e-bp-3", source: "prompt-info", target: "llm-market" },
+      { id: "e-bp-4", source: "prompt-info", target: "llm-model" },
+      { id: "e-bp-5", source: "llm-summary", target: "llm-marketing" },
+      { id: "e-bp-6", source: "llm-market", target: "llm-finance" },
+      { id: "e-bp-7", source: "llm-model", target: "llm-team" },
+      { id: "e-bp-8", source: "llm-marketing", target: "llm-compile" },
+      { id: "e-bp-9", source: "llm-finance", target: "llm-compile" },
+      { id: "e-bp-10", source: "llm-team", target: "llm-compile" },
+      { id: "e-bp-11", source: "llm-compile", target: "end-bp" },
+    ],
+    nodeConfigs: {
+      "prompt-info": {
+        label: "사업 정보 입력",
+        systemPrompt: `다음 정보를 입력하세요:
+- 회사명/서비스명
+- 사업 아이템 설명
+- 타겟 시장
+- 경쟁사
+- 예상 투자 규모`,
+      },
+      "llm-summary": {
+        label: "1. 요약문 작성",
+        systemPrompt: `당신은 사업계획서 전문가입니다.
+주어진 사업 정보를 바탕으로 '요약문(Executive Summary)' 섹션을 작성하세요.
+포함 내용: 사업 개요, 핵심 가치 제안, 목표 시장, 경쟁 우위, 재무 하이라이트`,
+        model: "gpt-4o",
+        temperature: 0.7,
+      },
+      "llm-market": {
+        label: "2. 시장 분석",
+        systemPrompt: `당신은 시장 분석 전문가입니다.
+주어진 사업 정보를 바탕으로 '시장 분석' 섹션을 작성하세요.
+포함 내용: TAM/SAM/SOM, 시장 트렌드, 고객 세그먼트, 경쟁 분석`,
+        model: "gpt-4o",
+        temperature: 0.7,
+      },
+      "llm-model": {
+        label: "3. 비즈니스 모델",
+        systemPrompt: `당신은 비즈니스 전략 전문가입니다.
+주어진 사업 정보를 바탕으로 '비즈니스 모델' 섹션을 작성하세요.
+포함 내용: 수익 모델, 가격 전략, 핵심 파트너, 핵심 활동, 핵심 자원`,
+        model: "gpt-4o",
+        temperature: 0.7,
+      },
+      "llm-marketing": {
+        label: "4. 마케팅 전략",
+        systemPrompt: `당신은 마케팅 전략 전문가입니다.
+주어진 사업 정보와 시장 분석을 바탕으로 '마케팅 전략' 섹션을 작성하세요.
+포함 내용: Go-to-Market 전략, 고객 획득 전략, 브랜딩, 채널 전략`,
+        model: "gpt-4o",
+        temperature: 0.7,
+      },
+      "llm-finance": {
+        label: "5. 재무 계획",
+        systemPrompt: `당신은 재무 분석 전문가입니다.
+주어진 사업 정보를 바탕으로 '재무 계획' 섹션을 작성하세요.
+포함 내용: 초기 투자 비용, 운영 비용, 매출 예측(3년), 손익분기점, 자금 조달 계획`,
+        model: "gpt-4o",
+        temperature: 0.7,
+      },
+      "llm-team": {
+        label: "6. 팀 구성",
+        systemPrompt: `당신은 조직 전문가입니다.
+주어진 사업 정보를 바탕으로 '팀 구성' 섹션을 작성하세요.
+포함 내용: 핵심 팀 역할, 조직 구조, 채용 계획, 자문단`,
+        model: "gpt-4o",
+        temperature: 0.7,
+      },
+      "llm-compile": {
+        label: "7. 최종 통합",
+        systemPrompt: `당신은 사업계획서 편집 전문가입니다.
+앞서 작성된 모든 섹션을 통합하여 완성된 사업계획서를 만드세요.
+형식: 목차 포함, 일관된 톤앤매너, 전문적인 문서 형식`,
+        model: "gpt-4o",
+        temperature: 0.5,
+      },
+    },
+  },
+  {
     id: "chatbot-basic",
     name: "Basic Chatbot",
     nameKo: "기본 챗봇",

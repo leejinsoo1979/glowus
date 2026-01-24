@@ -53,7 +53,7 @@ import { useThemeStore, accentColors } from '@/stores/themeStore'
 // Types
 // ============================================
 
-type CreationStep = 'profile' | 'personality' | 'skills' | 'permissions' | 'voice' | 'appearance' | 'review'
+type CreationStep = 'profile' | 'personality' | 'permissions' | 'voice' | 'appearance' | 'review'
 
 interface StepConfig {
   id: CreationStep
@@ -62,12 +62,6 @@ interface StepConfig {
   description: string
 }
 
-interface SkillItem {
-  id: string
-  name: string
-  description?: string
-  selected: boolean
-}
 
 // Permission Types for Super Agent (JARVIS-like control)
 interface PagePermission {
@@ -120,8 +114,7 @@ interface SuperAgentData {
   tone: string
   role: string
 
-  // Skills
-  skills: string[]
+  // Capabilities (도구/액션 권한에서 파생됨)
   capabilities: string[]
 
   // Permissions (JARVIS-like full control)
@@ -148,7 +141,6 @@ interface SuperAgentData {
 const STEPS: StepConfig[] = [
   { id: 'profile', label: '기본 정보', icon: User, description: '이름과 설명' },
   { id: 'personality', label: '성격', icon: Brain, description: '성격과 말투' },
-  { id: 'skills', label: '스킬', icon: Zap, description: '능력 선택' },
   { id: 'permissions', label: '권한', icon: Shield, description: 'JARVIS 레벨 권한' },
   { id: 'voice', label: '음성', icon: Volume2, description: '음성 설정' },
   { id: 'appearance', label: '외형', icon: Palette, description: '아바타와 테마' },
@@ -246,7 +238,6 @@ const initialAgentData: SuperAgentData = {
   personality: 'friendly',
   tone: 'polite',
   role: 'assistant',
-  skills: [],
   capabilities: [],
   permissions: defaultPermissions,
   voice_enabled: false,
@@ -269,7 +260,6 @@ export default function SuperAgentCreatorPage() {
 
   const [currentStep, setCurrentStep] = useState<CreationStep>('profile')
   const [agentData, setAgentData] = useState<SuperAgentData>(initialAgentData)
-  const [availableSkills, setAvailableSkills] = useState<SkillItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [customRole, setCustomRole] = useState('')
@@ -277,30 +267,6 @@ export default function SuperAgentCreatorPage() {
   const currentAccent = accentColors.find((c) => c.id === accentColor) || accentColors[0]
   const currentStepIndex = STEPS.findIndex(s => s.id === currentStep)
 
-  // Fetch available skills from deployed agents
-  useEffect(() => {
-    const fetchSkills = async () => {
-      try {
-        const res = await fetch('/api/agents')
-        if (res.ok) {
-          const agents = await res.json()
-          // Extract skills from workflow-based agents
-          const skills: SkillItem[] = agents
-            .filter((a: any) => a.workflow_nodes?.length > 0)
-            .map((a: any) => ({
-              id: a.id,
-              name: a.name,
-              description: a.description,
-              selected: false,
-            }))
-          setAvailableSkills(skills)
-        }
-      } catch (error) {
-        console.error('Failed to fetch skills:', error)
-      }
-    }
-    fetchSkills()
-  }, [])
 
   const updateAgent = (updates: Partial<SuperAgentData>) => {
     setAgentData(prev => ({ ...prev, ...updates }))
@@ -357,7 +323,7 @@ export default function SuperAgentCreatorPage() {
             // Add JARVIS mode capability if all permissions enabled
             ...(isJarvisMode ? ['jarvis-mode', 'super-agent', 'full-access'] : ['super-agent']),
           ],
-          workflow_nodes: [], // Super Agent는 스킬 기반이므로 빈 워크플로우
+          workflow_nodes: [],
           workflow_edges: [],
           voice_settings: agentData.voice_enabled ? {
             voice_id: agentData.voice_id,
@@ -367,8 +333,6 @@ export default function SuperAgentCreatorPage() {
           chat_main_gif: agentData.chat_main_gif,
           emotion_avatars: agentData.emotion_avatars,
           status: 'ACTIVE',
-          // 연결된 스킬 IDs
-          linked_skills: agentData.skills,
           // JARVIS-level permissions
           permissions: agentData.permissions,
           // Agent type marker
@@ -390,12 +354,6 @@ export default function SuperAgentCreatorPage() {
     }
   }
 
-  const toggleSkill = (skillId: string) => {
-    const newSkills = agentData.skills.includes(skillId)
-      ? agentData.skills.filter(id => id !== skillId)
-      : [...agentData.skills, skillId]
-    updateAgent({ skills: newSkills })
-  }
 
   // ============================================
   // Step Content Renderers
@@ -571,87 +529,6 @@ export default function SuperAgentCreatorPage() {
     </div>
   )
 
-  const renderSkillsStep = () => (
-    <div className="space-y-6">
-      <div className={cn('p-4 rounded-xl', isDark ? 'bg-zinc-800/50' : 'bg-zinc-50')}>
-        <div className="flex items-center gap-2 mb-2">
-          <Zap className="w-5 h-5 text-accent" />
-          <span className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>
-            스킬 연결
-          </span>
-        </div>
-        <p className={cn('text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500')}>
-          스킬 빌더에서 만든 스킬을 이 에이전트에 연결하세요. 연결된 스킬을 조합하여 다양한 작업을 수행할 수 있습니다.
-        </p>
-      </div>
-
-      {availableSkills.length === 0 ? (
-        <div className={cn('text-center py-12', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-          <Zap className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p className="mb-4">아직 생성된 스킬이 없습니다</p>
-          <Button
-            variant="outline"
-            onClick={() => router.push('/dashboard-group/ai-coding')}
-          >
-            스킬 빌더로 이동
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {availableSkills.map((skill) => {
-            const isSelected = agentData.skills.includes(skill.id)
-            return (
-              <button
-                key={skill.id}
-                onClick={() => toggleSkill(skill.id)}
-                className={cn(
-                  'p-4 rounded-xl border text-left transition-all',
-                  isSelected
-                    ? 'border-accent bg-accent/10'
-                    : isDark
-                      ? 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/50'
-                      : 'border-zinc-200 hover:border-zinc-300 bg-white'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      'w-10 h-10 rounded-lg flex items-center justify-center',
-                      isSelected ? 'bg-accent text-white' : isDark ? 'bg-zinc-700' : 'bg-zinc-100'
-                    )}>
-                      <Zap className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className={cn('font-medium', isDark ? 'text-white' : 'text-zinc-900')}>
-                        {skill.name}
-                      </div>
-                      {skill.description && (
-                        <div className={cn('text-xs mt-0.5 line-clamp-1', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-                          {skill.description}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className={cn(
-                    'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all',
-                    isSelected
-                      ? 'bg-accent border-accent'
-                      : isDark ? 'border-zinc-600' : 'border-zinc-300'
-                  )}>
-                    {isSelected && <Check className="w-4 h-4 text-white" />}
-                  </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      <div className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
-        선택된 스킬: {agentData.skills.length}개
-      </div>
-    </div>
-  )
 
   // Helper functions for permissions
   const togglePagePermission = (pageId: string) => {
@@ -1252,30 +1129,6 @@ export default function SuperAgentCreatorPage() {
         </div>
       </div>
 
-      {/* Skills Summary */}
-      {agentData.skills.length > 0 && (
-        <div className={cn(
-          'p-4 rounded-xl border',
-          isDark ? 'bg-zinc-800/50 border-zinc-700' : 'bg-white border-zinc-200'
-        )}>
-          <h3 className={cn('font-medium mb-3', isDark ? 'text-white' : 'text-zinc-900')}>
-            연결된 스킬 ({agentData.skills.length})
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {agentData.skills.map((skillId) => {
-              const skill = availableSkills.find(s => s.id === skillId)
-              return (
-                <span
-                  key={skillId}
-                  className="text-xs px-3 py-1.5 rounded-full bg-accent/10 text-accent"
-                >
-                  {skill?.name || skillId}
-                </span>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Permissions Summary */}
       {(() => {
@@ -1479,7 +1332,6 @@ export default function SuperAgentCreatorPage() {
             {/* Step Content */}
             {currentStep === 'profile' && renderProfileStep()}
             {currentStep === 'personality' && renderPersonalityStep()}
-            {currentStep === 'skills' && renderSkillsStep()}
             {currentStep === 'permissions' && renderPermissionsStep()}
             {currentStep === 'voice' && renderVoiceStep()}
             {currentStep === 'appearance' && renderAppearanceStep()}

@@ -203,4 +203,5 @@ export interface AgentTemplate {
   nodes: AgentNode[]
   edges: AgentEdge[]
   thumbnail?: string
+  nodeConfigs?: Record<string, Partial<AgentNodeData>>
 }

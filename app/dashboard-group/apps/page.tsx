@@ -320,6 +320,16 @@ const INITIAL_TOOLS_DATA: ToolItem[] = [
         iconBg: 'bg-green-100 dark:bg-green-900/20',
         category: '업무',
         image: '/thumbnails/work.png'
+    },
+    {
+        id: 'ai-studio',
+        title: 'AI 스튜디오',
+        description: 'PDF, 웹페이지, YouTube를 AI가 분석하고 팟캐스트까지 생성하는 올인원 도구',
+        icon: Mic,
+        iconColor: 'text-violet-500',
+        iconBg: 'bg-violet-100 dark:bg-violet-900/20',
+        category: '업무',
+        image: '/thumbnails/ai_summary.png'
     }
 ]
 
@@ -333,7 +343,8 @@ const IMPLEMENTED_APPS = [
     'ai-slides',
     'government-programs',
     'ai-docs',
-    'ai-sheet'
+    'ai-sheet',
+    'ai-studio'
 ]
 
 export default function AppsPage() {
@@ -512,6 +523,8 @@ function ToolCard({ tool, onEdit, onComingSoon }: { tool: ToolItem, onEdit: () =
                     window.location.href = '/dashboard-group/apps/ai-docs'
                 } else if (tool.id === 'ai-sheet') {
                     window.location.href = '/dashboard-group/apps/ai-sheet'
+                } else if (tool.id === 'ai-studio') {
+                    window.location.href = '/dashboard-group/apps/ai-studio'
                 }
             }}
             onMouseLeave={() => setIsMenuOpen(false)}

@@ -1,6 +1,6 @@
 // Agent Generator - AI가 자연어 명령을 분석해 에이전트 설정을 생성
+// 주의: 이 파일은 서버에서만 사용되어야 합니다
 
-import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
 import {
     CustomAgentConfig,
@@ -13,7 +13,20 @@ import {
     AGENT_CATEGORIES
 } from './types'
 
-const anthropic = new Anthropic()
+// Lazy initialization to avoid browser-side instantiation
+let anthropic: any = null
+
+function getAnthropicClient() {
+    if (typeof window !== 'undefined') {
+        throw new Error('Anthropic client cannot be used in browser')
+    }
+    if (!anthropic) {
+        // Dynamic import to avoid browser bundling
+        const Anthropic = require('@anthropic-ai/sdk').default
+        anthropic = new Anthropic()
+    }
+    return anthropic
+}
 
 // 에이전트 생성 프롬프트
 const AGENT_BUILDER_PROMPT = `당신은 AI 에이전트 빌더입니다. 사용자의 자연어 요청을 분석하여 커스텀 AI 에이전트 설정을 생성합니다.
@@ -55,7 +68,7 @@ export async function generateAgentFromPrompt(
             ? `${request.userPrompt}\n\n추가 요구사항:\n${request.refinements.join('\n')}`
             : request.userPrompt
 
-        const response = await anthropic.messages.create({
+        const response = await getAnthropicClient().messages.create({
             model: 'claude-sonnet-4-20250514',
             max_tokens: 2000,
             system: AGENT_BUILDER_PROMPT,

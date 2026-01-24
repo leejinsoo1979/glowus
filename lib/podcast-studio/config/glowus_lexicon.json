@@ -1,0 +1,334 @@
+{
+  "version": "1.0.0",
+  "description": "Korean pronunciation lexicon for podcast TTS",
+  "entries": [
+    {
+      "term": "GlowUS",
+      "reading": "글로우어스",
+      "category": "brand",
+      "variants": ["Glowus", "GLOWUS", "glowus"]
+    },
+    {
+      "term": "ARCHIPLE",
+      "reading": "아키플",
+      "category": "brand",
+      "variants": ["Archiple", "archiple"]
+    },
+    {
+      "term": "AI",
+      "reading": "에이아이",
+      "category": "acronym",
+      "variants": ["A.I.", "A.I"]
+    },
+    {
+      "term": "API",
+      "reading": "에이피아이",
+      "category": "acronym"
+    },
+    {
+      "term": "SaaS",
+      "reading": "사스",
+      "category": "acronym",
+      "variants": ["SAAS", "saas"]
+    },
+    {
+      "term": "CRM",
+      "reading": "씨알엠",
+      "category": "acronym"
+    },
+    {
+      "term": "ERP",
+      "reading": "이알피",
+      "category": "acronym"
+    },
+    {
+      "term": "B2B",
+      "reading": "비투비",
+      "category": "acronym"
+    },
+    {
+      "term": "B2C",
+      "reading": "비투씨",
+      "category": "acronym"
+    },
+    {
+      "term": "UI",
+      "reading": "유아이",
+      "category": "acronym"
+    },
+    {
+      "term": "UX",
+      "reading": "유엑스",
+      "category": "acronym"
+    },
+    {
+      "term": "CEO",
+      "reading": "씨이오",
+      "category": "acronym"
+    },
+    {
+      "term": "CTO",
+      "reading": "씨티오",
+      "category": "acronym"
+    },
+    {
+      "term": "CFO",
+      "reading": "씨에프오",
+      "category": "acronym"
+    },
+    {
+      "term": "ROI",
+      "reading": "알오아이",
+      "category": "acronym"
+    },
+    {
+      "term": "KPI",
+      "reading": "케이피아이",
+      "category": "acronym"
+    },
+    {
+      "term": "MVP",
+      "reading": "엠브이피",
+      "category": "acronym"
+    },
+    {
+      "term": "GPT",
+      "reading": "지피티",
+      "category": "acronym"
+    },
+    {
+      "term": "LLM",
+      "reading": "엘엘엠",
+      "category": "acronym"
+    },
+    {
+      "term": "ML",
+      "reading": "엠엘",
+      "category": "acronym"
+    },
+    {
+      "term": "AWS",
+      "reading": "에이더블유에스",
+      "category": "acronym"
+    },
+    {
+      "term": "GCP",
+      "reading": "지씨피",
+      "category": "acronym"
+    },
+    {
+      "term": "Azure",
+      "reading": "애저",
+      "category": "brand"
+    },
+    {
+      "term": "Google",
+      "reading": "구글",
+      "category": "brand"
+    },
+    {
+      "term": "OpenAI",
+      "reading": "오픈에이아이",
+      "category": "brand"
+    },
+    {
+      "term": "Anthropic",
+      "reading": "앤스로픽",
+      "category": "brand"
+    },
+    {
+      "term": "Claude",
+      "reading": "클로드",
+      "category": "brand"
+    },
+    {
+      "term": "ChatGPT",
+      "reading": "챗지피티",
+      "category": "brand"
+    },
+    {
+      "term": "Gemini",
+      "reading": "제미나이",
+      "category": "brand"
+    },
+    {
+      "term": "NotebookLM",
+      "reading": "노트북엘엠",
+      "category": "brand"
+    },
+    {
+      "term": "JavaScript",
+      "reading": "자바스크립트",
+      "category": "technical"
+    },
+    {
+      "term": "TypeScript",
+      "reading": "타입스크립트",
+      "category": "technical"
+    },
+    {
+      "term": "Python",
+      "reading": "파이썬",
+      "category": "technical"
+    },
+    {
+      "term": "React",
+      "reading": "리액트",
+      "category": "technical"
+    },
+    {
+      "term": "Next.js",
+      "reading": "넥스트제이에스",
+      "category": "technical",
+      "variants": ["NextJS", "Nextjs", "nextjs"]
+    },
+    {
+      "term": "Node.js",
+      "reading": "노드제이에스",
+      "category": "technical",
+      "variants": ["NodeJS", "Nodejs", "nodejs"]
+    },
+    {
+      "term": "Supabase",
+      "reading": "수파베이스",
+      "category": "brand"
+    },
+    {
+      "term": "PostgreSQL",
+      "reading": "포스트그레스큐엘",
+      "category": "technical",
+      "variants": ["Postgres", "postgres"]
+    },
+    {
+      "term": "MongoDB",
+      "reading": "몽고디비",
+      "category": "technical"
+    },
+    {
+      "term": "Redis",
+      "reading": "레디스",
+      "category": "technical"
+    },
+    {
+      "term": "Docker",
+      "reading": "도커",
+      "category": "technical"
+    },
+    {
+      "term": "Kubernetes",
+      "reading": "쿠버네티스",
+      "category": "technical",
+      "variants": ["K8s", "k8s"]
+    },
+    {
+      "term": "vs",
+      "reading": "대",
+      "category": "foreign"
+    },
+    {
+      "term": "vs.",
+      "reading": "대",
+      "category": "foreign"
+    },
+    {
+      "term": "etc",
+      "reading": "등",
+      "category": "foreign"
+    },
+    {
+      "term": "etc.",
+      "reading": "등",
+      "category": "foreign"
+    },
+    {
+      "term": "ASAP",
+      "reading": "가능한 빨리",
+      "category": "acronym"
+    },
+    {
+      "term": "FAQ",
+      "reading": "자주 묻는 질문",
+      "category": "acronym"
+    },
+    {
+      "term": "HTTPS",
+      "reading": "에이치티티피에스",
+      "category": "technical"
+    },
+    {
+      "term": "HTTP",
+      "reading": "에이치티티피",
+      "category": "technical"
+    },
+    {
+      "term": "URL",
+      "reading": "유알엘",
+      "category": "technical"
+    },
+    {
+      "term": "PDF",
+      "reading": "피디에프",
+      "category": "technical"
+    },
+    {
+      "term": "JSON",
+      "reading": "제이슨",
+      "category": "technical"
+    },
+    {
+      "term": "XML",
+      "reading": "엑스엠엘",
+      "category": "technical"
+    },
+    {
+      "term": "CSS",
+      "reading": "씨에스에스",
+      "category": "technical"
+    },
+    {
+      "term": "HTML",
+      "reading": "에이치티엠엘",
+      "category": "technical"
+    },
+    {
+      "term": "SQL",
+      "reading": "에스큐엘",
+      "category": "technical"
+    },
+    {
+      "term": "RAM",
+      "reading": "램",
+      "category": "technical"
+    },
+    {
+      "term": "CPU",
+      "reading": "씨피유",
+      "category": "technical"
+    },
+    {
+      "term": "GPU",
+      "reading": "지피유",
+      "category": "technical"
+    },
+    {
+      "term": "IoT",
+      "reading": "아이오티",
+      "category": "acronym"
+    },
+    {
+      "term": "AR",
+      "reading": "에이알",
+      "category": "acronym"
+    },
+    {
+      "term": "VR",
+      "reading": "브이알",
+      "category": "acronym"
+    },
+    {
+      "term": "XR",
+      "reading": "엑스알",
+      "category": "acronym"
+    }
+  ]
+}
