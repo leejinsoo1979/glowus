@@ -122,10 +122,10 @@ function GeneratedContentsList({
   selectedPreview: StudioContent | null
   onSelectContent: (content: StudioContent) => void
 }) {
-  // ready와 generating 상태 모두 표시
-  const visibleContents = contents.filter(c => c.status === 'ready' || c.status === 'generating')
+  // 완료된 컨텐츠만 목록에 표시 (생성 중인 건 위에 별도 로딩 UI로 표시됨)
+  const readyContents = contents.filter(c => c.status === 'ready')
 
-  if (visibleContents.length === 0) return null
+  if (readyContents.length === 0) return null
 
   const colorMap: Record<string, string> = {
     'audio-overview': '#8B5CF6',
@@ -139,9 +139,6 @@ function GeneratedContentsList({
     'data-table': '#64748B'
   }
 
-  const readyCount = visibleContents.filter(c => c.status === 'ready').length
-  const generatingCount = visibleContents.filter(c => c.status === 'generating').length
-
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -149,48 +146,38 @@ function GeneratedContentsList({
           생성된 노트북
         </h3>
         <span className={cn("text-xs", isDark ? "text-zinc-500" : "text-gray-500")}>
-          {readyCount}개{generatingCount > 0 && ` (${generatingCount}개 생성 중)`}
+          {readyContents.length}개
         </span>
       </div>
       <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-        {visibleContents.map((content) => {
+        {readyContents.map((content) => {
           const color = colorMap[content.type] || '#64748B'
-          const sameTypeContents = visibleContents.filter(c => c.type === content.type)
+          const sameTypeContents = readyContents.filter(c => c.type === content.type)
           const indexInType = sameTypeContents.findIndex(c => c.id === content.id) + 1
           const showIndex = sameTypeContents.length > 1
-          const isGenerating = content.status === 'generating'
 
           return (
             <button
               key={content.id}
-              onClick={() => !isGenerating && onSelectContent(content)}
-              disabled={isGenerating}
+              onClick={() => onSelectContent(content)}
               className={cn(
-                "w-full p-2.5 rounded-xl text-left transition-all flex items-center gap-3 group",
-                isGenerating
+                "w-full p-2.5 rounded-xl text-left transition-all flex items-center gap-3 group hover:scale-[1.01]",
+                selectedPreview?.id === content.id
                   ? isDark
-                    ? "bg-white/5 border border-white/10 cursor-wait"
-                    : "bg-gray-50 border border-gray-200 cursor-wait"
-                  : selectedPreview?.id === content.id
-                    ? isDark
-                      ? "bg-white/10 border-2"
-                      : "bg-gray-100 border-2"
-                    : isDark
-                      ? "bg-white/5 hover:bg-white/10 hover:scale-[1.01] border border-white/10"
-                      : "bg-white hover:bg-gray-50 hover:scale-[1.01] border border-gray-200 shadow-sm"
+                    ? "bg-white/10 border-2"
+                    : "bg-gray-100 border-2"
+                  : isDark
+                    ? "bg-white/5 hover:bg-white/10 border border-white/10"
+                    : "bg-white hover:bg-gray-50 border border-gray-200 shadow-sm"
               )}
               style={{
-                borderColor: selectedPreview?.id === content.id && !isGenerating ? color : undefined
+                borderColor: selectedPreview?.id === content.id ? color : undefined
               }}
             >
-              {isGenerating ? (
-                <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color }} />
-              ) : (
-                <div
-                  className="w-1 h-8 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: color }}
-                />
-              )}
+              <div
+                className="w-1 h-8 rounded-full flex-shrink-0"
+                style={{ backgroundColor: color }}
+              />
               <div className="flex-1 min-w-0">
                 <span className={cn("text-sm font-medium block truncate", isDark ? "text-white" : "text-gray-900")}>
                   {content.title}
@@ -200,16 +187,14 @@ function GeneratedContentsList({
                     </span>
                   )}
                 </span>
-                <span className={cn("text-xs", isGenerating ? "text-amber-500" : isDark ? "text-zinc-500" : "text-gray-500")}>
-                  {isGenerating ? '생성 중...' : (content.duration || content.subtitle || new Date(content.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }))}
+                <span className={cn("text-xs", isDark ? "text-zinc-500" : "text-gray-500")}>
+                  {content.duration || content.subtitle || new Date(content.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
-              {!isGenerating && (
-                <ChevronRight className={cn(
-                  "w-4 h-4 transition-transform group-hover:translate-x-0.5",
-                  isDark ? "text-zinc-500" : "text-gray-400"
-                )} />
-              )}
+              <ChevronRight className={cn(
+                "w-4 h-4 transition-transform group-hover:translate-x-0.5",
+                isDark ? "text-zinc-500" : "text-gray-400"
+              )} />
             </button>
           )
         })}
