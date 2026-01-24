@@ -186,7 +186,7 @@ ${sourceContext}
 [Guest] 에이~ 그렇게 말씀하시면 더 궁금하잖아요!
 [Host] 그쵸그쵸? 자, 일단요, 핵심만 먼저 말씀드리면요...
 
-약 20-30턴의 대화를 작성하세요. 정보 전달도 중요하지만, 듣는 사람이 "아 이 사람들 진짜 대화하고 있구나" 느낄 수 있게 해주세요!`
+약 ${process.env.NODE_ENV === 'development' ? '8-10턴 (테스트용 짧은 버전)' : '20-30턴'}의 대화를 작성하세요. 정보 전달도 중요하지만, 듣는 사람이 "아 이 사람들 진짜 대화하고 있구나" 느낄 수 있게 해주세요!`
 
     const scriptResult = await scriptModel.generateContent(scriptPrompt)
     const script = scriptResult.response.text()
