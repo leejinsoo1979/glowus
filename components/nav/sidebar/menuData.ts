@@ -77,7 +77,7 @@ import {
   BookOpen,
   Brain,
 } from 'lucide-react'
-import { FaLaptopCode, FaCodeBranch } from 'react-icons/fa6'
+import { FaLaptopCode, FaCodeBranch, FaMicrophone, FaFileAudio } from 'react-icons/fa6'
 import type { Category, NestedMenuItem } from './types'
 
 // 회사 메뉴 구조
@@ -577,6 +577,7 @@ export const categories: Category[] = [
             children: [
               { name: 'AI 실시간 요약', href: '/dashboard-group/apps/ai-summary', icon: Sparkles },
               { name: '유튜브 영상 요약', href: '/dashboard-group/apps/ai-summary', icon: FileText },
+              { name: '음성 텍스트 변환', href: '/dashboard-group/apps/transcribe', icon: FaFileAudio },
               { name: 'PPT 초안', href: '/dashboard-group/apps/ppt-draft', icon: FileText },
               { name: '기사 초안', href: '/dashboard-group/apps/article-draft', icon: FileText },
               { name: '상세페이지', href: '/dashboard-group/apps/detail-page', icon: FileText },
@@ -785,6 +786,24 @@ export const categories: Category[] = [
     items: [
       { name: 'AI 코딩', href: '/dashboard-group/ai-coding', icon: FaLaptopCode },
       { name: '새 프로젝트', href: '/dashboard-group/ai-coding/new', icon: Plus },
+    ]
+  },
+  // AI 스튜디오
+  {
+    id: 'ai-studio',
+    name: 'AI 스튜디오',
+    icon: FaMicrophone,
+    items: [
+      { name: '새 프로젝트', href: '/dashboard-group/ai-studio', icon: Plus },
+    ]
+  },
+  // 음성 텍스트 변환
+  {
+    id: 'transcribe',
+    name: '음성 텍스트 변환',
+    icon: FaFileAudio,
+    items: [
+      { name: '음성 변환', href: '/dashboard-group/apps/transcribe', icon: FaFileAudio },
     ]
   },
   // 마이페이지
