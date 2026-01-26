@@ -15,6 +15,49 @@ function getGeminiClient(): GoogleGenerativeAI {
   return genAI
 }
 
+// Qwen3-TTS 서버 URL (로컬 Python 서버)
+const QWEN_TTS_SERVER_URL = process.env.QWEN_TTS_SERVER_URL || 'http://localhost:8100'
+
+// TTS 프로바이더 선택 (qwen | gemini)
+const TTS_PROVIDER = process.env.TTS_PROVIDER || 'qwen'
+
+/**
+ * Qwen3-TTS 서버로 TTS 생성 요청
+ */
+async function generateQwenTTS(text: string, speaker: string = 'Sohee'): Promise<string | undefined> {
+  try {
+    console.log(`[TTS] Qwen3-TTS 요청: ${text.slice(0, 50)}...`)
+
+    const response = await fetch(`${QWEN_TTS_SERVER_URL}/tts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        speaker,
+        language: 'Korean',
+      }),
+    })
+
+    if (!response.ok) {
+      console.error(`[TTS] Qwen3-TTS 서버 오류: ${response.status}`)
+      return undefined
+    }
+
+    // WAV 바이너리 → Base64 data URL
+    const audioBuffer = await response.arrayBuffer()
+    const base64Audio = Buffer.from(audioBuffer).toString('base64')
+    const audioUrl = `data:audio/wav;base64,${base64Audio}`
+
+    console.log(`[TTS] Qwen3-TTS 완료, 크기: ${audioBuffer.byteLength} bytes`)
+    return audioUrl
+  } catch (error) {
+    console.error('[TTS] Qwen3-TTS 요청 실패:', error)
+    return undefined
+  }
+}
+
 interface Source {
   id: string
   type: 'pdf' | 'web' | 'youtube' | 'text' | 'image'
@@ -738,50 +781,71 @@ ${sourceContext.slice(0, 5000)}
 
       console.log(`[Generate] 크리에이터 대본 생성 완료 (TTS용 정리됨)`)
 
-      // ===== 3단계: Gemini 2.5 Flash TTS (Single Voice) =====
+      // ===== 3단계: TTS 생성 (Qwen3-TTS 또는 Gemini) =====
       let audioUrl: string | undefined
 
-      if (creatorScript.length > 0 && genAI) {
-        try {
-          console.log(`[Generate] Gemini 2.5 Flash TTS 시작...`)
-
-          const ttsModel = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash-preview-tts',
-          })
-
-          const ttsResponse = await ttsModel.generateContent({
-            contents: [{ role: 'user', parts: [{ text: creatorScript }] }],
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: 'Kore' } // 한국어 자연스러운 남성
-                }
-              }
-            } as any
-          })
-
-          const audioData = ttsResponse.response.candidates?.[0]?.content?.parts?.[0]
-          if (audioData && 'inlineData' in audioData && audioData.inlineData?.data) {
-            // Gemini TTS는 raw PCM 반환 → WAV로 변환
-            const pcmBuffer = Buffer.from(audioData.inlineData.data, 'base64')
-            const wavBuffer = pcmToWav(pcmBuffer, 24000, 1, 16)
-            audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`
-            console.log(`[Generate] Gemini TTS 완료, WAV 크기: ${wavBuffer.length} bytes`)
+      if (creatorScript.length > 0) {
+        // Qwen3-TTS 사용 (기본값, 무료)
+        if (TTS_PROVIDER === 'qwen') {
+          try {
+            console.log(`[Generate] Qwen3-TTS 시작...`)
+            audioUrl = await generateQwenTTS(creatorScript, 'Sohee')
+          } catch (err) {
+            console.error('[Generate] Qwen3-TTS error:', err)
+            // Qwen 실패 시 Gemini로 폴백
+            console.log('[Generate] Gemini TTS로 폴백...')
           }
-        } catch (err) {
-          console.error('[Generate] Gemini TTS error:', err)
+        }
+
+        // Gemini TTS 사용 (폴백 또는 명시적 선택)
+        if (!audioUrl && genAI && (TTS_PROVIDER === 'gemini' || TTS_PROVIDER === 'qwen')) {
+          try {
+            console.log(`[Generate] Gemini 2.5 Flash TTS 시작...`)
+
+            const ttsModel = genAI.getGenerativeModel({
+              model: 'gemini-2.5-flash-preview-tts',
+            })
+
+            const ttsResponse = await ttsModel.generateContent({
+              contents: [{ role: 'user', parts: [{ text: creatorScript }] }],
+              generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Kore' } // 한국어 자연스러운 남성
+                  }
+                }
+              } as any
+            })
+
+            const audioData = ttsResponse.response.candidates?.[0]?.content?.parts?.[0]
+            if (audioData && 'inlineData' in audioData && audioData.inlineData?.data) {
+              // Gemini TTS는 raw PCM 반환 → WAV로 변환
+              const pcmBuffer = Buffer.from(audioData.inlineData.data, 'base64')
+              const wavBuffer = pcmToWav(pcmBuffer, 24000, 1, 16)
+              audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`
+              console.log(`[Generate] Gemini TTS 완료, WAV 크기: ${wavBuffer.length} bytes`)
+            }
+          } catch (err) {
+            console.error('[Generate] Gemini TTS error:', err)
+          }
         }
       }
 
-      // 프론트엔드용 slides 형태로 변환 (단일 슬라이드 - 전체 대본 + 오디오)
-      const slides = [{
-        number: 1,
-        title: slideStructure.title,
-        narration: creatorScript,  // TTS용 정리된 대본
-        bulletPoints: slideStructure.slides.slice(0, 4).map(s => s.keyPoint),
-        audioUrl: audioUrl
-      }]
+      // 프론트엔드용 slides 형태로 변환 (모든 슬라이드) + 이미지 배치
+      const slides = slideStructure.slides.map((s, idx) => {
+        // 이미지가 있으면 슬라이드에 순차적으로 배치
+        const slideImage = images && images[idx] ? images[idx].imageDataUrl : undefined
+
+        return {
+          number: s.slideNumber,
+          title: s.slideTitle,
+          narration: s.keyPoint,  // 각 슬라이드의 핵심 메시지
+          bulletPoints: s.details.length > 0 ? s.details : [s.keyPoint],
+          audioUrl: idx === 0 ? audioUrl : undefined,  // 첫 슬라이드에만 전체 오디오
+          imageUrl: slideImage  // 이미지 소스에서 가져온 이미지
+        }
+      })
 
       // 화면 표시용 콘텐츠 (마크다운 기호 없이)
       const formattedContent = `${slideStructure.title}
@@ -797,6 +861,79 @@ ${creatorScriptRaw}`
         type,
         slides,  // 프론트엔드에서 사용할 슬라이드 데이터
         script: creatorScriptRaw,
+        audioUrl
+      })
+    }
+
+    // audio-overview: 텍스트 생성 후 TTS 추가
+    if (type === 'audio-overview') {
+      console.log(`[Generate] audio-overview - 오디오 개요 생성 시작`)
+
+      const audioScriptPrompt = `당신은 인기 팟캐스트 진행자입니다. 청취자에게 친근하고 이해하기 쉽게 설명하는 오디오 대본을 작성하세요.
+
+## 원본 자료
+${sourceContext}
+
+## 스타일 가이드
+1. 친근하고 자연스러운 말투 사용
+2. 청취자가 듣기만 해도 이해할 수 있도록 명확하게 설명
+3. 적절한 호흡과 리듬감 포함: "자,", "그래서요,", "음...", "그런데요,"
+4. 청자와 소통하는 느낌: "여러분", "어떠세요?", "생각해보시면요"
+5. 핵심 포인트를 강조하면서도 자연스럽게
+
+## 구조
+1. 오프닝 (주제 소개, 30초)
+2. 본문 (핵심 내용 설명, 2-3분)
+3. 요약 및 마무리 (30초)
+
+## 분량
+전체 3-4분 분량의 오디오 대본
+
+마크다운 기호 없이 순수 텍스트로 출력하세요.`
+
+      const scriptResult = await model.generateContent(audioScriptPrompt)
+      const audioScript = await scriptResult.response.text()
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/^[-*]\s+/gm, '')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+
+      console.log(`[Generate] 오디오 대본 생성 완료`)
+
+      // TTS 생성 (Qwen3-TTS)
+      let audioUrl: string | undefined
+
+      if (audioScript.length > 0) {
+        try {
+          console.log(`[Generate] Qwen3-TTS 시작 (audio-overview)...`)
+          audioUrl = await generateQwenTTS(audioScript, 'Sohee')
+          if (audioUrl) {
+            console.log(`[Generate] Qwen3-TTS 완료`)
+          }
+        } catch (err) {
+          console.error('[Generate] Qwen3-TTS error:', err)
+        }
+      }
+
+      // 화면 표시용 콘텐츠 구성
+      const displayContent = `# 오디오 개요
+
+## 🎙️ 대본
+
+${audioScript}
+
+---
+
+${audioUrl ? '✅ 오디오가 생성되었습니다. 위의 플레이어로 재생하세요.' : '⚠️ 오디오 생성에 실패했습니다. TTS 서버 상태를 확인하세요.'}`
+
+      return NextResponse.json({
+        success: true,
+        content: displayContent,
+        type,
+        script: audioScript,
         audioUrl
       })
     }
