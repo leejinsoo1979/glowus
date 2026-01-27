@@ -19,6 +19,7 @@ import { FileTreePanel } from '@/components/neural-map/panels/FileTreePanel'
 import GitPanel from '@/components/neural-map/panels/GitPanel'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { TaskHistorySidebar } from '@/components/works/TaskHistorySidebar'
+import { AIStudioSidebar } from '@/components/ai-studio/AIStudioSidebar'
 import type { EmailAccount, EmailMessage } from '@/types/email'
 import { useTeamStore } from '@/stores/teamStore'
 // 사이드바에서 직접 사용하는 아이콘만 import
@@ -617,6 +618,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
     // 🔥 워크플로우 빌더
     if (pathname.startsWith('/dashboard-group/workflow-builder')) return 'workflow-builder'
     if (pathname.startsWith('/dashboard-group/ai-coding')) return 'ai-coding'
+    if (pathname.startsWith('/dashboard-group/ai-studio')) return 'ai-studio'
     if (pathname.startsWith('/dashboard-group/neurons')) return 'neurons'
     if (pathname.startsWith('/dashboard-group/works')) {
       return 'home'
@@ -755,6 +757,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                     targetPath = '/dashboard-group/calendar'
                   } else if (category.id === 'ai-coding') {
                     targetPath = '/dashboard-group/ai-coding'
+                  } else if (category.id === 'ai-studio') {
+                    targetPath = '/dashboard-group/ai-studio'
                   } else if (category.id === 'messenger') {
                     targetPath = '/dashboard-group/messenger'
                   } else if (category.id === 'workflow-builder') {
@@ -1089,8 +1093,54 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
             </motion.aside>
           )}
 
-          {/* Regular menus (not neurons page, not ai-coding page) */}
-          {sidebarOpen && activeItems.length > 0 && currentCategory !== 'neurons' && !(currentCategory === 'ai-coding' && pathname?.includes('/ai-coding')) && (
+          {/* AI Studio Sidebar */}
+          {sidebarOpen && currentCategory === 'ai-studio' && pathname?.includes('/ai-studio') && (
+            <motion.aside
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className={cn(
+                'h-full border-r overflow-hidden relative',
+                isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
+              )}
+            >
+              {/* 사이드바 접기 버튼 */}
+              <button
+                onClick={toggleSidebar}
+                className={cn(
+                  'absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-4 rounded-full flex items-center justify-center z-30 transition-all',
+                  isDark
+                    ? 'bg-zinc-700 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-600'
+                    : 'bg-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-300'
+                )}
+                title="메뉴 접기"
+              >
+                <ChevronRight className="w-2.5 h-2.5 rotate-180" />
+              </button>
+
+              <div className="h-full flex flex-col" style={{ width: 280 }}>
+                {/* Category Header */}
+                <div className={cn(
+                  'h-12 flex items-center px-4 border-b flex-shrink-0',
+                  isDark ? 'border-zinc-800' : 'border-zinc-200'
+                )}>
+                  <h2 className={cn(
+                    'text-sm font-bold',
+                    isDark ? 'text-zinc-100' : 'text-zinc-900'
+                  )}>
+                    AI 스튜디오
+                  </h2>
+                </div>
+
+                {/* AI Studio Sidebar Content */}
+                <AIStudioSidebar isDark={isDark} themeColor={accentColor === 'blue' ? '#3b82f6' : accentColor === 'purple' ? '#8b5cf6' : accentColor === 'green' ? '#22c55e' : accentColor === 'orange' ? '#f97316' : accentColor === 'pink' ? '#ec4899' : accentColor === 'red' ? '#ef4444' : accentColor === 'yellow' ? '#eab308' : accentColor === 'cyan' ? '#06b6d4' : '#3b82f6'} />
+              </div>
+            </motion.aside>
+          )}
+
+          {/* Regular menus (not neurons page, not ai-coding page, not ai-studio page) */}
+          {sidebarOpen && activeItems.length > 0 && currentCategory !== 'neurons' && !(currentCategory === 'ai-coding' && pathname?.includes('/ai-coding')) && !(currentCategory === 'ai-studio' && pathname?.includes('/ai-studio')) && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 240, opacity: 1 }}

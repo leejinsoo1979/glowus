@@ -81,7 +81,10 @@
     "electron:pack": "npm run build && mkdir -p .next/standalone/.next && cp -R public .next/standalone/ && cp -R .next/static .next/standalone/.next/ && npm run electron:compile && electron-builder",
     "mcp:neural-map-ws": "node server/neural-map-ws-server.js",
     "mcp:neural-map": "node server/neural-map-mcp-server.js",
-    "mcp:stagehand": "node server/stagehand-server.js"
+    "mcp:stagehand": "node server/stagehand-server.js",
+    "tts:server": "cd TTS && python3 tts_server.py",
+    "tts:install": "cd TTS && pip3 install -r requirements.txt && cd Qwen3-TTS-main && pip3 install -e .",
+    "dev:with-tts": "concurrently -k \"npm run dev\" \"npm run tts:server\""
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.45",

@@ -797,15 +797,6 @@ export const categories: Category[] = [
       { name: '새 프로젝트', href: '/dashboard-group/ai-studio', icon: Plus },
     ]
   },
-  // 음성 텍스트 변환
-  {
-    id: 'transcribe',
-    name: '음성 텍스트 변환',
-    icon: FaFileAudio,
-    items: [
-      { name: '음성 변환', href: '/dashboard-group/apps/transcribe', icon: FaFileAudio },
-    ]
-  },
   // 마이페이지
   {
     id: 'mypage',

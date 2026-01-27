@@ -1,24 +1,64 @@
 import { NextResponse } from 'next/server'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Qwen3-TTS 서버 URL (로컬 Python 서버)
-const QWEN_TTS_SERVER_URL = process.env.QWEN_TTS_SERVER_URL || 'http://localhost:8100'
+// Lazy initialization
+let genAI: GoogleGenerativeAI | null = null
+
+function getGeminiClient(): GoogleGenerativeAI {
+  if (!genAI) {
+    const apiKey = process.env.GOOGLE_API_KEY
+    if (!apiKey) {
+      throw new Error('GOOGLE_API_KEY is not configured')
+    }
+    genAI = new GoogleGenerativeAI(apiKey)
+  }
+  return genAI
+}
+
+// Raw PCM을 WAV로 변환
+function pcmToWav(pcmBuffer: Buffer, sampleRate: number = 24000, channels: number = 1, bitsPerSample: number = 16): Buffer {
+  const byteRate = sampleRate * channels * (bitsPerSample / 8)
+  const blockAlign = channels * (bitsPerSample / 8)
+  const dataSize = pcmBuffer.length
+  const headerSize = 44
+  const fileSize = headerSize + dataSize - 8
+
+  const wavBuffer = Buffer.alloc(headerSize + dataSize)
+
+  wavBuffer.write('RIFF', 0)
+  wavBuffer.writeUInt32LE(fileSize, 4)
+  wavBuffer.write('WAVE', 8)
+  wavBuffer.write('fmt ', 12)
+  wavBuffer.writeUInt32LE(16, 16)
+  wavBuffer.writeUInt16LE(1, 20)
+  wavBuffer.writeUInt16LE(channels, 22)
+  wavBuffer.writeUInt32LE(sampleRate, 24)
+  wavBuffer.writeUInt32LE(byteRate, 28)
+  wavBuffer.writeUInt16LE(blockAlign, 32)
+  wavBuffer.writeUInt16LE(bitsPerSample, 34)
+  wavBuffer.write('data', 36)
+  wavBuffer.writeUInt32LE(dataSize, 40)
+  pcmBuffer.copy(wavBuffer, 44)
+
+  return wavBuffer
+}
 
 // 텍스트 정규화 함수
 function normalizeTextForTTS(text: string): string {
   let result = text
 
   // 마크다운 기호 제거
-  result = result.replace(/\*\*([^*]+)\*\*/g, '$1')  // bold
-  result = result.replace(/\*([^*]+)\*/g, '$1')      // italic
+  result = result.replace(/\*\*([^*]+)\*\*/g, '$1')
+  result = result.replace(/\*([^*]+)\*/g, '$1')
   result = result.replace(/__([^_]+)__/g, '$1')
   result = result.replace(/_([^_]+)_/g, '$1')
-  result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // links
-  result = result.replace(/^#{1,6}\s*/gm, '')        // headers
-  result = result.replace(/^\s*[-*+]\s+/gm, '')      // lists
-  result = result.replace(/^\s*\d+\.\s+/gm, '')      // numbered lists
-  result = result.replace(/```[^`]*```/g, '')        // code blocks
-  result = result.replace(/`([^`]+)`/g, '$1')        // inline code
-  result = result.replace(/[#*_~`|]/g, '')           // symbols
+  result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  result = result.replace(/^#{1,6}\s*/gm, '')
+  result = result.replace(/^\s*[-*+]\s+/gm, '')
+  result = result.replace(/^\s*\d+\.\s+/gm, '')
+  result = result.replace(/```[^`]*```/g, '')
+  result = result.replace(/`([^`]+)`/g, '$1')
+  result = result.replace(/[#*_~`|]/g, '')
 
   // URL 제거
   result = result.replace(/https?:\/\/[^\s]+/g, '')
@@ -48,45 +88,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '텍스트가 필요합니다' }, { status: 400 })
     }
 
-    // 텍스트 정규화
     const normalizedText = normalizeTextForTTS(text)
+    const voiceName = voice === 'male' ? 'Puck' : 'Kore'
 
-    // 음성 선택 (기본: 여성 Sohee)
-    // Qwen3-TTS 스피커: Sohee(여성), Vivian, Serena, Ryan(남성), Aiden, Ono_Anna
-    const speaker = voice === 'male' ? 'Ryan' : 'Sohee'
+    console.log(`[TTS] Gemini 2.5 TTS 요청: ${normalizedText.slice(0, 50)}... (voice: ${voiceName})`)
 
-    console.log(`[TTS] Qwen3-TTS 요청: ${normalizedText.slice(0, 50)}... (speaker: ${speaker})`)
-
-    // Qwen3-TTS 서버로 요청
-    const response = await fetch(`${QWEN_TTS_SERVER_URL}/tts`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: normalizedText,
-        speaker,
-        language: 'Korean',
-      }),
+    const client = getGeminiClient()
+    const ttsModel = client.getGenerativeModel({
+      model: 'gemini-2.5-flash-preview-tts',
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[TTS] Qwen3-TTS 서버 오류:', errorText)
-      return NextResponse.json({ error: 'TTS 서버 오류가 발생했습니다' }, { status: 500 })
+    const response = await ttsModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: normalizedText }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName }
+          }
+        }
+      } as any
+    })
+
+    const audioData = response.response.candidates?.[0]?.content?.parts?.[0]
+    if (audioData && 'inlineData' in audioData && audioData.inlineData?.data) {
+      const pcmBuffer = Buffer.from(audioData.inlineData.data, 'base64')
+      const wavBuffer = pcmToWav(pcmBuffer, 24000, 1, 16)
+      const audioUrl = `data:audio/wav;base64,${wavBuffer.toString('base64')}`
+
+      console.log(`[TTS] Gemini TTS 완료, WAV 크기: ${wavBuffer.length} bytes`)
+
+      return NextResponse.json({
+        success: true,
+        audioUrl
+      })
     }
 
-    // WAV 바이너리 → Base64 data URL
-    const audioBuffer = await response.arrayBuffer()
-    const base64Audio = Buffer.from(audioBuffer).toString('base64')
-    const audioUrl = `data:audio/wav;base64,${base64Audio}`
-
-    console.log(`[TTS] Qwen3-TTS 완료, 크기: ${audioBuffer.byteLength} bytes`)
-
-    return NextResponse.json({
-      success: true,
-      audioUrl
-    })
+    return NextResponse.json({ error: 'TTS 생성 실패: 오디오 데이터 없음' }, { status: 500 })
   } catch (error) {
     console.error('TTS generation error:', error)
     return NextResponse.json(
@@ -98,22 +136,11 @@ export async function POST(req: Request) {
 
 // 헬스 체크
 export async function GET() {
-  try {
-    const response = await fetch(`${QWEN_TTS_SERVER_URL}/health`)
-    const data = await response.json()
+  const hasApiKey = !!process.env.GOOGLE_API_KEY
 
-    return NextResponse.json({
-      status: response.ok ? 'healthy' : 'unhealthy',
-      provider: 'qwen3-tts',
-      server_url: QWEN_TTS_SERVER_URL,
-      ...data
-    })
-  } catch (error) {
-    return NextResponse.json({
-      status: 'unhealthy',
-      provider: 'qwen3-tts',
-      server_url: QWEN_TTS_SERVER_URL,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    })
-  }
+  return NextResponse.json({
+    status: hasApiKey ? 'healthy' : 'unhealthy',
+    provider: 'gemini-2.5-flash-tts',
+    hasApiKey
+  })
 }

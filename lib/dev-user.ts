@@ -6,7 +6,7 @@
  */
 
 export const DEV_USER = {
-  id: '00000000-0000-0000-0000-000000000001',  // 개발 테스트용 사용자 ID
+  id: '014524d9-d3ed-46ab-b0b5-80beb5f4b7b8',  // 실제 사용자 ID (sbbc212@gmail.com)
   email: 'sbbc212@gmail.com',
   name: '진수',
   role: '대표',

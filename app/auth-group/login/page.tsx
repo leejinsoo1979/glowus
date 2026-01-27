@@ -26,6 +26,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isDevLoading, setIsDevLoading] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [isGithubLoading, setIsGithubLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,19 +57,37 @@ export default function LoginPage() {
 
   const handleOAuthLogin = async (provider: 'google' | 'github') => {
     setError('')
+
+    // 로딩 상태 설정
+    if (provider === 'google') {
+      setIsGoogleLoading(true)
+    } else {
+      setIsGithubLoading(true)
+    }
+
     try {
       const supabase = createClient()
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=/dashboard-group/works`,
+          skipBrowserRedirect: false,
+          queryParams: {
+            prompt: 'select_account', // 매번 계정 선택 화면 표시
+          },
         },
       })
       if (error) {
         setError(`OAuth 로그인 실패: ${error.message}`)
+        // 에러 시 로딩 해제
+        setIsGoogleLoading(false)
+        setIsGithubLoading(false)
       }
+      // 성공 시 페이지 이동으로 로딩 상태 유지
     } catch (e) {
       setError(`OAuth 오류: ${e instanceof Error ? e.message : '알 수 없는 오류'}`)
+      setIsGoogleLoading(false)
+      setIsGithubLoading(false)
     }
   }
 
@@ -133,9 +153,11 @@ export default function LoginPage() {
           variant="outline"
           className="w-full border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-100"
           onClick={() => handleOAuthLogin('google')}
+          disabled={isGoogleLoading || isGithubLoading}
+          isLoading={isGoogleLoading}
         >
-          <GoogleIcon className="me-2 size-4" />
-          Google로 계속하기
+          {!isGoogleLoading && <GoogleIcon className="me-2 size-4" />}
+          {isGoogleLoading ? 'Google로 연결 중...' : 'Google로 계속하기'}
         </Button>
         <Button
           type="button"
@@ -143,9 +165,11 @@ export default function LoginPage() {
           variant="outline"
           className="w-full border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-100"
           onClick={() => handleOAuthLogin('github')}
+          disabled={isGoogleLoading || isGithubLoading}
+          isLoading={isGithubLoading}
         >
-          <Github strokeWidth={2.5} className="me-2 size-4" />
-          GitHub로 계속하기
+          {!isGithubLoading && <Github strokeWidth={2.5} className="me-2 size-4" />}
+          {isGithubLoading ? 'GitHub로 연결 중...' : 'GitHub로 계속하기'}
         </Button>
         <Button
           type="button"

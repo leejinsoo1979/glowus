@@ -207,8 +207,7 @@ async function generateTextToSpeech(text: string, session: VoiceSession) {
   // 히스토리에 응답 추가
   session.history.push({ role: 'model', content: responseText })
 
-  // TTS 생성 (Gemini 2.5 Flash TTS 사용)
-  // 현재는 텍스트만 반환, 실제 TTS는 클라이언트에서 Web Speech API 사용
+  // TTS는 클라이언트에서 Web Speech API 사용
   return {
     text: responseText,
     audioData: null, // 클라이언트 TTS 사용

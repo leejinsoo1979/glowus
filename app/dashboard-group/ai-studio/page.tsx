@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useCallback, useRef, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
@@ -68,6 +69,12 @@ interface AudioOverview {
   status: 'idle' | 'generating' | 'ready' | 'error'
   duration?: string
   transcript?: string
+  // 진행률 표시용
+  progress?: number  // 0-100
+  progressMessage?: string
+  currentLine?: number
+  totalLines?: number
+  currentSpeaker?: string
 }
 
 // API에서 반환하는 슬라이드 타입 (TTS 오디오 포함)
@@ -94,7 +101,7 @@ interface GeneratedContent {
   status: 'generating' | 'ready' | 'error'
   createdAt: Date
   slides?: APISlide[]  // video-overview 슬라이드 (TTS 오디오 포함)
-  // Podcast-style video-overview (Gemini 2.5 TTS Multi-Speaker)
+  // Podcast-style audio-overview (Qwen3-TTS: Ryan + Sohee)
   podcastAudioUrl?: string  // 전체 팟캐스트 오디오
   dialogueLines?: DialogueLine[]  // 파싱된 대화 라인들
 }
@@ -287,6 +294,12 @@ export default function AIStudioPage() {
   const supabase = createClient()
   const { user, currentStartup } = useAuthStore()
 
+  // Project state
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
+  const [projectTitle, setProjectTitle] = useState<string>('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+
   // State
   const [sources, setSources] = useState<Source[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -321,58 +334,179 @@ export default function AIStudioPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 생성된 콘텐츠를 ai_studio_sessions 테이블에 저장하는 함수
-  const saveSession = useCallback(async (content: GeneratedContent) => {
+  // 프로젝트 전체 상태 저장
+  const saveProject = useCallback(async (newTitle?: string) => {
     if (!user?.id) return
+    if (sources.length === 0 && generatedContents.length === 0) return
 
+    setIsSaving(true)
     try {
-      const typeLabels: Record<string, string> = {
-        'briefing': '브리핑 문서',
-        'faq': 'FAQ',
-        'timeline': '타임라인',
-        'study-guide': '학습 가이드',
-        'deep-dive': '심층 분석',
-        'slides': '슬라이드',
-        'video-overview': '동영상 개요',
-        'audio-overview': '오디오 개요',
-        'mindmap': '마인드맵',
-        'report': '리포트',
-        'flashcard': '플래시카드',
-        'quiz': '퀴즈',
-        'infographic': '인포그래픽',
-        'data-table': '데이터 테이블'
-      }
+      // 첫 번째 소스 제목이나 생성된 콘텐츠로 프로젝트 제목 생성
+      const autoTitle = newTitle || projectTitle ||
+        sources[0]?.title?.slice(0, 50) ||
+        `프로젝트 ${new Date().toLocaleDateString('ko-KR')}`
 
-      const { error } = await supabase.from('ai_studio_sessions' as any).insert({
-        user_id: user.id,
-        company_id: currentStartup?.id || null,
-        title: typeLabels[content.type] || content.type,
-        type: content.type,
-        status: 'completed',
-        content: content.content?.slice(0, 10000) || '',
-        sources: sources.filter(s => s.status === 'ready' && s.selected !== false).map(s => ({
-          id: s.id,
-          type: s.type,
-          title: s.title
-        })),
-        metadata: {
-          hasSlides: !!content.slides,
-          hasAudio: !!content.podcastAudioUrl,
-          slidesCount: content.slides?.length || 0
-        }
+      const response = await fetch('/api/ai-studio/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          company_id: currentStartup?.id || null,
+          project_id: currentProjectId,
+          title: autoTitle,
+          sources: sources.map(s => ({
+            id: s.id,
+            type: s.type,
+            title: s.title,
+            content: s.content,
+            url: s.url,
+            summary: s.summary,
+            status: s.status,
+            selected: s.selected,
+            imageDataUrl: s.imageDataUrl,
+            slideImages: s.slideImages,
+            metadata: s.metadata
+          })),
+          generated_contents: generatedContents.map(gc => ({
+            id: gc.id,
+            type: gc.type,
+            title: gc.title,
+            content: gc.content,
+            status: gc.status,
+            createdAt: gc.createdAt,
+            slides: gc.slides,
+            podcastAudioUrl: gc.podcastAudioUrl,
+            dialogueLines: gc.dialogueLines
+          })),
+          audio_overviews: audioOverviews.map(ao => ({
+            id: ao.id,
+            title: ao.title,
+            audioUrl: ao.audioUrl,
+            status: ao.status,
+            duration: ao.duration,
+            transcript: ao.transcript
+          })),
+          chat_messages: messages.map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            sources: m.sources,
+            timestamp: m.timestamp
+          })),
+          metadata: {
+            sources_count: sources.length,
+            contents_count: generatedContents.length
+          }
+        })
       })
 
-      if (error) {
-        console.error('[AI Studio] Failed to save session:', error)
+      const result = await response.json()
+
+      if (result.error) {
+        console.error('[AI Studio] Failed to save project:', result.error)
       } else {
-        console.log('[AI Studio] Saved session:', content.type)
-        // 사이드바 새로고침을 위해 이벤트 발생
+        console.log('[AI Studio] Project saved:', result.data.id)
+        if (!currentProjectId) {
+          setCurrentProjectId(result.data.id)
+        }
+        setProjectTitle(autoTitle)
+        setLastSavedAt(new Date())
         window.dispatchEvent(new CustomEvent('ai-studio-session-saved'))
       }
     } catch (err) {
-      console.error('[AI Studio] Error saving session:', err)
+      console.error('[AI Studio] Error saving project:', err)
+    } finally {
+      setIsSaving(false)
     }
-  }, [user?.id, currentStartup?.id, supabase, sources])
+  }, [user?.id, currentStartup?.id, currentProjectId, projectTitle, sources, generatedContents, audioOverviews, messages])
+
+  // 프로젝트 불러오기
+  const loadProject = useCallback(async (projectId: string) => {
+    if (!user?.id) return
+
+    try {
+      const response = await fetch(`/api/ai-studio/sessions?user_id=${user.id}&id=${projectId}`)
+      const result = await response.json()
+
+      if (result.error) {
+        console.error('[AI Studio] Failed to load project:', result.error)
+        return
+      }
+
+      const project = result.data
+      if (!project) return
+
+      // content JSON 파싱
+      let contentData: {
+        sources?: Source[]
+        generated_contents?: GeneratedContent[]
+        audio_overviews?: AudioOverview[]
+        chat_messages?: ChatMessage[]
+      } = {}
+
+      try {
+        contentData = project.content ? JSON.parse(project.content) : {}
+      } catch {
+        contentData = {}
+      }
+
+      // 상태 복원
+      setCurrentProjectId(project.id)
+      setProjectTitle(project.title)
+      setSources(contentData.sources || [])
+      setGeneratedContents(contentData.generated_contents || [])
+      setAudioOverviews(contentData.audio_overviews || [])
+      setMessages(contentData.chat_messages || [])
+      setLastSavedAt(new Date(project.updated_at))
+
+      console.log('[AI Studio] Project loaded:', project.id, project.title)
+    } catch (err) {
+      console.error('[AI Studio] Error loading project:', err)
+    }
+  }, [user?.id])
+
+  // 새 프로젝트 시작
+  const startNewProject = useCallback(() => {
+    setCurrentProjectId(null)
+    setProjectTitle('')
+    setSources([])
+    setGeneratedContents([])
+    setAudioOverviews([])
+    setMessages([])
+    setSelectedPreview(null)
+    setLastSavedAt(null)
+  }, [])
+
+  // 자동 저장 (소스나 콘텐츠 변경 시)
+  useEffect(() => {
+    if (sources.length === 0 && generatedContents.length === 0) return
+
+    // 3초 디바운스
+    const timer = setTimeout(() => {
+      saveProject()
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [sources.length, generatedContents.length, audioOverviews.length])
+
+  // 이벤트 리스너 - 사이드바에서 프로젝트 선택 시
+  useEffect(() => {
+    const handleLoadProject = (e: CustomEvent<{ projectId: string }>) => {
+      loadProject(e.detail.projectId)
+    }
+
+    const handleNewProject = () => {
+      startNewProject()
+    }
+
+    window.addEventListener('ai-studio-load-project', handleLoadProject as EventListener)
+    window.addEventListener('ai-studio-new-project', handleNewProject)
+
+    return () => {
+      window.removeEventListener('ai-studio-load-project', handleLoadProject as EventListener)
+      window.removeEventListener('ai-studio-new-project', handleNewProject)
+    }
+  }, [loadProject, startNewProject])
 
   // Suggested questions based on sources
   const suggestedQuestions = React.useMemo(() => {
@@ -747,18 +881,20 @@ export default function AIStudioPage() {
     }
   }, [inputValue, sources, messages])
 
-  // Audio Overview (Deep Dive) handler - 기존 오디오 유지하고 새로 추가
+  // Audio Overview (Deep Dive) handler - SSE 스트림으로 실시간 진행률 표시
   const handleGenerateAudio = useCallback(async () => {
     if (sources.length === 0) return
 
     // 새 오디오 ID 생성
     const newAudioId = crypto.randomUUID()
 
-    // 생성 중인 오디오를 배열에 추가
+    // 생성 중인 오디오를 배열에 추가 (초기 진행률 0%)
     setAudioOverviews(prev => [...prev, {
       id: newAudioId,
       title: 'Deep Dive conversation',
-      status: 'generating'
+      status: 'generating',
+      progress: 0,
+      progressMessage: '준비 중...'
     }])
     setGeneratingTypes(prev => [...prev, 'audio-overview'])
     setShowCustomize(false)
@@ -779,33 +915,99 @@ export default function AIStudioPage() {
         })
       })
 
-      const data = await response.json()
-
-      if (response.ok) {
-        // 해당 ID의 오디오를 ready 상태로 업데이트
-        setAudioOverviews(prev => prev.map(audio =>
-          audio.id === newAudioId
-            ? {
-                ...audio,
-                status: 'ready' as const,
-                audioUrl: data.audioUrl,
-                duration: data.duration,
-                transcript: data.transcript
-              }
-            : audio
-        ))
-      } else {
-        // 해당 ID의 오디오를 error 상태로 업데이트
-        setAudioOverviews(prev => prev.map(audio =>
-          audio.id === newAudioId
-            ? { ...audio, status: 'error' as const }
-            : audio
-        ))
+      if (!response.ok) {
+        throw new Error('Server error')
       }
-    } catch {
+
+      // SSE 스트림 처리
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('No response body')
+      }
+
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // SSE 이벤트 파싱 - \n\n로 구분된 이벤트 처리
+        const events = buffer.split('\n\n')
+        buffer = events.pop() || '' // 마지막 불완전한 이벤트는 버퍼에 유지
+
+        for (const event of events) {
+          const lines = event.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                console.log('[SSE] Received:', data)
+
+                // 진행률 업데이트
+                if (data.stage === 'complete' && data.success) {
+                  // 최종 결과
+                  setAudioOverviews(prev => prev.map(audio =>
+                    audio.id === newAudioId
+                      ? {
+                          ...audio,
+                          status: 'ready' as const,
+                          audioUrl: data.audioUrl,
+                          duration: data.duration,
+                          transcript: data.transcript,
+                          progress: 100,
+                          progressMessage: '완료!'
+                        }
+                      : audio
+                  ))
+                } else if (data.stage === 'error') {
+                  setAudioOverviews(prev => prev.map(audio =>
+                    audio.id === newAudioId
+                      ? {
+                          ...audio,
+                          status: 'error' as const,
+                          progress: data.progress,
+                          progressMessage: data.message
+                        }
+                      : audio
+                  ))
+                } else {
+                  // 진행률 업데이트 (script, tts, combining)
+                  // flushSync를 사용하여 즉시 UI 업데이트 강제
+                  flushSync(() => {
+                    setAudioOverviews(prev => prev.map(audio =>
+                      audio.id === newAudioId
+                        ? {
+                            ...audio,
+                            progress: data.progress,
+                            progressMessage: data.message,
+                            currentLine: data.current,
+                            totalLines: data.total,
+                            currentSpeaker: data.speaker
+                          }
+                        : audio
+                    ))
+                  })
+                }
+              } catch {
+                // JSON 파싱 실패 시 무시
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[Audio] Generation error:', error)
       setAudioOverviews(prev => prev.map(audio =>
         audio.id === newAudioId
-          ? { ...audio, status: 'error' as const }
+          ? {
+              ...audio,
+              status: 'error' as const,
+              progressMessage: '오류가 발생했습니다.'
+            }
           : audio
       ))
     } finally {
@@ -953,6 +1155,7 @@ export default function AIStudioPage() {
       })
 
       const data = await response.json()
+      console.log('[AI Studio] Generate response:', { ok: response.ok, hasContent: !!data.content, type })
 
       if (response.ok && data.content) {
         const completedContent: GeneratedContent = {
@@ -961,16 +1164,17 @@ export default function AIStudioPage() {
           content: data.content,
           // video-overview일 때 슬라이드 데이터 (TTS 오디오 포함) 저장
           slides: data.slides,
-          // Podcast-style video-overview (Gemini 2.5 TTS Multi-Speaker)
+          // Podcast-style audio-overview (Qwen3-TTS)
           podcastAudioUrl: data.audioUrl,
           dialogueLines: data.dialogueLines
         }
         setGeneratedContents(prev => prev.map(c =>
           c.id === newContent.id ? completedContent : c
         ))
-        // 세션 저장
-        saveSession(completedContent)
+        // 프로젝트 자동 저장 트리거됨 (useEffect에서 처리)
+        console.log('[AI Studio] Content ready, auto-save will trigger:', completedContent.type)
       } else {
+        console.log('[AI Studio] Generation failed or no content:', { ok: response.ok, data })
         setGeneratedContents(prev => prev.map(c =>
           c.id === newContent.id ? { ...c, status: 'error' } : c
         ))
@@ -982,7 +1186,7 @@ export default function AIStudioPage() {
     } finally {
       setGeneratingTypes(prev => prev.filter(t => t !== type))
     }
-  }, [sources, handleGenerateAudio, saveSession])
+  }, [sources, handleGenerateAudio])
 
   const readySources = sources.filter(s => s.status === 'ready')
   const selectedSources = readySources.filter(s => s.selected !== false)
@@ -1062,7 +1266,7 @@ export default function AIStudioPage() {
         // video-overview일 때 업로드된 이미지들을 슬라이드 이미지로 전달 (fallback)
         slideImages: studioType === 'video-overview' && !videoSlides ? sourceSlideImages : undefined,
         sourceCount: selectedSources.length,
-        // Podcast-style video-overview (Gemini 2.5 TTS Multi-Speaker)
+        // Podcast-style audio-overview (Qwen3-TTS)
         podcastAudioUrl: gc.podcastAudioUrl,
         dialogueLines: gc.dialogueLines
       })
@@ -1362,37 +1566,70 @@ export default function AIStudioPage() {
             </div>
 
             {/* 생성 중 로딩 표시 (카드 아래) */}
-            {generatingTypes.length > 0 && (
-              <div className={cn(
-                "p-4 rounded-xl border",
-                isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
-              )}>
-                <div className="flex items-center gap-3">
-                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: themeColor }} />
-                  <div className="flex-1">
-                    <p className={cn("text-sm font-medium", isDark ? "text-white" : "text-gray-900")}>
-                      {studioTitleMap[generatingTypes[0]] || generatingTypes[0]} 생성 중...
-                    </p>
-                    <p className={cn("text-xs mt-0.5", isDark ? "text-zinc-500" : "text-gray-500")}>
-                      소스를 분석하고 콘텐츠를 생성하고 있습니다
-                    </p>
-                  </div>
-                </div>
-                {/* 프로그레스 바 */}
+            {generatingTypes.length > 0 && (() => {
+              // 오디오 오버뷰의 경우 진행률 정보 가져오기
+              const generatingAudio = audioOverviews.find(a => a.status === 'generating')
+              const isAudioGenerating = generatingTypes.includes('audio-overview')
+              const progress = isAudioGenerating && generatingAudio ? generatingAudio.progress || 0 : null
+              const progressMessage = isAudioGenerating && generatingAudio ? generatingAudio.progressMessage : null
+              const currentLine = isAudioGenerating && generatingAudio ? generatingAudio.currentLine : null
+              const totalLines = isAudioGenerating && generatingAudio ? generatingAudio.totalLines : null
+              const currentSpeaker = isAudioGenerating && generatingAudio ? generatingAudio.currentSpeaker : null
+
+              return (
                 <div className={cn(
-                  "mt-3 h-1.5 rounded-full overflow-hidden",
-                  isDark ? "bg-white/10" : "bg-gray-200"
+                  "p-4 rounded-xl border",
+                  isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
                 )}>
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ backgroundColor: themeColor }}
-                    initial={{ width: '0%' }}
-                    animate={{ width: '70%' }}
-                    transition={{ duration: 3, ease: 'easeOut' }}
-                  />
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: themeColor }} />
+                    <div className="flex-1">
+                      <p className={cn("text-sm font-medium", isDark ? "text-white" : "text-gray-900")}>
+                        {studioTitleMap[generatingTypes[0]] || generatingTypes[0]} 생성 중...
+                        {progress !== null && (
+                          <span className="ml-2 font-bold" style={{ color: themeColor }}>
+                            {progress}%
+                          </span>
+                        )}
+                      </p>
+                      <p className={cn("text-xs mt-0.5", isDark ? "text-zinc-500" : "text-gray-500")}>
+                        {progressMessage || '소스를 분석하고 콘텐츠를 생성하고 있습니다'}
+                      </p>
+                      {/* TTS 상세 진행률 */}
+                      {currentLine !== null && totalLines !== null && (
+                        <p className={cn("text-xs mt-1 font-medium", isDark ? "text-zinc-400" : "text-gray-600")}>
+                          🎙️ {currentSpeaker && <span style={{ color: themeColor }}>{currentSpeaker}</span>} 대사 {currentLine}/{totalLines}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {/* 프로그레스 바 - 실제 진행률 표시 */}
+                  <div className={cn(
+                    "mt-3 h-2 rounded-full overflow-hidden",
+                    isDark ? "bg-white/10" : "bg-gray-200"
+                  )}>
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ backgroundColor: themeColor }}
+                      initial={{ width: '0%' }}
+                      animate={{ width: progress !== null ? `${progress}%` : '70%' }}
+                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                    />
+                  </div>
+                  {/* 상세 진행률 텍스트 */}
+                  {progress !== null && (
+                    <div className="flex justify-between items-center mt-2">
+                      <span className={cn("text-xs", isDark ? "text-zinc-500" : "text-gray-400")}>
+                        {progress < 10 ? '대본 생성' : progress < 90 ? '음성 변환' : progress < 100 ? '오디오 결합' : '완료'}
+                      </span>
+                      <span className={cn("text-xs font-medium", isDark ? "text-zinc-400" : "text-gray-500")}>
+                        {progress}% 완료
+                      </span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Generated Contents List - NotebookLM 스타일 */}
             <GeneratedContentsList

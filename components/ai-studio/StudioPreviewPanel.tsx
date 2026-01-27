@@ -52,7 +52,7 @@ export interface StudioContent {
   slides?: SlideData[]
   slideImages?: SlideImage[] // 원본 PDF 페이지 이미지들
   imageUrl?: string
-  // Podcast-style video-overview (Gemini 2.5 TTS Multi-Speaker)
+  // Podcast-style audio-overview (Qwen3-TTS: Ryan + Sohee)
   podcastAudioUrl?: string  // 전체 팟캐스트 오디오
   dialogueLines?: DialogueLine[]  // 파싱된 대화 라인들
 }
@@ -234,6 +234,308 @@ function AudioPlayer({
           <Volume2 className="w-5 h-5" />
         </button>
       </div>
+    </div>
+  )
+}
+
+// Audio Overview Podcast Component (2인 팟캐스트)
+function AudioOverviewPodcast({
+  audioUrl,
+  dialogueLines,
+  isDark,
+  themeColor
+}: {
+  audioUrl?: string
+  dialogueLines?: DialogueLine[]
+  isDark: boolean
+  themeColor: string
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const dialogueContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime)
+    const onLoadedMetadata = () => setDuration(audio.duration)
+    const onEnded = () => setIsPlaying(false)
+
+    audio.addEventListener('timeupdate', onTimeUpdate)
+    audio.addEventListener('loadedmetadata', onLoadedMetadata)
+    audio.addEventListener('ended', onEnded)
+
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate)
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata)
+      audio.removeEventListener('ended', onEnded)
+    }
+  }, [])
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+      } else {
+        audioRef.current.play()
+      }
+      setIsPlaying(!isPlaying)
+    }
+  }
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value)
+    if (audioRef.current) {
+      audioRef.current.currentTime = time
+      setCurrentTime(time)
+    }
+  }
+
+  const skip = (seconds: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(0, Math.min(duration, currentTime + seconds))
+    }
+  }
+
+  const changeSpeed = () => {
+    const speeds = [1, 1.25, 1.5, 1.75, 2]
+    const nextIndex = (speeds.indexOf(playbackRate) + 1) % speeds.length
+    const newRate = speeds[nextIndex]
+    setPlaybackRate(newRate)
+    if (audioRef.current) {
+      audioRef.current.playbackRate = newRate
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // 현재 재생 중인 대사 인덱스 추정 (대사 수로 균등 분배)
+  const currentDialogueIndex = dialogueLines && dialogueLines.length > 0 && duration > 0
+    ? Math.min(
+        Math.floor((currentTime / duration) * dialogueLines.length),
+        dialogueLines.length - 1
+      )
+    : 0
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Audio Element */}
+      {audioUrl && <audio ref={audioRef} src={audioUrl} />}
+
+      {/* Podcast Visual - 진행자 아바타 */}
+      <div className={cn(
+        "rounded-xl mb-4 p-6",
+        isDark ? "bg-gradient-to-br from-purple-900/50 to-pink-900/30" : "bg-gradient-to-br from-purple-100 to-pink-50"
+      )}>
+        <div className="flex items-center justify-center gap-8 mb-4">
+          {/* 민수 (남성) */}
+          <div className="text-center">
+            <div className={cn(
+              "w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-2 shadow-lg transition-transform",
+              dialogueLines && dialogueLines[currentDialogueIndex]?.speaker === '민수'
+                ? "scale-110 ring-4 ring-purple-500/50"
+                : ""
+            )}
+            style={{ backgroundColor: '#6366F1' }}
+            >
+              🎙️
+            </div>
+            <span className={cn(
+              "text-sm font-medium",
+              isDark ? "text-zinc-300" : "text-gray-700"
+            )}>민수</span>
+          </div>
+
+          {/* 지은 (여성) */}
+          <div className="text-center">
+            <div className={cn(
+              "w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-2 shadow-lg transition-transform",
+              dialogueLines && dialogueLines[currentDialogueIndex]?.speaker === '지은'
+                ? "scale-110 ring-4 ring-pink-500/50"
+                : ""
+            )}
+            style={{ backgroundColor: '#EC4899' }}
+            >
+              🎤
+            </div>
+            <span className={cn(
+              "text-sm font-medium",
+              isDark ? "text-zinc-300" : "text-gray-700"
+            )}>지은</span>
+          </div>
+        </div>
+
+        {/* 팟캐스트 제목 */}
+        <div className="text-center">
+          <h3 className={cn(
+            "text-lg font-bold",
+            isDark ? "text-white" : "text-gray-900"
+          )}>
+            🎧 테크 톡톡
+          </h3>
+          <p className={cn(
+            "text-sm",
+            isDark ? "text-zinc-400" : "text-gray-500"
+          )}>
+            AI 팟캐스트
+          </p>
+        </div>
+      </div>
+
+      {/* 대화 내용 스크롤 영역 */}
+      {dialogueLines && dialogueLines.length > 0 && (
+        <div
+          ref={dialogueContainerRef}
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto rounded-xl p-4 space-y-3 mb-4",
+            isDark ? "bg-white/5" : "bg-gray-50"
+          )}
+        >
+          {dialogueLines.map((line, idx) => {
+            const isMinsoo = line.speaker === '민수'
+            const isActive = idx === currentDialogueIndex
+
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "flex gap-3 transition-all",
+                  isActive ? "scale-[1.02]" : "opacity-70"
+                )}
+              >
+                {/* 스피커 뱃지 */}
+                <div
+                  className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0",
+                    isActive && "ring-2 ring-offset-2",
+                    isDark ? "ring-offset-zinc-900" : "ring-offset-white"
+                  )}
+                  style={{
+                    backgroundColor: isMinsoo ? '#6366F1' : '#EC4899',
+                    '--tw-ring-color': isMinsoo ? '#6366F1' : '#EC4899'
+                  } as React.CSSProperties}
+                >
+                  {isMinsoo ? '민' : '지'}
+                </div>
+
+                {/* 대사 */}
+                <div className={cn(
+                  "flex-1 p-3 rounded-xl text-sm",
+                  isMinsoo
+                    ? isDark ? "bg-purple-900/30" : "bg-purple-50"
+                    : isDark ? "bg-pink-900/30" : "bg-pink-50",
+                  isActive && "font-medium"
+                )}>
+                  <span className={cn(
+                    "font-semibold mr-2",
+                    isMinsoo
+                      ? isDark ? "text-purple-300" : "text-purple-600"
+                      : isDark ? "text-pink-300" : "text-pink-600"
+                  )}>
+                    {line.speaker}:
+                  </span>
+                  <span className={isDark ? "text-zinc-200" : "text-gray-700"}>
+                    {line.text}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Progress Bar */}
+      {audioUrl && (
+        <div className="mb-3">
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            value={currentTime}
+            onChange={handleSeek}
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, ${themeColor} ${(currentTime / (duration || 1)) * 100}%, ${isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb'} 0%)`
+            }}
+          />
+          <div className="flex justify-between mt-1">
+            <span className={cn("text-xs font-mono", isDark ? "text-zinc-500" : "text-gray-500")}>
+              {formatTime(currentTime)}
+            </span>
+            <span className={cn("text-xs font-mono", isDark ? "text-zinc-500" : "text-gray-500")}>
+              {formatTime(duration)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Controls */}
+      {audioUrl && (
+        <div className="flex items-center justify-center gap-4">
+          <button
+            onClick={changeSpeed}
+            className={cn(
+              "px-2 py-1 rounded text-xs font-bold min-w-[40px]",
+              isDark ? "bg-white/10 text-white" : "bg-gray-200 text-gray-700"
+            )}
+          >
+            {playbackRate}X
+          </button>
+
+          <button
+            onClick={() => skip(-15)}
+            className={cn(
+              "p-2 rounded-full transition-colors",
+              isDark ? "hover:bg-white/10 text-zinc-400" : "hover:bg-gray-200 text-gray-500"
+            )}
+          >
+            <SkipBack className="w-5 h-5" />
+          </button>
+
+          <button
+            onClick={togglePlay}
+            className="w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105"
+            style={{ backgroundColor: themeColor }}
+          >
+            {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
+          </button>
+
+          <button
+            onClick={() => skip(15)}
+            className={cn(
+              "p-2 rounded-full transition-colors",
+              isDark ? "hover:bg-white/10 text-zinc-400" : "hover:bg-gray-200 text-gray-500"
+            )}
+          >
+            <SkipForward className="w-5 h-5" />
+          </button>
+
+          <button className={cn(
+            "p-2 rounded-full transition-colors",
+            isDark ? "hover:bg-white/10 text-zinc-400" : "hover:bg-gray-200 text-gray-500"
+          )}>
+            <Volume2 className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {/* No audio fallback */}
+      {!audioUrl && (
+        <div className={cn(
+          "flex-1 flex items-center justify-center",
+          isDark ? "text-zinc-500" : "text-gray-400"
+        )}>
+          <p>오디오 생성 중... TTS 서버 상태를 확인하세요.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -866,10 +1168,10 @@ function VideoOverviewPreview({
   themeColor: string
   sourceSlideImages?: SlideImage[] // 업로드된 이미지들 (슬라이드로 사용)
   preloadedSlides?: SlideData[]    // API에서 미리 생성된 슬라이드 데이터 (TTS 오디오 포함)
-  podcastAudioUrl?: string         // Gemini 2.5 TTS Multi-Speaker 전체 오디오
+  podcastAudioUrl?: string         // Qwen3-TTS 전체 오디오
   dialogueLines?: DialogueLine[]   // 파싱된 대화 라인들
 }) {
-  // Podcast 모드 (Gemini 2.5 TTS Multi-Speaker)
+  // Podcast 모드 (Qwen3-TTS: 민수=Ryan, 지은=Sohee)
   const isPodcastMode = Boolean(podcastAudioUrl && dialogueLines && dialogueLines.length > 0)
 
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -1473,7 +1775,7 @@ function VideoOverviewPreview({
     }
   }, [playbackRate])
 
-  // === Podcast Mode UI (Gemini 2.5 TTS Multi-Speaker) ===
+  // === Podcast Mode UI (Qwen3-TTS) ===
   if (isPodcastMode && podcastAudioUrl && dialogueLines) {
     return (
       <div className="h-full flex flex-col">
@@ -2129,10 +2431,10 @@ export default function StudioPreviewPanel({
 
       {/* Content */}
       <div className="flex-1 overflow-hidden p-4">
-        {content.type === 'audio-overview' && content.audioUrl && (
-          <AudioPlayer
+        {content.type === 'audio-overview' && (
+          <AudioOverviewPodcast
             audioUrl={content.audioUrl}
-            duration={content.duration}
+            dialogueLines={content.dialogueLines}
             isDark={isDark}
             themeColor={themeColor}
           />
