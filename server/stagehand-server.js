@@ -704,6 +704,131 @@ async function handleRequest(action, params) {
       }
     }
 
+    case 'claude-code': {
+      const stagehand = await initStagehand()
+      const page = stagehand.context.pages()[0]
+
+      console.log('[Stagehand Server] Claude Code automation:', params.task)
+
+      const { task, context, projectPath, files, timeout = 300000 } = params
+
+      try {
+        // 1. Navigate to claude.ai/code
+        const targetUrl = 'https://claude.ai/code'
+        if (!page.url().includes('claude.ai/code')) {
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded' })
+          await new Promise(resolve => setTimeout(resolve, 3000))
+        }
+
+        // 2. Check if logged in (look for chat interface)
+        const isLoggedIn = await page.evaluate(() => {
+          // Check for common Claude Code UI elements
+          return document.querySelector('[data-testid="chat-input"]') !== null ||
+                 document.querySelector('textarea[placeholder*="Message"]') !== null ||
+                 document.querySelector('.ProseMirror') !== null
+        })
+
+        if (!isLoggedIn) {
+          return {
+            success: false,
+            output: '',
+            error: 'Not logged in to claude.ai. Please log in first.'
+          }
+        }
+
+        // 3. Build prompt with context
+        let prompt = task
+        if (context) {
+          prompt = `${context}\n\n${task}`
+        }
+        if (projectPath) {
+          prompt = `Project: ${projectPath}\n\n${prompt}`
+        }
+        if (files && files.length > 0) {
+          prompt = `Files: ${files.join(', ')}\n\n${prompt}`
+        }
+
+        // 4. Input the task using Stagehand act
+        await stagehand.act(`Type the following message in the chat: ${prompt}`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        // 5. Send the message (press Enter or click send button)
+        await stagehand.act('Send the message')
+
+        // 6. Wait for Claude Code to respond and process
+        const startTime = Date.now()
+        let output = ''
+        let filesModified = []
+        let gitCommit = ''
+
+        while (Date.now() - startTime < timeout) {
+          await new Promise(resolve => setTimeout(resolve, 3000))
+
+          // Check if response is complete (look for completion indicators)
+          const status = await page.evaluate(() => {
+            // Look for completion indicators
+            const lastMessage = [...document.querySelectorAll('[data-message-role="assistant"]')].pop()
+            if (!lastMessage) return { complete: false, text: '' }
+
+            // Check if still generating (loading spinner or typing indicator)
+            const isGenerating = document.querySelector('[data-testid="loading"]') !== null ||
+                                 lastMessage.querySelector('.animate-pulse') !== null
+
+            return {
+              complete: !isGenerating,
+              text: lastMessage.textContent || ''
+            }
+          })
+
+          if (status.complete && status.text) {
+            output = status.text
+
+            // Try to extract file information
+            const fileMatches = output.match(/(?:created|modified|updated)\s+`?([^`\n]+\.(ts|js|tsx|jsx|py|go|rs|md|json|yaml|yml))`?/gi)
+            if (fileMatches) {
+              filesModified = fileMatches.map(m => m.match(/`([^`]+)`/)?.[1] || m.split(/\s+/).pop()).filter(Boolean)
+            }
+
+            // Try to extract git commit hash
+            const commitMatch = output.match(/commit\s+([a-f0-9]{7,40})/i)
+            if (commitMatch) {
+              gitCommit = commitMatch[1]
+            }
+
+            break
+          }
+
+          // Timeout check
+          if (Date.now() - startTime >= timeout) {
+            return {
+              success: false,
+              output: '',
+              error: 'Timeout waiting for Claude Code response'
+            }
+          }
+        }
+
+        // 7. Take screenshot of the result
+        const screenshot = await page.screenshot({ type: 'jpeg', quality: 70 })
+
+        return {
+          success: true,
+          output: output || 'Task submitted to Claude Code',
+          filesModified: filesModified.length > 0 ? filesModified : undefined,
+          gitCommit: gitCommit || undefined,
+          screenshot: `data:image/jpeg;base64,${screenshot.toString('base64')}`
+        }
+
+      } catch (error) {
+        console.error('[Stagehand Server] Claude Code automation error:', error)
+        return {
+          success: false,
+          output: '',
+          error: error.message
+        }
+      }
+    }
+
     default:
       throw new Error(`Unknown action: ${action}`)
   }
@@ -725,8 +850,19 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // GET - status check
+  // GET - status check (health check)
   if (req.method === 'GET') {
+    // Health check endpoint
+    if (req.url === '/health') {
+      res.writeHead(200)
+      res.end(JSON.stringify({
+        status: 'ok',
+        uptime: process.uptime()
+      }))
+      return
+    }
+
+    // Status endpoint
     try {
       if (stagehandInstance) {
         const page = stagehandInstance.context.pages()[0]
@@ -772,8 +908,18 @@ const server = http.createServer(async (req, res) => {
   req.on('end', async () => {
     try {
       const data = JSON.parse(body)
-      const { action, ...params } = data
 
+      // Special endpoint for Claude Code automation
+      if (req.url === '/claude-code') {
+        console.log('[Stagehand Server] Claude Code request:', data.task?.substring(0, 100) + '...')
+        const result = await handleRequest('claude-code', data)
+        res.writeHead(200)
+        res.end(JSON.stringify(result))
+        return
+      }
+
+      // Regular actions
+      const { action, ...params } = data
       console.log('[Stagehand Server] Request:', action, params)
 
       const result = await handleRequest(action, params)

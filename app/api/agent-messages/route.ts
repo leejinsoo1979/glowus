@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 import type { AgentMessage, DeployedAgent } from '@/types/database'
+import { createUnifiedMemory } from '@/lib/memory/unified-agent-memory'
 
 const getOpenAI = () => {
   if (!process.env.OPENAI_API_KEY) {
@@ -144,18 +145,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Get conversation history for context
-    const { data: history } = await (supabase as any)
-      .from('agent_messages')
-      .select('*')
-      .eq('conversation_id', conversation_id)
-      .order('created_at', { ascending: true })
-      .limit(20)
+    // 🔥 크로스 플랫폼 통합: GlowUS Web + Telegram 모든 대화 기록 로드
+    const unifiedMemory = createUnifiedMemory(supabase as any)
+    const unifiedHistory = await unifiedMemory.getConversationHistory({
+      userId: user.id,
+      agentId: targetAgentId,
+      limit: 30,
+      crossPlatform: true  // Telegram 대화도 포함
+    })
+
+    // 통합 메시지를 agent_messages 형식으로 변환
+    const history = unifiedHistory.map(msg => ({
+      content: msg.content,
+      sender_type: msg.role === 'user' ? 'USER' : 'AGENT',
+      created_at: msg.createdAt.toISOString(),
+      metadata: { source: msg.source, ...msg.metadata }
+    }))
+
+    const telegramCount = unifiedHistory.filter(m => m.source === 'telegram').length
+    const webCount = unifiedHistory.filter(m => m.source === 'web').length
+    console.log(`[Agent Messages] 🔥 UNIFIED: ${history.length} messages (Web: ${webCount}, Telegram: ${telegramCount})`)
 
     // Generate agent response
     const agentResponse = await generateAgentResponse(
       targetAgent as DeployedAgent,
       content,
-      history || [],
+      history as AgentMessage[],
       delegate_to_agent_id
     )
 

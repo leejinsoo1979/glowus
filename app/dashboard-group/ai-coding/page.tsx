@@ -1115,6 +1115,19 @@ export default function NeuralMapPage() {
 
             <div className="flex items-center gap-2 flex-shrink-0">
 
+              {/* Terminal Toggle */}
+              <button
+                onClick={toggleTerminal}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors",
+                  terminalOpen
+                    ? isDark ? "bg-white/10 text-zinc-200" : "bg-zinc-200 text-zinc-700"
+                    : isDark ? "hover:bg-white/5 text-zinc-400 hover:text-zinc-200" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700"
+                )}
+                title="Toggle Terminal (Ctrl + `)"
+              >
+                <Terminal className="w-4 h-4" />
+              </button>
 
               {/* Right Panel Toggle */}
               <button

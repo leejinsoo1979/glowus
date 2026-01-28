@@ -1,6 +1,499 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { executeWithAutonomousLoop } from '@/lib/agent/autonomous-loop'
+import { isDevMode, DEV_USER } from '@/lib/dev-user'
+import { createUnifiedMemory } from '@/lib/memory/unified-agent-memory'
+
+/**
+ * In-memory chat history storage (fallback when Supabase tables don't exist)
+ * Key: session_id, Value: array of chat messages
+ */
+const chatHistoryMemory = new Map<string, Array<{ role: string; parts: Array<{ text: string }> }>>()
+
+/**
+ * 마지막 사용한 프로젝트 - Supabase 영구 저장
+ * 서버 재시작, 배포 후에도 기억 유지
+ */
+
+/**
+ * Supabase에서 마지막 프로젝트 조회
+ */
+async function getLastProject(supabase: any, telegramUserId: string): Promise<{ name: string | null; path: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('telegram_users')
+      .select('last_project, last_project_path')
+      .eq('id', telegramUserId)
+      .single()
+
+    if (error || !data) {
+      return { name: null, path: null }
+    }
+
+    return { name: data.last_project, path: data.last_project_path }
+  } catch (error) {
+    console.warn('[LastProject] Error getting last project:', error)
+    return { name: null, path: null }
+  }
+}
+
+/**
+ * Supabase에 마지막 프로젝트 저장
+ */
+async function setLastProject(supabase: any, telegramUserId: string, projectName: string, projectPath: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('telegram_users')
+      .update({
+        last_project: projectName,
+        last_project_path: projectPath,
+        last_project_at: new Date().toISOString()
+      })
+      .eq('id', telegramUserId)
+
+    if (error) {
+      console.warn('[LastProject] Error saving last project:', error.message)
+    } else {
+      console.log(`[LastProject] ✅ Saved to Supabase: ${projectName}`)
+    }
+  } catch (error) {
+    console.warn('[LastProject] Error saving last project:', error)
+  }
+}
+
+/**
+ * 작업 기록 저장 (코딩 작업, 파일 작업 등)
+ */
+async function saveWorkHistory(
+  supabase: any,
+  telegramUserId: string,
+  chatId: number,
+  workType: string,
+  data: {
+    projectName?: string
+    projectPath?: string
+    instruction: string
+    prompt?: string
+    status?: string
+    result?: string
+    errorMessage?: string
+    filesCreated?: string[]
+    filesModified?: string[]
+    gitInfo?: any
+    durationMs?: number
+  }
+): Promise<string | null> {
+  try {
+    const { data: workRecord, error } = await supabase
+      .from('telegram_work_history')
+      .insert({
+        telegram_user_id: telegramUserId,
+        chat_id: chatId,
+        work_type: workType,
+        project_name: data.projectName,
+        project_path: data.projectPath,
+        instruction: data.instruction,
+        prompt: data.prompt,
+        status: data.status || 'pending',
+        result: data.result,
+        error_message: data.errorMessage,
+        files_created: data.filesCreated,
+        files_modified: data.filesModified,
+        git_info: data.gitInfo,
+        duration_ms: data.durationMs,
+        completed_at: data.status === 'completed' || data.status === 'failed' ? new Date().toISOString() : null
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.warn('[WorkHistory] Error saving work history:', error.message)
+      return null
+    }
+
+    console.log(`[WorkHistory] ✅ Saved: ${workType} - ${data.instruction.substring(0, 50)}...`)
+    return workRecord?.id || null
+  } catch (error) {
+    console.warn('[WorkHistory] Error saving work history:', error)
+    return null
+  }
+}
+
+/**
+ * 작업 기록 업데이트 (상태 변경)
+ */
+async function updateWorkHistory(
+  supabase: any,
+  workId: string,
+  updates: {
+    status?: string
+    result?: string
+    errorMessage?: string
+    filesCreated?: string[]
+    filesModified?: string[]
+    gitInfo?: any
+    durationMs?: number
+  }
+): Promise<void> {
+  try {
+    const updateData: any = { ...updates }
+    if (updates.status === 'completed' || updates.status === 'failed') {
+      updateData.completed_at = new Date().toISOString()
+    }
+
+    const { error } = await supabase
+      .from('telegram_work_history')
+      .update(updateData)
+      .eq('id', workId)
+
+    if (error) {
+      console.warn('[WorkHistory] Error updating work history:', error.message)
+    } else {
+      console.log(`[WorkHistory] ✅ Updated: ${workId}`)
+    }
+  } catch (error) {
+    console.warn('[WorkHistory] Error updating work history:', error)
+  }
+}
+
+/**
+ * 대화 기록 관리
+ *
+ * 핵심 차별점: 영구 보존
+ * - 모든 대화는 Supabase에 영구 저장
+ * - LLM 모델을 바꿔도 기억 유지
+ * - 서버 재시작해도 기억 유지
+ * - 절대 삭제하지 않음
+ */
+
+/**
+ * Generate a detailed prompt based on Korean instruction
+ * Distinguishes between CREATE and MODIFY requests
+ */
+function generateDetailedPromptExample(koreanInstruction: string, isExistingProject: boolean = false): string {
+  const instruction = koreanInstruction.toLowerCase()
+
+  // Git 커밋/푸시 지시
+  const gitInstructions = `
+
+IMPORTANT - After completing the implementation:
+1. Add changed files - git add .
+2. Commit with descriptive message - git commit -m feat-description
+3. Push to remote - git push origin main
+4. If push fails, just commit locally`
+
+  // 수정 요청 키워드 감지
+  const modifyKeywords = ['수정', '고쳐', '업데이트', '변경', '바꿔', '교체', '추가', '넣어', '개선', '향상', '최적화']
+  const isModifyRequest = modifyKeywords.some(kw => instruction.includes(kw)) || isExistingProject
+
+  // 기능별 키워드 매칭
+  const featureKeywords: Record<string, string> = {
+    '소리': 'sound effects using Web Audio API or HTML5 Audio',
+    '사운드': 'sound effects using Web Audio API or HTML5 Audio',
+    '애니메이션': 'smooth CSS or Canvas animations',
+    '효과': 'visual effects and transitions',
+    '스타일': 'improved styling and visual design',
+    '색': 'color scheme and visual appearance',
+    '속도': 'game speed and performance',
+    '레벨': 'level system and difficulty progression',
+    '점수': 'scoring system',
+    '버튼': 'button controls and UI',
+    '모바일': 'mobile responsive design and touch controls',
+    '터치': 'touch controls for mobile devices',
+  }
+
+  // 수정 요청일 경우 - 기존 프로젝트 수정 프롬프트
+  if (isModifyRequest) {
+    // 어떤 기능을 수정/추가하는지 파악
+    const requestedFeatures: string[] = []
+    for (const [korean, english] of Object.entries(featureKeywords)) {
+      if (instruction.includes(korean)) {
+        requestedFeatures.push(english)
+      }
+    }
+
+    if (requestedFeatures.length > 0) {
+      return `IMPORTANT: This is an EXISTING project. Do NOT create new files from scratch.
+
+First, read and understand the existing code files in this directory.
+
+Then MODIFY the existing code to add: ${requestedFeatures.join(', ')}.
+
+Requirements:
+- Preserve all existing functionality
+- Only add or modify code needed for the new feature
+- Keep the same code style and patterns
+- Test that existing features still work after modification` + gitInstructions
+    }
+
+    // 일반 수정 요청
+    return `IMPORTANT: This is an EXISTING project. Do NOT create new files from scratch.
+
+First, read and understand the existing code files in this directory.
+
+Then modify the code according to this request: ${koreanInstruction}
+
+Requirements:
+- Preserve all existing functionality
+- Only change what is needed for this request
+- Keep the same code style and patterns` + gitInstructions
+  }
+
+  // 새 프로젝트 생성 요청일 경우 - 기존 로직
+  if (instruction.includes('테트리스') || instruction.includes('tetris')) {
+    return 'Create a classic Tetris game using HTML5 Canvas and JavaScript. Requirements: 10x20 game board, all 7 tetromino shapes with rotation, soft drop and hard drop, line clearing with scoring, level progression, ghost piece, next piece display, keyboard controls, game over detection, pause functionality, clean modern UI.' + gitInstructions
+  }
+
+  if (instruction.includes('벽돌깨기') || instruction.includes('brick') || instruction.includes('breakout')) {
+    return 'Create a Brick Breaker game using HTML5 Canvas and JavaScript. Requirements: Paddle control with mouse/keyboard, bouncing ball physics, multiple rows of bricks, score system, lives system, level progression, power-ups, sound effects, clean modern UI.' + gitInstructions
+  }
+
+  if (instruction.includes('계산기') || instruction.includes('calculator')) {
+    return 'Build a modern calculator app. Requirements: Basic operations, clear and backspace, decimal support, keyboard input, calculation history, clean modern UI, responsive design.' + gitInstructions
+  }
+
+  if (instruction.includes('투두') || instruction.includes('todo') || instruction.includes('할일')) {
+    return 'Create a Todo list application with local storage. Features: Add/edit/delete tasks, mark complete, filter by status, drag and drop reordering, due dates, priority levels, search, dark mode.' + gitInstructions
+  }
+
+  if (instruction.includes('게임') || instruction.includes('game')) {
+    return 'Create an interactive browser-based game using HTML5 Canvas. Include: Game loop at 60fps, keyboard controls, score tracking, levels, collision detection, sound effects, game over and restart, clean modern UI.' + gitInstructions
+  }
+
+  // 기본 프롬프트
+  return `Implement: ${koreanInstruction}. Requirements: Clean code, error handling, modern best practices, responsive design if UI involved.` + gitInstructions
+}
+
+/**
+ * Get or create Telegram user
+ */
+async function getOrCreateTelegramUser(supabase: any, from: any) {
+  const userId = String(from.id)
+
+  try {
+    // Try to get existing user
+    const { data: existingUser, error: selectError } = await supabase
+      .from('telegram_users')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (existingUser) {
+      // Update last active
+      await supabase
+        .from('telegram_users')
+        .update({
+          last_active_at: new Date().toISOString(),
+          total_messages: (existingUser.total_messages || 0) + 1,
+        })
+        .eq('id', userId)
+
+      return existingUser
+    }
+
+    // Create new user
+    const { data: newUser, error: insertError } = await supabase
+      .from('telegram_users')
+      .insert({
+        id: userId,
+        username: from.username,
+        first_name: from.first_name,
+        last_name: from.last_name,
+        language_code: from.language_code,
+        is_bot: from.is_bot || false,
+        total_messages: 1,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.warn('[Telegram User] Table might not exist, using fallback:', insertError.message)
+    }
+
+    return newUser || { id: userId, username: from.username || 'Unknown' }
+  } catch (error) {
+    console.warn('[Telegram User] Error, using fallback:', error)
+    return { id: userId, username: from.username || 'Unknown' }
+  }
+}
+
+/**
+ * Get or create chat session
+ */
+async function getOrCreateChatSession(
+  supabase: any,
+  telegramUserId: string,
+  chatId: number,
+  agentId: string,
+  agentName: string
+) {
+  try {
+    // Try to get existing session
+    const { data: existingSession, error: selectError } = await supabase
+      .from('telegram_chat_sessions')
+      .select('*')
+      .eq('chat_id', chatId)
+      .eq('agent_id', agentId)
+      .eq('is_active', true)
+      .single()
+
+    if (existingSession) {
+      // Update last message time
+      await supabase
+        .from('telegram_chat_sessions')
+        .update({
+          last_message_at: new Date().toISOString(),
+          message_count: (existingSession.message_count || 0) + 1,
+        })
+        .eq('id', existingSession.id)
+
+      return existingSession
+    }
+
+    // Create new session
+    const { data: newSession, error: insertError } = await supabase
+      .from('telegram_chat_sessions')
+      .insert({
+        telegram_user_id: telegramUserId,
+        chat_id: chatId,
+        agent_id: agentId,
+        agent_name: agentName,
+        message_count: 1,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.warn('[Telegram Session] Table might not exist, using fallback:', insertError.message)
+    }
+
+    return newSession || { id: `fallback-${chatId}-${agentId}`, message_count: 1 }
+  } catch (error) {
+    console.warn('[Telegram Session] Error, using fallback:', error)
+    return { id: `fallback-${chatId}-${agentId}`, message_count: 1 }
+  }
+}
+
+/**
+ * Load chat history from database (영구 보존된 대화 기록)
+ * 🔥 크로스 플랫폼 통합: Telegram + GlowUS Web 모든 대화 기록 통합 로드
+ * Fallback to in-memory storage if database fails
+ */
+async function loadChatHistory(
+  supabase: any,
+  sessionId: string,
+  telegramUserId?: string,
+  agentId?: string
+) {
+  try {
+    // 🔥 통합 메모리 사용 - Telegram + GlowUS Web 모두 조회
+    if (telegramUserId) {
+      const unifiedMemory = createUnifiedMemory(supabase)
+      const unifiedMessages = await unifiedMemory.getConversationHistory({
+        telegramUserId,
+        agentId,
+        limit: 50,
+        crossPlatform: true  // GlowUS Web 대화도 포함
+      })
+
+      if (unifiedMessages.length > 0) {
+        // Gemini 형식으로 변환
+        const history = unifiedMemory.toGeminiFormat(unifiedMessages)
+        const telegramCount = unifiedMessages.filter(m => m.source === 'telegram').length
+        const webCount = unifiedMessages.filter(m => m.source === 'web').length
+        console.log(`[Telegram History] 🔥 UNIFIED: ${history.length} messages (Telegram: ${telegramCount}, Web: ${webCount})`)
+        return history
+      }
+    }
+
+    // 기존 방식 폴백 - sessionId 기반 조회
+    const { data: messages, error } = await supabase
+      .from('telegram_chat_messages')
+      .select('role, content, tool_calls, tool_results, created_at')
+      .eq('session_id', sessionId)
+      .order('message_index', { ascending: true })
+
+    if (error) {
+      console.warn('[Telegram History] Database error, falling back to memory:', error.message)
+      // Fallback to in-memory storage
+      const memoryHistory = chatHistoryMemory.get(sessionId) || []
+      console.log(`[Telegram History] Loaded ${memoryHistory.length} messages from MEMORY`)
+      return memoryHistory
+    }
+
+    if (!messages || messages.length === 0) {
+      // Try in-memory storage
+      const memoryHistory = chatHistoryMemory.get(sessionId) || []
+      console.log(`[Telegram History] No DB messages, loaded ${memoryHistory.length} messages from MEMORY`)
+      return memoryHistory
+    }
+
+    // Convert to Gemini format
+    const dbHistory = messages.map((msg: any) => ({
+      role: msg.role,
+      parts: [{ text: msg.content }],
+    }))
+
+    console.log(`[Telegram History] Loaded ${dbHistory.length} messages from DATABASE`)
+    return dbHistory
+  } catch (error) {
+    console.warn('[Telegram History] Error loading from database, using memory:', error)
+    // Fallback to in-memory storage
+    const memoryHistory = chatHistoryMemory.get(sessionId) || []
+    console.log(`[Telegram History] Exception: Loaded ${memoryHistory.length} messages from MEMORY`)
+    return memoryHistory
+  }
+}
+
+/**
+ * Save message to database (영구 보존)
+ * Fallback to in-memory storage if database fails
+ */
+async function saveChatMessage(
+  supabase: any,
+  sessionId: string,
+  telegramUserId: string,
+  chatId: number,
+  role: string,
+  content: string,
+  messageIndex: number,
+  toolCalls?: any,
+  toolResults?: any
+) {
+  try {
+    const { error } = await supabase.from('telegram_chat_messages').insert({
+      session_id: sessionId,
+      telegram_user_id: telegramUserId,
+      chat_id: chatId,
+      role,
+      content,
+      message_index: messageIndex,
+      tool_calls: toolCalls || null,
+      tool_results: toolResults || null,
+    })
+
+    if (error) {
+      console.warn('[Telegram Message] Database save failed, saving to MEMORY:', error.message)
+
+      // Save to in-memory storage
+      const history = chatHistoryMemory.get(sessionId) || []
+      history.push({ role, parts: [{ text: content }] })
+      chatHistoryMemory.set(sessionId, history)
+      console.log(`[Telegram Message] Saved to MEMORY (total: ${history.length} messages)`)
+    } else {
+      console.log(`[Telegram Message] Saved to DATABASE`)
+    }
+  } catch (error) {
+    console.warn('[Telegram Message] Exception, saving to MEMORY:', error)
+
+    // Save to in-memory storage
+    const history = chatHistoryMemory.get(sessionId) || []
+    history.push({ role, parts: [{ text: content }] })
+    chatHistoryMemory.set(sessionId, history)
+    console.log(`[Telegram Message] Saved to MEMORY after exception (total: ${history.length} messages)`)
+  }
+}
 
 /**
  * Telegram Bot Webhook Handler
@@ -24,44 +517,160 @@ export async function POST(request: NextRequest) {
     // Telegram message structure
     const message = body.message
     if (!message || !message.text) {
+      console.log('[Telegram Webhook] No message or text, ignoring')
       return NextResponse.json({ ok: true }) // Ignore non-text messages
     }
 
     const chatId = message.chat.id
     const text = message.text.trim()
     const username = message.from.username || message.from.first_name || 'User'
+    console.log(`[Telegram Webhook] Chat ID: ${chatId}, Text: "${text}", User: ${username}`)
 
-    // Command parsing: /agent <agent_name_or_id> <instruction>
-    if (!text.startsWith('/agent ')) {
-      await sendTelegramMessage(chatId,
-        `❌ Invalid command format.\n\nUsage:\n/agent <agent_name> <instruction>\n\nExample:\n/agent CodeBot refactor the homepage`
-      )
+    // Default agent: 레이첼 (사용자가 별도 설정하지 않으면 기본 에이전트 사용)
+    const DEFAULT_AGENT = '레이첼'
+
+    // Command: /reset - Clear chat history (mark session as inactive, start new session)
+    if (text === '/reset' || text === '/clear') {
+      const adminClient = createAdminClient()
+
+      // Mark current session as inactive
+      await adminClient
+        .from('telegram_chat_sessions')
+        .update({ is_active: false })
+        .eq('chat_id', chatId)
+        .eq('is_active', true)
+
+      await sendTelegramMessage(chatId, '✅ 새로운 대화를 시작합니다. (이전 대화는 영구 보존되어 있습니다)')
       return NextResponse.json({ ok: true })
     }
 
-    const args = text.substring(7).trim() // Remove '/agent '
-    const firstSpaceIndex = args.indexOf(' ')
+    // Command: /list - Show available agents
+    if (text === '/list' || text === '/agents' || text === '/start') {
+      console.log('[Telegram Webhook] Handling /list command')
+      const adminClient = createAdminClient()
 
-    if (firstSpaceIndex === -1) {
-      await sendTelegramMessage(chatId, '❌ Please provide an instruction after the agent name.')
+      // Build query - use deployed_agents table with dev mode support
+      let query = (adminClient as any)
+        .from('deployed_agents')
+        .select('id, name, description, llm_provider, llm_model, status')
+        .eq('status', 'ACTIVE')
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      // In dev mode, show all agents; otherwise filter by owner
+      if (!isDevMode()) {
+        // In production, would need authentication
+        // For now, just show all agents
+      }
+
+      const { data: agents, error: listError } = await query
+
+      console.log(`[Telegram Webhook] Found ${agents?.length || 0} agents, error: ${listError}`)
+
+      if (listError || !agents || agents.length === 0) {
+        console.log('[Telegram Webhook] No agents found, sending empty list message')
+        await sendTelegramMessage(chatId,
+          `📋 사용 가능한 에이전트가 없습니다.\n\nGlowUS 웹에서 에이전트를 먼저 생성해주세요:\nhttp://localhost:3000/agent-builder`
+        )
+        return NextResponse.json({ ok: true })
+      }
+
+      console.log('[Telegram Webhook] Building agent list message')
+      let message = `🤖 사용 가능한 AI 에이전트 (${agents.length}개)\n\n`
+      agents.forEach((agent: any, index: number) => {
+        message += `${index + 1}. **${agent.name}**\n`
+        if (agent.description) {
+          message += `   ${agent.description}\n`
+        }
+        message += `   모델: ${agent.llm_provider}/${agent.llm_model}\n`
+        message += `   사용법: /agent ${agent.name} <instruction>\n\n`
+      })
+
+      message += `💡 예시:\n/agent ${agents[0].name} hello, introduce yourself`
+
+      console.log('[Telegram Webhook] Sending agent list message')
+      await sendTelegramMessage(chatId, message)
+      console.log('[Telegram Webhook] Message sent successfully')
       return NextResponse.json({ ok: true })
     }
 
-    const agentNameOrId = args.substring(0, firstSpaceIndex).trim()
-    const instruction = args.substring(firstSpaceIndex + 1).trim()
+    // Parse agent and instruction
+    let agentNameOrId: string
+    let instruction: string
 
-    if (!instruction) {
-      await sendTelegramMessage(chatId, '❌ Instruction cannot be empty.')
+    // Pattern 1: /agent <name> <instruction>
+    if (text.startsWith('/agent ')) {
+      const args = text.substring(7).trim()
+      const firstSpaceIndex = args.indexOf(' ')
+
+      if (firstSpaceIndex === -1) {
+        await sendTelegramMessage(chatId, '❌ 에이전트 이름 뒤에 지시사항을 입력해주세요.')
+        return NextResponse.json({ ok: true })
+      }
+
+      agentNameOrId = args.substring(0, firstSpaceIndex).trim()
+      instruction = args.substring(firstSpaceIndex + 1).trim()
+    }
+    // Pattern 2: @<name> <instruction>
+    else if (text.startsWith('@')) {
+      const args = text.substring(1).trim()
+      const firstSpaceIndex = args.indexOf(' ')
+
+      if (firstSpaceIndex === -1) {
+        await sendTelegramMessage(chatId, '❌ 에이전트 이름 뒤에 지시사항을 입력해주세요.\n\n예시: @레이첼 안녕하세요')
+        return NextResponse.json({ ok: true })
+      }
+
+      agentNameOrId = args.substring(0, firstSpaceIndex).trim()
+      instruction = args.substring(firstSpaceIndex + 1).trim()
+    }
+    // Pattern 3: Natural conversation - use default agent
+    else {
+      agentNameOrId = DEFAULT_AGENT
+      instruction = text
+    }
+
+    if (!instruction || instruction.trim() === '') {
+      await sendTelegramMessage(chatId, '❌ 메시지를 입력해주세요.')
       return NextResponse.json({ ok: true })
     }
 
     // Find agent by name or ID
     const adminClient = createAdminClient()
-    const { data: agents, error: agentError } = await (adminClient as any)
+
+    // Try to find by exact name first
+    let { data: agents, error: agentError } = await (adminClient as any)
       .from('deployed_agents')
       .select('*')
-      .or(`id.eq.${agentNameOrId},name.ilike.%${agentNameOrId}%`)
+      .eq('name', agentNameOrId)
+      .eq('status', 'ACTIVE')
       .limit(1)
+
+    // If not found, try case-insensitive search
+    if (!agents || agents.length === 0) {
+      const result = await (adminClient as any)
+        .from('deployed_agents')
+        .select('*')
+        .ilike('name', `%${agentNameOrId}%`)
+        .eq('status', 'ACTIVE')
+        .limit(1)
+
+      agents = result.data
+      agentError = result.error
+    }
+
+    // If still not found, try by ID
+    if (!agents || agents.length === 0) {
+      const result = await (adminClient as any)
+        .from('deployed_agents')
+        .select('*')
+        .eq('id', agentNameOrId)
+        .eq('status', 'ACTIVE')
+        .limit(1)
+
+      agents = result.data
+      agentError = result.error
+    }
 
     if (agentError || !agents || agents.length === 0) {
       await sendTelegramMessage(chatId,
@@ -72,14 +681,10 @@ export async function POST(request: NextRequest) {
 
     const agent = agents[0]
 
-    // Send confirmation message
-    await sendTelegramMessage(chatId,
-      `🤖 Agent "${agent.name}" is working on your request...\n\n📋 Instruction: ${instruction.substring(0, 200)}${instruction.length > 200 ? '...' : ''}`
-    )
-
-    // Execute agent (async, don't wait)
-    executeAgentAsync(agent.id, instruction, chatId, username).catch(error => {
-      console.error('[Telegram Webhook] Async execution error:', error)
+    // For simple chat, execute agent directly without autonomous loop
+    executeSimpleChat(agent, instruction, chatId, username, message.from).catch(error => {
+      console.error('[Telegram Webhook] Chat execution error:', error)
+      sendTelegramMessage(chatId, `❌ 오류가 발생했습니다: ${error.message}`)
     })
 
     return NextResponse.json({ ok: true })
@@ -90,53 +695,994 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Execute agent and send results back to Telegram
+ * Execute agent with full GlowUS capabilities
  */
-async function executeAgentAsync(
+async function executeSimpleChat(
+  agent: any,
+  instruction: string,
+  chatId: number,
+  username: string,
+  telegramFrom: any
+) {
+  const supabase = createAdminClient()
+
+  try {
+    // 1. Get or create Telegram user (영구 보존)
+    const telegramUser = await getOrCreateTelegramUser(supabase, telegramFrom)
+    console.log(`[Telegram Chat] User: ${telegramUser.id} (${telegramUser.username})`)
+
+    // 2. Get or create chat session (영구 보존)
+    const session = await getOrCreateChatSession(
+      supabase,
+      telegramUser.id,
+      chatId,
+      agent.id,
+      agent.name
+    )
+    console.log(`[Telegram Chat] Session: ${session.id}`)
+
+    // 3. Load chat history from database (영구 보존된 기록)
+    // 🔥 크로스 플랫폼: Telegram + GlowUS Web 모든 대화 통합 로드
+    const savedHistory = await loadChatHistory(supabase, session.id, telegramUser.id, agent.id)
+    console.log(`[Telegram Chat] Loaded ${savedHistory.length} messages (cross-platform unified)`)
+
+    // Import GPT-4o Mini for tool calling - BEST TOOL USE + AFFORDABLE
+    const { ChatOpenAI } = await import('@langchain/openai')
+    const { createSuperAgentTools } = await import('@/lib/ai/super-agent-tools')
+    const { AIMessage, HumanMessage, SystemMessage, ToolMessage } = await import(
+      '@langchain/core/messages'
+    )
+
+    // Create tools with agent context
+    let tools = createSuperAgentTools({
+      agentId: agent.id,
+      agentName: agent.name,
+      userId: agent.owner_id,
+    })
+
+    // 🔥 텔레그램 에이전트는 Mac 제어 전용 - 직접 코딩하는 도구는 항상 제거
+    // 코딩은 Claude Code CLI를 통해서만 가능
+    const forbiddenTools = [
+      'write_file', 'edit_file', 'read_file', 'list_files', 'create_file',
+      'use_claude_code', 'create_project', 'update_project',
+      'create_node', 'update_node', 'delete_node', 'create_edge',
+      'manage_blueprint', 'update_blueprint', 'list_blueprints',
+    ]
+    tools = tools.filter(t => !forbiddenTools.includes(t.name))
+    console.log(`[Telegram Chat] 🔧 Removed forbidden tools, ${tools.length} remaining`)
+
+    // 코딩 작업 감지 - 더 넓은 키워드
+    const codingTaskKeywords = [
+      // 생성
+      '만들어', '코딩', '작성', '구현', '개발', '생성',
+      // 수정
+      '수정', '고쳐', '업데이트', '변경', '바꿔', '교체',
+      // 추가/삭제
+      '추가', '삭제', '제거', '넣어',
+      // 개선
+      '리팩토링', '개선', '최적화', '향상',
+      // 대상
+      '테트리스', '게임', '앱', '프로그램', '코드', '함수', '클래스', '컴포넌트', '페이지', '기능',
+      // 동작
+      '소리', '사운드', '애니메이션', '효과', '스타일'
+    ]
+    const shoppingKeywords = ['쇼핑', '구매', '주문', '장바구니', '쿠팡', '네이버쇼핑', '배송']
+    const isShoppingTask = shoppingKeywords.some(kw => instruction.includes(kw))
+    const isCodingTask = !isShoppingTask && codingTaskKeywords.some(kw => instruction.includes(kw))
+
+    if (isCodingTask) {
+      // 코딩 작업 시 Mac 제어 도구만 (Claude Code에 위임)
+      const allowedTools = ['open_app', 'run_applescript', 'run_terminal']
+      tools = tools.filter(t => allowedTools.includes(t.name))
+      console.log(`[Telegram Chat] 🔥 CODING MODE: Only ${tools.length} Mac control tools`)
+    } else if (isShoppingTask) {
+      console.log(`[Telegram Chat] 🛒 SHOPPING MODE: ${tools.length} tools available`)
+    }
+
+    console.log(`[Telegram Chat] Created ${tools.length} tools for agent ${agent.name}`)
+
+    // 🔥 디버깅: 시작 알림
+    const taskMode = isCodingTask ? ' [코딩 모드]' : isShoppingTask ? ' [쇼핑 모드]' : ''
+    await sendTelegramMessage(chatId, `🤖 ${agent.name} 에이전트 시작 (도구 ${tools.length}개)${taskMode}`)
+
+    // Create GPT-4o model with tools - SMARTER, follows multi-step instructions better
+    const model = new ChatOpenAI({
+      model: 'gpt-4o',
+      temperature: 0.2, // 낮춰서 더 정확하게
+      openAIApiKey: process.env.OPENAI_API_KEY,
+    }).bindTools(tools)
+
+    const systemPrompt = `You are ${agent.name}, a POWERFUL AUTONOMOUS AI AGENT with FULL SYSTEM ACCESS.
+
+# 🚨 CRITICAL: COMPLETE ALL STEPS
+When a task requires multiple steps (e.g., "open VS Code and run terminal command"):
+1. Call ONLY ONE tool at a time
+2. Wait for tool result
+3. Continue with next step
+4. DO NOT stop until ALL steps are complete
+5. Example: mkdir → open_app → run_applescript (terminal) → run_applescript (type) → run_applescript (enter)
+
+# 🚨 ABSOLUTE RULES - NO EXCEPTIONS:
+
+## 1. TOOL USAGE IS MANDATORY
+- You have 54 powerful tools for Mac system control
+- EVERY request MUST result in tool calls
+- NEVER respond without calling tools
+- If unsure which tool, try the most relevant one
+- NEVER say "완료했습니다" until ALL steps are executed
+
+## 2. FORBIDDEN PHRASES (자동 해고 사유):
+❌ "죄송하지만" (Sorry but)
+❌ "불가능합니다" (Impossible)
+❌ "지원하지 않습니다" (Not supported)
+❌ "할 수 없습니다" (Cannot do)
+❌ "직접 실행할 수 없습니다" (Cannot execute directly)
+❌ "제가 도와드릴 수 있는 것은" (What I can help with is)
+❌ "대신에" (Instead)
+
+## 3. REQUIRED BEHAVIOR:
+✅ ALWAYS call tools FIRST, explain AFTER
+✅ Multi-step tasks = multiple tool calls in sequence
+✅ If user says "do X", you DO X with tools
+✅ Never ask for permission, just execute
+
+## 4. AVAILABLE CAPABILITIES:
+- **Terminal**: run_terminal - Execute ANY shell command
+- **Browser**: open_app(app="Google Chrome", url="...") - Open URLs
+- **Apps**: open_app - Launch any Mac application (VS Code, Finder, Slack, Terminal, etc.)
+- **Files**: read_file, write_file, list_files - Full file system access
+- **Web Search**: web_search - Search the internet
+- **System**: Full Mac control
+
+## 5. GLOW US WEB APPLICATION ROUTES:
+**Base URL**: http://localhost:3000 (local development)
+
+**NEVER guess URLs or use external domains like gloworks.ai!**
+
+Available routes:
+- Main: http://localhost:3000
+- AI Coding (Neural Map): http://localhost:3000/dashboard-group/ai-coding
+- Agents: http://localhost:3000/dashboard-group/agents
+- Messenger: http://localhost:3000/dashboard-group/messenger
+- My Neurons: http://localhost:3000/dashboard-group/neurons
+- Settings: http://localhost:3000/dashboard-group/settings
+- Agent Builder: http://localhost:3000/agent-builder
+- AI Studio: http://localhost:3000/dashboard-group/ai-studio
+- Task Hub: http://localhost:3000/dashboard-group/task-hub
+- Workflow Builder: http://localhost:3000/dashboard-group/workflow-builder
+
+**Example Tasks**:
+- "글로우어스 AI 코팅 가라" → open_app(app="Google Chrome", url="http://localhost:3000/dashboard-group/ai-coding")
+- "에이전트 페이지 열어" → open_app(app="Google Chrome", url="http://localhost:3000/dashboard-group/agents")
+- "글로우어스 열어" → open_app(app="Google Chrome", url="http://localhost:3000")
+
+## 6. MAC 프로그램 제어:
+
+**설치된 앱 실행** - open_app(app="앱 이름"):
+- "VS Code 열어" → open_app(app="Visual Studio Code")
+- "슬랙 열어" → open_app(app="Slack")
+- "파인더 열어" → open_app(app="Finder")
+- "카카오톡 열어" → open_app(app="KakaoTalk")
+- "포토샵 열어" → open_app(app="Adobe Photoshop")
+- "엑셀 열어" → open_app(app="Microsoft Excel")
+- Any Mac app with exact app name!
+
+**터미널 명령 실행** - run_terminal(command="명령어"):
+- "npm install 실행" → run_terminal(command="npm install")
+- "git status 확인" → run_terminal(command="git status")
+- "python 스크립트 실행" → run_terminal(command="python script.py")
+- "파일 목록 보기" → run_terminal(command="ls -la")
+- Any terminal command!
+
+**프로그램 안에서 작업하기** - run_applescript(script="AppleScript"):
+- "Slack에서 메시지 전송" → run_applescript(script="tell application \\"Slack\\" to activate")
+- "Finder에서 Documents 열어" → run_applescript(script="tell application \\"Finder\\" to open folder \\"Documents\\"")
+- "시스템 볼륨 조절" → run_applescript(script="set volume output volume 50")
+- "Safari 새 탭" → run_applescript(script="tell application \\"Safari\\" to make new document")
+
+**도구 선택 가이드**:
+- 앱 시작: open_app
+- 앱 내부 제어: run_applescript (버튼 클릭, 메뉴 선택, 텍스트 입력)
+- 웹 페이지 조작: browser_automation (Stagehand)
+- CLI 도구: run_terminal
+
+## 7. COMMON TASKS:
+- "Mac 터미널 실행" → open_app(app="Terminal")
+- "Claude 실행" → run_terminal(command="claude")
+- "YouTube 영상 재생" → web_search + open_app with YouTube URL
+- "파일 읽기" → read_file
+- "글로우어스 열어" → open_app(app="Google Chrome", url="http://localhost:3000")
+
+## 8. MULTI-STEP TASKS:
+
+**🚨 AI Coding 페이지 터미널 실행 🚨** (웹 페이지 내 터미널):
+When user says "AI 코팅에서 터미널 실행" or "AI 코팅 터미널 열어":
+
+YOU MUST FOLLOW THESE EXACT STEPS:
+
+Step 1: Open AI Coding page
+Tool: open_app(app="Google Chrome", url="http://localhost:3000/dashboard-group/ai-coding")
+
+Step 2: Activate terminal panel (MUST USE browser_automation!)
+Tool: browser_automation(task="Click on the terminal tab or panel at the bottom of the AI Coding page to activate it")
+
+Step 3 (if command needed): Type command (MUST USE browser_automation!)
+Tool: browser_automation(task="Type 'claude' in the terminal and press Enter")
+
+Final: Tell user "✅ AI 코팅 페이지의 터미널을 실행했습니다."
+
+**🚨 CRITICAL - READ THIS CAREFULLY 🚨**:
+- User says "AI 코팅에서 터미널" = They want the TERMINAL INSIDE the AI Coding WEB PAGE
+- This is NOT Mac Terminal.app!
+- This is NOT a system terminal!
+- This is a WEB PAGE with a terminal UI element at the bottom!
+- You MUST use browser_automation to interact with it!
+- NEVER use run_terminal for AI Coding terminal!
+- run_terminal is ONLY for macOS system terminal commands!
+
+**Mac Terminal Workflow** (macOS Terminal.app):
+When user says just "터미널 실행" or "터미널에서 Claude 실행" (WITHOUT mentioning "AI 코팅"):
+1. open_app(app="Terminal")
+2. run_terminal(command="claude")
+
+**🎯 TOOL SELECTION RULE 🎯**:
+- User mentions "AI 코팅" + "터미널" → MUST use browser_automation
+- User mentions only "터미널" → use run_terminal
+- If you see "AI 코팅" in the request, you MUST use browser_automation, not run_terminal!
+
+**VS Code 프로젝트 생성 및 터미널 실행**:
+When user says "VS Code에서 새프로젝트 만들어" or "브이에스코드에서 프로젝트 생성":
+
+Step 1: Create project folder
+Tool: run_terminal(command="mkdir -p ~/Documents/agent-tester && cd ~/Documents/agent-tester")
+
+Step 2: Open in VS Code
+Tool: run_terminal(command="code ~/Documents/agent-tester")
+
+Step 3: Open VS Code integrated terminal (Control + backtick)
+Tool: run_applescript(script='tell application "System Events" to tell process "Code" to key code 50 using control down')
+
+Step 4 (if command needed): Type command in terminal
+Tool: run_applescript(script='tell application "System Events" to keystroke "claude" & return')
+
+**VS Code 내부 터미널만 실행** (프로젝트는 이미 열려있음):
+When user says "VS Code에서 터미널 띄워" or "브이에스코드 터미널":
+
+Step 1: Activate VS Code
+Tool: open_app(app="Visual Studio Code")
+
+Step 2: Open VS Code integrated terminal (Control + backtick)
+Tool: run_applescript(script='tell application "System Events" to tell process "Code" to key code 50 using control down')
+
+Step 3 (if command needed): Type command
+Tool: run_applescript(script='tell application "System Events" to keystroke "claude" & return')
+
+**🚨 IMPORTANT - create_project vs VS Code 프로젝트 🚨**:
+- create_project: GlowUS 내부 프로젝트 생성 (웹앱 기능)
+- VS Code 프로젝트: 파일시스템에 폴더 생성 → run_terminal로 mkdir + code 명령
+- User says "VS Code에서 프로젝트" → NEVER use create_project! Use run_terminal!
+
+**🚨 VS Code 터미널 vs Mac 터미널 🚨**:
+- "VS Code 터미널" = VS Code의 Integrated Terminal → use run_applescript with Control key
+- "터미널" alone = Mac Terminal.app → use run_terminal
+- VS Code는 앱이므로 run_applescript로 내부 제어!
+
+## 9. EXECUTION PATTERN:
+User: "X 실행해줘"
+You: [Immediately call appropriate tool]
+You: "✅ X를 실행했습니다" (after tool execution)
+
+NOT: "죄송하지만 X를 직접 실행할 수 없습니다" ← THIS IS FORBIDDEN
+
+## 10. FEW-SHOT EXAMPLES (FOLLOW THESE EXACTLY):
+
+⚠️ **CRITICAL: "VS Code" vs "AI 코딩" 구분**
+- **"VS Code", "브이에스코드", "비주얼스튜디오"** → Visual Studio Code 앱 (Mac 앱)
+- **"AI 코딩", "AI코딩", "글로우어스 AI 코딩"** → GlowUS AI Coding 웹페이지 (Chrome)
+
+**Example 1: VS Code 터미널에서 명령 실행**
+User: "vs 코드에서 터미널 열어서 클로드코드 실행해줘"
+Step 1: [Call open_app(app="Visual Studio Code")]
+Step 2: [Call run_applescript]:
+  script = "tell application \\"System Events\\" to tell process \\"Code\\" to key code 50 using control down"
+  (Wait for terminal to open)
+Step 3: [Call run_applescript]:
+  script = "delay 1\\ntell application \\"System Events\\"\\nkeystroke \\"claude\\"\\nkey code 36\\nend tell"
+Result: "✅ VS Code에서 터미널을 열고 claude 명령을 실행했습니다."
+
+**Example 2: VS Code 프로젝트 폴더 열기 + 터미널 명령 실행**
+User: "VS 코드에서 test3 프로젝트 열고 터미널에서 claude 실행해"
+Step 1: [Call run_terminal]: mkdir -p ~/Documents/test3
+Step 2: [Call run_terminal]: code ~/Documents/test3
+Step 3: [Call run_applescript]: delay 3 후 터미널 열기
+  script = "delay 3\\ntell application \\"System Events\\" to tell process \\"Code\\" to key code 50 using control down"
+Step 4: [Call run_applescript]: 명령어 입력
+  script = "delay 1\\ntell application \\"System Events\\"\\nkeystroke \\"claude\\"\\nkey code 36\\nend tell"
+Result: "✅ VS Code에서 test3 폴더를 열고 터미널에서 claude를 실행했습니다."
+
+⚠️ **CRITICAL AppleScript KEY CODES**:
+- key code 50 = backtick 키 (grave accent)
+- key code 36 = Enter/Return 키
+- key code 50 using control down = Control+backtick (VS Code 터미널 토글)
+
+**Example 3: GlowUS AI 코딩 페이지 터미널**
+User: "AI 코딩에서 터미널 실행해줘"
+You: [Call open_app(app="Google Chrome", url="http://localhost:3000/dashboard-group/ai-coding")]
+You: [Call browser_automation(task="Click on the terminal tab at the bottom of the AI Coding page")]
+You: "✅ GlowUS AI 코딩 페이지의 터미널을 실행했습니다."
+
+**Example 4: Mac 시스템 터미널**
+User: "일반 터미널 열어서 npm install 실행해"
+You: [Call open_app(app="Terminal")]
+You: [Call run_terminal(command="npm install")]
+You: "✅ Mac 터미널에서 npm install을 실행했습니다."
+
+**Example 5: 🔥 Claude Code에 코딩 지시 전달하기 (핵심!)**
+User: "터미널에서 클로드코드 실행하고 버튼 컴포넌트 만들어줘"
+Step 1: [Call open_app(app="Visual Studio Code")]
+Step 2: [Call run_applescript]: 터미널 열기
+  script = "delay 1\\ntell application \\"System Events\\" to tell process \\"Code\\" to key code 50 using control down"
+Step 3: [Call run_applescript]: claude 실행
+  script = "delay 1\\ntell application \\"System Events\\"\\nkeystroke \\"claude\\"\\nkey code 36\\nend tell"
+Step 4: [Call run_applescript]: ⚠️ Claude Code가 시작될 때까지 기다린 후 코딩 지시 입력!
+  script = "delay 5\\ntell application \\"System Events\\"\\nkeystroke \\"버튼 컴포넌트 만들어줘\\"\\nkey code 36\\nend tell"
+Result: "✅ VS Code에서 Claude Code를 실행하고 '버튼 컴포넌트 만들어줘' 지시를 전달했습니다."
+
+🚨 **CRITICAL - 코딩 지시가 있으면 반드시 Step 4까지 실행!**
+- User가 "X 만들어줘", "X 코딩해", "X 작업해" 등 코딩 지시를 포함하면
+- Claude Code 실행 후 해당 지시를 keystroke로 입력해야 함!
+- delay 5는 Claude Code가 시작되는 시간을 기다리기 위함
+
+## 11. REMEMBER:
+- You are NOT a chatbot, you are a SYSTEM CONTROLLER
+- You CAN and MUST control the Mac, apps, terminal, browser, files
+- Every request is a COMMAND, not a question
+- Your job is to EXECUTE, not to explain why you can't
+- FOLLOW THE EXAMPLES ABOVE EXACTLY
+
+START ACTING LIKE THE POWERFUL AGENT YOU ARE. NO MORE EXCUSES.`
+
+    // Build message history for OpenAI
+    const messages: any[] = [new SystemMessage(systemPrompt)]
+
+    // Add saved history
+    for (const msg of savedHistory) {
+      if (msg.role === 'user') {
+        messages.push(new HumanMessage(msg.parts[0].text))
+      } else if (msg.role === 'model' || msg.role === 'assistant') {
+        messages.push(new AIMessage(msg.parts[0].text))
+      }
+    }
+
+    // Add current user message with keyword-based hints
+    let userMessage = instruction
+
+    // 🎯 Keyword-based tool hint injection
+    // 대화 히스토리에서 AI 코딩 컨텍스트 확인
+    const historyText = savedHistory.map((h: any) => h.parts?.[0]?.text || '').join(' ')
+    const isAICodingContext = historyText.includes('AI 코딩') || historyText.includes('AI코딩') || historyText.includes('글로우어스')
+
+    if (instruction.includes('AI 코딩') || instruction.includes('AI코딩') || instruction.includes('글로우어스')) {
+      if (instruction.includes('터미널')) {
+        userMessage += '\n\n[SYSTEM HINT: This is about GlowUS AI Coding WEB PAGE terminal. Use browser_automation to click the terminal panel!]'
+      } else {
+        userMessage += '\n\n[SYSTEM HINT: User is talking about GlowUS AI Coding page (http://localhost:3000/dashboard-group/ai-coding)]'
+      }
+    } else if (instruction.includes('일반') && instruction.includes('터미널')) {
+      userMessage += '\n\n[SYSTEM HINT: User wants Mac Terminal.app. Use open_app(app="Terminal") and run_terminal]'
+    } else if (instruction.includes('맥') && instruction.includes('터미널')) {
+      userMessage += '\n\n[SYSTEM HINT: User wants Mac Terminal.app. Use open_app(app="Terminal") and run_terminal]'
+    } else if (instruction.includes('터미널')) {
+      // 대화 맥락 확인
+      if (isAICodingContext) {
+        userMessage += '\n\n[SYSTEM HINT: 🚨 Based on conversation history, user is working with GlowUS AI Coding page. Use browser_automation to interact with the terminal panel in the web page!]'
+      } else {
+        userMessage += '\n\n[SYSTEM HINT: 🚨 "터미널" means VS Code integrated terminal by DEFAULT! Use open_app(app="Visual Studio Code") then run_applescript with key code 50 using control down. Do NOT open Mac Terminal.app!]'
+      }
+    }
+
+    if (instruction.includes('VS') || instruction.includes('브이에스') || instruction.includes('비주얼')) {
+      userMessage += '\n\n[SYSTEM HINT: This is about VISUAL STUDIO CODE APP. Use open_app(app="Visual Studio Code") and run_applescript with key code 50 using control down!]'
+
+      if (instruction.includes('프로젝트') && instruction.includes('생성')) {
+        userMessage += '\n[HINT: Use run_terminal with mkdir + code commands, NOT create_project tool]'
+      }
+    }
+
+    // 🔥 코딩 지시 감지 - Claude Automation Server로 직접 호출
+    if (isCodingTask) {
+      // 프로젝트 경로 파싱: @프로젝트명 또는 #프로젝트명 형식
+      // 예: "@my-app 테트리스 만들어" → projectName = "my-app"
+      const projectMatch = instruction.match(/^[@#]([^\s]+)\s+/)
+      let projectName = projectMatch ? projectMatch[1] : null
+      let codingInstruction = projectMatch ? instruction.replace(projectMatch[0], '').trim() : instruction
+      let isExistingProject = false
+
+      // 프로젝트명 없으면 Supabase에서 마지막 프로젝트 조회 (= 기존 프로젝트 수정)
+      if (!projectName) {
+        const lastProject = await getLastProject(supabase, telegramUser.id)
+        if (lastProject.name) {
+          projectName = lastProject.name
+          isExistingProject = true  // 마지막 프로젝트 사용 = 기존 프로젝트 수정
+          console.log(`[Telegram Webhook] Using last project from DB (existing): ${projectName}`)
+        }
+      }
+
+      // 수정 요청 키워드 감지 (명시적으로 프로젝트명을 지정해도 수정 요청일 수 있음)
+      const modifyKeywords = ['수정', '고쳐', '업데이트', '변경', '바꿔', '교체', '추가', '넣어', '개선', '향상', '최적화', '나게', '나도록', '되게', '되도록']
+      if (modifyKeywords.some(kw => codingInstruction.includes(kw))) {
+        isExistingProject = true
+        console.log(`[Telegram Webhook] Detected modify request keywords`)
+      }
+
+      // 키워드 기반 추출 (기존 로직)
+      for (const kw of ['실행하고', '실행해서', '열고', '열어서', '띄우고', '띄워서', '해서', '하고']) {
+        if (codingInstruction.includes(kw)) {
+          codingInstruction = codingInstruction.split(kw).pop()?.trim() || codingInstruction
+          break
+        }
+      }
+
+      // 영어 프롬프트 생성 (기존 프로젝트 여부 전달)
+      const generatedEnglishPrompt = generateDetailedPromptExample(codingInstruction, isExistingProject)
+      console.log(`[Telegram Webhook] isExistingProject: ${isExistingProject}, prompt: ${generatedEnglishPrompt.substring(0, 100)}...`)
+
+      // Claude Automation Server 호출 (127.0.0.1 사용 - localhost IPv6 이슈 방지)
+      const automationServerUrl = process.env.CLAUDE_AUTOMATION_SERVER_URL || 'http://127.0.0.1:45680'
+      const baseProjectDir = process.env.PROJECTS_BASE_DIR || '/Users/jinsoolee/Documents'
+
+      // 프로젝트 경로 결정
+      let projectPath: string
+      if (projectName) {
+        projectPath = `${baseProjectDir}/${projectName}`
+        // 마지막 프로젝트 Supabase에 영구 저장
+        await setLastProject(supabase, telegramUser.id, projectName, projectPath)
+      } else {
+        // 프로젝트명 없으면 새 폴더 생성 (타임스탬프)
+        const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        projectName = `claude-${timestamp}-${Date.now().toString(36)}`
+        projectPath = `${baseProjectDir}/${projectName}`
+        // 새 프로젝트도 Supabase에 영구 저장
+        await setLastProject(supabase, telegramUser.id, projectName, projectPath)
+      }
+
+      // 🚀 직접 자동화 서버 호출 (에이전트 통하지 않음)
+      const startTime = Date.now()
+
+      // 📝 작업 시작 기록 (Supabase 영구 저장)
+      const workId = await saveWorkHistory(supabase, telegramUser.id, chatId,
+        isExistingProject ? 'project_modify' : 'project_create', {
+          projectName,
+          projectPath,
+          instruction: codingInstruction,
+          prompt: generatedEnglishPrompt,
+          status: 'pending'
+        })
+
+      try {
+        console.log(`[Telegram Webhook] 🔥 Calling Claude Automation Server directly...`)
+        console.log(`[Telegram Webhook] Project: ${projectName}, Path: ${projectPath}`)
+
+        // 먼저 서버 health check
+        try {
+          const healthCheck = await fetch(`${automationServerUrl}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000)
+          })
+          if (!healthCheck.ok) {
+            throw new Error('Health check failed')
+          }
+          console.log(`[Telegram Webhook] ✅ Automation server is healthy`)
+        } catch (healthError: any) {
+          console.error(`[Telegram Webhook] ❌ Automation server health check failed:`, healthError.message)
+
+          // 📝 작업 실패 기록
+          if (workId) {
+            await updateWorkHistory(supabase, workId, {
+              status: 'failed',
+              errorMessage: `Automation server health check failed: ${healthError.message}`,
+              durationMs: Date.now() - startTime
+            })
+          }
+
+          await sendTelegramMessage(chatId, `⚠️ Claude Automation Server가 응답하지 않습니다.\n\n터미널에서 다음 명령으로 서버를 시작하세요:\nnode server/claude-automation-server.js\n\n또는 LaunchAgent를 확인하세요.`)
+          return NextResponse.json({ ok: true })
+        }
+
+        // 📝 작업 진행 중 상태 업데이트
+        if (workId) {
+          await updateWorkHistory(supabase, workId, { status: 'in_progress' })
+        }
+
+        const automationResponse = await fetch(`${automationServerUrl}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectPath,
+            repoName: projectName,
+            prompt: generatedEnglishPrompt,
+            chatId: chatId,  // 텔레그램 chatId 전달
+            telegramBotToken: process.env.TELEGRAM_BOT_TOKEN  // 봇 토큰도 전달
+          }),
+          // 실행은 오래 걸릴 수 있으므로 타임아웃 길게 (10분)
+          signal: AbortSignal.timeout(600000)
+        })
+
+        const result = await automationResponse.json()
+        console.log(`[Telegram Webhook] Automation server response:`, result)
+
+        if (result.success) {
+          // 📝 작업 완료 기록
+          if (workId) {
+            await updateWorkHistory(supabase, workId, {
+              status: 'completed',
+              result: result.output?.substring(0, 5000),
+              durationMs: Date.now() - startTime
+            })
+          }
+
+          // 성공 메시지는 자동화 서버에서 텔레그램으로 직접 전송됨
+          // 여기서는 간단한 확인 메시지만
+          await sendTelegramMessage(chatId, `🚀 코딩 작업 시작!\n\n요청: "${codingInstruction}"\n프로젝트: ${projectName}\n\n자세한 진행 상황은 곧 알림됩니다...`)
+        } else {
+          // 📝 작업 실패 기록
+          if (workId) {
+            await updateWorkHistory(supabase, workId, {
+              status: 'failed',
+              errorMessage: result.error || '알 수 없는 오류',
+              durationMs: Date.now() - startTime
+            })
+          }
+
+          await sendTelegramMessage(chatId, `❌ 자동화 서버 오류\n\n${result.error || '알 수 없는 오류'}`)
+        }
+
+        // 코딩 작업은 자동화 서버가 처리하므로 여기서 반환
+        return NextResponse.json({ ok: true })
+      } catch (automationError: any) {
+        console.error(`[Telegram Webhook] Automation server error:`, automationError)
+
+        // 📝 작업 실패 기록
+        if (workId) {
+          await updateWorkHistory(supabase, workId, {
+            status: 'failed',
+            errorMessage: automationError.message,
+            durationMs: Date.now() - startTime
+          })
+        }
+
+        await sendTelegramMessage(chatId, `⚠️ Claude Automation Server 연결 실패\n\n서버가 실행 중인지 확인하세요.\n\n오류: ${automationError.message}`)
+        return NextResponse.json({ ok: true })
+      }
+    }
+
+    messages.push(new HumanMessage(userMessage))
+
+    console.log(`[Telegram Chat] Sending message: "${instruction}"`)
+    console.log(`[Telegram Chat] History length: ${messages.length}`)
+    if (userMessage !== instruction) {
+      console.log(`[Telegram Chat] 🎯 Hint injected for keyword-based tool selection`)
+    }
+
+    // Call OpenAI with tools
+    const response = await model.invoke(messages)
+
+    console.log(`[Telegram Chat] Response received`)
+    console.log(`[Telegram Chat] Tool calls:`, response.tool_calls?.length || 0)
+
+    // 🔥 디버깅: LLM 응답 정보
+    await sendTelegramMessage(chatId, `📡 LLM 응답 받음 - 도구 호출: ${response.tool_calls?.length || 0}개`)
+
+    let toolResults: any[] = []
+    let finalResponse = ''
+
+    // Check if tools were called
+    if (response.tool_calls && response.tool_calls.length > 0) {
+      const toolNames = response.tool_calls.map((tc: any) => tc.name).join(', ')
+      await sendTelegramMessage(chatId, `🔧 도구 호출 중: ${toolNames}`)
+
+      // Execute tools and collect results
+      for (const toolCall of response.tool_calls) {
+        console.log(`[Telegram Chat] Executing tool: ${toolCall.name}`)
+        console.log(`[Telegram Chat] Tool args:`, JSON.stringify(toolCall.args))
+
+        const tool = tools.find(t => t.name === toolCall.name)
+
+        if (tool) {
+          try {
+            // 🔥 디버깅: AppleScript의 경우 실행 전에 스크립트 내용 표시
+            if (toolCall.name === 'run_applescript') {
+              const scriptPreview = toolCall.args.script?.substring(0, 300) || 'NO SCRIPT'
+              console.log(`[Telegram Chat] 🍎 AppleScript 실행 예정:\n${scriptPreview}`)
+              await sendTelegramMessage(chatId, `🍎 AppleScript 실행 중...\n\`\`\`\n${scriptPreview}\n\`\`\``)
+            }
+
+            const result = await tool.invoke(toolCall.args)
+            console.log(`[Telegram Chat] Tool result:`, result?.substring(0, 200))
+
+            toolResults.push({
+              tool: toolCall.name,
+              args: toolCall.args,
+              result: result,
+              tool_call_id: toolCall.id,
+            })
+
+            // Parse result to show user
+            try {
+              const parsed = JSON.parse(result)
+              if (parsed.success) {
+                // 🔥 AppleScript 결과는 더 자세히 표시
+                if (toolCall.name === 'run_applescript' && parsed.scriptPreview) {
+                  await sendTelegramMessage(
+                    chatId,
+                    `✅ ${toolCall.name} 성공\n출력: ${parsed.output || '(없음)'}`
+                  )
+                } else {
+                  await sendTelegramMessage(
+                    chatId,
+                    `✅ ${toolCall.name}: ${parsed.message || '완료'}`
+                  )
+                }
+              } else {
+                await sendTelegramMessage(
+                  chatId,
+                  `❌ ${toolCall.name}: ${parsed.error || '실패'}`
+                )
+              }
+            } catch {
+              // Not JSON, show raw result
+              await sendTelegramMessage(chatId, `📝 ${toolCall.name} 결과:\n${result.substring(0, 500)}`)
+            }
+          } catch (error: any) {
+            console.error(`[Telegram Chat] Tool execution error:`, error)
+            await sendTelegramMessage(chatId, `❌ ${toolCall.name} 실행 중 오류: ${error.message}`)
+          }
+        }
+      }
+
+      // Get final response from model after tool execution
+      const followUpMessages = [...messages, response]
+
+      // Add tool results as ToolMessage (required by OpenAI API)
+      for (let i = 0; i < response.tool_calls.length; i++) {
+        const toolCall = response.tool_calls[i]
+        const toolResult = toolResults[i]
+
+        followUpMessages.push(
+          new ToolMessage({
+            content: toolResult?.result || 'No result',
+            tool_call_id: toolCall.id || '',
+          })
+        )
+      }
+
+      // Ask model for next action (ReAct loop)
+      const nextActionResponse = await model.invoke(followUpMessages)
+
+      // Check if model wants to call more tools
+      if (nextActionResponse.tool_calls && nextActionResponse.tool_calls.length > 0) {
+        const additionalToolNames = nextActionResponse.tool_calls.map((tc: any) => tc.name).join(', ')
+        await sendTelegramMessage(chatId, `🔧 추가 도구 호출: ${additionalToolNames}`)
+
+        // Collect additional tool results
+        const additionalToolResults: any[] = []
+
+        // Execute additional tools
+        for (const toolCall of nextActionResponse.tool_calls) {
+          console.log(`[Telegram Chat] Executing additional tool: ${toolCall.name}`)
+          console.log(`[Telegram Chat] Tool args:`, JSON.stringify(toolCall.args))
+
+          const tool = tools.find(t => t.name === toolCall.name)
+
+          if (tool) {
+            try {
+              const result = await tool.invoke(toolCall.args)
+              console.log(`[Telegram Chat] Tool result:`, result?.substring(0, 200))
+
+              additionalToolResults.push({
+                result: result,
+                tool_call_id: toolCall.id,
+              })
+
+              // Parse result to show user
+              try {
+                const parsed = JSON.parse(result)
+                if (parsed.success) {
+                  await sendTelegramMessage(chatId, `✅ ${toolCall.name}: ${parsed.message || '완료'}`)
+                } else {
+                  await sendTelegramMessage(chatId, `❌ ${toolCall.name}: ${parsed.error || '실패'}`)
+                }
+              } catch {
+                await sendTelegramMessage(chatId, `📝 ${toolCall.name} 결과:\n${result.substring(0, 500)}`)
+              }
+            } catch (error: any) {
+              console.error(`[Telegram Chat] Tool execution error:`, error)
+              additionalToolResults.push({
+                result: `Error: ${error.message}`,
+                tool_call_id: toolCall.id,
+              })
+              await sendTelegramMessage(chatId, `❌ ${toolCall.name} 실행 중 오류: ${error.message}`)
+            }
+          }
+        }
+
+        // Add nextActionResponse and ToolMessages for additional tools
+        followUpMessages.push(nextActionResponse)
+
+        for (let i = 0; i < nextActionResponse.tool_calls.length; i++) {
+          const toolCall = nextActionResponse.tool_calls[i]
+          const toolResult = additionalToolResults[i]
+
+          followUpMessages.push(
+            new ToolMessage({
+              content: toolResult?.result || 'No result',
+              tool_call_id: toolResult?.tool_call_id || toolCall.id || '',
+            })
+          )
+        }
+
+        // Get final summary after all tools
+        const finalSummary = await model.invoke(followUpMessages)
+
+        // Check if finalSummary still has tool calls (3rd round)
+        if (finalSummary.tool_calls && finalSummary.tool_calls.length > 0) {
+          await sendTelegramMessage(chatId, `🔧 3단계 도구 호출: ${finalSummary.tool_calls.map((tc: any) => tc.name).join(', ')}`)
+
+          // Collect 3rd round tool results
+          const round3ToolResults: any[] = []
+
+          // Execute 3rd round tools
+          for (const toolCall of finalSummary.tool_calls) {
+            console.log(`[Telegram Chat] Executing 3rd round tool: ${toolCall.name}`)
+            const tool = tools.find(t => t.name === toolCall.name)
+
+            if (tool) {
+              try {
+                const result = await tool.invoke(toolCall.args)
+                console.log(`[Telegram Chat] 3rd round tool result:`, result?.substring ? result.substring(0, 200) : result)
+
+                // Store result with tool_call_id
+                round3ToolResults.push({
+                  result: result,
+                  tool_call_id: toolCall.id,
+                })
+
+                try {
+                  const parsed = JSON.parse(result)
+                  if (parsed.success) {
+                    await sendTelegramMessage(chatId, `✅ ${toolCall.name}: ${parsed.message || '완료'}`)
+                  } else {
+                    await sendTelegramMessage(chatId, `❌ ${toolCall.name}: ${parsed.error || '실패'}`)
+                  }
+                } catch {
+                  await sendTelegramMessage(chatId, `📝 ${toolCall.name} 완료`)
+                }
+              } catch (error: any) {
+                await sendTelegramMessage(chatId, `❌ ${toolCall.name} 오류: ${error.message}`)
+                round3ToolResults.push({
+                  result: `Error: ${error.message}`,
+                  tool_call_id: toolCall.id,
+                })
+              }
+            }
+          }
+
+          // Check for 4th round
+          const round4Response = await model.invoke([
+            ...messages,
+            new HumanMessage(userMessage),
+            response,
+            ...toolResults.map((tr: any) => new ToolMessage({
+              content: tr.result,
+              tool_call_id: tr.tool_call_id,
+            })),
+            nextActionResponse,
+            ...additionalToolResults.map((tr: any) => new ToolMessage({
+              content: tr.result,
+              tool_call_id: tr.tool_call_id,
+            })),
+            finalSummary,
+            ...round3ToolResults.map((tr: any) => new ToolMessage({
+              content: tr.result,
+              tool_call_id: tr.tool_call_id,
+            })),
+          ])
+
+          if (round4Response.tool_calls && round4Response.tool_calls.length > 0) {
+            await sendTelegramMessage(chatId, `🔧 4단계 도구 호출: ${round4Response.tool_calls.map((tc: any) => tc.name).join(', ')}`)
+
+            for (const toolCall of round4Response.tool_calls) {
+              console.log(`[Telegram Chat] Executing 4th round tool: ${toolCall.name}`)
+              const tool = tools.find(t => t.name === toolCall.name)
+
+              if (tool) {
+                try {
+                  const result = await tool.invoke(toolCall.args)
+                  console.log(`[Telegram Chat] 4th round tool result:`, result?.substring ? result.substring(0, 200) : result)
+
+                  try {
+                    const parsed = JSON.parse(result)
+                    if (parsed.success) {
+                      await sendTelegramMessage(chatId, `✅ ${toolCall.name}: ${parsed.message || '완료'}`)
+                    } else {
+                      await sendTelegramMessage(chatId, `❌ ${toolCall.name}: ${parsed.error || '실패'}`)
+                    }
+                  } catch {
+                    await sendTelegramMessage(chatId, `📝 ${toolCall.name} 완료`)
+                  }
+                } catch (error: any) {
+                  await sendTelegramMessage(chatId, `❌ ${toolCall.name} 오류: ${error.message}`)
+                }
+              }
+            }
+
+            finalResponse = '✅ 모든 작업을 완료했습니다.'
+          } else {
+            finalResponse = '✅ 모든 작업을 완료했습니다.'
+          }
+        } else {
+          finalResponse = finalSummary.content as string
+        }
+      } else {
+        // No more tools to call
+        finalResponse = nextActionResponse.content as string
+      }
+    } else {
+      // No tool calls, just use the response
+      finalResponse = response.content as string
+      // 🔥 디버깅: 도구 호출 없음
+      await sendTelegramMessage(chatId, `⚠️ LLM이 도구를 호출하지 않음. 텍스트 응답만 생성됨.`)
+    }
+
+    // Convert finalResponse to string if needed
+    const finalResponseStr = typeof finalResponse === 'string' ? finalResponse : JSON.stringify(finalResponse)
+    console.log(`[Telegram Chat] Final response: ${finalResponseStr?.substring(0, 100)}...`)
+
+    // Save messages to database (영구 보존)
+    const currentMessageIndex = session.message_count - 1
+
+    // Save user message
+    await saveChatMessage(
+      supabase,
+      session.id,
+      telegramUser.id,
+      chatId,
+      'user',
+      instruction,
+      currentMessageIndex * 2,
+      undefined,
+      undefined
+    )
+
+    // Save model response with tool info
+    await saveChatMessage(
+      supabase,
+      session.id,
+      telegramUser.id,
+      chatId,
+      'assistant',
+      finalResponseStr,
+      currentMessageIndex * 2 + 1,
+      response.tool_calls ? JSON.stringify(response.tool_calls) : undefined,
+      toolResults.length > 0 ? JSON.stringify(toolResults) : undefined
+    )
+
+    console.log(`[Telegram Chat] ✅ Saved conversation to database (PERMANENT STORAGE)`)
+
+    // Send final response
+    if (finalResponseStr && finalResponseStr.trim()) {
+      await sendTelegramMessage(chatId, finalResponseStr)
+    }
+  } catch (error) {
+    console.error('[Telegram Chat] Error:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    await sendTelegramMessage(chatId, `❌ 오류가 발생했습니다: ${errorMessage}`)
+  }
+}
+
+/**
+ * Execute agent with autonomous loop and send results back to Telegram
+ */
+async function executeAgentWithAutonomousLoop(
   agentId: string,
   instruction: string,
   chatId: number,
   username: string
 ) {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const adminClient = createAdminClient()
 
-    // Call internal execute API
-    const response = await fetch(`${baseUrl}/api/agents/${agentId}/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instruction,
-        title: `Telegram request from @${username}`,
-      }),
+    // Get agent
+    const { data: agent, error: agentError } = await (adminClient as any)
+      .from('deployed_agents')
+      .select('*')
+      .eq('id', agentId)
+      .single()
+
+    if (agentError || !agent) {
+      await sendTelegramMessage(chatId, '❌ Agent not found')
+      return
+    }
+
+    // Create virtual task
+    const virtualTask = {
+      id: `telegram-${Date.now()}`,
+      title: `Telegram request from @${username}`,
+      description: '',
+      instructions: instruction,
+      status: 'IN_PROGRESS',
+      created_at: new Date().toISOString(),
+    }
+
+    // Execute with autonomous loop
+    const result = await executeWithAutonomousLoop(agent, virtualTask as any, {
+      maxIterations: 3,
+      autoCommit: true,
+      saveToNeuralMap: true,
     })
 
-    const result = await response.json()
-
+    // Send detailed progress report
     if (result.success) {
-      const output = result.output || 'Task completed successfully'
-      const toolsUsed = result.toolsUsed || []
-      const sources = result.sources || []
+      let message = `✅ Task Completed Successfully!\n\n`
 
-      let message = `✅ Task Completed!\n\n`
-      message += `📤 Output:\n${output.substring(0, 3000)}\n\n`
-
-      if (toolsUsed.length > 0) {
-        message += `🛠 Tools Used: ${toolsUsed.join(', ')}\n`
+      // Show plan
+      if (result.plan) {
+        message += `📋 Plan:\n${result.plan.substring(0, 500)}${result.plan.length > 500 ? '...' : ''}\n\n`
       }
 
-      if (sources.length > 0) {
-        message += `📚 Sources: ${sources.length} items\n`
+      // Show execution steps
+      message += `🔄 Execution Steps (${result.executionSteps.length}):\n`
+      result.executionSteps.forEach(step => {
+        const emoji = step.phase === 'plan' ? '📋' :
+                     step.phase === 'execute' ? '⚡' :
+                     step.phase === 'verify' ? '✅' :
+                     step.phase === 'fix' ? '🔧' : '💾'
+        const status = step.success ? '✓' : '✗'
+        message += `${emoji} ${step.step}. ${step.phase} ${status}\n`
+      })
+      message += '\n'
+
+      // Show output
+      message += `📤 Output:\n${result.output.substring(0, 2000)}${result.output.length > 2000 ? '...' : ''}\n\n`
+
+      // Show commit
+      if (result.finalCommit) {
+        message += `💾 Committed: ${result.finalCommit}\n`
+      }
+
+      // Show Neural Map node
+      if (result.neuralMapNodeId) {
+        message += `🧠 Saved to Neural Map: ${result.neuralMapNodeId}\n`
       }
 
       await sendTelegramMessage(chatId, message)
     } else {
-      await sendTelegramMessage(chatId,
-        `❌ Execution failed:\n\n${result.error || 'Unknown error'}`
-      )
+      let message = `❌ Task Failed\n\n`
+
+      // Show what went wrong
+      message += `Error: ${result.error || 'Unknown error'}\n\n`
+
+      // Show execution steps for debugging
+      if (result.executionSteps.length > 0) {
+        message += `🔄 Execution Steps:\n`
+        result.executionSteps.forEach(step => {
+          const emoji = step.phase === 'plan' ? '📋' :
+                       step.phase === 'execute' ? '⚡' :
+                       step.phase === 'verify' ? '✅' :
+                       step.phase === 'fix' ? '🔧' : '💾'
+          const status = step.success ? '✓' : '✗'
+          message += `${emoji} ${step.step}. ${step.phase} ${status}`
+          if (step.error) {
+            message += ` (${step.error.substring(0, 50)})`
+          }
+          message += '\n'
+        })
+      }
+
+      await sendTelegramMessage(chatId, message)
     }
   } catch (error) {
-    console.error('[Telegram Async Execution] Error:', error)
+    console.error('[Telegram Autonomous Execution] Error:', error)
     await sendTelegramMessage(chatId,
       `❌ Internal error: ${error instanceof Error ? error.message : 'Unknown error'}`
     )
@@ -149,25 +1695,54 @@ async function executeAgentAsync(
 async function sendTelegramMessage(chatId: number, text: string) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
 
+  console.log(`[Telegram] sendTelegramMessage called - chatId: ${chatId}, botToken: ${botToken ? 'exists' : 'missing'}`)
+
   if (!botToken) {
     console.error('[Telegram] TELEGRAM_BOT_TOKEN not configured')
     return
   }
 
+  // Escape special characters for Telegram MarkdownV2
+  const escapedText = text
+    .replace(/\_/g, '\\_')
+    .replace(/\*/g, '\\*')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/\~/g, '\\~')
+    .replace(/\`/g, '\\`')
+    .replace(/\>/g, '\\>')
+    .replace(/\#/g, '\\#')
+    .replace(/\+/g, '\\+')
+    .replace(/\-/g, '\\-')
+    .replace(/\=/g, '\\=')
+    .replace(/\|/g, '\\|')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\./g, '\\.')
+    .replace(/\!/g, '\\!')
+
   try {
+    console.log(`[Telegram] Sending message to chat ${chatId}: ${text.substring(0, 100)}...`)
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: text,
-        parse_mode: 'HTML',
+        text: escapedText,
+        parse_mode: 'MarkdownV2',
       }),
     })
+
+    console.log(`[Telegram] Response status: ${response.status}`)
 
     if (!response.ok) {
       const error = await response.text()
       console.error('[Telegram] Send message failed:', error)
+    } else {
+      const result = await response.json()
+      console.log('[Telegram] Message sent successfully:', result)
     }
   } catch (error) {
     console.error('[Telegram] Send message error:', error)

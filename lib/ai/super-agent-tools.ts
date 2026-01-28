@@ -25,6 +25,9 @@ import {
   scheduleWorkflowTool,
 } from './workflow-tools'
 
+// Claude Code 도구 임포트
+import { createClaudeCodeTool } from '@/lib/agent/claude-code-tool'
+
 // ============================================
 // Tool 타입 정의
 // ============================================
@@ -47,6 +50,9 @@ export type SuperAgentToolName =
   | 'send_email'
   | 'get_calendar_events'
   | 'create_calendar_event'
+  | 'open_app'
+  | 'run_applescript'
+  | 'list_files'
   // 🔥 Neural Editor 제어 도구
   | 'create_node'
   | 'update_node'
@@ -88,6 +94,8 @@ export type SuperAgentToolName =
   | 'schedule_workflow'
   // 🔥 브라우저 자동화 도구
   | 'browser_automation'
+  // 🔥 Claude Code 위임 도구
+  | 'use_claude_code'
 
 export interface ToolAction {
   type:
@@ -154,7 +162,19 @@ function detectProjectCategory(name: string, description?: string): string {
 
 export const createProjectTool = new DynamicStructuredTool({
   name: 'create_project',
-  description: '새 프로젝트를 생성합니다. 프로젝트 이름, 설명, 우선순위, 카테고리 등을 지정할 수 있습니다.',
+  description: `**GlowUS 웹앱 프로젝트 생성** (내부 프로젝트 관리 시스템)
+
+이 도구는 GlowUS 웹 애플리케이션 내부의 프로젝트를 생성합니다.
+데이터베이스에 프로젝트 레코드를 만들어 Task Hub에서 관리합니다.
+
+⚠️ **중요**: 이 도구는 VS Code나 파일시스템 프로젝트 생성이 아닙니다!
+- VS Code 프로젝트 생성 → run_terminal(command="mkdir 폴더명 && code 폴더명")
+- GlowUS 프로젝트 관리 → create_project (이 도구)
+
+사용 예시:
+- GlowUS에서 새 개발 프로젝트 만들기
+- Task Hub에 프로젝트 추가
+- 프로젝트 대시보드에 등록`,
   schema: z.object({
     name: z.string().describe('프로젝트 이름 (필수)'),
     description: z.string().optional().describe('프로젝트 설명'),
@@ -275,20 +295,39 @@ export const createProjectTool = new DynamicStructuredTool({
 // ============================================
 export const readFileTool = new DynamicStructuredTool({
   name: 'read_file',
-  description: '프로젝트의 특정 파일 내용을 읽습니다.',
+  description: '파일 내용을 읽습니다. 절대 경로(/Users/...)나 상대 경로 모두 지원합니다.',
   schema: z.object({
-    path: z.string().describe('읽을 파일 경로 (예: src/App.tsx)'),
+    path: z.string().describe('읽을 파일 경로 (예: /Users/jinsoolee/test.txt, src/App.tsx)'),
   }),
-  func: async ({ path }) => {
-    return JSON.stringify({
-      success: true,
-      message: `파일 "${path}" 읽기를 요청했습니다.`,
-      action: {
-        type: 'read_file',
-        data: { path },
-        requiresElectron: true
+  func: async ({ path: filePath }) => {
+    try {
+      let absolutePath: string
+
+      // 절대 경로인지 확인
+      if (path.isAbsolute(filePath)) {
+        absolutePath = filePath
+      } else {
+        // 상대 경로면 프로젝트 디렉토리 기준
+        const ctx = getAgentExecutionContext()
+        const projectId = ctx?.currentProjectId || 'default'
+        const projectDir = path.join(SERVER_PROJECTS_DIR, projectId)
+        absolutePath = path.join(projectDir, filePath)
       }
-    })
+
+      const content = await fs.readFile(absolutePath, 'utf-8')
+
+      return JSON.stringify({
+        success: true,
+        content,
+        path: absolutePath,
+        size: content.length,
+      })
+    } catch (error: any) {
+      return JSON.stringify({
+        success: false,
+        error: `파일 읽기 실패: ${error.message}`,
+      })
+    }
   },
 })
 
@@ -297,38 +336,40 @@ export const readFileTool = new DynamicStructuredTool({
 // ============================================
 export const writeFileTool = new DynamicStructuredTool({
   name: 'write_file',
-  description: '새 파일을 생성하거나 기존 파일을 완전히 덮어씁니다. 서버에서 직접 파일을 생성합니다!',
+  description: '파일을 생성하거나 덮어씁니다. 절대 경로나 상대 경로 모두 지원합니다.',
   schema: z.object({
-    path: z.string().describe('파일 경로 (예: src/game.tsx, index.html)'),
+    path: z.string().describe('파일 경로 (예: /Users/jinsoolee/test.txt, src/game.tsx)'),
     content: z.string().describe('파일 내용'),
   }),
   func: async ({ path: filePath, content }) => {
     try {
-      const ctx = getAgentExecutionContext()
-      const projectId = ctx?.currentProjectId || 'default'
+      let absolutePath: string
 
-      // 🔥 서버 사이드 프로젝트 디렉토리에 파일 생성
-      const projectDir = path.join(SERVER_PROJECTS_DIR, projectId)
-      const absolutePath = path.join(projectDir, filePath)
+      // 절대 경로인지 확인
+      if (path.isAbsolute(filePath)) {
+        absolutePath = filePath
+      } else {
+        // 상대 경로면 프로젝트 디렉토리 기준
+        const ctx = getAgentExecutionContext()
+        const projectId = ctx?.currentProjectId || 'default'
+        const projectDir = path.join(SERVER_PROJECTS_DIR, projectId)
+        absolutePath = path.join(projectDir, filePath)
+      }
 
       // 디렉토리 생성 (없으면)
       const dirPath = path.dirname(absolutePath)
       await fs.mkdir(dirPath, { recursive: true })
 
-      // 🔥 실제 파일 쓰기!
+      // 파일 쓰기
       await fs.writeFile(absolutePath, content, 'utf-8')
 
       console.log(`[write_file] ✅ 파일 생성됨: ${absolutePath}`)
 
       return JSON.stringify({
         success: true,
-        message: `✅ 파일 "${filePath}" 생성 완료!`,
-        filePath: absolutePath,
-        bytesWritten: content.length,
-        action: {
-          type: 'write_file',
-          data: { path: filePath, content, serverPath: absolutePath },
-        }
+        message: `✅ 파일 생성 완료: ${absolutePath}`,
+        path: absolutePath,
+        size: content.length,
       })
     } catch (error: any) {
       console.error(`[write_file] ❌ 오류:`, error)
@@ -416,7 +457,20 @@ export const getFileStructureTool = new DynamicStructuredTool({
 // ============================================
 export const runTerminalTool = new DynamicStructuredTool({
   name: 'run_terminal',
-  description: '터미널 명령어를 실행합니다. npm, git, 빌드 명령 등을 수행할 수 있습니다.',
+  description: `**macOS 시스템 터미널 명령어 실행** (Mac Terminal.app에서 실행됨)
+
+이 도구는 macOS의 실제 Terminal.app에서 명령어를 실행합니다.
+npm, git, 빌드 명령 등 CLI 도구를 수행할 수 있습니다.
+
+⚠️ **중요**: 웹 페이지 내부의 터미널이 아닙니다!
+- GlowUS AI Coding 페이지의 터미널 = browser_automation 사용
+- macOS Terminal.app = run_terminal 사용
+
+사용 예시:
+- npm install 실행
+- git status 확인
+- 빌드 명령 (npm run build)
+- Python 스크립트 실행`,
   schema: z.object({
     command: z.string().describe('실행할 명령어'),
     cwd: z.string().optional().describe('작업 디렉토리'),
@@ -440,15 +494,31 @@ export const runTerminalTool = new DynamicStructuredTool({
       }
     }
 
-    return JSON.stringify({
-      success: true,
-      message: `명령어 "${command}" 실행을 준비했습니다.`,
-      action: {
-        type: 'terminal_cmd',
-        data: { command, cwd },
-        requiresElectron: true
-      }
-    })
+    // Execute command directly on server
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execPromise = promisify(exec)
+
+      const options = cwd ? { cwd } : {}
+      const { stdout, stderr } = await execPromise(command, options)
+
+      return JSON.stringify({
+        success: true,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        command,
+        cwd: cwd || process.cwd(),
+      })
+    } catch (error: any) {
+      return JSON.stringify({
+        success: false,
+        error: error.message,
+        stdout: error.stdout?.trim() || '',
+        stderr: error.stderr?.trim() || '',
+        command,
+      })
+    }
   },
 })
 
@@ -1020,6 +1090,170 @@ export const createCalendarEventTool = new DynamicStructuredTool({
       return JSON.stringify({
         success: false,
         error: `일정 생성 실패: ${error}`,
+      })
+    }
+  },
+})
+
+// ============================================
+// 🔥 Mac 시스템 제어 도구들
+// ============================================
+
+// Mac 앱 실행 도구
+export const openAppTool = new DynamicStructuredTool({
+  name: 'open_app',
+  description:
+    'Mac 앱을 실행합니다. Chrome, Finder, VS Code, Slack 등 모든 설치된 앱을 열 수 있습니다. URL과 함께 사용하면 해당 URL을 앱에서 엽니다.\n\n' +
+    '**GlowUS Web Application Routes** (로컬 개발 환경):\n' +
+    '- Main: http://localhost:3000\n' +
+    '- AI Coding (Neural Map): http://localhost:3000/dashboard-group/ai-coding\n' +
+    '- Agents: http://localhost:3000/dashboard-group/agents\n' +
+    '- Messenger: http://localhost:3000/dashboard-group/messenger\n' +
+    '- My Neurons: http://localhost:3000/dashboard-group/neurons\n' +
+    '- Settings: http://localhost:3000/dashboard-group/settings\n' +
+    '- Agent Builder: http://localhost:3000/agent-builder\n' +
+    '- AI Studio: http://localhost:3000/dashboard-group/ai-studio\n' +
+    '- Task Hub: http://localhost:3000/dashboard-group/task-hub\n' +
+    '- Workflow Builder: http://localhost:3000/dashboard-group/workflow-builder\n\n' +
+    '예시: "글로우어스 AI 코팅 열어" → open_app(app="Google Chrome", url="http://localhost:3000/dashboard-group/ai-coding")',
+  schema: z.object({
+    app: z.string().describe('실행할 앱 이름 (예: Google Chrome, Finder, Visual Studio Code, Slack)'),
+    url: z.string().optional().describe('앱에서 열 URL (선택사항, 예: https://youtube.com, http://localhost:3000/neurons)'),
+  }),
+  func: async ({ app, url }) => {
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execPromise = promisify(exec)
+
+      // macOS `open` 명령 사용
+      if (url) {
+        // URL과 함께 실행 - 새 탭/창이 생성됨
+        await execPromise(`open -a "${app}" "${url}"`)
+        return JSON.stringify({
+          success: true,
+          message: `✅ ${app}에서 ${url}을 열었습니다.`,
+          app,
+          url,
+        })
+      } else {
+        // 앱만 실행
+        await execPromise(`open -a "${app}"`)
+        return JSON.stringify({
+          success: true,
+          message: `✅ ${app} 앱을 실행했습니다.`,
+          app,
+        })
+      }
+    } catch (error: any) {
+      return JSON.stringify({
+        success: false,
+        error: `앱 실행 실패: ${error.message}`,
+        app,
+      })
+    }
+  },
+})
+
+// AppleScript 실행 도구 (Mac 앱 제어)
+export const runAppleScriptTool = new DynamicStructuredTool({
+  name: 'run_applescript',
+  description: `Mac 앱 내부를 제어합니다. AppleScript로 앱의 버튼 클릭, 텍스트 입력, 메뉴 선택 등을 수행할 수 있습니다.
+
+사용 예시:
+- Finder에서 폴더 열기
+- Slack에서 메시지 전송
+- Safari에서 탭 제어
+- Excel에서 셀 입력
+- 시스템 설정 변경
+
+AppleScript 예시:
+- tell application "Finder" to open folder "Documents"
+- tell application "Slack" to activate
+- tell application "System Events" to keystroke "Hello" using command down`,
+  schema: z.object({
+    script: z.string().describe('실행할 AppleScript 코드'),
+    description: z.string().optional().describe('스크립트가 하는 일 설명 (디버깅용)'),
+  }),
+  func: async ({ script, description }) => {
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execPromise = promisify(exec)
+      const fs = await import('fs/promises')
+      const os = await import('os')
+      const path = await import('path')
+
+      console.log('[AppleScript] ========================================')
+      console.log('[AppleScript] Description:', description || 'Executing script...')
+      console.log('[AppleScript] Full Script:\n', script)
+      console.log('[AppleScript] ========================================')
+
+      // 🔥 Multiline 스크립트 처리: 임시 파일에 저장 후 실행
+      const tempFile = path.join(os.tmpdir(), `applescript_${Date.now()}.scpt`)
+      await fs.writeFile(tempFile, script, 'utf-8')
+
+      console.log('[AppleScript] Temp file created:', tempFile)
+
+      const { stdout, stderr } = await execPromise(`osascript "${tempFile}"`)
+
+      // 임시 파일 삭제
+      await fs.unlink(tempFile).catch(() => {})
+
+      console.log('[AppleScript] ✅ Success! Output:', stdout.trim() || '(no output)')
+      if (stderr.trim()) {
+        console.log('[AppleScript] ⚠️ Stderr:', stderr.trim())
+      }
+
+      return JSON.stringify({
+        success: true,
+        output: stdout.trim(),
+        error: stderr.trim(),
+        description,
+        scriptPreview: script.substring(0, 500), // 디버깅용
+      })
+    } catch (error: any) {
+      console.error('[AppleScript] ❌ Error:', error.message)
+      console.error('[AppleScript] Script was:', script.substring(0, 500))
+      return JSON.stringify({
+        success: false,
+        error: error.message,
+        stderr: error.stderr?.trim() || '',
+        description,
+        scriptPreview: script.substring(0, 500), // 디버깅용
+      })
+    }
+  },
+})
+
+// 파일/폴더 목록 조회 도구
+export const listFilesTool = new DynamicStructuredTool({
+  name: 'list_files',
+  description: '디렉토리의 파일과 폴더 목록을 조회합니다. 절대 경로를 사용하세요.',
+  schema: z.object({
+    path: z.string().describe('조회할 디렉토리 경로 (예: /Users/jinsoolee/Documents)'),
+  }),
+  func: async ({ path: dirPath }) => {
+    try {
+      const files = await fs.readdir(dirPath, { withFileTypes: true })
+
+      const items = files.map(file => ({
+        name: file.name,
+        type: file.isDirectory() ? 'directory' : 'file',
+        path: path.join(dirPath, file.name),
+      }))
+
+      return JSON.stringify({
+        success: true,
+        path: dirPath,
+        items,
+        count: items.length,
+      })
+    } catch (error: any) {
+      return JSON.stringify({
+        success: false,
+        error: `디렉토리 조회 실패: ${error.message}`,
+        path: dirPath,
       })
     }
   },
@@ -1955,19 +2189,23 @@ export const agentBuilderClearTool = new DynamicStructuredTool({
 
 export const browserAutomationTool = new DynamicStructuredTool({
   name: 'browser_automation',
-  description: `⚠️ Electron 앱 전용 - 웹 브라우저에서는 사용 불가!
+  description: `**웹 페이지 내부 조작 도구** (Stagehand AI 브라우저 자동화)
 
-실제 브라우저 창을 열어 웹사이트를 직접 조작합니다. (로그인, 폼 입력, 버튼 클릭 등)
+실제 브라우저 창을 열어 웹사이트를 직접 조작합니다.
+웹 페이지 내의 버튼 클릭, 텍스트 입력, 폼 작성 등을 수행합니다.
 
-❌ 이 도구를 사용하지 마세요:
-- 뉴스, 날씨, 맛집 등 정보 조회 → web_search 사용!
-- 단순 정보 질문 → web_search 사용!
-
-✅ 이 도구를 사용해야 하는 경우만:
+🎯 **이 도구를 사용해야 하는 경우**:
+- **GlowUS AI Coding 페이지의 터미널 조작** (중요!)
 - 로그인이 필요한 작업 (예: "네이버에 로그인해줘")
 - 폼 작성/제출 (예: "회원가입 폼 작성해줘")
 - 버튼 클릭 자동화 (예: "구매 버튼 클릭해줘")
-- 예약 시스템 조작 (예: "야놀자에서 호텔 예약해줘")`,
+- 예약 시스템 조작 (예: "야놀자에서 호텔 예약해줘")
+- **웹 페이지 내부의 터미널, 에디터, UI 요소 조작**
+
+❌ **이 도구를 사용하지 마세요**:
+- 뉴스, 날씨, 맛집 등 정보 조회 → web_search 사용!
+- 단순 정보 질문 → web_search 사용!
+- macOS 시스템 터미널 명령 → run_terminal 사용!`,
   schema: z.object({
     task: z.string().describe('수행할 브라우저 작업 (자연어로 설명). 예: "네이버 열어서 날씨 검색해줘"'),
     useStagehand: z.boolean().optional().describe('Stagehand AI 브라우저 사용 여부 (복잡한 작업에 권장)'),
@@ -2148,6 +2386,10 @@ export const SUPER_AGENT_TOOLS = {
   send_email: sendEmailTool,
   get_calendar_events: getCalendarEventsTool,
   create_calendar_event: createCalendarEventTool,
+  // 🔥 Mac 시스템 제어 도구
+  open_app: openAppTool,
+  run_applescript: runAppleScriptTool,
+  list_files: listFilesTool,
   // 🔥 Neural Editor 제어 도구
   create_node: createNodeTool,
   update_node: updateNodeTool,
@@ -2189,6 +2431,8 @@ export const SUPER_AGENT_TOOLS = {
   schedule_workflow: scheduleWorkflowTool,
   // 🔥 브라우저 자동화 도구
   browser_automation: browserAutomationTool,
+  // 🔥 Claude Code 위임 도구
+  use_claude_code: createClaudeCodeTool(),
 }
 
 export function getSuperAgentTools(enabledTools?: SuperAgentToolName[]): DynamicStructuredTool[] {
@@ -2202,4 +2446,28 @@ export function getSuperAgentTools(enabledTools?: SuperAgentToolName[]): Dynamic
 
 export function getAllSuperAgentToolNames(): SuperAgentToolName[] {
   return Object.keys(SUPER_AGENT_TOOLS) as SuperAgentToolName[]
+}
+
+/**
+ * Create super agent tools with context
+ */
+export function createSuperAgentTools(context: {
+  agentId: string
+  agentName: string
+  userId: string
+}): DynamicStructuredTool[] {
+  // Set context for tools that need it
+  const ctx = {
+    agentId: context.agentId,
+    agentName: context.agentName,
+    userId: context.userId,
+    currentProjectId: null,
+    currentNeuralMapId: null,
+  }
+
+  // Store context globally for tools to access
+  ;(globalThis as any).__agentExecutionContext = ctx
+
+  // Return all tools
+  return Object.values(SUPER_AGENT_TOOLS)
 }

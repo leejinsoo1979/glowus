@@ -20,6 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev              # Next.js dev server on port 3000
 npm run dev:turbo        # Turbo mode for faster builds
 npm run dev:full         # Dev + Stagehand browser automation server
+npm run dev:with-tts     # Dev + Qwen3-TTS Python server
 
 # Electron Desktop App
 npm run electron:dev     # Full Electron dev (Next.js + terminal + neural-map WS + stagehand servers)
@@ -32,11 +33,20 @@ npm run typecheck        # TypeScript type checking (tsc --noEmit)
 npm run test             # Jest tests
 npm run test:watch       # Jest in watch mode
 
+# Run a single test file
+npx jest lib/path/to/__tests__/file.test.ts
+
 # MCP Servers (run separately)
 npm run mcp:neural-map-ws  # WebSocket server for Neural Map
 npm run mcp:neural-map     # MCP server for Neural Map
 npm run mcp:stagehand      # Stagehand browser automation server
+
+# TTS Server (Python)
+npm run tts:install        # Install Python TTS dependencies
+npm run tts:server         # Start Qwen3-TTS server on port 8100
 ```
+
+**Node.js Requirement**: v20.0.0 to v22.x (see `engines` in package.json)
 
 ## Key Architecture Patterns
 
@@ -136,18 +146,68 @@ import type { Task } from '@/types'
 
 Tests use Jest with ts-jest. Test files go in `lib/**/__tests__/*.test.ts`:
 ```bash
-npm test                      # Run all tests
-npm run test:watch            # Watch mode
-npm run test:coverage         # With coverage report
+npm test                                    # Run all tests
+npm run test:watch                          # Watch mode
+npm run test:coverage                       # With coverage report
+npx jest lib/memory/__tests__/agent.test.ts # Run single test file
+npx jest --testNamePattern="memory"         # Run tests matching pattern
 ```
 
 ## Environment Setup
 
 Copy `.env.example` to `.env.local`:
+
+**Required:**
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- `OPENAI_API_KEY` (required for AI features)
-- `TAVILY_API_KEY` (web search)
-- `GOOGLE_GENERATIVE_AI_API_KEY`, `DEEPSEEK_API_KEY`, `GROQ_API_KEY` (optional LLM providers)
+- `OPENAI_API_KEY` - Core AI features
+
+**Optional LLM Providers:**
+- `GOOGLE_GENERATIVE_AI_API_KEY` - Gemini models
+- `DEEPSEEK_API_KEY` - Mission Control
+- `GROQ_API_KEY` - Fast inference
+- `TAVILY_API_KEY` - Web search
+
+**Integrations:**
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` - Google Drive/Calendar OAuth
+- `TELEGRAM_BOT_TOKEN` - Telegram bot for remote agent control
+- `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` - WhatsApp Business API
+
+**Local Servers:**
+- `QWEN_TTS_SERVER_URL=http://localhost:8100` - Qwen3-TTS (open source)
+
+## Database
+
+- **Supabase** PostgreSQL with Row Level Security
+- Migrations in `supabase/migrations/`
+- Regenerate types: `npx supabase gen types typescript --local > types/database.ts`
+
+## Documentation Structure
+
+The `docs/` folder contains detailed specifications:
+- `Developguide.md` - System specification (4-core engines, schemas)
+- `docs/neuramap/` - Neural Map (knowledge graph) subsystem specs
+- `docs/NODE_BASED_AI_AGENT_ROADMAP.md` - Phase → Epic → Node hierarchy
+- `docs/agent-memory-system-prd.md` - 5-layer memory architecture
+
+## Key Patterns
+
+### API Routes Organization
+API routes follow RESTful patterns in `app/api/`:
+- `/api/agents/[id]/...` - Agent CRUD, brain graph, memories
+- `/api/chat/rooms/[roomId]/...` - Chat rooms, meetings
+- `/api/projects/[id]/...` - Projects, tasks, roadmap nodes
+- `/api/neural-map/[mapId]/...` - Knowledge graph operations
+
+### Tool Definition Pattern
+Tools in `lib/ai/super-agent-tools.ts` use LangChain's `DynamicStructuredTool`:
+```typescript
+new DynamicStructuredTool({
+  name: 'tool_name',
+  description: 'What this tool does',
+  schema: z.object({ /* zod schema */ }),
+  func: async (input) => { /* implementation */ }
+})
+```
 
 ## Role Clarification
 

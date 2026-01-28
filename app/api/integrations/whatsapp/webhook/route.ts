@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { executeWithAutonomousLoop } from '@/lib/agent/autonomous-loop'
 
 /**
  * WhatsApp Business API Webhook Handler
@@ -108,8 +109,8 @@ export async function POST(request: NextRequest) {
       `🤖 Agent "${agent.name}" is working on your request...\n\n📋 Instruction: ${instruction.substring(0, 200)}${instruction.length > 200 ? '...' : ''}`
     )
 
-    // Execute agent (async)
-    executeAgentAsync(agent.id, instruction, from, username).catch(error => {
+    // Execute agent with autonomous loop (async)
+    executeAgentWithAutonomousLoop(agent.id, instruction, from, username).catch(error => {
       console.error('[WhatsApp Webhook] Async execution error:', error)
     })
 
@@ -121,52 +122,108 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Execute agent and send results back to WhatsApp
+ * Execute agent with autonomous loop and send results back to WhatsApp
  */
-async function executeAgentAsync(
+async function executeAgentWithAutonomousLoop(
   agentId: string,
   instruction: string,
   phoneNumber: string,
   username: string
 ) {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const adminClient = createAdminClient()
 
-    const response = await fetch(`${baseUrl}/api/agents/${agentId}/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instruction,
-        title: `WhatsApp request from ${username}`,
-      }),
+    // Get agent
+    const { data: agent, error: agentError } = await (adminClient as any)
+      .from('deployed_agents')
+      .select('*')
+      .eq('id', agentId)
+      .single()
+
+    if (agentError || !agent) {
+      await sendWhatsAppMessage(phoneNumber, '❌ Agent not found')
+      return
+    }
+
+    // Create virtual task
+    const virtualTask = {
+      id: `whatsapp-${Date.now()}`,
+      title: `WhatsApp request from ${username}`,
+      description: '',
+      instructions: instruction,
+      status: 'IN_PROGRESS',
+      created_at: new Date().toISOString(),
+    }
+
+    // Execute with autonomous loop
+    const result = await executeWithAutonomousLoop(agent, virtualTask as any, {
+      maxIterations: 3,
+      autoCommit: true,
+      saveToNeuralMap: true,
     })
 
-    const result = await response.json()
-
+    // Send detailed progress report
     if (result.success) {
-      const output = result.output || 'Task completed successfully'
-      const toolsUsed = result.toolsUsed || []
-      const sources = result.sources || []
+      let message = `✅ Task Completed Successfully!\n\n`
 
-      let message = `✅ Task Completed!\n\n`
-      message += `📤 Output:\n${output.substring(0, 3000)}\n\n`
-
-      if (toolsUsed.length > 0) {
-        message += `🛠 Tools Used: ${toolsUsed.join(', ')}\n`
+      // Show plan
+      if (result.plan) {
+        message += `📋 Plan:\n${result.plan.substring(0, 500)}${result.plan.length > 500 ? '...' : ''}\n\n`
       }
 
-      if (sources.length > 0) {
-        message += `📚 Sources: ${sources.length} items\n`
+      // Show execution steps
+      message += `🔄 Execution Steps (${result.executionSteps.length}):\n`
+      result.executionSteps.forEach(step => {
+        const emoji = step.phase === 'plan' ? '📋' :
+                     step.phase === 'execute' ? '⚡' :
+                     step.phase === 'verify' ? '✅' :
+                     step.phase === 'fix' ? '🔧' : '💾'
+        const status = step.success ? '✓' : '✗'
+        message += `${emoji} ${step.step}. ${step.phase} ${status}\n`
+      })
+      message += '\n'
+
+      // Show output
+      message += `📤 Output:\n${result.output.substring(0, 2000)}${result.output.length > 2000 ? '...' : ''}\n\n`
+
+      // Show commit
+      if (result.finalCommit) {
+        message += `💾 Committed: ${result.finalCommit}\n`
+      }
+
+      // Show Neural Map node
+      if (result.neuralMapNodeId) {
+        message += `🧠 Saved to Neural Map: ${result.neuralMapNodeId}\n`
       }
 
       await sendWhatsAppMessage(phoneNumber, message)
     } else {
-      await sendWhatsAppMessage(phoneNumber,
-        `❌ Execution failed:\n\n${result.error || 'Unknown error'}`
-      )
+      let message = `❌ Task Failed\n\n`
+
+      // Show what went wrong
+      message += `Error: ${result.error || 'Unknown error'}\n\n`
+
+      // Show execution steps for debugging
+      if (result.executionSteps.length > 0) {
+        message += `🔄 Execution Steps:\n`
+        result.executionSteps.forEach(step => {
+          const emoji = step.phase === 'plan' ? '📋' :
+                       step.phase === 'execute' ? '⚡' :
+                       step.phase === 'verify' ? '✅' :
+                       step.phase === 'fix' ? '🔧' : '💾'
+          const status = step.success ? '✓' : '✗'
+          message += `${emoji} ${step.step}. ${step.phase} ${status}`
+          if (step.error) {
+            message += ` (${step.error.substring(0, 50)})`
+          }
+          message += '\n'
+        })
+      }
+
+      await sendWhatsAppMessage(phoneNumber, message)
     }
   } catch (error) {
-    console.error('[WhatsApp Async Execution] Error:', error)
+    console.error('[WhatsApp Autonomous Execution] Error:', error)
     await sendWhatsAppMessage(phoneNumber,
       `❌ Internal error: ${error instanceof Error ? error.message : 'Unknown error'}`
     )
