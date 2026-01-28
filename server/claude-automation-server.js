@@ -14,6 +14,7 @@
 const http = require('http')
 const { exec } = require('child_process')
 const { promisify } = require('util')
+const { createClient } = require('@supabase/supabase-js')
 
 const execPromise = promisify(exec)
 
@@ -22,6 +23,82 @@ const PORT = 45680
 // Homebrew 경로 (LaunchAgent에서 PATH가 제한적이므로 절대경로 사용)
 const GH_PATH = '/opt/homebrew/bin/gh'
 const CLAUDE_PATH = '/opt/homebrew/bin/claude'
+
+// Supabase 설정 (GlowUS 프로젝트 동기화용)
+const SUPABASE_URL = 'https://zcykttygjglzyyxotzct.supabase.co'
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeWt0dHlnamdsenl5eG90emN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTMzODkxNSwiZXhwIjoyMDgwOTE0OTE1fQ.SovGgYnnamWGIza0fiG0uYCzW8p4c5bG3qAeBRAz0UU'
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+/**
+ * GlowUS 프로젝트 DB에 동기화
+ * 텔레그램으로 만든 프로젝트를 GlowUS 웹에서도 볼 수 있도록
+ */
+async function syncToGlowUSProjects(projectName, projectPath, repoUrl, telegramUserId) {
+  try {
+    // 1. Telegram 사용자의 GlowUS user_id 조회
+    let ownerId = null
+    if (telegramUserId) {
+      const { data: telegramUser } = await supabase
+        .from('telegram_users')
+        .select('user_id')
+        .eq('id', telegramUserId)
+        .single()
+
+      if (telegramUser?.user_id) {
+        ownerId = telegramUser.user_id
+      }
+    }
+
+    // 2. 이미 존재하는지 확인 (folder_path로)
+    const { data: existing } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('folder_path', projectPath)
+      .single()
+
+    if (existing) {
+      console.log(`[GlowUS Sync] Project already exists: ${existing.id}`)
+      return existing.id
+    }
+
+    // 3. 프로젝트 카테고리 자동 분류 (개발)
+    const categoryId = '11111111-1111-1111-1111-111111111111' // 개발 카테고리
+
+    // 4. 프로젝트 생성
+    const { data: project, error } = await supabase
+      .from('projects')
+      .insert({
+        name: projectName,
+        description: `텔레그램에서 자동 생성된 프로젝트`,
+        folder_path: projectPath,
+        project_type: 'code',
+        git_mode: repoUrl ? 'hybrid' : 'local_only',
+        category_id: categoryId,
+        status: 'active',
+        priority: 'medium',
+        progress: 0,
+        owner_id: ownerId,
+        metadata: {
+          source: 'telegram',
+          github_url: repoUrl,
+          created_via: 'claude-automation'
+        }
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.warn(`[GlowUS Sync] Failed to create project:`, error.message)
+      return null
+    }
+
+    console.log(`[GlowUS Sync] ✅ Project synced to GlowUS: ${project.id}`)
+    return project.id
+  } catch (error) {
+    console.warn(`[GlowUS Sync] Error:`, error.message)
+    return null
+  }
+}
 
 /**
  * 텔레그램으로 메시지 전송
@@ -105,7 +182,7 @@ async function runMultilineAppleScript(script) {
 /**
  * Claude Code 실행 및 프롬프트 전달
  */
-async function executeClaudeCode(projectPath, prompt, repoName, chatId, telegramBotToken) {
+async function executeClaudeCode(projectPath, prompt, repoName, chatId, telegramBotToken, telegramUserId) {
   console.log(`[Claude Automation] Starting...`)
   console.log(`[Claude Automation] Project: ${projectPath}`)
   console.log(`[Claude Automation] Repo: ${repoName}`)
@@ -221,12 +298,19 @@ ${output.length > 500 ? `\n📝 <b>요약:</b>\n<i>${output.substring(0, 500)}..
 
     await sendTelegramMessage(chatId, completionMessage, telegramBotToken)
 
+    // 🔥 GlowUS 프로젝트 DB에 동기화
+    const glowusProjectId = await syncToGlowUSProjects(projectName, projectPath, repoUrl, telegramUserId)
+    if (glowusProjectId) {
+      await sendTelegramMessage(chatId, `📋 <b>GlowUS 프로젝트에 등록됨!</b>\nGlowUS 웹에서 확인 가능합니다.`, telegramBotToken)
+    }
+
     return {
       success: true,
       message: 'Claude Code completed',
       repoUrl,
       projectName,
       projectPath,
+      glowusProjectId,
       output: output.substring(0, 1000)
     }
 
@@ -278,7 +362,7 @@ const server = http.createServer(async (req, res) => {
 
     req.on('end', async () => {
       try {
-        const { projectPath, prompt, repoName, chatId, telegramBotToken } = JSON.parse(body)
+        const { projectPath, prompt, repoName, chatId, telegramBotToken, telegramUserId } = JSON.parse(body)
 
         if (!projectPath || !prompt) {
           res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -286,7 +370,7 @@ const server = http.createServer(async (req, res) => {
           return
         }
 
-        const result = await executeClaudeCode(projectPath, prompt, repoName, chatId, telegramBotToken)
+        const result = await executeClaudeCode(projectPath, prompt, repoName, chatId, telegramBotToken, telegramUserId)
 
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify(result))

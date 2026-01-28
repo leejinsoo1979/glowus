@@ -1202,7 +1202,8 @@ START ACTING LIKE THE POWERFUL AGENT YOU ARE. NO MORE EXCUSES.`
             repoName: projectName,
             prompt: generatedEnglishPrompt,
             chatId: chatId,  // 텔레그램 chatId 전달
-            telegramBotToken: process.env.TELEGRAM_BOT_TOKEN  // 봇 토큰도 전달
+            telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,  // 봇 토큰도 전달
+            telegramUserId: telegramUser.id  // 🔥 GlowUS 프로젝트 연동용
           }),
           // 실행은 오래 걸릴 수 있으므로 타임아웃 길게 (10분)
           signal: AbortSignal.timeout(600000)
