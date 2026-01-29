@@ -758,6 +758,41 @@ async function executeSimpleChat(
     tools = tools.filter(t => !forbiddenTools.includes(t.name))
     console.log(`[Telegram Chat] 🔧 Removed forbidden tools, ${tools.length} remaining`)
 
+    // 🔥 하드코딩된 워크플로우: "Pages 열고 X 써줘" 패턴 직접 처리
+    const pagesWritePattern = /(?:pages|페이지|페이즈)\s*(?:열고|열어서|열어|에서|에|띄우고|실행하고|켜고|켜서)\s*(.+?)(?:써줘|써|적어줘|적어|작성해줘|작성|입력해줘|입력)/i
+    const pagesMatch = instruction.match(pagesWritePattern)
+    console.log(`[Telegram Chat] 🔍 Pages pattern check: instruction="${instruction}", match=${!!pagesMatch}`)
+
+    if (pagesMatch) {
+      const contentToWrite = pagesMatch[1].trim()
+      console.log(`[Telegram Chat] 🔥 HARDCODED WORKFLOW: Pages write - "${contentToWrite}"`)
+
+      try {
+        const { exec } = await import('child_process')
+        const { promisify } = await import('util')
+        const execPromise = promisify(exec)
+
+        // Step 1: Pages 열기
+        await execPromise('open -a "Pages"')
+        await new Promise(resolve => setTimeout(resolve, 1500)) // 앱 로딩 대기
+
+        // Step 2: 새 문서 생성
+        await execPromise(`osascript -e 'tell application "Pages" to make new document'`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // Step 3: 내용 입력 (System Events로 키 입력)
+        const escapedContent = contentToWrite.replace(/"/g, '\\"').replace(/'/g, "'\\''")
+        await execPromise(`osascript -e 'tell application "System Events" to keystroke "${escapedContent}"'`)
+
+        await sendTelegramMessage(chatId, `✅ Pages에 "${contentToWrite.substring(0, 50)}..." 작성 완료!`)
+        return
+      } catch (error: any) {
+        console.error('[Telegram Chat] Pages write error:', error)
+        await sendTelegramMessage(chatId, `❌ Pages 작성 실패: ${error.message}`)
+        return
+      }
+    }
+
     // 코딩 작업 감지 - 더 넓은 키워드
     const codingTaskKeywords = [
       // 생성
@@ -803,13 +838,21 @@ async function executeSimpleChat(
 
     const systemPrompt = `You are ${agent.name}, a POWERFUL AUTONOMOUS AI AGENT with FULL SYSTEM ACCESS.
 
-# 🚨 CRITICAL: COMPLETE ALL STEPS
-When a task requires multiple steps (e.g., "open VS Code and run terminal command"):
-1. Call ONLY ONE tool at a time
-2. Wait for tool result
-3. Continue with next step
-4. DO NOT stop until ALL steps are complete
-5. Example: mkdir → open_app → run_applescript (terminal) → run_applescript (type) → run_applescript (enter)
+# 🚨🚨🚨 CRITICAL: COMPLETE ALL STEPS - DO NOT STOP EARLY 🚨🚨🚨
+When a task requires multiple steps (e.g., "Pages 열고 가사 적어"):
+1. Call FIRST tool → wait for result
+2. Call SECOND tool → wait for result
+3. Call THIRD tool → wait for result
+4. Continue until ALL steps are DONE
+5. NEVER stop after just opening an app - YOU MUST ALSO DO THE TASK!
+
+**❌ WRONG**: User says "Pages 열고 글 써줘" → You only call open_app and stop
+**✅ CORRECT**:
+  Step 1: open_app(app="Pages")
+  Step 2: run_applescript(script="tell application \\"Pages\\" to make new document")
+  Step 3: run_applescript(script="tell application \\"System Events\\" to keystroke \\"내용\\"")
+
+**🚨 IF YOU STOP AFTER STEP 1 = TASK FAILED 🚨**
 
 # 🚨 ABSOLUTE RULES - NO EXCEPTIONS:
 
@@ -874,7 +917,22 @@ Available routes:
 - "카카오톡 열어" → open_app(app="KakaoTalk")
 - "포토샵 열어" → open_app(app="Adobe Photoshop")
 - "엑셀 열어" → open_app(app="Microsoft Excel")
+- "Pages 열어" → open_app(app="Pages")
+- "Numbers 열어" → open_app(app="Numbers")
+- "Keynote 열어" → open_app(app="Keynote")
+- "메모 열어" → open_app(app="Notes")
+- "미리알림 열어" → open_app(app="Reminders")
+- "캘린더 열어" → open_app(app="Calendar")
+- "블랜더 열어" → open_app(app="Blender")
 - Any Mac app with exact app name!
+
+**Pages/Numbers/Keynote 문서 작업** - run_applescript:
+- "Pages 새 문서 만들어" → run_applescript: tell application "Pages" to make new document
+- "Pages에 글 써줘" →
+  1. open_app(app="Pages")
+  2. run_applescript: tell application "Pages" to make new document
+  3. run_applescript: tell application "System Events" to keystroke "내용"
+- "Keynote 새 프레젠테이션" → run_applescript: tell application "Keynote" to make new document
 
 **터미널 명령 실행** - run_terminal(command="명령어"):
 - "npm install 실행" → run_terminal(command="npm install")
@@ -903,6 +961,23 @@ Available routes:
 - "글로우어스 열어" → open_app(app="Google Chrome", url="http://localhost:3000")
 
 ## 8. MULTI-STEP TASKS:
+
+**📝 Pages/문서 작업** (앱 열기 + 새 문서 + 내용 작성):
+When user says "Pages 열고 뭐 써줘" or "Pages에서 문서 작성해":
+
+Step 1: Open Pages
+Tool: open_app(app="Pages")
+
+Step 2: Create new document
+Tool: run_applescript(script="tell application \"Pages\" to make new document")
+
+Step 3: Type content
+Tool: run_applescript(script="tell application \"System Events\" to keystroke \"여기에 내용 입력\"")
+
+Example: "Pages 열고 yesterday 가사 적어"
+1. open_app(app="Pages")
+2. run_applescript(script="tell application \"Pages\" to make new document")
+3. run_applescript(script="tell application \"System Events\" to keystroke \"Yesterday\\nAll my troubles seemed so far away\\n...\"")
 
 **🚨 AI Coding 페이지 터미널 실행 🚨** (웹 페이지 내 터미널):
 When user says "AI 코팅에서 터미널 실행" or "AI 코팅 터미널 열어":
@@ -1375,7 +1450,31 @@ START ACTING LIKE THE POWERFUL AGENT YOU ARE. NO MORE EXCUSES.`
       }
 
       // Ask model for next action (ReAct loop)
-      const nextActionResponse = await model.invoke(followUpMessages)
+      let nextActionResponse = await model.invoke(followUpMessages)
+
+      // 🔥 다단계 작업 강제 계속: open_app만 호출하고 끝나면 강제로 다음 단계 요청
+      const multiStepKeywords = ['열고', '그리고', '써줘', '작성', '입력', '적어', '만들어', '그려', '가사']
+      const onlyOpenedApp = toolResults.length === 1 && toolResults[0].tool === 'open_app'
+      const requiresMoreSteps = multiStepKeywords.some(kw => instruction.includes(kw))
+
+      if (onlyOpenedApp && requiresMoreSteps && (!nextActionResponse.tool_calls || nextActionResponse.tool_calls.length === 0)) {
+        console.log('[Telegram Chat] 🚨 Forcing continuation - only opened app but task requires more steps')
+
+        // 강제로 다음 단계 요청
+        const forceMessage = new HumanMessage(
+          `🚨 INCOMPLETE TASK! You only opened the app. The user's original request was: "${instruction}"
+
+YOU MUST NOW:
+1. Create a new document (if needed): run_applescript(script="tell application \\"Pages\\" to make new document")
+2. Type the content: run_applescript(script="tell application \\"System Events\\" to keystroke \\"내용\\"")
+
+DO NOT respond with text. Call the next tool NOW!`
+        )
+
+        followUpMessages.push(nextActionResponse)
+        followUpMessages.push(forceMessage)
+        nextActionResponse = await model.invoke(followUpMessages)
+      }
 
       // Check if model wants to call more tools
       if (nextActionResponse.tool_calls && nextActionResponse.tool_calls.length > 0) {
