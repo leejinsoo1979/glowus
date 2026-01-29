@@ -880,18 +880,14 @@ JSON만 반환하세요.`
         }
         await new Promise(resolve => setTimeout(resolve, 500))
 
-        // Step 3: 내용 입력 - 줄바꿈 처리
-        const lines = finalContent.split('\n')
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].replace(/"/g, '\\"').replace(/'/g, "'\\''")
-          if (line.trim()) {
-            await execPromise(`osascript -e 'tell application "System Events" to keystroke "${line}"'`)
-          }
-          if (i < lines.length - 1) {
-            await execPromise(`osascript -e 'tell application "System Events" to key code 36'`) // Enter
-          }
-          await new Promise(resolve => setTimeout(resolve, 50)) // 짧은 딜레이
-        }
+        // Step 3: 내용 입력 - 클립보드 + 붙여넣기 (한글 지원)
+        // keystroke는 ASCII만 지원하므로 pbcopy + Cmd+V 사용
+        await execPromise(`echo "${finalContent.replace(/"/g, '\\"')}" | pbcopy`)
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+        // Cmd+V로 붙여넣기 (key code 9 = V)
+        await execPromise(`osascript -e 'tell application "System Events" to keystroke "v" using command down'`)
+        await new Promise(resolve => setTimeout(resolve, 200))
 
         await sendTelegramMessage(chatId, `✅ ${appName}에 내용 작성 완료!\n\n${finalContent.substring(0, 200)}${finalContent.length > 200 ? '...' : ''}`)
         return
