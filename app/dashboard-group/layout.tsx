@@ -65,11 +65,13 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { setUser, setCurrentStartup, setIsLoading, isLoading } = useAuthStore()
+  const { user, setUser, setCurrentStartup, setIsLoading, isLoading, _hasHydrated } = useAuthStore()
   // Include isResizingLevel2 for global resize fix
   const { sidebarOpen, emailSidebarWidth, isResizingEmail, agentSidebarOpen, toggleAgentSidebar, level2Width, isResizingLevel2, level2Collapsed } = useUIStore()
   const [mounted, setMounted] = useState(false)
   const [isElectron, setIsElectron] = useState(false)
+  // user가 persist에서 이미 로드되었으면 바로 렌더링
+  const hasPersistedUser = _hasHydrated && !!user
 
   useEffect(() => {
     const checkElectron = () => {
@@ -140,6 +142,21 @@ export default function DashboardLayout({
           return
         }
 
+        // ⚡ 최적화: user가 이미 persist에서 로드되었으면 auth 검증만 하고 fetch 스킵
+        if (hasPersistedUser) {
+          console.log('[Auth] User loaded from persist, skipping fetch')
+          setIsLoading(false)
+          // 백그라운드에서 세션 유효성만 확인
+          const { data: { user: authUser } } = await supabase.auth.getUser()
+          if (!authUser) {
+            // 세션 만료됨 - 로그아웃 처리
+            setUser(null)
+            setCurrentStartup(null)
+            router.push('/auth-group/login')
+          }
+          return
+        }
+
         const { data: { user: authUser } } = await supabase.auth.getUser()
 
         if (!authUser) {
@@ -204,10 +221,13 @@ export default function DashboardLayout({
     return () => {
       subscription.unsubscribe()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, setUser, setCurrentStartup, setIsLoading])
 
   // Prevent hydration mismatch - show simple loading until mounted
-  if (!mounted || isLoading) {
+  // ⚡ 최적화: zustand hydration 완료 후 user가 있으면 로딩 스킵
+  const shouldShowLoading = !mounted || (!_hasHydrated) || (isLoading && !hasPersistedUser)
+  if (shouldShowLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-zinc-900">
         <div className="text-center">
