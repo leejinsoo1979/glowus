@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useTransition } from 'react'
+import React, { useState, useEffect, useCallback, useTransition, useMemo } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -83,8 +83,8 @@ function TopLevelCardMenu({
     onToggle()
   }
 
-  // 테마 색상 클래스 생성기
-  const getThemeClasses = () => {
+  // 테마 색상 클래스 생성기 (memoized)
+  const theme = useMemo(() => {
     switch (accentColor) {
       case 'purple':
         return {
@@ -176,9 +176,7 @@ function TopLevelCardMenu({
           activeIconBg: 'bg-accent/20'
         }
     }
-  }
-
-  const theme = getThemeClasses()
+  }, [accentColor])
 
   const cardContent = (
     <>
@@ -590,6 +588,38 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
     e.preventDefault()
     setIsResizingEmail(true)
   }, [])
+
+  // pathname 변경 시 해당하는 부모 메뉴만 펼쳐주고 나머지는 접음
+  useEffect(() => {
+    if (!pathname) return
+
+    const newExpanded = new Set<string>()
+    const currentNavCategories = user?.role === 'INVESTOR' ? investorCategories : categories
+
+    // 현재 pathname에 해당하는 카테고리의 아이템들 확인
+    currentNavCategories.forEach(category => {
+      category.items.forEach(item => {
+        if (item.children) {
+          // children 중에 현재 pathname과 매칭되는 것이 있는지 확인
+          const hasActiveChild = item.children.some(child => {
+            if (!child.href) return false
+            try {
+              const childUrl = new URL(child.href, 'http://localhost')
+              const childPath = childUrl.pathname
+              return pathname === childPath || pathname.startsWith(childPath + '?')
+            } catch {
+              return false
+            }
+          })
+          if (hasActiveChild) {
+            newExpanded.add(item.name)
+          }
+        }
+      })
+    })
+
+    setExpandedItems(newExpanded)
+  }, [pathname, user?.role])
 
   // pathname에 따라 현재 카테고리 계산
   // 🔥 캘린더/이메일은 이제 워크스페이스 하위 메뉴로 이동됨
@@ -1270,20 +1300,15 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                           transition={{ duration: 0.2 }}
                           className="grid grid-cols-2 gap-2"
                         >
-                          {activeItems.map((item, index) => (
-                            <motion.div
-                              key={item.name}
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: index * 0.03 }}
-                            >
+                          {activeItems.map((item) => (
+                            <div key={item.name}>
                               <TopLevelCardMenu
                                 item={item}
                                 isDark={isDark}
                                 isExpanded={false}
                                 onToggle={() => setSelectedCompanyMenu(item.name)}
                               />
-                            </motion.div>
+                            </div>
                           ))}
                         </motion.div>
                       ) : (
@@ -1373,20 +1398,40 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                       const isExpanded = expandedItems.has(item.name)
 
                       if (hasChildren) {
+                        // 부모 메뉴 활성화 체크: children 중 하나가 현재 pathname과 매칭되는지
+                        const hasActiveChild = item.children!.some(child => {
+                          if (!child.href) return false
+                          try {
+                            const childUrl = new URL(child.href, 'http://localhost')
+                            const childPath = childUrl.pathname
+                            const childView = childUrl.searchParams.get('view')
+                            const currentView = searchParams.get('view')
+
+                            if (pathname === childPath) {
+                              // view 파라미터가 있으면 정확히 매칭
+                              if (childView) {
+                                return childView === currentView
+                              }
+                              // view 파라미터가 없으면 현재 URL에도 view가 없어야 함
+                              return !currentView
+                            }
+                            return false
+                          } catch {
+                            return false
+                          }
+                        })
+
                         return (
-                          <motion.div
-                            key={item.name}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                          >
+                          <div key={item.name}>
                             <button
                               onClick={() => toggleExpand(item.name)}
                               className={cn(
                                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                                isDark
-                                  ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                                hasActiveChild
+                                  ? 'bg-accent/10 text-accent'
+                                  : isDark
+                                    ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                                    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
                               )}
                             >
                               {IconComponent && (
@@ -1409,22 +1454,30 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                                   className="overflow-hidden pl-4 space-y-0.5"
                                 >
                                   {item.children!.map((child) => {
-                                    // 메신저 하위 메뉴의 active 상태는 URL 파라미터로 체크
+                                    // 자식 메뉴의 active 상태는 URL 파라미터로 체크
                                     let childActive = false
                                     if (child.href) {
                                       const childUrl = new URL(child.href, 'http://localhost')
                                       const childPath = childUrl.pathname
                                       const childMode = childUrl.searchParams.get('mode')
                                       const childStatus = childUrl.searchParams.get('status')
+                                      const childView = childUrl.searchParams.get('view')
                                       const currentMode = searchParams.get('mode')
                                       const currentStatus = searchParams.get('status')
+                                      const currentView = searchParams.get('view')
 
                                       if (pathname === childPath) {
                                         // 메신저 하위 메뉴: mode와 status 파라미터 매칭
                                         if (childMode || childStatus) {
                                           childActive = childMode === currentMode && childStatus === currentStatus
-                                        } else {
-                                          childActive = !currentMode && !currentStatus
+                                        }
+                                        // 캘린더/이메일 등: view 파라미터 매칭
+                                        else if (childView) {
+                                          childActive = childView === currentView
+                                        }
+                                        // 파라미터 없는 기본 메뉴
+                                        else {
+                                          childActive = !currentMode && !currentStatus && !currentView
                                         }
                                       }
                                     }
@@ -1460,19 +1513,14 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                                 </motion.div>
                               )}
                             </AnimatePresence>
-                          </motion.div>
+                          </div>
                         )
                       }
 
                       // Handle "팀 생성" special case
                       if (item.href === '#create-team') {
                         return (
-                          <motion.div
-                            key={item.name}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                          >
+                          <div key={item.name}>
                             <button
                               onClick={() => setIsTeamModalOpen(true)}
                               className={cn(
@@ -1487,17 +1535,12 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                               )}
                               <span>{item.name}</span>
                             </button>
-                          </motion.div>
+                          </div>
                         )
                       }
 
                       return (
-                        <motion.div
-                          key={item.name}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                        >
+                        <div key={item.name}>
                           <button
                             onClick={() => {
                               if (item.href === '#task-history') {
@@ -1527,7 +1570,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                             )}
                             <span>{item.name}</span>
                           </button>
-                        </motion.div>
+                        </div>
                       )
                     })
                   )}
