@@ -19,6 +19,109 @@ const SHOW_DEBUG_MESSAGES = false
 const chatHistoryMemory = new Map<string, Array<{ role: string; parts: Array<{ text: string }> }>>()
 
 /**
+ * 유튜브 자막 캐시 - 후속 질문 지원
+ * Key: chatId, Value: { transcript, videoUrl, timestamp }
+ */
+const youtubeTranscriptCache = new Map<number, { transcript: string; videoUrl: string; timestamp: number }>()
+
+/**
+ * 스킬 시스템 - Claude Code로 개발한 스킬 저장 및 재사용
+ */
+interface TelegramSkill {
+  id: string
+  name: string
+  description: string
+  keywords: string[]
+  promptTemplate: string
+  skillType: 'claude_code' | 'applescript' | 'api'
+  usageCount: number
+}
+
+// 스킬 인메모리 캐시 (Supabase 백업)
+const skillsCache = new Map<string, TelegramSkill>()
+
+// 스킬 조회
+async function findMatchingSkill(supabase: any, instruction: string): Promise<TelegramSkill | null> {
+  try {
+    // DB에서 스킬 검색
+    const { data: skills } = await supabase
+      .from('telegram_skills')
+      .select('*')
+      .order('usage_count', { ascending: false })
+
+    if (!skills || skills.length === 0) return null
+
+    const lowerInstruction = instruction.toLowerCase()
+    for (const skill of skills) {
+      const keywords = skill.keywords || []
+      const matchCount = keywords.filter((kw: string) => lowerInstruction.includes(kw.toLowerCase())).length
+      if (matchCount >= 2 || (keywords.length === 1 && matchCount === 1)) {
+        return {
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          keywords: skill.keywords,
+          promptTemplate: skill.prompt_template,
+          skillType: skill.skill_type,
+          usageCount: skill.usage_count
+        }
+      }
+    }
+    return null
+  } catch (error) {
+    console.warn('[Skills] Error finding skill:', error)
+    return null
+  }
+}
+
+// 스킬 저장
+async function saveSkill(supabase: any, skill: Omit<TelegramSkill, 'id' | 'usageCount'>, createdBy: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('telegram_skills')
+      .insert({
+        name: skill.name,
+        description: skill.description,
+        keywords: skill.keywords,
+        prompt_template: skill.promptTemplate,
+        skill_type: skill.skillType,
+        created_by: createdBy
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.warn('[Skills] Error saving skill:', error.message)
+      return null
+    }
+    console.log(`[Skills] ✅ Saved: ${skill.name}`)
+    return data?.id
+  } catch (error) {
+    console.warn('[Skills] Error saving skill:', error)
+    return null
+  }
+}
+
+// 스킬 사용 카운트 증가
+async function incrementSkillUsage(supabase: any, skillId: string): Promise<void> {
+  try {
+    await supabase.rpc('increment_skill_usage', { skill_id: skillId })
+  } catch (error) {
+    // RPC 없으면 직접 업데이트
+    await supabase
+      .from('telegram_skills')
+      .update({
+        usage_count: supabase.raw('usage_count + 1'),
+        last_used_at: new Date().toISOString()
+      })
+      .eq('id', skillId)
+  }
+}
+
+// 스킬 개발 대기 상태 (chatId -> 원래 요청)
+const pendingSkillDevelopment = new Map<number, { instruction: string; timestamp: number }>()
+
+/**
  * 마지막 사용한 프로젝트 - Supabase 영구 저장
  * 서버 재시작, 배포 후에도 기억 유지
  */
@@ -760,10 +863,13 @@ async function executeSimpleChat(
 
     // 🔥 단순화된 Mac 앱 작성 워크플로우: 1단계로 처리
     const macAppKeywords = ['pages', '페이지', '페이즈', 'keynote', '키노트', 'numbers', '넘버스', 'notes', '메모', '노트']
-    const writeKeywords = ['써', '적어', '작성', '입력', '쓰고', '적고']
+    const writeKeywords = ['써', '적어', '작성', '입력', '쓰고', '적고', '가사']
 
     const hasAppKeyword = macAppKeywords.some(kw => instruction.toLowerCase().includes(kw))
     const hasWriteKeyword = writeKeywords.some(kw => instruction.includes(kw))
+
+    console.log(`[Telegram Chat] 🔍 DEBUG instruction: "${instruction}"`)
+    console.log(`[Telegram Chat] 🔍 DEBUG hasAppKeyword: ${hasAppKeyword}, hasWriteKeyword: ${hasWriteKeyword}`)
 
     if (hasAppKeyword && hasWriteKeyword) {
       console.log(`[Telegram Chat] 🔥 MAC APP WRITE: Direct content generation`)
@@ -784,61 +890,660 @@ async function executeSimpleChat(
           appName = 'Numbers'
         }
 
+        // 앱 관련 키워드 제거하고 순수 콘텐츠 요청만 추출
+        const contentRequest = instruction
+          .replace(/pages/gi, '')
+          .replace(/페이지/gi, '')
+          .replace(/페이즈/gi, '')
+          .replace(/keynote/gi, '')
+          .replace(/키노트/gi, '')
+          .replace(/notes/gi, '')
+          .replace(/노트/gi, '')
+          .replace(/메모/gi, '')
+          .replace(/numbers/gi, '')
+          .replace(/넘버스/gi, '')
+          .replace(/열고/g, '')
+          .replace(/열어/g, '')
+          .replace(/켜고/g, '')
+          .replace(/켜서/g, '')
+          .replace(/에/g, '')
+          .trim()
+
+        console.log(`[Telegram Chat] 📝 Content request: "${contentRequest}"`)
+
         // 단일 LLM 호출로 콘텐츠 직접 생성
         const llm = new ChatOpenAI({
-          model: 'gpt-4o',  // 더 똑똑한 모델 사용
+          model: 'gpt-4o',
           temperature: 0.7,
+          maxTokens: 4000,  // 더 긴 글도 완성
           openAIApiKey: process.env.OPENAI_API_KEY,
         })
 
         const response = await llm.invoke([
           {
             role: 'system',
-            content: `너는 창의적인 작가야. 사용자가 요청하는 글을 자연스럽고 재미있게 써줘.
+            content: `너는 콘텐츠 작성 전문가야. 사용자가 요청하는 글을 즉시 작성해.
 
-- 딱딱하게 쓰지 말고 사람처럼 자연스럽게
-- 요청한 주제에 대해 진짜 생각이나 의견을 담아서
-- 형식적인 서론/본론/결론 구조 필요없어
-- 그냥 편하게 대화하듯이 써
-- 마크다운 없이 텍스트만`
+🚨 절대 규칙:
+- 요청받은 글만 작성해. 설명이나 인사말 금지.
+- 절대 거부하지 마. "할 수 없어요", "대신에" 금지.
+- 가사, 시, 소설, 뭐든 바로 써.
+- "..."으로 끝내지 마, 끝까지 완성해.
+- 마크다운 없이 순수 텍스트만.
+- "테스트" 요청 → 테스트용 샘플 글 작성.
+- "가사" 요청 → 해당 가사 전문 작성.
+- "글" 요청 → 요청한 주제로 글 작성.
+
+예시:
+- "애국가 가사 써" → 애국가 가사 전문만 출력
+- "테스트 글 써" → 테스트용 샘플 글 출력
+- "사과에 대해 써" → 사과에 대한 글 출력`
           },
           {
             role: 'user',
-            content: instruction
+            content: contentRequest || '테스트 글을 써줘'
           }
         ])
 
         const finalContent = (response.content as string).trim()
         console.log(`[Telegram Chat] 📝 Generated content (${finalContent.length} chars)`)
 
+        // 200자 넘으면 Claude Code로 위임
+        if (finalContent.length > 200) {
+          console.log(`[Telegram Chat] 📝 Content > 200 chars, delegating to Claude Code...`)
+
+          // Claude Code CLI로 직접 실행
+          const codeCommand = `cd ~/Desktop && cat << 'CONTENT_EOF' > rachel-content.txt
+${finalContent}
+CONTENT_EOF
+osascript -e 'tell application "${appName}" to activate' -e 'tell application "${appName}" to make new document' -e 'delay 1' -e 'set theContent to read POSIX file (POSIX path of (path to desktop folder)) & "rachel-content.txt" as «class utf8»' -e 'tell application "${appName}" to tell front document to set body text to theContent'`
+
+          await execPromise(codeCommand)
+          await sendTelegramMessage(chatId, `✅ ${appName}에 내용 작성 완료! (${finalContent.length}자)\n\n📄 Desktop에 저장됨`)
+          return
+        }
+
         console.log(`[Telegram Chat] 🚀 Executing: Open ${appName} and write content`)
 
-        // Step 1: 앱 열기
-        await execPromise(`open -a "${appName}"`)
-        await new Promise(resolve => setTimeout(resolve, 1500))
+        console.log(`[Telegram Chat] 📝 Writing to ${appName} using direct AppleScript...`)
 
-        // Step 2: 새 문서 생성 (앱별로 다름)
-        if (appName === 'Notes') {
-          await execPromise(`osascript -e 'tell application "Notes" to make new note at folder "Notes"'`)
+        // 임시 파일에 내용 저장 (줄바꿈, 한글 모두 정상 처리)
+        const fs = await import('fs')
+        const os = await import('os')
+        const path = await import('path')
+        const tmpFile = path.join(os.tmpdir(), `rachel-content-${Date.now()}.txt`)
+        fs.writeFileSync(tmpFile, finalContent, 'utf-8')
+
+        let insertScript = ''
+
+        // 저장 경로 (Desktop에 타임스탬프로)
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const desktopPath = path.join(os.homedir(), 'Desktop')
+
+        if (appName === 'Pages') {
+          // Pages: 파일에서 읽어서 set body text + 저장
+          const savePath = path.join(desktopPath, `Rachel-${timestamp}.pages`)
+          insertScript = `
+set theContent to read POSIX file "${tmpFile}" as «class utf8»
+tell application "Pages"
+    activate
+    set newDoc to make new document
+    delay 1
+    tell newDoc
+        set body text to theContent
+    end tell
+    delay 0.5
+    save newDoc in POSIX file "${savePath}"
+end tell`
+        } else if (appName === 'Notes') {
+          // Notes: set body 방식 (Notes는 자동저장)
+          insertScript = `
+set theContent to read POSIX file "${tmpFile}" as «class utf8»
+tell application "Notes"
+    activate
+    set newNote to make new note at folder "Notes"
+    delay 0.5
+    set body of newNote to theContent
+end tell`
+        } else if (appName === 'Keynote') {
+          // Keynote: 첫 슬라이드에 텍스트 추가 + 저장
+          const savePath = path.join(desktopPath, `Rachel-${timestamp}.key`)
+          insertScript = `
+set theContent to read POSIX file "${tmpFile}" as «class utf8»
+tell application "Keynote"
+    activate
+    set newDoc to make new document with properties {document theme:theme "Basic White"}
+    delay 1
+    tell newDoc
+        tell slide 1
+            set object text of default title item to (text 1 thru 100 of theContent)
+            set object text of default body item to theContent
+        end tell
+    end tell
+    delay 0.5
+    save newDoc in POSIX file "${savePath}"
+end tell`
         } else {
-          await execPromise(`osascript -e 'tell application "${appName}" to make new document'`)
+          // 기타 앱: TextEdit 스타일
+          insertScript = `
+set theContent to read POSIX file "${tmpFile}" as «class utf8»
+tell application "${appName}"
+    activate
+    make new document
+    delay 0.5
+    set text of front document to theContent
+end tell`
         }
+
+        console.log(`[Telegram Chat] Running AppleScript for ${appName}...`)
+        const result = await execPromise(`osascript -e '${insertScript.replace(/'/g, "'\\''")}'`)
+
+        // 임시 파일 삭제
+        try { fs.unlinkSync(tmpFile) } catch (e) { /* ignore */ }
+        console.log(`[Telegram Chat] AppleScript result:`, result)
         await new Promise(resolve => setTimeout(resolve, 500))
 
-        // Step 3: 내용 입력 - 클립보드 + 붙여넣기 (한글 지원)
-        // keystroke는 ASCII만 지원하므로 pbcopy + Cmd+V 사용
-        await execPromise(`echo "${finalContent.replace(/"/g, '\\"')}" | pbcopy`)
-        await new Promise(resolve => setTimeout(resolve, 100))
-
-        // Cmd+V로 붙여넣기 (key code 9 = V)
-        await execPromise(`osascript -e 'tell application "System Events" to keystroke "v" using command down'`)
-        await new Promise(resolve => setTimeout(resolve, 200))
+        console.log(`[Telegram Chat] ✅ All steps completed!`)
 
         await sendTelegramMessage(chatId, `✅ ${appName}에 내용 작성 완료!\n\n${finalContent.substring(0, 200)}${finalContent.length > 200 ? '...' : ''}`)
         return
       } catch (error: any) {
         console.error('[Telegram Chat] Intent workflow error:', error)
         await sendTelegramMessage(chatId, `❌ 작업 실패: ${error.message}`)
+        return
+      }
+    }
+
+    // 🔧 스킬 개발 승인 확인 ("네", "응", "ㅇㅇ", "해줘" 등)
+    const approvalKeywords = ['네', '응', 'ㅇㅇ', '해줘', '개발해', '만들어', 'yes', 'ok', '좋아']
+    const pendingRequest = pendingSkillDevelopment.get(chatId)
+    if (pendingRequest && approvalKeywords.some(kw => instruction.toLowerCase().includes(kw))) {
+      // 스킬 개발 승인됨 - Claude Code로 스킬 개발
+      pendingSkillDevelopment.delete(chatId)
+      const originalInstruction = pendingRequest.instruction
+
+      await sendTelegramMessage(chatId, `🔧 스킬 개발 시작...\n\n📝 "${originalInstruction}"`)
+
+      try {
+        const { spawn } = await import('child_process')
+        const os = await import('os')
+
+        // Claude Code로 스킬 개발 및 실행
+        const skillPrompt = `다음 요청을 수행하고, 나중에 재사용할 수 있도록 스킬 정보도 제공해.
+
+요청: ${originalInstruction}
+
+1. 먼저 요청을 완수해
+2. 그 다음 아래 형식으로 스킬 정보 출력:
+---SKILL_INFO---
+name: 스킬 이름
+keywords: 키워드1, 키워드2, 키워드3
+description: 스킬 설명
+prompt: 재사용할 프롬프트 템플릿 ({{input}} 자리표시자 사용)
+---END_SKILL---`
+
+        const claudeProcess = spawn('/opt/homebrew/bin/claude', [
+          '--dangerously-skip-permissions',
+          '-p',
+          skillPrompt,
+          '--output-format', 'text'
+        ], {
+          cwd: os.homedir(),
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, HOME: os.homedir() }
+        })
+
+        let output = ''
+        claudeProcess.stdout?.on('data', (data: Buffer) => { output += data.toString() })
+        claudeProcess.stderr?.on('data', (data: Buffer) => { console.log(`[Claude] ${data}`) })
+
+        await new Promise<void>((resolve) => {
+          claudeProcess.on('close', () => resolve())
+          claudeProcess.on('error', () => resolve())
+        })
+
+        // 스킬 정보 파싱 및 저장
+        const skillMatch = output.match(/---SKILL_INFO---([\s\S]*?)---END_SKILL---/)
+        if (skillMatch) {
+          const skillInfo = skillMatch[1]
+          const nameMatch = skillInfo.match(/name:\s*(.+)/)
+          const keywordsMatch = skillInfo.match(/keywords:\s*(.+)/)
+          const descMatch = skillInfo.match(/description:\s*(.+)/)
+          const promptMatch = skillInfo.match(/prompt:\s*([\s\S]+?)(?=\n[a-z]+:|$)/)
+
+          if (nameMatch && keywordsMatch) {
+            const skillData = {
+              name: nameMatch[1].trim(),
+              description: descMatch?.[1]?.trim() || '',
+              keywords: keywordsMatch[1].split(',').map(k => k.trim()),
+              promptTemplate: promptMatch?.[1]?.trim() || originalInstruction,
+              skillType: 'claude_code' as const
+            }
+
+            const skillId = await saveSkill(supabase, skillData, `telegram:${chatId}`)
+            if (skillId) {
+              await sendTelegramMessage(chatId, `✅ 스킬 저장됨: "${skillData.name}"\n🏷️ 키워드: ${skillData.keywords.join(', ')}\n\n다음부터 이 키워드로 바로 실행됩니다!`)
+            }
+          }
+
+          // 스킬 정보 부분 제거하고 결과만 전송
+          const resultOnly = output.replace(/---SKILL_INFO---[\s\S]*?---END_SKILL---/, '').trim()
+          await sendTelegramMessage(chatId, `🎯 결과\n\n${resultOnly.slice(0, 4000)}`)
+        } else {
+          await sendTelegramMessage(chatId, `🎯 결과\n\n${output.trim().slice(0, 4000)}`)
+        }
+
+        return
+      } catch (error: any) {
+        await sendTelegramMessage(chatId, `❌ 스킬 개발 실패: ${error.message}`)
+        return
+      }
+    }
+
+    // 🎯 저장된 스킬 매칭 확인
+    const matchedSkill = await findMatchingSkill(supabase, instruction)
+    if (matchedSkill) {
+      console.log(`[Telegram Chat] 🎯 Matched skill: ${matchedSkill.name}`)
+      await sendTelegramMessage(chatId, `🎯 스킬 "${matchedSkill.name}" 실행 중...`)
+
+      try {
+        const { spawn } = await import('child_process')
+        const os = await import('os')
+
+        // 프롬프트 템플릿에 입력값 대입
+        const finalPrompt = matchedSkill.promptTemplate.replace(/\{\{input\}\}/g, instruction)
+
+        const claudeProcess = spawn('/opt/homebrew/bin/claude', [
+          '--dangerously-skip-permissions',
+          '-p',
+          finalPrompt,
+          '--output-format', 'text'
+        ], {
+          cwd: os.homedir(),
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, HOME: os.homedir() }
+        })
+
+        let output = ''
+        claudeProcess.stdout?.on('data', (data: Buffer) => { output += data.toString() })
+
+        await new Promise<void>((resolve) => {
+          claudeProcess.on('close', () => resolve())
+          claudeProcess.on('error', () => resolve())
+        })
+
+        // 사용 카운트 증가
+        await incrementSkillUsage(supabase, matchedSkill.id)
+
+        await sendTelegramMessage(chatId, `🎯 ${matchedSkill.name} 완료\n\n${output.trim().slice(0, 4000)}`)
+        return
+      } catch (error: any) {
+        await sendTelegramMessage(chatId, `❌ 스킬 실행 실패: ${error.message}`)
+      }
+    }
+
+    // 🎬 YouTube 후속 질문 감지 (캐시된 자막 사용)
+    const ytFollowUpKeywords = ['분석', '다시', '이번에는', '글써', '작성', '정리', '번역', '영상', '자막', '내용']
+    const hasYtFollowUp = ytFollowUpKeywords.some(kw => instruction.includes(kw))
+    const cachedTranscript = youtubeTranscriptCache.get(chatId)
+
+    if (hasYtFollowUp && cachedTranscript && !instruction.match(/youtube\.com|youtu\.be/)) {
+      // 캐시된 자막으로 후속 질문 처리
+      const { spawn } = await import('child_process')
+      const os = await import('os')
+
+      console.log(`[Telegram Chat] 🎬 YouTube follow-up with cached transcript (${cachedTranscript.transcript.length}자)`)
+      await sendTelegramMessage(chatId, `🤖 "${instruction}" 작업 중...\n📄 이전 영상 자막 사용 (${cachedTranscript.transcript.length}자)`)
+
+      const transcriptText = cachedTranscript.transcript.slice(0, 20000)
+      const followUpPrompt = `너는 유튜브 영상 분석 전문가야. 아래 자막을 바탕으로 사용자 요청을 수행해. 질문하지 말고 바로 결과물을 작성해.
+
+[유튜브 영상 자막]
+${transcriptText}
+
+[사용자 요청]
+${instruction}
+
+위 자막 내용을 바탕으로 사용자 요청대로 결과물을 작성해. 요약이 아니라 요청한 형식대로 작성해야 해.`
+
+      const claudeProcess = spawn('/opt/homebrew/bin/claude', [
+        '--dangerously-skip-permissions',
+        '-p',
+        followUpPrompt,
+        '--output-format', 'text'
+      ], {
+        cwd: os.homedir(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, HOME: os.homedir() }
+      })
+
+      let result = ''
+      claudeProcess.stdout?.on('data', (data: Buffer) => { result += data.toString() })
+      claudeProcess.stderr?.on('data', (data: Buffer) => { console.log(`[Claude Code] ${data}`) })
+
+      await new Promise<void>((resolve) => {
+        claudeProcess.on('close', () => resolve())
+        claudeProcess.on('error', () => resolve())
+      })
+
+      await sendTelegramMessage(chatId, `🎬 결과\n\n${(result.trim() || '실패').slice(0, 4000)}`)
+      return
+    }
+
+    // 🎬 YouTube 링크 감지 - yt-dlp로 자막 추출
+    const youtubeUrlMatch = instruction.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/)
+    if (youtubeUrlMatch) {
+      const videoId = youtubeUrlMatch[1]
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
+      console.log(`[Telegram Chat] 🎬 YouTube detected: ${videoId}`)
+
+      try {
+        const { spawn } = await import('child_process')
+        const fs = await import('fs')
+        const os = await import('os')
+        const path = await import('path')
+
+        await sendTelegramMessage(chatId, `🎬 YouTube 자막 추출 중...\n\n🔗 ${videoUrl}`)
+
+        // yt-dlp로 자막 다운로드
+        const tmpDir = os.tmpdir()
+        const outputPath = path.join(tmpDir, `yt-sub-${videoId}`)
+
+        // 쿠키 파일로 인증 (인증 팝업 없음)
+        const cookieFile = path.join(os.homedir(), '.config/yt-dlp/cookies.txt')
+        const ytdlpProcess = spawn('yt-dlp', [
+          '--cookies', cookieFile,
+          '--write-auto-sub',
+          '--sub-lang', 'en',
+          '--skip-download',
+          '--sub-format', 'srt',
+          '--no-warnings',
+          '-o', outputPath,
+          videoUrl
+        ], {
+          cwd: tmpDir,
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+
+        let ytdlpOutput = ''
+        ytdlpProcess.stdout?.on('data', (data: Buffer) => {
+          ytdlpOutput += data.toString()
+        })
+        ytdlpProcess.stderr?.on('data', (data: Buffer) => {
+          ytdlpOutput += data.toString()
+        })
+
+        // exit code 무시하고 파일 존재 여부로 판단
+        await new Promise<void>((resolve) => {
+          ytdlpProcess.on('close', () => resolve())
+          ytdlpProcess.on('error', () => resolve())
+        })
+
+        // 자막 파일 찾기 (en 또는 ko)
+        let subtitleContent = ''
+        const possibleFiles = [
+          `${outputPath}.en.srt`,
+          `${outputPath}.ko.srt`,
+          `${outputPath}.en.vtt`,
+          `${outputPath}.ko.vtt`
+        ]
+
+        for (const subFile of possibleFiles) {
+          if (fs.existsSync(subFile)) {
+            const rawContent = fs.readFileSync(subFile, 'utf-8')
+            // SRT 형식에서 텍스트만 추출
+            subtitleContent = rawContent
+              .split('\n')
+              .filter(line => !line.match(/^\d+$/) && !line.match(/^\d{2}:\d{2}:\d{2}/) && line.trim())
+              .join(' ')
+              .replace(/\[Music\]/gi, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+            // 파일 삭제
+            try { fs.unlinkSync(subFile) } catch (e) { /* ignore */ }
+            break
+          }
+        }
+
+        if (!subtitleContent) {
+          await sendTelegramMessage(chatId, `⚠️ 자막을 찾을 수 없습니다.\n\n${ytdlpOutput}`)
+          return
+        }
+
+        // 자막 캐시에 저장 (후속 질문용)
+        youtubeTranscriptCache.set(chatId, {
+          transcript: subtitleContent,
+          videoUrl: videoUrl,
+          timestamp: Date.now()
+        })
+
+        // 자막을 임시 파일로 저장
+        const transcriptFile = path.join(tmpDir, `yt-transcript-${videoId}.txt`)
+        fs.writeFileSync(transcriptFile, subtitleContent)
+
+        // 유저가 원하는 작업 감지
+        const userRequest = instruction.replace(/https?:\/\/[^\s]+/g, '').trim()
+        const wantsReport = userRequest.includes('리포트') || userRequest.includes('분석') || userRequest.includes('글')
+        const taskType = wantsReport ? '리포트 작성' : (userRequest || '요약')
+
+        await sendTelegramMessage(chatId, `🤖 Claude Code로 ${taskType} 중... (자막 ${subtitleContent.length}자)`)
+
+        // 자막 내용을 명확히 구분
+        const transcriptText = subtitleContent.slice(0, 20000)
+
+        // 유저 요청이 있으면 그대로, 없으면 기본 분석
+        let prompt: string
+        if (userRequest) {
+          // 리포트/분석 요청이면 객관적 분석 강조
+          const isReport = userRequest.includes('리포트') || userRequest.includes('분석') || userRequest.includes('글')
+          if (isReport) {
+            prompt = `너는 객관적 분석 리포트 작성 전문가야.
+
+[영상 자막]
+${transcriptText}
+
+[작성 지침]
+사용자 요청: ${userRequest}
+
+리포트 작성 원칙:
+1. 객관적 3인칭 시점으로 작성 (주관적 의견 배제)
+2. 영상에서 다룬 모든 내용을 빠짐없이 분석
+3. 발화자가 말한 핵심 주장, 근거, 사례를 정확히 기술
+4. 시간순/주제별로 체계적 구성
+5. 최소 1500자 이상 상세하게
+6. 영어면 한국어로 번역
+
+형식:
+■ 개요: 영상 주제와 발화자 소개
+■ 본론: 주요 내용 분석 (주제별로 나눠서)
+■ 핵심 주장 및 근거: 발화자의 주장과 뒷받침 논거
+■ 의문점: 검증 필요한 부분, 논리적 허점, 반론 가능성, 추가 탐구 필요한 질문들
+■ 시사점: 이 내용이 갖는 의미와 적용점
+■ 결론
+
+"요약"이라는 단어 절대 쓰지 마. 바로 작성해.`
+          } else {
+            prompt = `너는 유튜브 콘텐츠 전문가야.
+
+[영상 자막]
+${transcriptText}
+
+[사용자 요청]
+${userRequest}
+
+규칙:
+- 최소 1000자 이상 상세하게
+- 영어면 한국어로 번역
+- 질문하지 말고 바로 결과물 작성
+
+바로 작성해.`
+          }
+        } else {
+          prompt = `너는 객관적 분석 리포트 작성 전문가야.
+
+[영상 자막]
+${transcriptText}
+
+[작성 지침]
+이 영상 내용을 객관적으로 완벽하게 분석해서 리포트를 작성해.
+
+원칙:
+1. 객관적 3인칭 시점 (주관적 의견 배제)
+2. 모든 내용 빠짐없이 분석
+3. 최소 1500자 이상
+4. 영어면 한국어로 번역
+
+형식:
+■ 개요
+■ 본론 (주제별 분석)
+■ 핵심 주장 및 근거
+■ 의문점 (검증 필요, 논리적 허점, 반론 가능성)
+■ 시사점
+■ 결론
+
+바로 작성해.`
+        }
+
+        // Claude Code로 요약
+        const claudeProcess = spawn('/opt/homebrew/bin/claude', [
+          '--dangerously-skip-permissions',
+          '-p',
+          prompt,
+          '--output-format', 'text'
+        ], {
+          cwd: os.homedir(),
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, HOME: os.homedir() }
+        })
+
+        let summary = ''
+        claudeProcess.stdout?.on('data', (data: Buffer) => {
+          summary += data.toString()
+        })
+        claudeProcess.stderr?.on('data', (data: Buffer) => {
+          console.log(`[Claude Code stderr] ${data.toString()}`)
+        })
+
+        await new Promise<void>((resolve) => {
+          claudeProcess.on('close', () => resolve())
+          claudeProcess.on('error', () => resolve())
+        })
+
+        // 임시 파일 삭제
+        try { fs.unlinkSync(transcriptFile) } catch (e) { /* ignore */ }
+
+        const finalSummary = summary.trim() || '요약 실패'
+        await sendTelegramMessage(chatId, `🎬 영상 요약\n\n${finalSummary.slice(0, 4000)}`)
+
+        return
+      } catch (error: any) {
+        console.error('[Telegram Chat] YouTube error:', error)
+        await sendTelegramMessage(chatId, `❌ YouTube 자막 추출 실패: ${error.message}`)
+        return
+      }
+    }
+
+    // 🔥 Claude Code CLI로 위임해야 하는 복잡한 작업 감지
+    const claudeCodeKeywords = [
+      '크롤링', '크롤', 'crawl', 'scrape', '스크래핑',
+      '다운로드', '다운받아', '저장해', '받아와',
+      '이미지', '사진', '파일',
+      '폴더', '디렉토리',
+      '웹사이트', '사이트', '페이지에서',  // "페이지" 앱과 구분
+      'url', 'http'
+    ]
+
+    const isClaudeCodeTask = claudeCodeKeywords.some(kw => instruction.toLowerCase().includes(kw.toLowerCase()))
+
+    if (isClaudeCodeTask) {
+      console.log(`[Telegram Chat] 🤖 CLAUDE CODE TASK: Running in background...`)
+
+      try {
+        const { spawn } = await import('child_process')
+        const fs = await import('fs')
+        const os = await import('os')
+        const path = await import('path')
+
+        await sendTelegramMessage(chatId, `🤖 Claude Code 백그라운드 실행 시작...\n\n📝 "${instruction}"\n\n⏳ 진행 상황을 알려드리겠습니다.`)
+
+        // 로그 파일 경로
+        const logFile = path.join(os.tmpdir(), `claude-task-${Date.now()}.log`)
+        const logStream = fs.createWriteStream(logFile, { flags: 'a' })
+
+        // Claude Code 백그라운드 실행 (숨김 모드) - 브라우저 도구 비활성화
+        const claudeProcess = spawn('/opt/homebrew/bin/claude', [
+          '--dangerously-skip-permissions',
+          '-p',
+          instruction,
+          '--output-format', 'text',
+          '--disallowed-tools', 'mcp__playwright__*'
+        ], {
+          cwd: os.homedir(),
+          detached: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, HOME: os.homedir(), BROWSER: 'echo' }, // 브라우저 열기 방지
+        })
+
+        let output = ''
+        let lastUpdate = ''
+
+        // stdout 캡처
+        claudeProcess.stdout?.on('data', (data: Buffer) => {
+          const text = data.toString()
+          output += text
+          logStream.write(text)
+          console.log(`[Claude Code] ${text}`)
+        })
+
+        // stderr 캡처
+        claudeProcess.stderr?.on('data', (data: Buffer) => {
+          const text = data.toString()
+          output += text
+          logStream.write(text)
+          console.log(`[Claude Code Error] ${text}`)
+        })
+
+        // 5초마다 진행 상황 업데이트
+        const updateInterval = setInterval(async () => {
+          if (output.length > lastUpdate.length) {
+            const newContent = output.slice(lastUpdate.length)
+            lastUpdate = output
+            const preview = newContent.length > 500 ? newContent.slice(-500) : newContent
+            await sendTelegramMessage(chatId, `📊 진행 중...\n\n${preview}`)
+          }
+        }, 10000) // 10초마다
+
+        // 완료 처리
+        claudeProcess.on('close', async (code) => {
+          clearInterval(updateInterval)
+          logStream.end()
+
+          const finalOutput = output.length > 3000
+            ? output.slice(0, 1500) + '\n\n... (중략) ...\n\n' + output.slice(-1500)
+            : output
+
+          if (code === 0) {
+            await sendTelegramMessage(chatId, `✅ Claude Code 작업 완료!\n\n${finalOutput || '(출력 없음)'}`)
+          } else {
+            await sendTelegramMessage(chatId, `⚠️ Claude Code 종료 (코드: ${code})\n\n${finalOutput || '(출력 없음)'}`)
+          }
+
+          // 로그 파일 삭제
+          try { fs.unlinkSync(logFile) } catch (e) { /* ignore */ }
+        })
+
+        claudeProcess.on('error', async (err) => {
+          clearInterval(updateInterval)
+          await sendTelegramMessage(chatId, `❌ Claude Code 오류: ${err.message}`)
+        })
+
+        // 프로세스 분리 (부모 종료해도 계속 실행)
+        claudeProcess.unref()
+
+        return
+      } catch (error: any) {
+        console.error('[Telegram Chat] Claude Code error:', error)
+        await sendTelegramMessage(chatId, `❌ Claude Code 실행 실패: ${error.message}`)
         return
       }
     }
@@ -1866,6 +2571,15 @@ async function executeAgentWithAutonomousLoop(
         })
       }
 
+      // 스킬 개발 제안
+      message += `\n🔧 Claude Code로 이 작업을 위한 스킬을 개발해드릴까요?\n"응" 또는 "개발해"라고 답해주세요.`
+
+      // 대기 상태 저장
+      pendingSkillDevelopment.set(chatId, {
+        instruction: virtualTask.description,
+        timestamp: Date.now()
+      })
+
       await sendTelegramMessage(chatId, message)
     }
   } catch (error) {
@@ -1878,6 +2592,7 @@ async function executeAgentWithAutonomousLoop(
 
 /**
  * Send message to Telegram chat
+ * 🔥 Plain text mode - MarkdownV2 causes issues with Korean and special characters
  */
 async function sendTelegramMessage(chatId: number, text: string) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
@@ -1889,27 +2604,6 @@ async function sendTelegramMessage(chatId: number, text: string) {
     return
   }
 
-  // Escape special characters for Telegram MarkdownV2
-  const escapedText = text
-    .replace(/\_/g, '\\_')
-    .replace(/\*/g, '\\*')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/\~/g, '\\~')
-    .replace(/\`/g, '\\`')
-    .replace(/\>/g, '\\>')
-    .replace(/\#/g, '\\#')
-    .replace(/\+/g, '\\+')
-    .replace(/\-/g, '\\-')
-    .replace(/\=/g, '\\=')
-    .replace(/\|/g, '\\|')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/\./g, '\\.')
-    .replace(/\!/g, '\\!')
-
   try {
     console.log(`[Telegram] Sending message to chat ${chatId}: ${text.substring(0, 100)}...`)
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -1917,8 +2611,7 @@ async function sendTelegramMessage(chatId: number, text: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: escapedText,
-        parse_mode: 'MarkdownV2',
+        text: text,  // Plain text, no escaping needed
       }),
     })
 
