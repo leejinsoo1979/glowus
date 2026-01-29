@@ -97,92 +97,73 @@ export default function GanttPage() {
     setMounted(true)
   }, [])
 
-  // Fetch tasks from all projects
+  // Fetch tasks using batch API (single request instead of N+1)
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      // First, get all projects
-      const projectsRes = await fetch('/api/projects')
-      if (!projectsRes.ok) throw new Error('프로젝트를 불러올 수 없습니다')
-      const projectsData = await projectsRes.json()
-      const fetchedProjects: Project[] = Array.isArray(projectsData) ? projectsData : []
+      // Use batch API endpoint - single request for all projects and tasks
+      const res = await fetch('/api/gantt/tasks?limit=200')
+      if (!res.ok) throw new Error('데이터를 불러올 수 없습니다')
+
+      const data = await res.json()
+      const fetchedProjects: Project[] = data.projects || []
+      const rawTasks: ProjectTask[] = data.data || []
+
       setProjects(fetchedProjects)
 
-      // Fetch tasks for ALL projects in PARALLEL (not sequential!)
-      const allTasks: GanttTask[] = []
+      // Convert to GanttTask format
+      const allTasks: GanttTask[] = rawTasks.map(task => {
+        const startDate = task.start_date
+          ? new Date(task.start_date)
+          : new Date()
 
-      const taskPromises = fetchedProjects.map(async (project) => {
-        try {
-          const tasksRes = await fetch(`/api/projects/${project.id}/tasks?limit=100`)
-          if (!tasksRes.ok) return []
+        const endDate = task.due_date
+          ? new Date(task.due_date)
+          : new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-          const tasksData = await tasksRes.json()
-          const projectTasks: ProjectTask[] = tasksData.data || []
-
-          // Convert to GanttTask format
-          return projectTasks
-            .filter(task => task.start_date || task.due_date) // Skip tasks without dates
-            .map(task => {
-              const startDate = task.start_date
-                ? new Date(task.start_date)
-                : new Date()
-
-              const endDate = task.due_date
-                ? new Date(task.due_date)
-                : new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-
-              let progress = 0
-              switch (task.status) {
-                case 'DONE': progress = 100; break
-                case 'IN_PROGRESS': progress = 50; break
-                case 'IN_REVIEW': progress = 75; break
-                case 'TODO': progress = 0; break
-                case 'BACKLOG': progress = 0; break
-                default: progress = 0
-              }
-
-              const assignee = task.assignee_user
-                ? {
-                    id: task.assignee_user.id,
-                    name: task.assignee_user.name,
-                    avatar: task.assignee_user.avatar_url,
-                    type: 'human' as const
-                  }
-                : task.assignee_agent
-                  ? {
-                      id: task.assignee_agent.id,
-                      name: task.assignee_agent.name,
-                      avatar: task.assignee_agent.avatar_url,
-                      type: 'agent' as const
-                    }
-                  : undefined
-
-              return {
-                id: task.id,
-                title: task.title,
-                description: task.description,
-                startDate,
-                endDate,
-                progress,
-                assignee,
-                dependencies: task.depends_on || [],
-                projectId: project.id,
-                projectName: project.name,
-                status: task.status,
-                priority: task.priority,
-              } as GanttTask
-            })
-        } catch (e) {
-          console.error(`Failed to fetch tasks for project ${project.id}:`, e)
-          return []
+        let progress = 0
+        switch (task.status) {
+          case 'DONE': progress = 100; break
+          case 'IN_PROGRESS': progress = 50; break
+          case 'IN_REVIEW': progress = 75; break
+          case 'TODO': progress = 0; break
+          case 'BACKLOG': progress = 0; break
+          default: progress = 0
         }
-      })
 
-      // Execute all fetches in parallel
-      const taskResults = await Promise.all(taskPromises)
-      taskResults.forEach(tasks => allTasks.push(...tasks))
+        const assignee = task.assignee_user
+          ? {
+              id: task.assignee_user.id,
+              name: task.assignee_user.name,
+              avatar: task.assignee_user.avatar_url,
+              type: 'human' as const
+            }
+          : task.assignee_agent
+            ? {
+                id: task.assignee_agent.id,
+                name: task.assignee_agent.name,
+                avatar: task.assignee_agent.avatar_url,
+                type: 'agent' as const
+              }
+            : undefined
+
+        return {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          startDate,
+          endDate,
+          progress,
+          assignee,
+          dependencies: task.depends_on || [],
+          projectId: task.project_id,
+          projectName: (task as any).project_name || '알 수 없음',
+          status: task.status,
+          priority: task.priority,
+        } as GanttTask
+      })
 
       allTasks.sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
       setTasks(allTasks)
@@ -315,6 +296,11 @@ export default function GanttPage() {
   }, [filteredTasks])
 
   const columnWidth = viewMode === "day" ? 50 : viewMode === "week" ? 36 : 18
+
+  // Pre-calculate today column index (avoid repeated findIndex calls)
+  const todayColumnIndex = useMemo(() => {
+    return columns.findIndex(c => c.isToday)
+  }, [columns])
 
   const getProgressColor = (progress: number, priority: string) => {
     if (progress === 100) return "#22c55e"
@@ -518,10 +504,8 @@ export default function GanttPage() {
                     const priorityBadge = getPriorityBadge(task.priority)
 
                     return (
-                      <motion.div
+                      <div
                         key={task.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
                         className={`flex border-b ${isDark ? 'border-zinc-800/30 hover:bg-zinc-800/20' : 'border-zinc-100 hover:bg-zinc-50'} transition-colors`}
                       >
                         {/* Task Info */}
@@ -560,10 +544,10 @@ export default function GanttPage() {
                           ))}
 
                           {/* Today Line */}
-                          {columns.findIndex(c => c.isToday) >= 0 && (
+                          {todayColumnIndex >= 0 && (
                             <div
                               className="absolute top-0 bottom-0 w-[2px] bg-accent z-10"
-                              style={{ left: columns.findIndex(c => c.isToday) * columnWidth + columnWidth / 2 }}
+                              style={{ left: todayColumnIndex * columnWidth + columnWidth / 2 }}
                             />
                           )}
 
@@ -598,25 +582,9 @@ export default function GanttPage() {
                             </div>
                           )}
                         </div>
-                      </motion.div>
+                      </div>
                     )
                   })}
-                </div>
-              ))}
-
-              {/* Fill remaining space with empty grid rows */}
-              {Array.from({ length: Math.max(0, 50 - filteredTasks.length - Object.keys(groupedTasks).length) }).map((_, i) => (
-                <div key={`empty-${i}`} className={`flex border-b ${isDark ? 'border-zinc-800/30' : 'border-zinc-100'}`}>
-                  <div className={`w-52 flex-shrink-0 border-r sticky left-0 z-10 ${isDark ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-200 bg-white'}`} style={{ minHeight: 40 }} />
-                  <div className="flex" style={{ minHeight: 40 }}>
-                    {columns.map((col, j) => (
-                      <div
-                        key={j}
-                        className={`flex-shrink-0 border-r ${isDark ? 'border-zinc-800/30' : 'border-zinc-100/50'} ${col.isWeekend ? (isDark ? 'bg-zinc-800/20' : 'bg-zinc-50/50') : ''} ${col.isToday ? 'bg-accent/5' : ''}`}
-                        style={{ width: columnWidth }}
-                      />
-                    ))}
-                  </div>
                 </div>
               ))}
             </div>
