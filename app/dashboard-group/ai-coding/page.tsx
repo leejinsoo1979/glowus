@@ -69,6 +69,9 @@ import { TerminalPanel } from '@/components/editor'
 // MCP Bridge for Claude Code CLI integration
 import { useMcpBridge } from '@/lib/neural-map/hooks/useMcpBridge'
 
+// GlowCode Store for Claude Code UI projectPath sync
+import { useGlowCodeStore } from '@/stores/glowCodeStore'
+
 // Mission Control View Sync callbacks
 import {
   initializeViewSyncCallbacks,
@@ -327,6 +330,15 @@ export default function NeuralMapPage() {
   // MCP Bridge for Claude Code CLI control
   const { isConnected: mcpConnected } = useMcpBridge()
 
+  // 🔥 GlowCode Store sync: NeuralMapStore.projectPath → GlowCodeStore.context.projectPath
+  const glowCodeSetContext = useGlowCodeStore((s) => s.setContext)
+  useEffect(() => {
+    if (projectPath) {
+      console.log('[NeuralMap] Syncing projectPath to GlowCode:', projectPath)
+      glowCodeSetContext({ projectPath })
+    }
+  }, [projectPath, glowCodeSetContext])
+
   // Viewfinder → Chat 연결 핸들러
   const handleViewfinderShareToAI = useCallback((context: { imageDataUrl: string; timestamp: number }) => {
     // 1. 이미지를 chat store에 pending으로 설정
@@ -406,8 +418,30 @@ export default function NeuralMapPage() {
         .then(res => res.ok ? res.json() : null)
         .then(project => {
           if (project) {
-            console.log('[NeuralMap] Project fetched, setting linked project:', project.id, project.name)
+            console.log('[NeuralMap] Project fetched, setting linked project:', project.id, project.name, 'folder_path:', project.folder_path)
             setLinkedProject(project.id, project.name)
+            // 🔥 프로젝트의 folder_path가 있으면 projectPath도 설정 (에이전트가 파일 접근 가능)
+            if (project.folder_path) {
+              console.log('[NeuralMap] Setting projectPath from DB folder_path:', project.folder_path)
+              setProjectPath(project.folder_path)
+            } else {
+              // 🔥 folder_path가 없으면 Electron에서 자동 폴더 선택 다이얼로그
+              const electron = typeof window !== 'undefined' ? (window as any).electron : null
+              if (electron?.fs?.selectDirectory) {
+                console.log('[NeuralMap] No folder_path, opening folder selection dialog')
+                electron.fs.selectDirectory().then((result: { path: string } | null) => {
+                  if (result?.path) {
+                    setProjectPath(result.path)
+                    // DB에도 저장
+                    fetch(`/api/projects/${project.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ folder_path: result.path })
+                    })
+                  }
+                })
+              }
+            }
           } else {
             // 프로젝트 정보가 없어도 ID라도 설정
             console.log('[NeuralMap] Project not found, setting ID only:', projectIdFromUrl)
@@ -429,6 +463,25 @@ export default function NeuralMapPage() {
         linkedProjectName: currentState.linkedProjectName,
         projectPath: currentState.projectPath
       })
+
+      // 🔥 linkedProjectId는 있는데 projectPath가 없으면 폴더 선택 다이얼로그
+      if (currentState.linkedProjectId && !currentState.projectPath) {
+        const electron = typeof window !== 'undefined' ? (window as any).electron : null
+        if (electron?.fs?.selectDirectory) {
+          console.log('[NeuralMap] Existing project has no folder_path, opening folder selection')
+          electron.fs.selectDirectory().then((result: { path: string } | null) => {
+            if (result?.path) {
+              setProjectPath(result.path)
+              // DB에도 저장
+              fetch(`/api/projects/${currentState.linkedProjectId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder_path: result.path })
+              })
+            }
+          })
+        }
+      }
     }
   }, [setLinkedProject, clearLinkedProject, setProjectPath])
 
@@ -1007,16 +1060,19 @@ export default function NeuralMapPage() {
         setMapId(null)
       }
 
+      // 🔥 프로젝트가 없으면 바로 빈 상태로 표시 (빠른 로딩)
+      if (!linkedProjectId) {
+        console.log('[NeuralMap] No project - showing empty state immediately')
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       try {
         let targetMapId: string | null = null
 
-        // 🔥 1. 기존 맵이 있는지 조회 (프로젝트가 없어도 조회!)
-        const apiUrl = linkedProjectId
-          ? `/api/ai-coding?project_id=${linkedProjectId}`
-          : '/api/ai-coding'
-
-        const listRes = await fetch(apiUrl)
+        // 🔥 1. 프로젝트의 기존 맵 조회
+        const listRes = await fetch(`/api/ai-coding?project_id=${linkedProjectId}`)
         if (listRes.ok) {
           const maps = await listRes.json()
           if (Array.isArray(maps) && maps.length > 0) {
@@ -1033,7 +1089,7 @@ export default function NeuralMapPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               title: linkedProjectName || 'My Neural Map',
-              project_id: linkedProjectId || null
+              project_id: linkedProjectId
             }),
           })
 
@@ -1052,14 +1108,8 @@ export default function NeuralMapPage() {
             setMapId(targetMapId)
             if (loadedGraph?.nodes?.length > 0) {
               setGraph(loadedGraph)
-              // 🔥 API에서 그래프를 로드했으면 files 설정 안 함
-              // files 설정하면 다른 useEffect가 그래프를 다시 빌드해서 덮어씀
-              console.log('[NeuralMap] Graph loaded from API:', {
-                nodes: loadedGraph.nodes.length,
-                skippingFiles: loadedFiles?.length || 0
-              })
+              console.log('[NeuralMap] Graph loaded from API:', loadedGraph.nodes.length)
             } else if (loadedFiles?.length > 0) {
-              // 그래프가 없을 때만 파일 설정 (새 맵인 경우)
               setFiles(loadedFiles)
               console.log('[NeuralMap] No graph, setting files:', loadedFiles.length)
             }
@@ -1074,7 +1124,7 @@ export default function NeuralMapPage() {
     }
 
     loadOrCreateMap()
-  }, [linkedProjectId]) // 🔥 프로젝트 변경 시 재실행
+  }, [linkedProjectId])
 
 
   // 마운트 전에도 기본 레이아웃은 보여줌 (빈 화면 방지)
