@@ -849,6 +849,16 @@ JSON만 반환하세요.`
 
           finalContent = (generatedContent.content as string).trim()
           console.log(`[Telegram Chat] 📝 Generated content (${finalContent.length} chars)`)
+
+          // 거부 응답 감지 (저작권 등)
+          const refusalKeywords = ['죄송', '제공할 수 없', '직접 제공', '저작권', 'copyright', 'cannot provide', 'sorry']
+          const isRefusal = refusalKeywords.some(kw => finalContent.toLowerCase().includes(kw.toLowerCase()))
+
+          if (isRefusal) {
+            console.log(`[Telegram Chat] ⚠️ LLM refused to generate content`)
+            await sendTelegramMessage(chatId, `⚠️ 해당 내용은 저작권 등의 이유로 직접 생성할 수 없습니다.\n\n가사나 책 내용은 직접 복사해서 보내주시면 Pages에 작성해드릴게요!\n\n예: "pages 열어서 [여기에 내용 붙여넣기] 적어줘"`)
+            return
+          }
         }
 
         if (!finalContent) {
