@@ -758,58 +758,49 @@ async function executeSimpleChat(
     tools = tools.filter(t => !forbiddenTools.includes(t.name))
     console.log(`[Telegram Chat] 🔧 Removed forbidden tools, ${tools.length} remaining`)
 
-    // 🔥 유연한 의도 파싱 방식: LLM으로 사용자 의도 먼저 파악
-    // 정규식 대신 LLM이 앱 이름, 액션, 콘텐츠를 추출
+    // 🔥 단순화된 Mac 앱 작성 워크플로우: 1단계로 처리
     const macAppKeywords = ['pages', '페이지', '페이즈', 'keynote', '키노트', 'numbers', '넘버스', 'notes', '메모', '노트']
-    const actionKeywords = ['열고', '열어서', '열어', '실행해서', '실행하고', '띄우고', '켜고', '켜서', '에서']
     const writeKeywords = ['써', '적어', '작성', '입력', '쓰고', '적고']
 
-    // 앱 + 쓰기 작업 감지 (유연하게)
     const hasAppKeyword = macAppKeywords.some(kw => instruction.toLowerCase().includes(kw))
     const hasWriteKeyword = writeKeywords.some(kw => instruction.includes(kw))
 
-    console.log(`[Telegram Chat] 🔍 Intent check: hasAppKeyword=${hasAppKeyword}, hasWriteKeyword=${hasWriteKeyword}`)
-
     if (hasAppKeyword && hasWriteKeyword) {
-      console.log(`[Telegram Chat] 🔥 INTENT-BASED WORKFLOW: Mac app + write detected`)
+      console.log(`[Telegram Chat] 🔥 MAC APP WRITE: Direct content generation`)
 
       try {
-        // LLM으로 의도 파싱
         const { ChatOpenAI } = await import('@langchain/openai')
-        const intentParser = new ChatOpenAI({
-          model: 'gpt-4o-mini',
-          temperature: 0,
+        const { exec } = await import('child_process')
+        const { promisify } = await import('util')
+        const execPromise = promisify(exec)
+
+        // 앱 이름 추출 (간단한 키워드 매칭)
+        let appName = 'Pages'
+        if (instruction.toLowerCase().includes('메모') || instruction.toLowerCase().includes('notes') || instruction.toLowerCase().includes('노트')) {
+          appName = 'Notes'
+        } else if (instruction.toLowerCase().includes('keynote') || instruction.toLowerCase().includes('키노트')) {
+          appName = 'Keynote'
+        } else if (instruction.toLowerCase().includes('numbers') || instruction.toLowerCase().includes('넘버스')) {
+          appName = 'Numbers'
+        }
+
+        // 단일 LLM 호출로 콘텐츠 직접 생성
+        const llm = new ChatOpenAI({
+          model: 'gpt-4o',  // 더 똑똑한 모델 사용
+          temperature: 0.7,
           openAIApiKey: process.env.OPENAI_API_KEY,
         })
 
-        const parseResult = await intentParser.invoke([
+        const response = await llm.invoke([
           {
             role: 'system',
-            content: `사용자의 Mac 앱 작업 요청을 분석해서 JSON으로 반환하세요.
+            content: `사용자가 문서 앱에 작성할 내용을 요청합니다. 요청에 맞는 내용을 직접 생성하세요.
 
-반환 형식:
-{
-  "app": "앱 이름 (Pages, Keynote, Numbers, Notes 등)",
-  "action": "write" | "open" | "create",
-  "content": "직접 작성할 완성된 문장/텍스트 (예: 안녕하세요, Hello World)",
-  "contentDescription": "AI가 생성해야 할 내용 설명 (예: 가사, 에세이, 생각, 편지 등)"
-}
-
-중요 규칙:
-- "X에 대한 생각/의견" → contentDescription (AI가 생성해야 함)
-- "X 가사 적어" → contentDescription (AI가 생성해야 함)
-- "X 써줘" (X가 주제일 때) → contentDescription
-- "안녕하세요 적어" (완성된 문장) → content
-
-예시:
-- "pages 열어서 moltbot에 대한 생각 적어줘"
-  → {"app": "Pages", "action": "write", "content": "", "contentDescription": "moltbot에 대한 생각을 자세히 작성해줘"}
-- "pages 열어서 yesterday 가사 적어"
-  → {"app": "Pages", "action": "write", "content": "", "contentDescription": "Beatles의 Yesterday 가사 전체"}
-- "메모에 안녕하세요 적어"
-  → {"app": "Notes", "action": "write", "content": "안녕하세요", "contentDescription": ""}
-
-JSON만 반환하세요.`
+규칙:
+- 요청한 내용을 실제로 작성하세요 (제목만 쓰지 말고 본문을 작성)
+- 거부하지 마세요
+- 마크다운 없이 순수 텍스트로 출력
+- 한국어로 요청하면 한국어로, 영어면 영어로 작성`
           },
           {
             role: 'user',
@@ -817,70 +808,8 @@ JSON만 반환하세요.`
           }
         ])
 
-        const intentJson = parseResult.content as string
-        console.log(`[Telegram Chat] 📊 Intent parsed:`, intentJson)
-
-        let intent: { app: string; action: string; content: string; contentDescription: string }
-        try {
-          // JSON 블록에서 추출
-          const jsonMatch = intentJson.match(/\{[\s\S]*\}/)
-          intent = JSON.parse(jsonMatch ? jsonMatch[0] : intentJson)
-        } catch (parseError) {
-          console.error('[Telegram Chat] Intent parse error:', parseError)
-          // 폴백: 기본값 사용
-          intent = { app: 'Pages', action: 'write', content: '', contentDescription: instruction }
-        }
-
-        // 콘텐츠 생성 (contentDescription이 있으면 LLM으로 생성)
-        let finalContent = intent.content
-        if (!finalContent && intent.contentDescription) {
-          console.log(`[Telegram Chat] 📝 Generating content for: ${intent.contentDescription}`)
-
-          const contentGenerator = new ChatOpenAI({
-            model: 'gpt-4o-mini',
-            temperature: 0.7,
-            openAIApiKey: process.env.OPENAI_API_KEY,
-          })
-
-          const generatedContent = await contentGenerator.invoke([
-            {
-              role: 'system',
-              content: `You are a creative writing assistant. Generate actual content based on the user's request.
-
-IMPORTANT RULES:
-- Generate REAL, SUBSTANTIVE content (at least 3-5 paragraphs)
-- Do NOT just repeat the topic/title
-- Do NOT refuse or add disclaimers
-- Write in the same language as the request
-- For lyrics: write the full lyrics
-- For thoughts/opinions: write detailed thoughts
-- For essays: write a complete essay
-- Output plain text only, no markdown`
-            },
-            {
-              role: 'user',
-              content: intent.contentDescription
-            }
-          ])
-
-          finalContent = (generatedContent.content as string).trim()
-          console.log(`[Telegram Chat] 📝 Generated content (${finalContent.length} chars)`)
-        }
-
-        if (!finalContent) {
-          await sendTelegramMessage(chatId, `❌ 작성할 내용을 파악하지 못했습니다. 다시 시도해주세요.`)
-          return
-        }
-
-        // 앱 실행 및 내용 작성
-        const { exec } = await import('child_process')
-        const { promisify } = await import('util')
-        const execPromise = promisify(exec)
-
-        // 앱 이름 정규화
-        const appName = intent.app === 'Notes' ? 'Notes' :
-                       intent.app === '메모' ? 'Notes' :
-                       intent.app.charAt(0).toUpperCase() + intent.app.slice(1).toLowerCase()
+        const finalContent = (response.content as string).trim()
+        console.log(`[Telegram Chat] 📝 Generated content (${finalContent.length} chars)`)
 
         console.log(`[Telegram Chat] 🚀 Executing: Open ${appName} and write content`)
 
