@@ -40,6 +40,7 @@ import {
   GanttWidget
 } from '@/components/dashboard'
 import { ActivityFeed } from '@/components/activity-feed'
+import { ProactiveSuggestionPanel } from '@/components/proactive'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -543,8 +544,15 @@ export default function DashboardPage() {
           </TiltCard>
         </motion.div>
 
-        {/* Row 5: Telegram Work Activity Feed */}
-        <motion.div variants={item} className="col-span-12">
+        {/* Row 5: Proactive AI Suggestions */}
+        <motion.div variants={item} className="col-span-12 md:col-span-4 h-[400px]">
+          <TiltCard className="h-full overflow-hidden">
+            <ProactiveSuggestionPanel maxItems={5} sortBy="priority" />
+          </TiltCard>
+        </motion.div>
+
+        {/* Row 5 continued: Telegram Work Activity Feed */}
+        <motion.div variants={item} className="col-span-12 md:col-span-8">
           <TiltCard className="p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-medium tracking-tight text-zinc-800 dark:text-white">

@@ -9,7 +9,7 @@ import {
   useMissionControlStore,
   selectActiveSuggestions,
 } from '@/lib/mission-control/store'
-import { subscribeToProactiveEvents, unsubscribeFromProactiveEvents } from '@/lib/proactive'
+import { subscribeToProactiveEvents, unsubscribeFromProactiveEvents } from '@/lib/proactive/realtime-subscription'
 import { Inbox, Filter, SortAsc } from 'lucide-react'
 
 // ============================================================================

@@ -22,6 +22,11 @@ import {
 } from './types'
 import { executeAction, AgentAction, ActionResult } from '@/lib/ai/agent-actions'
 import type { ToolAction } from '@/lib/ai/super-agent-tools'
+import {
+  syncArtifactToView,
+  syncTaskCompletionToView,
+  syncActionToView,
+} from './artifact-view-mapper'
 
 // ============================================================================
 // Constants
@@ -542,9 +547,10 @@ export class OrchestrationEngine {
 
       // 산출물 생성 (content + 액션 실행 결과)
       const artifactIds: string[] = []
+      let mainArtifact: Artifact | null = null
       const artifactContent = parsedResponse.content || response.response
       if (artifactContent) {
-        const artifact = store.addArtifact({
+        mainArtifact = store.addArtifact({
           missionId: mission.id,
           taskId: task.id,
           createdBy: task.assignedAgent,
@@ -552,7 +558,19 @@ export class OrchestrationEngine {
           title: task.title,
           content: artifactContent,
         })
-        artifactIds.push(artifact.id)
+        artifactIds.push(mainArtifact.id)
+
+        // 🔥 뷰 동기화 - 아티팩트 타입에 맞는 탭으로 전환 & 하이라이팅
+        try {
+          await syncArtifactToView(mainArtifact, {
+            autoSwitch: true,
+            highlight: true,
+            scroll: true,
+          })
+          console.log(`[Orchestrator] 뷰 동기화 완료: ${mainArtifact.type} → 해당 탭`)
+        } catch (viewSyncError) {
+          console.warn('[Orchestrator] 뷰 동기화 실패:', viewSyncError)
+        }
       }
 
       // 액션 실행 결과도 별도 산출물로 저장
@@ -576,6 +594,20 @@ export class OrchestrationEngine {
       store.completeTask(task.id, artifactContent, artifactIds)
       store.setAgentStatus(task.assignedAgent, 'idle', '작업 완료')
       store.setAgentTask(task.assignedAgent, undefined)
+
+      // 🔥 태스크 완료 시 뷰 동기화 - 태스크 타입에 맞는 탭으로
+      try {
+        // 메타데이터에서 nodeId 추출 (있는 경우)
+        const nodeId = (mainArtifact?.metadata?.nodeId as string) || undefined
+        await syncTaskCompletionToView(
+          task.type,
+          task.assignedAgent,
+          artifactIds,
+          nodeId ? [nodeId] : undefined
+        )
+      } catch (viewSyncError) {
+        console.warn('[Orchestrator] 태스크 완료 뷰 동기화 실패:', viewSyncError)
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
       store.failTask(task.id, errorMessage)
@@ -631,6 +663,15 @@ export class OrchestrationEngine {
 
         if (result.success) {
           console.log(`[Orchestrator] ✅ ${action.type} 성공:`, result.result)
+
+          // 🔥 액션 실행 후 뷰 동기화 - 액션 타입에 맞는 탭으로 전환
+          try {
+            const nodeId = (action as any).nodeId || (result.result as any)?.nodeId
+            await syncActionToView(action.type, nodeId)
+          } catch (viewSyncError) {
+            // 뷰 동기화 실패는 치명적이지 않으므로 경고만 출력
+            console.warn(`[Orchestrator] 액션 뷰 동기화 실패:`, viewSyncError)
+          }
         } else {
           console.warn(`[Orchestrator] ❌ ${action.type} 실패:`, result.error)
         }

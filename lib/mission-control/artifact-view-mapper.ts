@@ -35,6 +35,8 @@ export interface ViewSyncResult {
 
 const ARTIFACT_TO_VIEW_MAP: Record<Artifact['type'], ViewTab> = {
   blueprint: 'logic',      // Blueprint → Logic/Blueprint 탭
+  schema: 'data',          // Schema → Data/ERD 탭
+  diagram: 'mermaid',      // Diagram → Mermaid/Flowchart 탭
   code: 'map',             // Code → Neural Map 탭
   test: 'test',            // Test → Test 탭
   review: 'map',           // Review → Neural Map 탭
@@ -83,11 +85,14 @@ class ArtifactViewMapper {
     // 타겟 탭 결정
     const targetTab = this.determineTargetTab(artifact)
 
+    // 메타데이터에서 nodeId 추출 (있는 경우)
+    const nodeId = (artifact.metadata?.nodeId as string) || undefined
+
     const result: ViewSyncResult = {
       targetTab,
       shouldSwitch: autoSwitch,
-      highlightNodeIds: artifact.nodeId ? [artifact.nodeId] : undefined,
-      scrollToNodeId: scroll && artifact.nodeId ? artifact.nodeId : undefined,
+      highlightNodeIds: nodeId ? [nodeId] : undefined,
+      scrollToNodeId: scroll && nodeId ? nodeId : undefined,
     }
 
     // 뷰 전환 실행
@@ -96,8 +101,8 @@ class ArtifactViewMapper {
     }
 
     // 노드 하이라이팅
-    if (highlight && artifact.nodeId) {
-      this.highlightNode(artifact.nodeId)
+    if (highlight && nodeId) {
+      this.highlightNode(nodeId)
     }
 
     // 리스너 알림
@@ -105,7 +110,7 @@ class ArtifactViewMapper {
       {
         type: 'artifact_created',
         artifactType: artifact.type,
-        nodeId: artifact.nodeId,
+        nodeId,
         data: { artifact },
       },
       result

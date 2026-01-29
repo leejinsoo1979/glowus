@@ -1378,28 +1378,7 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
             }
 
             setSources(prev => [...prev, newSource])
-
-            // Show confirmation message
-            const textPreview = allText.length > 300 ? allText.substring(0, 300) + '...' : allText
-
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: `✅ **"${file.name}"** 소스가 추가되었습니다!
-
-📊 **파일 정보:**
-• 슬라이드 수: ${parsed.slides.length}장
-• 추출된 텍스트: ${allText.length.toLocaleString()}자
-
-📝 **내용 미리보기:**
-${textPreview}
-
----
-💡 **다음 단계:**
-• 더 많은 소스를 업로드하거나
-• **"슬라이드 만들어줘"** 또는 **"이 내용으로 사업계획서 10장 생성해줘"** 라고 입력하세요.
-
-현재 소스: ${sources.length + 1}개`
-            }])
+            // 메시지 없음 - 소스 목록 UI에서 직접 확인
         } catch (error) {
             console.error('File parsing error:', error)
             setMessages(prev => [...prev, {
@@ -1418,10 +1397,6 @@ ${textPreview}
     // 소스 삭제
     const removeSource = (sourceId: string) => {
         setSources(prev => prev.filter(s => s.id !== sourceId))
-        setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: '소스가 삭제되었습니다.'
-        }])
     }
 
     // 모든 소스 텍스트 합치기
@@ -1489,101 +1464,103 @@ ${textPreview}
                     </button>
                 </div>
 
-                {/* Sources Panel (NotebookLM 스타일) */}
-                {sources.length > 0 && (
-                    <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                                📚 소스 ({sources.length}개)
-                            </span>
-                            <button
-                                onClick={() => setSources([])}
-                                className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
-                            >
-                                전체 삭제
-                            </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                            {sources.map(source => (
-                                <div
-                                    key={source.id}
-                                    className="group flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
-                                >
-                                    <span className="text-zinc-600 dark:text-zinc-300">
-                                        {source.type === 'pdf' ? '📄' : source.type === 'pptx' ? '📊' : '📝'}
-                                    </span>
-                                    <span className="text-zinc-700 dark:text-zinc-200 max-w-[120px] truncate">
-                                        {source.name}
-                                    </span>
-                                    {source.slideCount && (
-                                        <span className="text-zinc-400 text-[10px]">
-                                            {source.slideCount}장
-                                        </span>
-                                    )}
-                                    <button
-                                        onClick={() => removeSource(source.id)}
-                                        className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 {/* Chat Content - Single Scroll Container */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {/* Source Upload Drop Zone (NotebookLM 스타일) */}
-                    {sources.length === 0 && slides.length === 0 && !presentationV2 && (
-                        <div
-                            onClick={() => fileInputRef.current?.click()}
-                            onDragOver={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                e.currentTarget.classList.add('border-accent', 'bg-accent/5')
-                            }}
-                            onDragLeave={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                e.currentTarget.classList.remove('border-accent', 'bg-accent/5')
-                            }}
-                            onDrop={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                e.currentTarget.classList.remove('border-accent', 'bg-accent/5')
-                                const files = e.dataTransfer.files
-                                if (files.length > 0 && fileInputRef.current) {
-                                    const dataTransfer = new DataTransfer()
-                                    dataTransfer.items.add(files[0])
-                                    fileInputRef.current.files = dataTransfer.files
-                                    fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
-                                }
-                            }}
-                            className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-2xl cursor-pointer hover:border-accent hover:bg-accent/5 transition-all mb-4"
-                        >
-                            <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-2xl flex items-center justify-center mb-4">
-                                <Upload className="w-8 h-8 text-zinc-400" />
-                            </div>
-                            <h3 className="text-lg font-medium text-zinc-900 dark:text-white mb-2">
-                                소스 파일 업로드
-                            </h3>
-                            <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center mb-4">
-                                클릭하여 선택하거나 파일을 여기로 드래그하세요
-                            </p>
-                            <div className="flex items-center gap-4 text-xs text-zinc-400">
-                                <span className="flex items-center gap-1">
-                                    <FileText className="w-3.5 h-3.5" />
-                                    PDF
-                                </span>
-                                <span className="flex items-center gap-1">
-                                    <FileText className="w-3.5 h-3.5" />
-                                    PPTX
-                                </span>
-                            </div>
-                            <p className="text-xs text-zinc-400 mt-3">
-                                소스를 모은 후 AI에게 슬라이드 생성을 요청하세요
-                            </p>
+                    {/* Source Section (NotebookLM 스타일) */}
+                    {slides.length === 0 && !presentationV2 && (
+                        <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-2xl mb-4">
+                            {/* 소스가 없을 때 - 업로드 안내 */}
+                            {sources.length === 0 ? (
+                                <div
+                                    onClick={() => fileInputRef.current?.click()}
+                                    onDragOver={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.add('border-accent', 'bg-accent/5')
+                                    }}
+                                    onDragLeave={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.remove('border-accent', 'bg-accent/5')
+                                    }}
+                                    onDrop={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.remove('border-accent', 'bg-accent/5')
+                                        const files = e.dataTransfer.files
+                                        if (files.length > 0 && fileInputRef.current) {
+                                            const dataTransfer = new DataTransfer()
+                                            dataTransfer.items.add(files[0])
+                                            fileInputRef.current.files = dataTransfer.files
+                                            fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+                                        }
+                                    }}
+                                    className="w-full flex flex-col items-center cursor-pointer hover:bg-accent/5 p-4 rounded-xl transition-all"
+                                >
+                                    <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800 rounded-2xl flex items-center justify-center mb-3">
+                                        <Upload className="w-7 h-7 text-zinc-400" />
+                                    </div>
+                                    <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium mb-1">
+                                        클릭하여 선택하거나 파일을 드래그하세요
+                                    </p>
+                                    <p className="text-xs text-zinc-400">PDF, PPTX 지원</p>
+                                </div>
+                            ) : (
+                                /* 소스가 있을 때 - 소스 목록 + 버튼들 */
+                                <div className="w-full">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                            📚 소스 ({sources.length}개)
+                                        </span>
+                                    </div>
+                                    {/* 소스 목록 */}
+                                    <div className="space-y-2 mb-4">
+                                        {sources.map(source => (
+                                            <div
+                                                key={source.id}
+                                                className="flex items-center justify-between p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg"
+                                            >
+                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                    <span className="text-lg flex-shrink-0">
+                                                        {source.type === 'pdf' ? '📄' : '📊'}
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm text-zinc-800 dark:text-zinc-200 truncate">
+                                                            {source.name}
+                                                        </p>
+                                                        <p className="text-xs text-zinc-500">
+                                                            {source.slideCount}장 · {source.extractedText.length.toLocaleString()}자
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeSource(source.id)}
+                                                    className="p-1 text-zinc-400 hover:text-red-500 transition-colors flex-shrink-0"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {/* 버튼들 */}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                            소스 추가
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setInput('이 소스들로 슬라이드 만들어줘')
+                                                setTimeout(() => sendMessage(), 100)
+                                            }}
+                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+                                        >
+                                            <Play className="w-4 h-4" />
+                                            슬라이드 생성
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

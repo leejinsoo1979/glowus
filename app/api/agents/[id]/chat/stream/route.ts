@@ -26,6 +26,8 @@ import {
   buildKnowledgeContext,
   formatKnowledgeForPrompt,
 } from '@/lib/memory/agent-knowledge-service'
+// 🤝 Agent OS - Relationship & Stats tracking
+import { processConversation } from '@/lib/memory/agent-os'
 import {
   buildContextPackForChat,
   wrapContextPackForSystemPrompt,
@@ -357,6 +359,17 @@ export async function POST(
               }),
               analyzeAndLearn(agentId, user.id, message, finalResponse),
             ]).catch(err => console.error('[StreamChat] JARVIS memory save error:', err))
+
+            // 3. Agent OS - 관계 추적 및 학습
+            processConversation({
+              agentId,
+              userId: user.id,
+              messages: [
+                { role: 'user', content: message },
+                { role: 'assistant', content: finalResponse },
+              ],
+              wasHelpful: true,
+            }).catch(err => console.error('[StreamChat] Agent OS error:', err))
 
             console.log(`[StreamChat] ✅ Stream completed, ${toolsUsed.length} tools used`)
           }

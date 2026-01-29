@@ -615,39 +615,8 @@ function RelationsTab({
           )
           setRelationships(enrichedRelations)
         } else {
-          // 더미 데이터 (개발용)
-          setRelationships([
-            {
-              id: '1',
-              partner_type: 'user',
-              partner_id: 'user1',
-              partner_name: '진수',
-              rapport: 85,
-              interaction_count: 47,
-              last_interaction: new Date().toISOString(),
-              relationship_type: 'supervisor',
-            },
-            {
-              id: '2',
-              partner_type: 'agent',
-              partner_id: 'agent2',
-              partner_name: '레이첼',
-              rapport: 72,
-              interaction_count: 23,
-              last_interaction: new Date(Date.now() - 86400000).toISOString(),
-              relationship_type: 'colleague',
-            },
-            {
-              id: '3',
-              partner_type: 'agent',
-              partner_id: 'agent3',
-              partner_name: '제레미',
-              rapport: 65,
-              interaction_count: 15,
-              last_interaction: new Date(Date.now() - 172800000).toISOString(),
-              relationship_type: 'collaborator',
-            },
-          ])
+          // 관계 데이터가 없으면 빈 배열 (대화 시 자동 생성됨)
+          setRelationships([])
         }
       } catch (error) {
         console.error('Failed to fetch relationships:', error)

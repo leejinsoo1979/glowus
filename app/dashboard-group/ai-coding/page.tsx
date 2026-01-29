@@ -47,7 +47,7 @@ import GitPanel from '@/components/neural-map/panels/GitPanel'
 // FileTreePanel은 TwoLevelSidebar에서 렌더링됨 (layout.tsx)
 
 // Controls
-import { Toolbar } from '@/components/neural-map/controls/Toolbar'
+import { CodingToolbar } from '@/components/neural-map/controls/CodingToolbar'
 import { ViewTabs } from '@/components/neural-map/controls/ViewTabs'
 import { StatusBar } from '@/components/neural-map/controls/StatusBar'
 
@@ -68,6 +68,12 @@ import { TerminalPanel } from '@/components/editor'
 
 // MCP Bridge for Claude Code CLI integration
 import { useMcpBridge } from '@/lib/neural-map/hooks/useMcpBridge'
+
+// Mission Control View Sync callbacks
+import {
+  initializeViewSyncCallbacks,
+  cleanupViewSyncCallbacks,
+} from '@/lib/mission-control/artifact-view-mapper'
 
 // Dynamically import 3D Canvas (uses browser APIs)
 const NeuralMapCanvas = dynamic(
@@ -415,30 +421,14 @@ export default function NeuralMapPage() {
         })
     }
 
-    // 🔥 URL에 projectId가 없으면 프로젝트 정보 초기화 (새로운 시작)
-    if (!projectIdFromUrl) {
-      console.log('[NeuralMap] No project in URL - clearing linked project')
-      clearLinkedProject()
-      setProjectPath(null)
-
-      // localStorage에서도 프로젝트 정보 제거
-      if (typeof window !== 'undefined') {
-        try {
-          const stored = localStorage.getItem('neural-map-storage')
-          if (stored) {
-            const parsed = JSON.parse(stored)
-            if (parsed.state) {
-              delete parsed.state.projectPath
-              delete parsed.state.linkedProjectId
-              delete parsed.state.linkedProjectName
-              localStorage.setItem('neural-map-storage', JSON.stringify(parsed))
-              console.log('[NeuralMap] Cleared project info from localStorage')
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
+    // 🔥 URL에 projectId가 없어도 기존 프로젝트 유지 (다른 메뉴 갔다 와도 유지됨)
+    // 프로젝트 초기화는 사용자가 명시적으로 "New Project" 버튼을 클릭할 때만 수행
+    if (!projectIdFromUrl && hasLinkedProject) {
+      console.log('[NeuralMap] No project in URL but keeping existing linked project:', {
+        linkedProjectId: currentState.linkedProjectId,
+        linkedProjectName: currentState.linkedProjectName,
+        projectPath: currentState.projectPath
+      })
     }
   }, [setLinkedProject, clearLinkedProject, setProjectPath])
 
@@ -459,6 +449,20 @@ export default function NeuralMapPage() {
       return () => window.removeEventListener('keydown', handleKeyDown)
     }
   }, [toggleTerminal])
+
+  // 🔥 Mission Control 뷰 동기화 콜백 초기화
+  useEffect(() => {
+    // 클라이언트 사이드에서만 실행
+    if (typeof window !== 'undefined') {
+      console.log('[NeuralMap] 🔗 Initializing Mission Control view sync callbacks')
+      initializeViewSyncCallbacks()
+
+      return () => {
+        console.log('[NeuralMap] 🔌 Cleaning up Mission Control view sync callbacks')
+        cleanupViewSyncCallbacks()
+      }
+    }
+  }, [])
 
   // 🔥 저장 토스트 상태
   const [saveToast, setSaveToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' })
@@ -1103,8 +1107,13 @@ export default function NeuralMapPage() {
         {/* Main Content Area */}
         <div className={cn("flex-1 flex flex-col min-w-0 relative", isDark ? "bg-zinc-900" : "bg-white")}>
 
-          {/* Toolbar - 저장, 검색, 테마 등 */}
-          <Toolbar />
+          {/* Toolbar - 코딩 전용 (저장, 검색, 실행, 포맷 등) */}
+          <CodingToolbar
+            onToggleTerminal={toggleTerminal}
+            terminalOpen={terminalOpen}
+            projectPath={projectPath}
+            linkedProjectName={linkedProjectName}
+          />
 
           {/* Top View Controls (Tabs, etc) */}
           <div className={cn("h-16 border-b flex items-center justify-between px-4 select-none z-20 overflow-hidden", isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200")}>
@@ -1253,6 +1262,7 @@ export default function NeuralMapPage() {
               onClose={toggleTerminal}
               height={terminalHeight}
               onHeightChange={setTerminalHeight}
+              cwd={projectPath || undefined}
             />
           </div>
           {/* Right Panel Resize Handle (Absolute Positioned for no gap) */}

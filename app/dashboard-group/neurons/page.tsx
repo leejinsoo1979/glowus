@@ -64,6 +64,7 @@ import type { MyNeuronType, ViewMode } from '@/lib/my-neurons/types'
 import dynamic from 'next/dynamic'
 import { NodeDetailPanel } from '@/components/my-neurons/panels/NodeDetailPanel'
 import { MarkdownEditorPanel } from '@/components/neural-map/panels/MarkdownEditorPanel'
+import { NeuronsToolbar } from '@/components/my-neurons/controls/NeuronsToolbar'
 
 // Dynamic import for 3D canvas (SSR 비활성화)
 const NeuronsCanvas = dynamic(
@@ -810,105 +811,13 @@ export default function NeuronsPage() {
 
   return (
     <div className="h-full flex flex-col bg-[#050510] overflow-hidden">
-      {/* ===== Top Toolbar ===== */}
-      <header className="flex-shrink-0 h-12 border-b border-zinc-800 flex items-center px-4 gap-4 bg-[#0a0a12]">
-        {/* Logo & Title */}
-        <div className="flex items-center gap-2">
-          <Brain className="w-5 h-5" style={{ color: themeConfig.color }} />
-          <span className="font-semibold text-white">My Neural Map</span>
-        </div>
-
-        {/* Mode Selector */}
-        <select className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-300">
-          <option>Mode: Auto</option>
-          <option>Mode: Manual</option>
-        </select>
-
-        {/* View Tab Selector */}
-        <div className="flex items-center gap-1 bg-zinc-800/50 rounded-lg p-0.5">
-          {VIEW_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setViewMode(tab.id)}
-              title={tab.description}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1 rounded text-xs transition-colors',
-                viewMode === tab.id
-                  ? 'text-white'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
-              )}
-              style={viewMode === tab.id ? { backgroundColor: themeConfig.color } : undefined}
-            >
-              <tab.icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1" />
-
-        {/* 2D/3D Toggle */}
-        <div className="flex items-center gap-1 bg-zinc-800/50 rounded-lg p-0.5">
-          <button
-            onClick={() => setCanvasMode('2d')}
-            className={cn(
-              'px-3 py-1 rounded text-xs font-medium transition-colors',
-              canvasMode === '2d'
-                ? 'text-white'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
-            )}
-            style={canvasMode === '2d' ? { backgroundColor: themeConfig.color } : undefined}
-          >
-            2D
-          </button>
-          <button
-            onClick={() => setCanvasMode('3d')}
-            className={cn(
-              'px-3 py-1 rounded text-xs font-medium transition-colors',
-              canvasMode === '3d'
-                ? 'text-white'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
-            )}
-            style={canvasMode === '3d' ? { backgroundColor: themeConfig.color } : undefined}
-          >
-            3D
-          </button>
-        </div>
-
-        {/* Right Actions */}
-        <button
-          onClick={toggleLabels}
-          className={cn(
-            'p-1.5 rounded transition-colors',
-            showLabels ? 'text-white' : 'text-zinc-400 hover:text-white'
-          )}
-          style={showLabels ? { backgroundColor: themeConfig.color } : undefined}
-          title={showLabels ? '라벨 숨기기' : '라벨 표시'}
-        >
-          {showLabels ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-        </button>
-
-        <button className="p-1.5 rounded text-zinc-400 hover:text-white transition-colors" title="테마">
-          <Palette className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={fetchGraph}
-          disabled={isLoading}
-          className="p-1.5 rounded text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
-          title="새로고침"
-        >
-          <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-        </button>
-
-        <button className="p-1.5 rounded text-zinc-400 hover:text-white transition-colors" title="내보내기">
-          <Download className="w-4 h-4" />
-        </button>
-
-        <button className="p-1.5 rounded text-zinc-400 hover:text-white transition-colors" title="설정">
-          <Settings className="w-4 h-4" />
-        </button>
-      </header>
+      {/* ===== Top Toolbar - 노드 추가, 연결, Blueprint 등 그래프 편집 도구 ===== */}
+      <NeuronsToolbar
+        onRefresh={fetchGraph}
+        isLoading={isLoading}
+        canvasMode={canvasMode}
+        onCanvasModeChange={setCanvasMode}
+      />
 
       {/* ===== Main Content (3 Panels) ===== */}
       <div className="flex-1 flex overflow-hidden relative">

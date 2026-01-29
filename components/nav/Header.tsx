@@ -24,6 +24,7 @@ import {
   Folder,
 } from 'lucide-react'
 import { MainAssistantButton } from '@/components/notifications/MainAssistantButton'
+import { ProactiveNotificationBadge } from '@/components/proactive'
 
 export function Header() {
   const router = useRouter()
@@ -239,6 +240,9 @@ export function Header() {
 
       {/* Right: Profile & Agent Toggle */}
       <div className="flex items-center gap-2">
+        {/* Proactive Notifications */}
+        <ProactiveNotificationBadge position="top-right" />
+
         {/* AI Assistant Button */}
         <MainAssistantButton />
 

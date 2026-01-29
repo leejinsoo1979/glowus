@@ -11,69 +11,6 @@ import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import type { BrainNode, BrainEdge, NodeType, EdgeType } from '@/types/brain-map'
 
 // ============================================
-// Mock Data Generator
-// ============================================
-
-function generateMockNodes(count: number): BrainNode[] {
-  const types: NodeType[] = ['memory', 'concept', 'person', 'doc', 'task', 'decision', 'meeting', 'tool', 'skill']
-  const tags = ['중요', '긴급', '참고', '검토필요', '완료', '진행중', 'AI', '개발', '디자인', '마케팅']
-
-  const nodes: BrainNode[] = []
-  for (let i = 0; i < count; i++) {
-    const type = types[Math.floor(Math.random() * types.length)]
-    nodes.push({
-      id: `node-${i}`,
-      type,
-      title: `${type} 노드 #${i}`,
-      summary: `이것은 ${type} 타입의 노드입니다. 테스트 데이터입니다.`,
-      createdAt: Date.now() - Math.random() * 30 * 86400000,
-      updatedAt: Date.now() - Math.random() * 7 * 86400000,
-      importance: Math.floor(Math.random() * 10) + 1,
-      confidence: Math.random(),
-      clusterId: `cluster-${Math.floor(i / 20)}`,
-      tags: Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () =>
-        tags[Math.floor(Math.random() * tags.length)]
-      ),
-      source: {
-        kind: ['chat', 'file', 'web', 'tool'][Math.floor(Math.random() * 4)] as 'chat' | 'file' | 'web' | 'tool',
-        ref: `ref-${i}`,
-      },
-      stats: {
-        accessCount: Math.floor(Math.random() * 100),
-        lastAccessAt: Date.now() - Math.random() * 7 * 86400000,
-      },
-    })
-  }
-  return nodes
-}
-
-function generateMockEdges(nodes: BrainNode[], edgeCount: number): BrainEdge[] {
-  const types: EdgeType[] = ['mentions', 'supports', 'contradicts', 'causes', 'follows', 'part_of', 'related', 'assigned_to', 'produced_by']
-  const edges: BrainEdge[] = []
-
-  for (let i = 0; i < edgeCount; i++) {
-    const sourceIdx = Math.floor(Math.random() * nodes.length)
-    let targetIdx = Math.floor(Math.random() * nodes.length)
-    while (targetIdx === sourceIdx) {
-      targetIdx = Math.floor(Math.random() * nodes.length)
-    }
-
-    edges.push({
-      id: `edge-${i}`,
-      source: nodes[sourceIdx].id,
-      target: nodes[targetIdx].id,
-      type: types[Math.floor(Math.random() * types.length)],
-      weight: Math.random(),
-      evidence: {
-        memoryIds: [`mem-${i}`],
-      },
-      createdAt: Date.now() - Math.random() * 30 * 86400000,
-    })
-  }
-  return edges
-}
-
-// ============================================
 // GET Handler
 // ============================================
 
@@ -277,21 +214,14 @@ export async function GET(
       }
     }
 
-    // 데이터가 없으면 Mock 데이터 사용
-    const isMockData = nodes.length === 0
-    if (isMockData) {
-      const mockNodeCount = Math.min(limit, 50)
-      nodes = generateMockNodes(mockNodeCount)
-      edges = generateMockEdges(nodes, mockNodeCount * 2)
-    }
-
+    // 실제 데이터만 반환 (Mock 데이터 제거)
     return NextResponse.json({
       nodes,
       edges,
       meta: {
         totalNodes: nodes.length,
         totalEdges: edges.length,
-        isMockData,
+        isEmpty: nodes.length === 0,
       },
     })
   } catch (error) {
