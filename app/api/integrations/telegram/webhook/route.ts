@@ -758,37 +758,146 @@ async function executeSimpleChat(
     tools = tools.filter(t => !forbiddenTools.includes(t.name))
     console.log(`[Telegram Chat] 🔧 Removed forbidden tools, ${tools.length} remaining`)
 
-    // 🔥 하드코딩된 워크플로우: "Pages 열고 X 써줘" 패턴 직접 처리
-    const pagesWritePattern = /(?:pages|페이지|페이즈)\s*(?:열고|열어서|열어|에서|에|띄우고|실행하고|켜고|켜서)\s*(.+?)(?:써줘|써|적어줘|적어|작성해줘|작성|입력해줘|입력)/i
-    const pagesMatch = instruction.match(pagesWritePattern)
-    console.log(`[Telegram Chat] 🔍 Pages pattern check: instruction="${instruction}", match=${!!pagesMatch}`)
+    // 🔥 유연한 의도 파싱 방식: LLM으로 사용자 의도 먼저 파악
+    // 정규식 대신 LLM이 앱 이름, 액션, 콘텐츠를 추출
+    const macAppKeywords = ['pages', '페이지', '페이즈', 'keynote', '키노트', 'numbers', '넘버스', 'notes', '메모', '노트']
+    const actionKeywords = ['열고', '열어서', '열어', '실행해서', '실행하고', '띄우고', '켜고', '켜서', '에서']
+    const writeKeywords = ['써', '적어', '작성', '입력', '쓰고', '적고']
 
-    if (pagesMatch) {
-      const contentToWrite = pagesMatch[1].trim()
-      console.log(`[Telegram Chat] 🔥 HARDCODED WORKFLOW: Pages write - "${contentToWrite}"`)
+    // 앱 + 쓰기 작업 감지 (유연하게)
+    const hasAppKeyword = macAppKeywords.some(kw => instruction.toLowerCase().includes(kw))
+    const hasWriteKeyword = writeKeywords.some(kw => instruction.includes(kw))
+
+    console.log(`[Telegram Chat] 🔍 Intent check: hasAppKeyword=${hasAppKeyword}, hasWriteKeyword=${hasWriteKeyword}`)
+
+    if (hasAppKeyword && hasWriteKeyword) {
+      console.log(`[Telegram Chat] 🔥 INTENT-BASED WORKFLOW: Mac app + write detected`)
 
       try {
+        // LLM으로 의도 파싱
+        const { ChatOpenAI } = await import('@langchain/openai')
+        const intentParser = new ChatOpenAI({
+          model: 'gpt-4o-mini',
+          temperature: 0,
+          openAIApiKey: process.env.OPENAI_API_KEY,
+        })
+
+        const parseResult = await intentParser.invoke([
+          {
+            role: 'system',
+            content: `사용자의 Mac 앱 작업 요청을 분석해서 JSON으로 반환하세요.
+
+반환 형식:
+{
+  "app": "앱 이름 (Pages, Keynote, Numbers, Notes 등)",
+  "action": "write" | "open" | "create",
+  "content": "작성할 내용 (있으면)",
+  "contentDescription": "내용 설명 (가사 적어, 편지 써 등 - content가 없으면 이걸로 생성)"
+}
+
+예시:
+- "pages실행해서 yesterday 가사 영문으로 쓰고 한글로 번역도 해서 적어놔"
+  → {"app": "Pages", "action": "write", "content": "", "contentDescription": "yesterday 가사 영문으로 쓰고 한글로 번역"}
+- "pages 열어서 안녕하세요 적어"
+  → {"app": "Pages", "action": "write", "content": "안녕하세요", "contentDescription": ""}
+- "메모 앱 열어서 오늘 할일 적어"
+  → {"app": "Notes", "action": "write", "content": "", "contentDescription": "오늘 할일"}
+
+JSON만 반환하세요.`
+          },
+          {
+            role: 'user',
+            content: instruction
+          }
+        ])
+
+        const intentJson = parseResult.content as string
+        console.log(`[Telegram Chat] 📊 Intent parsed:`, intentJson)
+
+        let intent: { app: string; action: string; content: string; contentDescription: string }
+        try {
+          // JSON 블록에서 추출
+          const jsonMatch = intentJson.match(/\{[\s\S]*\}/)
+          intent = JSON.parse(jsonMatch ? jsonMatch[0] : intentJson)
+        } catch (parseError) {
+          console.error('[Telegram Chat] Intent parse error:', parseError)
+          // 폴백: 기본값 사용
+          intent = { app: 'Pages', action: 'write', content: '', contentDescription: instruction }
+        }
+
+        // 콘텐츠 생성 (contentDescription이 있으면 LLM으로 생성)
+        let finalContent = intent.content
+        if (!finalContent && intent.contentDescription) {
+          console.log(`[Telegram Chat] 📝 Generating content for: ${intent.contentDescription}`)
+
+          const contentGenerator = new ChatOpenAI({
+            model: 'gpt-4o-mini',
+            temperature: 0.7,
+            openAIApiKey: process.env.OPENAI_API_KEY,
+          })
+
+          const generatedContent = await contentGenerator.invoke([
+            {
+              role: 'system',
+              content: '사용자가 요청한 내용을 작성하세요. 마크다운이나 특수 기호 없이 순수 텍스트만 작성하세요.'
+            },
+            {
+              role: 'user',
+              content: intent.contentDescription
+            }
+          ])
+
+          finalContent = (generatedContent.content as string).trim()
+          console.log(`[Telegram Chat] 📝 Generated content (${finalContent.length} chars)`)
+        }
+
+        if (!finalContent) {
+          await sendTelegramMessage(chatId, `❌ 작성할 내용을 파악하지 못했습니다. 다시 시도해주세요.`)
+          return
+        }
+
+        // 앱 실행 및 내용 작성
         const { exec } = await import('child_process')
         const { promisify } = await import('util')
         const execPromise = promisify(exec)
 
-        // Step 1: Pages 열기
-        await execPromise('open -a "Pages"')
-        await new Promise(resolve => setTimeout(resolve, 1500)) // 앱 로딩 대기
+        // 앱 이름 정규화
+        const appName = intent.app === 'Notes' ? 'Notes' :
+                       intent.app === '메모' ? 'Notes' :
+                       intent.app.charAt(0).toUpperCase() + intent.app.slice(1).toLowerCase()
 
-        // Step 2: 새 문서 생성
-        await execPromise(`osascript -e 'tell application "Pages" to make new document'`)
+        console.log(`[Telegram Chat] 🚀 Executing: Open ${appName} and write content`)
+
+        // Step 1: 앱 열기
+        await execPromise(`open -a "${appName}"`)
+        await new Promise(resolve => setTimeout(resolve, 1500))
+
+        // Step 2: 새 문서 생성 (앱별로 다름)
+        if (appName === 'Notes') {
+          await execPromise(`osascript -e 'tell application "Notes" to make new note at folder "Notes"'`)
+        } else {
+          await execPromise(`osascript -e 'tell application "${appName}" to make new document'`)
+        }
         await new Promise(resolve => setTimeout(resolve, 500))
 
-        // Step 3: 내용 입력 (System Events로 키 입력)
-        const escapedContent = contentToWrite.replace(/"/g, '\\"').replace(/'/g, "'\\''")
-        await execPromise(`osascript -e 'tell application "System Events" to keystroke "${escapedContent}"'`)
+        // Step 3: 내용 입력 - 줄바꿈 처리
+        const lines = finalContent.split('\n')
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].replace(/"/g, '\\"').replace(/'/g, "'\\''")
+          if (line.trim()) {
+            await execPromise(`osascript -e 'tell application "System Events" to keystroke "${line}"'`)
+          }
+          if (i < lines.length - 1) {
+            await execPromise(`osascript -e 'tell application "System Events" to key code 36'`) // Enter
+          }
+          await new Promise(resolve => setTimeout(resolve, 50)) // 짧은 딜레이
+        }
 
-        await sendTelegramMessage(chatId, `✅ Pages에 "${contentToWrite.substring(0, 50)}..." 작성 완료!`)
+        await sendTelegramMessage(chatId, `✅ ${appName}에 내용 작성 완료!\n\n${finalContent.substring(0, 200)}${finalContent.length > 200 ? '...' : ''}`)
         return
       } catch (error: any) {
-        console.error('[Telegram Chat] Pages write error:', error)
-        await sendTelegramMessage(chatId, `❌ Pages 작성 실패: ${error.message}`)
+        console.error('[Telegram Chat] Intent workflow error:', error)
+        await sendTelegramMessage(chatId, `❌ 작업 실패: ${error.message}`)
         return
       }
     }
