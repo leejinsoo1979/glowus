@@ -88,6 +88,16 @@ interface SavedPresentation {
     updatedAt: Date
 }
 
+// 소스 파일 (NotebookLM 스타일)
+interface SourceFile {
+    id: string
+    name: string
+    type: 'pptx' | 'pdf' | 'text' | 'url'
+    extractedText: string
+    uploadedAt: Date
+    slideCount?: number  // PPTX/PDF의 경우
+}
+
 // Slide Preview Components
 const CoverSlide = ({ content, title, subtitle }: { content: any, title: string, subtitle?: string }) => (
     <div className="h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 text-white p-12">
@@ -504,6 +514,9 @@ YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT �
     const [editMode, setEditMode] = useState(false)
     const [presentationV2, setPresentationV2] = useState<ParsedPresentationV2 | null>(null)
 
+    // 소스 파일 관리 (NotebookLM 스타일)
+    const [sources, setSources] = useState<SourceFile[]>([])
+
     // Resizable panel state
     const [leftPanelWidth, setLeftPanelWidth] = useState(480)
     const [isResizing, setIsResizing] = useState(false)
@@ -668,9 +681,16 @@ YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT �
         else if (prompt.includes('미니멀') || prompt.includes('minimal')) theme = 'minimal'
         else if (prompt.includes('자연') || prompt.includes('nature')) theme = 'nature'
 
+        // 소스가 있으면 컨텍스트에 포함
+        const sourcesText = getAllSourcesText()
+        const contentWithSources = sourcesText
+            ? `사용자 요청: ${prompt}\n\n=== 참고 자료 (소스) ===\n${sourcesText}`
+            : prompt
+
         // Create initial todos based on mode
         const initialTodos: TodoItem[] = proMode ? [
             { id: '1', text: '📊 슬라이드 시스템 초기화', status: 'in_progress' },
+            ...(sources.length > 0 ? [{ id: '1.5', text: `📚 ${sources.length}개 소스 분석`, status: 'pending' as const }] : []),
             { id: '2', text: '🔍 비즈니스 컨텍스트 분석', status: 'pending' },
             { id: '3', text: `📝 ${slideCount}장 슬라이드 구조 생성`, status: 'pending' },
             { id: '4', text: '🔷 아이콘 자동 매칭 (react-icons)', status: 'pending' },
@@ -679,6 +699,7 @@ YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT �
             { id: '7', text: '📥 PPTX 파일 생성', status: 'pending' },
         ] : [
             { id: '1', text: '📊 슬라이드 시스템 초기화', status: 'in_progress' },
+            ...(sources.length > 0 ? [{ id: '1.5', text: `📚 ${sources.length}개 소스 분석`, status: 'pending' as const }] : []),
             { id: '2', text: '🔍 비즈니스 컨텍스트 분석', status: 'pending' },
             { id: '3', text: `📝 ${slideCount}장 슬라이드 구조 생성`, status: 'pending' },
             { id: '4', text: '🎨 테마 및 디자인 적용', status: 'pending' },
@@ -696,9 +717,10 @@ YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT �
 
             if (proMode) {
                 // Use Slide Designer Pro API (with icons and images)
+                const sourceInfo = sources.length > 0 ? `\n📚 **사용 소스**: ${sources.map(s => s.name).join(', ')}` : ''
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: `🎨 **Pro 모드**: 아이콘 + 이미지 + 디자인 원칙 적용 중...`,
+                    content: `🎨 **Pro 모드**: 아이콘 + 이미지 + 디자인 원칙 적용 중...${sourceInfo}`,
                     type: 'progress'
                 }])
 
@@ -706,7 +728,7 @@ YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT �
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        content: prompt,
+                        content: contentWithSources,
                         slideCount,
                         theme,
                         generateImages: true,
@@ -796,7 +818,7 @@ YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT �
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        content: prompt,
+                        content: contentWithSources,
                         title: prompt.includes('IT') ? 'IT 스타트업 사업계획서' :
                                prompt.includes('카페') ? '카페 창업 사업계획서' : '사업계획서',
                         slideCount,
@@ -895,7 +917,8 @@ ${data.pptxBase64 ? '📥 **PPTX 파일**: 자동 다운로드됨' : ''}
         }
 
         setIsLoading(false)
-    }, [proMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [proMode, sources])
 
     // Edit slide with AI
     const editSlide = useCallback(async (slideIndex: number, instruction: string) => {
@@ -1312,7 +1335,7 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
         })
     }
 
-    // Handle file upload (supports PPTX and PDF)
+    // Handle file upload - 소스로 추가 (NotebookLM 스타일)
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
@@ -1331,8 +1354,8 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
 
         setIsLoading(true)
         setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: `"${file.name}" 파일을 분석 중입니다... ${isPdf ? '(PDF 모드)' : '(PPTX 모드)'}`
+            role: 'user',
+            content: `📎 파일 업로드: ${file.name}`
         }])
 
         try {
@@ -1343,33 +1366,50 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
             if (parsed.slides.length === 0) {
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: '파일에서 슬라이드를 찾을 수 없습니다. 파일이 손상되었거나 빈 파일일 수 있습니다.'
+                    content: '파일에서 내용을 찾을 수 없습니다. 파일이 손상되었거나 빈 파일일 수 있습니다.'
                 }])
                 return
             }
 
-            // Store the V2 presentation for edit mode
-            setPresentationV2(parsed)
-
-            // Convert to SlideContent for preview mode
-            const converted = convertV2ToSlideContent(parsed)
-            setSlides(converted)
-            setPresentationTitle(parsed.title)
-            setCurrentSlide(0)
-
-            // Auto-enable edit mode for better editing experience
-            setEditMode(true)
-
-            // Show extracted text for each slide
+            // Extract text from all slides
             const { extractSlideText } = await import('./components/slide-editor/SlideThumbnail')
-            const extractedTexts = parsed.slides.map((slide, i) => {
+            const allText = parsed.slides.map((slide, i) => {
                 const text = extractSlideText(slide)
-                return `**슬라이드 ${i + 1}**: ${text ? text.substring(0, 100) + (text.length > 100 ? '...' : '') : '(텍스트 없음)'}`
-            }).join('\n')
+                return text ? `[슬라이드 ${i + 1}] ${text}` : ''
+            }).filter(Boolean).join('\n\n')
+
+            // Add to sources (NOT to slides)
+            const newSource: SourceFile = {
+                id: `source-${Date.now()}`,
+                name: file.name,
+                type: isPdf ? 'pdf' : 'pptx',
+                extractedText: allText || parsed.title,
+                uploadedAt: new Date(),
+                slideCount: parsed.slides.length
+            }
+
+            setSources(prev => [...prev, newSource])
+
+            // Show confirmation message
+            const textPreview = allText.length > 300 ? allText.substring(0, 300) + '...' : allText
 
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: `"${parsed.title}" 프레젠테이션을 불러왔습니다!\n\n총 ${parsed.slides.length}개의 슬라이드가 있습니다.\n\n📄 **추출된 텍스트:**\n${extractedTexts}\n\n📝 슬라이드를 직접 클릭하여 수정하거나, AI에게 질문할 수 있습니다.`
+                content: `✅ **"${file.name}"** 소스가 추가되었습니다!
+
+📊 **파일 정보:**
+• 슬라이드 수: ${parsed.slides.length}장
+• 추출된 텍스트: ${allText.length.toLocaleString()}자
+
+📝 **내용 미리보기:**
+${textPreview}
+
+---
+💡 **다음 단계:**
+• 더 많은 소스를 업로드하거나
+• **"슬라이드 만들어줘"** 또는 **"이 내용으로 사업계획서 10장 생성해줘"** 라고 입력하세요.
+
+현재 소스: ${sources.length + 1}개`
             }])
         } catch (error) {
             console.error('File parsing error:', error)
@@ -1384,6 +1424,20 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
                 e.target.value = ''
             }
         }
+    }
+
+    // 소스 삭제
+    const removeSource = (sourceId: string) => {
+        setSources(prev => prev.filter(s => s.id !== sourceId))
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: '소스가 삭제되었습니다.'
+        }])
+    }
+
+    // 모든 소스 텍스트 합치기
+    const getAllSourcesText = () => {
+        return sources.map(s => `[${s.name}]\n${s.extractedText}`).join('\n\n---\n\n')
     }
 
     // Handle presentation change from SlideEditor
@@ -1445,6 +1499,49 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
                         Pro
                     </button>
                 </div>
+
+                {/* Sources Panel (NotebookLM 스타일) */}
+                {sources.length > 0 && (
+                    <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                                📚 소스 ({sources.length}개)
+                            </span>
+                            <button
+                                onClick={() => setSources([])}
+                                className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                            >
+                                전체 삭제
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {sources.map(source => (
+                                <div
+                                    key={source.id}
+                                    className="group flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                                >
+                                    <span className="text-zinc-600 dark:text-zinc-300">
+                                        {source.type === 'pdf' ? '📄' : source.type === 'pptx' ? '📊' : '📝'}
+                                    </span>
+                                    <span className="text-zinc-700 dark:text-zinc-200 max-w-[120px] truncate">
+                                        {source.name}
+                                    </span>
+                                    {source.slideCount && (
+                                        <span className="text-zinc-400 text-[10px]">
+                                            {source.slideCount}장
+                                        </span>
+                                    )}
+                                    <button
+                                        onClick={() => removeSource(source.id)}
+                                        className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Chat Content - Single Scroll Container */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
