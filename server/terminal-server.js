@@ -2,6 +2,7 @@ const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 const os = require('os');
 const path = require('path');
+const fs = require('fs');
 
 const PORT = 3001;
 
@@ -92,19 +93,29 @@ wss.on('connection', (ws) => {
 
       // 기본: 터미널 연결
       clientType = 'terminal';
-      initializeTerminal();
+
+      // 🔥 init 메시지에서 초기 cwd 추출
+      const initialCwd = msg.type === 'init' && msg.cwd ? msg.cwd : null;
+      initializeTerminal(initialCwd);
 
       // 메시지 핸들러 교체
       ws.removeListener('message', initialMessageHandler);
       ws.on('message', terminalMessageHandler);
 
-      // 현재 메시지 처리
-      handleTerminalMessage(msg);
+      // 현재 메시지 처리 (init은 이미 처리됨, resize/set-cwd 등 다른 메시지는 처리)
+      if (msg.type !== 'init') {
+        handleTerminalMessage(msg);
+      } else if (msg.cols && msg.rows) {
+        // init 메시지에 포함된 resize 정보 처리
+        if (ptyProcess) {
+          ptyProcess.resize(msg.cols, msg.rows);
+        }
+      }
     } catch (e) {
       console.error('Initial message parse error:', e);
       // 파싱 실패 시 터미널로 가정
       clientType = 'terminal';
-      initializeTerminal();
+      initializeTerminal(null);
       ws.removeListener('message', initialMessageHandler);
       ws.on('message', terminalMessageHandler);
     }
@@ -112,11 +123,23 @@ wss.on('connection', (ws) => {
 
   /**
    * 터미널 초기화
+   * @param {string|null} requestedCwd - 클라이언트가 요청한 초기 디렉토리
    */
-  function initializeTerminal() {
+  function initializeTerminal(requestedCwd = null) {
     const shell = os.platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
     const shellName = path.basename(shell);
-    const initialCwd = process.cwd();
+
+    // 🔥 요청된 cwd가 있으면 사용, 없으면 홈 디렉토리 사용 (GlowUS 폴더 보호)
+    const safeDefault = os.homedir();
+    let initialCwd = requestedCwd || safeDefault;
+
+    // 경로가 존재하는지 확인 (존재하지 않으면 홈 디렉토리로 폴백)
+    if (requestedCwd && !fs.existsSync(requestedCwd)) {
+      console.warn(`[Terminal] Requested cwd does not exist: ${requestedCwd}, using home directory`);
+      initialCwd = safeDefault;
+    }
+
+    console.log(`[Terminal] Starting shell in: ${initialCwd}`);
 
     ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
@@ -131,7 +154,7 @@ wss.on('connection', (ws) => {
     });
 
     clients.terminals.set(ws, ptyProcess);
-    console.log(`Spawned ${shell} with PID ${ptyProcess.pid}`);
+    console.log(`Spawned ${shell} with PID ${ptyProcess.pid} in ${initialCwd}`);
 
     // 셸 정보 전송
     ws.send(JSON.stringify({
@@ -202,9 +225,9 @@ wss.on('connection', (ws) => {
           const { execSync } = require('child_process');
           try {
             const cwd = execSync(`lsof -p ${ptyProcess.pid} | grep cwd | awk '{print $NF}'`, { encoding: 'utf8' }).trim();
-            ws.send(JSON.stringify({ type: 'cwd-update', cwd: cwd || process.cwd() }));
+            ws.send(JSON.stringify({ type: 'cwd-update', cwd: cwd || os.homedir() }));
           } catch {
-            ws.send(JSON.stringify({ type: 'cwd-update', cwd: process.cwd() }));
+            ws.send(JSON.stringify({ type: 'cwd-update', cwd: os.homedir() }));
           }
         }
         break;
@@ -323,7 +346,7 @@ wss.on('connection', (ws) => {
     if (clientType === 'unknown') {
       console.log('Client type timeout, assuming terminal');
       clientType = 'terminal';
-      initializeTerminal();
+      initializeTerminal(null);
       ws.removeListener('message', initialMessageHandler);
       ws.on('message', terminalMessageHandler);
     }
