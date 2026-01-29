@@ -1342,10 +1342,6 @@ ${coverImageUrl ? '🎨 **커버 디자인**: 나노바나나로 생성됨' : ''
         }
 
         setIsLoading(true)
-        setMessages(prev => [...prev, {
-            role: 'user',
-            content: `📎 파일 업로드: ${file.name}`
-        }])
 
         try {
             // Dynamically import parseSlideFile to avoid SSR issues with pdfjs-dist

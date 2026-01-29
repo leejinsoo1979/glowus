@@ -163,8 +163,8 @@ export function BrainMap3D({
         setRawGraphData({ nodes, links })
       } catch (error) {
         console.error('[BrainMap3D] Error fetching data:', error)
-        // Fallback to mock data
-        setRawGraphData(generateMockData())
+        // 에러 시 빈 데이터 (empty state 표시)
+        setRawGraphData({ nodes: [], links: [] })
       } finally {
         setIsLoading(false)
       }
@@ -371,6 +371,93 @@ export function BrainMap3D({
     )
   }
 
+  // Empty state - 데이터가 없을 때
+  if (graphData.nodes.length === 0) {
+    return (
+      <div
+        className="w-full h-full flex items-center justify-center"
+        style={{ background: isDark ? '#09090b' : '#ffffff' }}
+      >
+        <div className="flex flex-col items-center gap-6 max-w-md text-center px-8">
+          {/* Empty state 아이콘 */}
+          <div className={cn(
+            'w-24 h-24 rounded-full flex items-center justify-center',
+            isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+          )}>
+            <svg
+              className={cn('w-12 h-12', isDark ? 'text-zinc-600' : 'text-zinc-400')}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
+              />
+            </svg>
+          </div>
+
+          {/* 제목 */}
+          <div>
+            <h3 className={cn(
+              'text-xl font-semibold mb-2',
+              isDark ? 'text-white' : 'text-zinc-900'
+            )}>
+              아직 지식 그래프가 비어있어요
+            </h3>
+            <p className={cn(
+              'text-sm leading-relaxed',
+              isDark ? 'text-zinc-400' : 'text-zinc-600'
+            )}>
+              에이전트와 대화를 나누면 기억, 개념, 관계 등이 자동으로 기록되어 지식 그래프가 생성됩니다.
+            </p>
+          </div>
+
+          {/* 안내 리스트 */}
+          <div className={cn(
+            'w-full p-4 rounded-xl text-left',
+            isDark ? 'bg-zinc-800/50' : 'bg-zinc-50'
+          )}>
+            <p className={cn(
+              'text-xs font-medium mb-3',
+              isDark ? 'text-zinc-500' : 'text-zinc-500'
+            )}>
+              지식 그래프에 기록되는 것들:
+            </p>
+            <ul className="space-y-2">
+              {[
+                { icon: '💭', text: '대화에서 배운 정보와 인사이트' },
+                { icon: '👥', text: '상호작용한 사람과 관계' },
+                { icon: '📋', text: '수행한 작업과 결과' },
+                { icon: '💡', text: '학습한 개념과 연결 관계' },
+              ].map((item, idx) => (
+                <li key={idx} className="flex items-center gap-2">
+                  <span className="text-base">{item.icon}</span>
+                  <span className={cn(
+                    'text-xs',
+                    isDark ? 'text-zinc-400' : 'text-zinc-600'
+                  )}>
+                    {item.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* CTA */}
+          <p className={cn(
+            'text-xs',
+            isDark ? 'text-zinc-500' : 'text-zinc-400'
+          )}>
+            에이전트와 대화를 시작해보세요 →
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       ref={containerRef}
@@ -482,100 +569,6 @@ export function BrainMap3D({
       </div>
     </div>
   )
-}
-
-// Mock 데이터 생성
-function generateMockData(): GraphData {
-  const types: NodeType[] = ['memory', 'concept', 'person', 'doc', 'task', 'decision', 'meeting', 'tool', 'skill']
-  const nodes: GraphNode[] = []
-  const links: GraphLink[] = []
-
-  // 중심 노드들 생성
-  const centerNodes = [
-    { type: 'concept' as NodeType, title: '프로젝트 전략', importance: 10 },
-    { type: 'person' as NodeType, title: '진수', importance: 9 },
-    { type: 'meeting' as NodeType, title: '주간 회의', importance: 8 },
-    { type: 'doc' as NodeType, title: '사업 계획서', importance: 9 },
-    { type: 'task' as NodeType, title: 'MVP 개발', importance: 8 },
-  ]
-
-  // 중심 노드 추가
-  centerNodes.forEach((cn, idx) => {
-    nodes.push({
-      id: `center-${idx}`,
-      type: cn.type,
-      title: cn.title,
-      summary: `${cn.title}에 대한 핵심 정보`,
-      importance: cn.importance,
-      confidence: 0.9,
-      createdAt: Date.now() - Math.random() * 30 * 86400000,
-      color: NODE_COLORS[cn.type],
-    })
-  })
-
-  // 주변 노드들 생성
-  for (let i = 0; i < 50; i++) {
-    const type = types[Math.floor(Math.random() * types.length)]
-    nodes.push({
-      id: `node-${i}`,
-      type,
-      title: `${NODE_TYPE_LABELS[type]} #${i + 1}`,
-      summary: `${NODE_TYPE_LABELS[type]} 관련 정보입니다.`,
-      importance: Math.floor(Math.random() * 7) + 3,
-      confidence: 0.5 + Math.random() * 0.5,
-      createdAt: Date.now() - Math.random() * 60 * 86400000,
-      color: NODE_COLORS[type],
-    })
-  }
-
-  // 링크 생성 - 중심 노드에 연결
-  const edgeTypes: EdgeType[] = ['mentions', 'supports', 'related', 'causes', 'follows', 'part_of']
-
-  nodes.forEach((node, idx) => {
-    if (!node.id.startsWith('center')) {
-      // 랜덤 중심 노드에 연결
-      const centerIdx = Math.floor(Math.random() * centerNodes.length)
-      const edgeType = edgeTypes[Math.floor(Math.random() * edgeTypes.length)]
-      links.push({
-        source: `center-${centerIdx}`,
-        target: node.id,
-        type: edgeType,
-        weight: 0.3 + Math.random() * 0.7,
-        color: EDGE_COLORS[edgeType],
-      })
-
-      // 일부 노드들은 서로 연결
-      if (Math.random() > 0.7 && idx > 5) {
-        const targetIdx = Math.floor(Math.random() * (idx - 5)) + 5
-        const edgeType2 = edgeTypes[Math.floor(Math.random() * edgeTypes.length)]
-        links.push({
-          source: node.id,
-          target: nodes[targetIdx].id,
-          type: edgeType2,
-          weight: 0.2 + Math.random() * 0.5,
-          color: EDGE_COLORS[edgeType2],
-        })
-      }
-    }
-  })
-
-  // 중심 노드들 간 연결
-  for (let i = 0; i < centerNodes.length; i++) {
-    for (let j = i + 1; j < centerNodes.length; j++) {
-      if (Math.random() > 0.4) {
-        const edgeType = edgeTypes[Math.floor(Math.random() * edgeTypes.length)]
-        links.push({
-          source: `center-${i}`,
-          target: `center-${j}`,
-          type: edgeType,
-          weight: 0.6 + Math.random() * 0.4,
-          color: EDGE_COLORS[edgeType],
-        })
-      }
-    }
-  }
-
-  return { nodes, links }
 }
 
 export default BrainMap3D
