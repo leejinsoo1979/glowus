@@ -45,7 +45,7 @@ export async function generateSlideStructure(
   }
 
   console.log('[ContentService] Generating slides with Gemini...')
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
 
   const prompt = `당신은 세계 최고의 프레젠테이션 디자이너입니다.
 다음 내용을 기반으로 ${slideCount}장의 전문적인 프레젠테이션 슬라이드를 설계해주세요.
