@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
     }
 
     // 연결 정보 가져오기
-    const { data: connection } = await supabase
-      .from('user_app_connections')
+    const { data: connection } = await (supabase
+      .from('user_app_connections') as any)
       .select('access_token, refresh_token, token_expires_at')
       .eq('user_id', user.id)
       .eq('provider_id', 'google_drive')
@@ -40,8 +40,8 @@ export async function GET(request: NextRequest) {
         accessToken = newTokens.access_token
 
         // 새 토큰 저장
-        await supabase
-          .from('user_app_connections')
+        await (supabase
+          .from('user_app_connections') as any)
           .update({
             access_token: newTokens.access_token,
             token_expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),

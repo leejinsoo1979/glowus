@@ -352,7 +352,7 @@ export function CompanyPage() {
     // formData도 업데이트
     setFormData(prev => ({
       ...prev,
-      business_registration_url: null
+      business_registration_url: undefined
     }))
     // localStorage에서 삭제
     if (company?.id && typeof window !== 'undefined') {
@@ -362,7 +362,7 @@ export function CompanyPage() {
     if (company?.id) {
       try {
         await mutate('PUT', {
-          business_registration_url: null
+          business_registration_url: undefined
         })
         refresh()
       } catch (err) {

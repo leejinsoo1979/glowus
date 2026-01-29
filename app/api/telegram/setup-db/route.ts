@@ -6,7 +6,7 @@ export async function GET() {
     const supabase = createAdminClient()
 
     // Create telegram_users table
-    const { error: error1 } = await supabase.rpc('exec_sql', {
+    const { error: error1 } = await (supabase.rpc as any)('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS telegram_users (
           id TEXT PRIMARY KEY,
@@ -31,7 +31,7 @@ export async function GET() {
     }
 
     // Create telegram_chat_sessions table
-    const { error: error2 } = await supabase.rpc('exec_sql', {
+    const { error: error2 } = await (supabase.rpc as any)('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS telegram_chat_sessions (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,7 +55,7 @@ export async function GET() {
     }
 
     // Create telegram_chat_messages table
-    const { error: error3 } = await supabase.rpc('exec_sql', {
+    const { error: error3 } = await (supabase.rpc as any)('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS telegram_chat_messages (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

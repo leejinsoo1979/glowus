@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
     const supabase = createAdminClient()
 
     // 기존 연결 확인
-    const { data: existing } = await supabase
-      .from('user_app_connections')
+    const { data: existing } = await (supabase
+      .from('user_app_connections') as any)
       .select('id')
       .eq('user_id', userId)
       .eq('provider_id', 'google_drive')
@@ -65,14 +65,14 @@ export async function GET(request: NextRequest) {
 
     if (existing) {
       // 업데이트
-      await supabase
-        .from('user_app_connections')
+      await (supabase
+        .from('user_app_connections') as any)
         .update(connectionData)
         .eq('id', existing.id)
     } else {
       // 새로 생성
-      await supabase
-        .from('user_app_connections')
+      await (supabase
+        .from('user_app_connections') as any)
         .insert({
           ...connectionData,
           created_at: new Date().toISOString(),

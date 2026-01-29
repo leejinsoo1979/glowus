@@ -541,8 +541,8 @@ export async function POST(request: NextRequest) {
       const adminClient = createAdminClient()
 
       // Mark current session as inactive
-      await adminClient
-        .from('telegram_chat_sessions')
+      await (adminClient
+        .from('telegram_chat_sessions') as any)
         .update({ is_active: false })
         .eq('chat_id', chatId)
         .eq('is_active', true)

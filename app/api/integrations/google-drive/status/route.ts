@@ -11,8 +11,8 @@ export async function GET() {
     }
 
     // 연결 상태 확인
-    const { data: connection } = await supabase
-      .from('user_app_connections')
+    const { data: connection } = await (supabase
+      .from('user_app_connections') as any)
       .select('id, account_info, is_active, token_expires_at')
       .eq('user_id', user.id)
       .eq('provider_id', 'google_drive')
