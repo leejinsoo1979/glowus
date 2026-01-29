@@ -488,27 +488,7 @@ const SlideRenderer = ({ slide }: { slide: SlideContent }) => {
 }
 
 export default function AISlidesPage() {
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            role: 'assistant',
-            content: `안녕하세요! AI 슬라이드 스튜디오입니다. 🎨
-
-**프레젠테이션을 만들어 드릴게요:**
-
-📹 **YouTube 영상 → PPT 변환**
-YouTube URL을 붙여넣으면 자동으로 영상 내용을 분석하여 PPT 슬라이드로 만들어드립니다.
-
-📊 **사업계획서 생성**
-• "IT 스타트업 투자 유치용 사업계획서 15장으로 만들어줘"
-• "카페 창업 사업계획서를 은행 대출용으로 만들어줘"
-
-📄 **파일 업로드**
-기존 PPTX/PDF 파일을 업로드하여 편집할 수 있습니다.
-
-**지금 바로 시작하세요!** 👇`,
-            type: 'question'
-        }
-    ])
+    const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [slides, setSlides] = useState<SlideContent[]>([])
