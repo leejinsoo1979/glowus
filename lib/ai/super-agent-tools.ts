@@ -307,11 +307,19 @@ export const readFileTool = new DynamicStructuredTool({
       if (path.isAbsolute(filePath)) {
         absolutePath = filePath
       } else {
-        // 상대 경로면 프로젝트 디렉토리 기준
+        // 🔥 상대 경로면 프로젝트 경로(projectPath) 기준
         const ctx = getAgentExecutionContext()
-        const projectId = ctx?.currentProjectId || 'default'
-        const projectDir = path.join(SERVER_PROJECTS_DIR, projectId)
-        absolutePath = path.join(projectDir, filePath)
+        if (ctx?.projectPath) {
+          // 실제 프로젝트 디렉토리 사용
+          absolutePath = path.join(ctx.projectPath, filePath)
+        } else {
+          // 🔥 projectPath가 없으면 에러 반환 (이상한 폴백 경로 사용 방지)
+          return JSON.stringify({
+            success: false,
+            error: '프로젝트 경로가 설정되지 않았습니다. 프로젝트를 먼저 선택하거나 절대 경로를 사용하세요.',
+            hint: '절대 경로 예시: /Users/jinsoolee/my-project/src/App.tsx',
+          })
+        }
       }
 
       const content = await fs.readFile(absolutePath, 'utf-8')
@@ -349,11 +357,19 @@ export const writeFileTool = new DynamicStructuredTool({
       if (path.isAbsolute(filePath)) {
         absolutePath = filePath
       } else {
-        // 상대 경로면 프로젝트 디렉토리 기준
+        // 🔥 상대 경로면 프로젝트 경로(projectPath) 기준
         const ctx = getAgentExecutionContext()
-        const projectId = ctx?.currentProjectId || 'default'
-        const projectDir = path.join(SERVER_PROJECTS_DIR, projectId)
-        absolutePath = path.join(projectDir, filePath)
+        if (ctx?.projectPath) {
+          // 실제 프로젝트 디렉토리 사용
+          absolutePath = path.join(ctx.projectPath, filePath)
+        } else {
+          // 🔥 projectPath가 없으면 에러 반환 (이상한 폴백 경로 사용 방지)
+          return JSON.stringify({
+            success: false,
+            error: '프로젝트 경로가 설정되지 않았습니다. 프로젝트를 먼저 선택하거나 절대 경로를 사용하세요.',
+            hint: '절대 경로 예시: /Users/jinsoolee/my-project/src/game.tsx',
+          })
+        }
       }
 
       // 디렉토리 생성 (없으면)
@@ -496,19 +512,26 @@ npm, git, 빌드 명령 등 CLI 도구를 수행할 수 있습니다.
 
     // Execute command directly on server
     try {
+      // 🔥 cwd가 없으면 에러 반환 (GlowUS 폴더 보호)
+      if (!cwd) {
+        return JSON.stringify({
+          success: false,
+          error: '작업 디렉토리(cwd)가 지정되지 않았습니다. 프로젝트를 먼저 선택해주세요.'
+        })
+      }
+
       const { exec } = await import('child_process')
       const { promisify } = await import('util')
       const execPromise = promisify(exec)
 
-      const options = cwd ? { cwd } : {}
-      const { stdout, stderr } = await execPromise(command, options)
+      const { stdout, stderr } = await execPromise(command, { cwd })
 
       return JSON.stringify({
         success: true,
         stdout: stdout.trim(),
         stderr: stderr.trim(),
         command,
-        cwd: cwd || process.cwd(),
+        cwd,
       })
     } catch (error: any) {
       return JSON.stringify({
@@ -1229,23 +1252,44 @@ AppleScript 예시:
 // 파일/폴더 목록 조회 도구
 export const listFilesTool = new DynamicStructuredTool({
   name: 'list_files',
-  description: '디렉토리의 파일과 폴더 목록을 조회합니다. 절대 경로를 사용하세요.',
+  description: '디렉토리의 파일과 폴더 목록을 조회합니다. 절대 경로나 상대 경로 모두 지원합니다.',
   schema: z.object({
-    path: z.string().describe('조회할 디렉토리 경로 (예: /Users/jinsoolee/Documents)'),
+    path: z.string().describe('조회할 디렉토리 경로 (예: /Users/jinsoolee/Documents, src, .)'),
   }),
   func: async ({ path: dirPath }) => {
     try {
-      const files = await fs.readdir(dirPath, { withFileTypes: true })
+      let absolutePath: string
+
+      // 절대 경로인지 확인
+      if (path.isAbsolute(dirPath)) {
+        absolutePath = dirPath
+      } else {
+        // 🔥 상대 경로면 프로젝트 경로(projectPath) 기준
+        const ctx = getAgentExecutionContext()
+        if (ctx?.projectPath) {
+          // 실제 프로젝트 디렉토리 사용
+          absolutePath = path.join(ctx.projectPath, dirPath)
+        } else {
+          // 🔥 projectPath가 없으면 에러 반환 (이상한 폴백 경로 사용 방지)
+          return JSON.stringify({
+            success: false,
+            error: '프로젝트 경로가 설정되지 않았습니다. 프로젝트를 먼저 선택하거나 절대 경로를 사용하세요.',
+            hint: '절대 경로 예시: /Users/jinsoolee/my-project',
+          })
+        }
+      }
+
+      const files = await fs.readdir(absolutePath, { withFileTypes: true })
 
       const items = files.map(file => ({
         name: file.name,
         type: file.isDirectory() ? 'directory' : 'file',
-        path: path.join(dirPath, file.name),
+        path: path.join(absolutePath, file.name),
       }))
 
       return JSON.stringify({
         success: true,
-        path: dirPath,
+        path: absolutePath,
         items,
         count: items.length,
       })
