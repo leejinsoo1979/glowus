@@ -1775,7 +1775,8 @@ export function ChatTab({
           </div>
         )}
 
-        {/* Input area */}
+        {/* Input area - 대화 시작 후에만 표시 */}
+        {chatMessages.length > 0 && (
         <div className={cn(
           'flex items-center gap-2 px-3 py-2 rounded-xl border',
           isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
@@ -2139,6 +2140,7 @@ export function ChatTab({
             <LogOut className="w-4 h-4" />
           </button>
         </div>
+        )}
       </div>
     </div>
   )
