@@ -4,6 +4,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { executeWithAutonomousLoop } from '@/lib/agent/autonomous-loop'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createUnifiedMemory } from '@/lib/memory/unified-agent-memory'
+// 🧠 Long-term Memory (Agent OS v2.0 + JARVIS RAG)
+import {
+  saveConversationMessage,
+  analyzeAndLearn,
+} from '@/lib/memory/jarvis-memory-manager'
+import { processAgentConversation } from '@/lib/agent/work-memory'
 
 /**
  * 디버그 메시지 표시 여부
@@ -651,6 +657,77 @@ export async function POST(request: NextRequest) {
         .eq('is_active', true)
 
       await sendTelegramMessage(chatId, '✅ 새로운 대화를 시작합니다. (이전 대화는 영구 보존되어 있습니다)')
+      return NextResponse.json({ ok: true })
+    }
+
+    // Command: /link <email> - Link Telegram to GlowUS account for cross-platform memory
+    if (text.startsWith('/link ')) {
+      const email = text.substring(6).trim().toLowerCase()
+      const adminClient = createAdminClient()
+      const telegramUserId = String(message.from.id)
+
+      if (!email || !email.includes('@')) {
+        await sendTelegramMessage(chatId, '❌ 올바른 이메일 형식을 입력해주세요.\n\n사용법: /link your@email.com')
+        return NextResponse.json({ ok: true })
+      }
+
+      // Find GlowUS user by email
+      const { data: glowusUser, error: userError } = await (adminClient as any)
+        .from('users')
+        .select('id, email, name')
+        .eq('email', email)
+        .single()
+
+      if (userError || !glowusUser) {
+        await sendTelegramMessage(chatId, `❌ "${email}" 이메일로 등록된 GlowUS 계정을 찾을 수 없습니다.\n\n먼저 GlowUS에 가입해주세요.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      // Link Telegram user to GlowUS user
+      const { error: linkError } = await (adminClient as any)
+        .from('telegram_users')
+        .update({ user_id: glowusUser.id })
+        .eq('id', telegramUserId)
+
+      if (linkError) {
+        console.error('[Telegram Link] Error:', linkError)
+        await sendTelegramMessage(chatId, `❌ 계정 연결 중 오류가 발생했습니다.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      await sendTelegramMessage(chatId, `✅ GlowUS 계정 연결 완료!\n\n👤 ${glowusUser.name || email}\n\n🧠 이제부터 텔레그램과 GlowUS 웹에서의 대화가 통합됩니다. 에이전트가 모든 플랫폼에서 당신을 기억합니다!`)
+      console.log(`[Telegram Link] ✅ Linked ${telegramUserId} → ${glowusUser.id} (${email})`)
+      return NextResponse.json({ ok: true })
+    }
+
+    // Command: /status - Check account link status
+    if (text === '/status' || text === '/me') {
+      const adminClient = createAdminClient()
+      const telegramUserId = String(message.from.id)
+
+      const { data: telegramUser } = await (adminClient as any)
+        .from('telegram_users')
+        .select('id, username, user_id, total_messages, created_at')
+        .eq('id', telegramUserId)
+        .single()
+
+      if (!telegramUser) {
+        await sendTelegramMessage(chatId, `👋 처음 뵙겠습니다!\n\n대화를 시작하면 자동으로 등록됩니다.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      if (telegramUser.user_id) {
+        // Get GlowUS user info
+        const { data: glowusUser } = await (adminClient as any)
+          .from('users')
+          .select('email, name')
+          .eq('id', telegramUser.user_id)
+          .single()
+
+        await sendTelegramMessage(chatId, `📊 계정 상태\n\n✅ GlowUS 연결됨\n👤 ${glowusUser?.name || glowusUser?.email || 'Unknown'}\n💬 총 메시지: ${telegramUser.total_messages || 0}회\n🧠 크로스 플랫폼 메모리: 활성화\n\n텔레그램과 웹에서의 대화가 통합됩니다!`)
+      } else {
+        await sendTelegramMessage(chatId, `📊 계정 상태\n\n⚠️ GlowUS 연결 안됨\n💬 총 메시지: ${telegramUser.total_messages || 0}회\n🧠 크로스 플랫폼 메모리: 비활성화\n\n/link your@email.com 으로 GlowUS 계정을 연결하면\n텔레그램과 웹에서의 대화가 통합됩니다!`)
+      }
       return NextResponse.json({ ok: true })
     }
 
@@ -2460,6 +2537,63 @@ DO NOT respond with text. Call the next tool NOW!`
     )
 
     console.log(`[Telegram Chat] ✅ Saved conversation to database (PERMANENT STORAGE)`)
+
+    // ========================================
+    // 🧠 Long-term Memory (Agent OS v2.0 + JARVIS RAG)
+    // 크로스 플랫폼 영구 메모리 - Telegram ↔ GlowUS Web 통합
+    // ========================================
+
+    // GlowUS 사용자 ID 확인 (연결된 경우 롱텀 메모리 저장)
+    const glowusUserId = telegramUser.user_id
+
+    if (glowusUserId) {
+      // 🔥 Long-term Memory 저장 (비동기 - 응답 지연 방지)
+      Promise.all([
+        // 1. Agent OS v2.0: 관계 업데이트, 메모리 저장, 능력치 성장
+        processAgentConversation({
+          agentId: agent.id,
+          userId: glowusUserId,
+          messages: [
+            { role: 'user', content: instruction },
+            { role: 'assistant', content: finalResponseStr },
+          ],
+          wasHelpful: true,
+          topicDomain: 'general',
+        }),
+        // 2. JARVIS RAG: 사용자 메시지 저장
+        saveConversationMessage({
+          agentId: agent.id,
+          userId: glowusUserId,
+          role: 'user',
+          content: instruction,
+          importance: 6,
+          metadata: { source: 'telegram', chatId, telegramUserId: telegramUser.id },
+        }),
+        // 3. JARVIS RAG: 에이전트 응답 저장
+        saveConversationMessage({
+          agentId: agent.id,
+          userId: glowusUserId,
+          role: 'assistant',
+          content: finalResponseStr,
+          importance: 5,
+          metadata: {
+            source: 'telegram',
+            chatId,
+            telegramUserId: telegramUser.id,
+            toolsUsed: toolResults.map(tr => tr.tool),
+          },
+        }),
+        // 4. JARVIS: 대화에서 자동 학습 (사용자 정보 추출)
+        analyzeAndLearn(agent.id, glowusUserId, instruction, finalResponseStr),
+      ]).then(() => {
+        console.log(`[Telegram Chat] 🧠 Long-term Memory saved (cross-platform)`)
+      }).catch(err => {
+        console.error('[Telegram Chat] Long-term Memory error:', err)
+      })
+    } else {
+      console.log(`[Telegram Chat] ⚠️ No GlowUS user linked - Long-term Memory skipped`)
+      console.log(`[Telegram Chat] 💡 Tip: Link Telegram to GlowUS for cross-platform memory`)
+    }
 
     // Send final response
     if (finalResponseStr && finalResponseStr.trim()) {
