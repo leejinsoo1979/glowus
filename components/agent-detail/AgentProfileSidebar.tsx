@@ -336,7 +336,7 @@ export function AgentProfileSidebar({
   return (
     <aside
       className={cn(
-        'w-full lg:w-[320px] flex-shrink-0 rounded-2xl border p-6',
+        'w-full lg:w-[320px] flex-shrink-0 rounded-2xl border p-6 overflow-y-auto',
         isDark ? 'bg-zinc-900/80 border-zinc-800/60 backdrop-blur-sm' : 'bg-white/80 border-zinc-200/60 backdrop-blur-sm'
       )}
     >

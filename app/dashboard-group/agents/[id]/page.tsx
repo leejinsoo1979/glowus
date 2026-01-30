@@ -2214,9 +2214,9 @@ export default function AgentProfilePage() {
   const providerInfo = PROVIDER_INFO[(agent.llm_provider || 'ollama') as LLMProvider]
 
   return (
-    <div className="flex flex-col lg:flex-row lg:items-stretch gap-6">
+    <div className="flex flex-col lg:flex-row lg:items-stretch gap-6 h-[calc(100vh-120px)] overflow-hidden">
       {/* Back Button - Mobile */}
-      <div className="lg:hidden">
+      <div className="lg:hidden flex-shrink-0">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           뒤로가기
@@ -2244,12 +2244,12 @@ export default function AgentProfilePage() {
       {/* Right Content */}
       <main
         className={cn(
-          'flex-1 rounded-2xl border overflow-hidden',
+          'flex-1 rounded-2xl border overflow-hidden flex flex-col',
           isDark ? 'bg-zinc-900/80 border-zinc-800/60 backdrop-blur-sm' : 'bg-white/80 border-zinc-200/60 backdrop-blur-sm'
         )}
       >
         {/* Tab Navigation */}
-        <div className={cn('border-b', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
+        <div className={cn('border-b flex-shrink-0', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
           <nav className="flex overflow-x-auto px-4 md:px-6">
             {tabs.map((tab) => {
               const Icon = tab.icon
@@ -2278,7 +2278,7 @@ export default function AgentProfilePage() {
           </nav>
         </div>
 
-        <div className="p-6 md:p-8">
+        <div className="p-6 md:p-8 flex-1 overflow-y-auto">
           {/* About Tab */}
           {activeTab === 'about' && (
             <AboutTab
