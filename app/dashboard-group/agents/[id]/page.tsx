@@ -2278,7 +2278,10 @@ export default function AgentProfilePage() {
           </nav>
         </div>
 
-        <div className="p-6 md:p-8 flex-1 overflow-y-auto">
+        <div className={cn(
+          'flex-1',
+          activeTab === 'chat' ? 'overflow-hidden' : 'p-6 md:p-8 overflow-y-auto'
+        )}>
           {/* About Tab */}
           {activeTab === 'about' && (
             <AboutTab

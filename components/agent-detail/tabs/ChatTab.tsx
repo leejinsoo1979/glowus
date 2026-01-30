@@ -978,7 +978,7 @@ export function ChatTab({
   }
 
   return (
-    <div className="relative flex flex-col h-[calc(100vh-130px)] min-h-[600px]">
+    <div className="relative flex flex-col h-full p-6 md:p-8">
       {/* Prompt Assistant Modal */}
       {showPromptAssistant && (
         <PromptAssistant
