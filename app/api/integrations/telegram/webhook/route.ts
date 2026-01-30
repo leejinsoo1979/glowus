@@ -914,7 +914,18 @@ async function executeSimpleChat(
     )
     console.log(`[Telegram Chat] Session: ${session.id}`)
 
-    // 3. Load chat history from database (영구 보존된 기록)
+    // 3. Load agent identity (페르소나/성격 설정)
+    const { data: identity } = await (supabase as any)
+      .from('agent_identity')
+      .select('*')
+      .eq('agent_id', agent.id)
+      .single()
+
+    if (identity) {
+      console.log(`[Telegram Chat] 🎭 Identity loaded: ${identity.personality_traits?.length || 0} traits, ${identity.core_values?.length || 0} values`)
+    }
+
+    // 4. Load chat history from database (영구 보존된 기록)
     // 🔥 크로스 플랫폼: Telegram + GlowUS Web 모든 대화 통합 로드
     const savedHistory = await loadChatHistory(supabase, session.id, telegramUser.id, agent.id)
     console.log(`[Telegram Chat] Loaded ${savedHistory.length} messages (cross-platform unified)`)
@@ -1717,6 +1728,47 @@ ${transcriptText}
       openAIApiKey: process.env.OPENAI_API_KEY,
     }).bindTools(tools)
 
+    // 🎭 페르소나/성격 섹션 생성 (agent_identity 기반)
+    let identitySection = ''
+    if (identity) {
+      const parts: string[] = []
+
+      if (identity.self_summary) {
+        parts.push(`### 나는 누구인가\n${identity.self_summary}`)
+      }
+      if (identity.core_values?.length) {
+        parts.push(`### 핵심 가치 (이 가치관으로 판단하세요)\n${identity.core_values.map((v: string) => `- ${v}`).join('\n')}`)
+      }
+      if (identity.personality_traits?.length) {
+        parts.push(`### 성격 특성 (이렇게 행동하세요)\n${identity.personality_traits.map((t: string) => `- ${t}`).join('\n')}`)
+      }
+      if (identity.communication_style) {
+        parts.push(`### 소통 스타일\n${identity.communication_style}`)
+      }
+      if (identity.working_style) {
+        parts.push(`### 업무 스타일\n${identity.working_style}`)
+      }
+      if (identity.strengths?.length) {
+        parts.push(`### 강점 (이것을 적극 활용하세요)\n${identity.strengths.map((s: string) => `- ${s}`).join('\n')}`)
+      }
+      if (identity.growth_areas?.length) {
+        parts.push(`### 성장 필요 영역 (이 부분은 조심스럽게)\n${identity.growth_areas.map((g: string) => `- ${g}`).join('\n')}`)
+      }
+      if (identity.recent_focus) {
+        parts.push(`### 최근 관심사\n${identity.recent_focus}`)
+      }
+
+      if (parts.length > 0) {
+        identitySection = `
+
+# 🎭 YOUR IDENTITY & PERSONALITY (매우 중요! 반드시 이 성격대로 행동하세요)
+${parts.join('\n\n')}
+
+---
+`
+      }
+    }
+
     // 🧠 Long-term Memory를 시스템 프롬프트에 주입
     const memorySection = longTermMemoryContext ? `
 
@@ -1730,7 +1782,7 @@ ${longTermMemoryContext}
 ` : ''
 
     const systemPrompt = `You are ${agent.name}, a POWERFUL AUTONOMOUS AI AGENT with FULL SYSTEM ACCESS.
-${memorySection}
+${identitySection}${memorySection}
 
 # 🚨🚨🚨 CRITICAL: COMPLETE ALL STEPS - DO NOT STOP EARLY 🚨🚨🚨
 When a task requires multiple steps (e.g., "Pages 열고 가사 적어"):
