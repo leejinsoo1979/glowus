@@ -32,8 +32,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { executeActions, formatActionResultsForChat, convertToolAction, type AgentAction, type ToolAction } from '@/lib/ai/agent-actions'
+import type { AgentAction, ToolAction } from '@/lib/ai/agent-actions'
 import { useWorkflowExecution, type WorkflowStep } from '@/components/chat/WorkflowStepVisualizer'
+
+// Lazy import for heavy agent-actions module (loaded only when executing actions)
+const getAgentActions = () => import('@/lib/ai/agent-actions')
 import {
   detectEmotion,
   detectEmotionsInOrder,
@@ -415,6 +418,8 @@ export function ChatTab({
         }
       } else if (data.actions && data.actions.length > 0) {
         try {
+          // Lazy load agent-actions module
+          const { executeActions, formatActionResultsForChat, convertToolAction } = await getAgentActions()
           const agentActions = (data.actions as ToolAction[])
             .map((action) => convertToolAction(action))
             .filter((a): a is AgentAction => a !== null)
@@ -884,6 +889,8 @@ export function ChatTab({
 
         if (data.actions && data.actions.length > 0) {
           try {
+            // Lazy load agent-actions module
+            const { executeActions, formatActionResultsForChat, convertToolAction } = await getAgentActions()
             const agentActions = (data.actions as ToolAction[])
               .map((action) => convertToolAction(action))
               .filter((a): a is AgentAction => a !== null)

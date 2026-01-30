@@ -115,7 +115,17 @@ const ApiConnectionsTab = dynamic(() => import('@/components/agent-detail/tabs/A
 const ChatHistoryView = dynamic(() => import('@/components/agent-detail/tabs/ChatHistoryView').then(m => ({ default: m.ChatHistoryView })), { ssr: false })
 const WorkspaceTab = dynamic(() => import('@/components/agent-detail/tabs/WorkspaceTab').then(m => ({ default: m.WorkspaceTab })), { ssr: false })
 const SettingsTab = dynamic(() => import('@/components/agent-detail/tabs/SettingsTab').then(m => ({ default: m.SettingsTab })), { ssr: false })
-const ChatTab = dynamic(() => import('@/components/agent-detail/tabs/ChatTab').then(m => ({ default: m.ChatTab })), { ssr: false })
+const ChatTab = dynamic(() => import('@/components/agent-detail/tabs/ChatTab').then(m => ({ default: m.ChatTab })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-accent/30 border-t-accent rounded-full animate-spin" />
+        <p className="text-sm text-zinc-500">채팅 로딩 중...</p>
+      </div>
+    </div>
+  )
+})
 
 // 🔧 Modal Components - Lazy loaded (열릴 때만 로드)
 const AddEmotionModal = dynamic(() => import('@/components/agent-detail/modals/EmotionModals').then(m => ({ default: m.AddEmotionModal })), { ssr: false })
