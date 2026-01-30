@@ -11,6 +11,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const { searchParams } = new URL(request.url)
+    const includeExtras = searchParams.get('extras') === 'true'
+
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
@@ -47,71 +50,94 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // 에이전트 정체성 정보 가져오기
-    const { data: identity } = await (adminClient as any)
-      .from('agent_identity')
-      .select('*')
-      .eq('agent_id', id)
-      .single()
+    // 🚀 기본 로딩: identity와 team만 가져옴 (빠른 초기 로딩)
+    const [identityResult, teamResult] = await Promise.all([
+      (adminClient as any)
+        .from('agent_identity')
+        .select('*')
+        .eq('agent_id', id)
+        .single(),
+      data.team_id
+        ? (adminClient as any)
+            .from('teams')
+            .select('id, name, description, logo_url, founder_id')
+            .eq('id', data.team_id)
+            .single()
+        : Promise.resolve({ data: null }),
+    ])
 
-    // 최근 업무 로그 가져오기 (최근 20개)
-    const { data: workLogs } = await (adminClient as any)
-      .from('agent_work_logs')
-      .select('*')
-      .eq('agent_id', id)
-      .order('created_at', { ascending: false })
-      .limit(20)
+    const identity = identityResult.data
+    const team = teamResult.data
 
-    // 지식 베이스 가져오기
-    const { data: knowledge } = await (adminClient as any)
-      .from('agent_knowledge')
-      .select('*')
-      .eq('agent_id', id)
-      .order('updated_at', { ascending: false })
-      .limit(20)
-
-    // 최근 커밋 가져오기 (최근 10개)
-    const { data: commits } = await (adminClient as any)
-      .from('agent_commits')
-      .select('*')
-      .eq('agent_id', id)
-      .order('created_at', { ascending: false })
-      .limit(10)
-
-    // 팀 정보 가져오기
-    let team = null
-    if (data.team_id) {
-      const { data: teamData } = await (adminClient as any)
-        .from('teams')
-        .select('id, name, description, logo_url, founder_id')
-        .eq('id', data.team_id)
-        .single()
-      team = teamData
+    // 🚀 extras=true일 때만 추가 데이터 로드 (work_logs, knowledge, commits 등)
+    if (!includeExtras) {
+      return NextResponse.json({
+        ...data,
+        identity: identity || null,
+        team: team,
+        // 빈 배열로 초기화 (프론트에서 필요시 별도 API로 로드)
+        work_logs: [],
+        knowledge: [],
+        commits: [],
+        chat_rooms: [],
+        tasks: [],
+        project_stats: [],
+      })
     }
 
-    // 에이전트가 참여 중인 채팅방 가져오기
-    const { data: chatRooms } = await (adminClient as any)
-      .from('chat_participants')
-      .select(`
-        id,
-        joined_at,
-        room:chat_rooms(
+    // extras=true: 모든 관련 데이터 가져오기
+    const [
+      workLogsResult,
+      knowledgeResult,
+      commitsResult,
+      chatRoomsResult,
+    ] = await Promise.all([
+      (adminClient as any)
+        .from('agent_work_logs')
+        .select('*')
+        .eq('agent_id', id)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      (adminClient as any)
+        .from('agent_knowledge')
+        .select('*')
+        .eq('agent_id', id)
+        .order('updated_at', { ascending: false })
+        .limit(20),
+      (adminClient as any)
+        .from('agent_commits')
+        .select('*')
+        .eq('agent_id', id)
+        .order('created_at', { ascending: false })
+        .limit(10),
+      (adminClient as any)
+        .from('chat_participants')
+        .select(`
           id,
-          name,
-          type,
-          last_message_at,
-          created_at
-        )
-      `)
-      .eq('agent_id', id)
-      .order('joined_at', { ascending: false })
-      .limit(10)
+          joined_at,
+          room:chat_rooms(
+            id,
+            name,
+            type,
+            last_message_at,
+            created_at
+          )
+        `)
+        .eq('agent_id', id)
+        .order('joined_at', { ascending: false })
+        .limit(10),
+    ])
+
+    const workLogs = workLogsResult.data || []
+    const knowledge = knowledgeResult.data || []
+    const commits = commitsResult.data || []
+    const chatRooms = chatRoomsResult.data
 
     // 에이전트 관련 태스크 가져오기 (work_logs에서 task_id가 있는 것들)
     const taskIds = workLogs
       ?.filter((log: any) => log.task_id)
       .map((log: any) => log.task_id)
-      .filter((id: string, idx: number, arr: string[]) => arr.indexOf(id) === idx)
+      .filter((tid: string, idx: number, arr: string[]) => arr.indexOf(tid) === idx)
       .slice(0, 10) || []
 
     let tasks: any[] = []
@@ -152,14 +178,14 @@ export async function GET(
     return NextResponse.json({
       ...data,
       identity: identity || null,
-      work_logs: workLogs || [],
-      knowledge: knowledge || [],
-      commits: commits || [],
+      work_logs: workLogs,
+      knowledge: knowledge,
+      commits: commits,
       team: team,
       chat_rooms: chatRooms?.map((p: any) => p.room).filter(Boolean) || [],
       tasks: tasks,
-      project_stats: Object.entries(projectStats).map(([id, stat]) => ({
-        id,
+      project_stats: Object.entries(projectStats).map(([pid, stat]) => ({
+        id: pid,
         ...stat
       })),
     })
