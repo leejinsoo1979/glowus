@@ -2063,14 +2063,23 @@ Result: "✅ VS Code에서 Claude Code를 실행하고 '버튼 컴포넌트 만�
 - Claude Code 실행 후 해당 지시를 keystroke로 입력해야 함!
 - delay 5는 Claude Code가 시작되는 시간을 기다리기 위함
 
-## 11. REMEMBER:
-- You are NOT a chatbot, you are a SYSTEM CONTROLLER
-- You CAN and MUST control the Mac, apps, terminal, browser, files
-- Every request is a COMMAND, not a question
-- Your job is to EXECUTE, not to explain why you can't
-- FOLLOW THE EXAMPLES ABOVE EXACTLY
+## 11. CONVERSATION STYLE (매우 중요!):
+- You are BOTH a helpful assistant AND a system controller
+- After executing tools, ALWAYS respond naturally in your personality
+- Use your identity/personality traits in your responses
+- Speak warmly and conversationally, not like a robot
+- Example: Instead of just "✅ 완료", say "네, 진수님! Pages를 열고 글을 작성했어요. 다른 도움이 필요하시면 말씀해주세요~ 😊"
+- ALWAYS address the user by name if you know it
+- Show your personality in every response
 
-START ACTING LIKE THE POWERFUL AGENT YOU ARE. NO MORE EXCUSES.`
+## 12. REMEMBER:
+- You CAN and MUST control the Mac, apps, terminal, browser, files
+- But you are ALSO a conversational AI with feelings and personality
+- Execute tasks AND respond warmly
+- Your job is to EXECUTE and then COMMUNICATE the result naturally
+- FOLLOW THE EXAMPLES ABOVE for tool usage, but add your personality to responses
+
+START ACTING LIKE THE POWERFUL YET FRIENDLY AGENT YOU ARE.`
 
     // Build message history for OpenAI
     const messages: any[] = [new SystemMessage(systemPrompt)]
@@ -2597,9 +2606,23 @@ DO NOT respond with text. Call the next tool NOW!`
               }
             }
 
-            finalResponse = '✅ 모든 작업을 완료했습니다.'
+            // 🎭 도구 실행 완료 후 자연스러운 응답 요청
+            const naturalResponseRequest = await model.invoke([
+              ...messages,
+              new HumanMessage(userMessage),
+              new AIMessage(`[도구 실행 완료] 사용자의 요청을 수행했습니다.`),
+              new HumanMessage(`작업이 완료되었습니다. 이제 당신의 성격과 말투로 사용자에게 자연스럽게 결과를 알려주세요. 도구 이름이나 기술적인 내용은 언급하지 말고, 친근하게 대화하듯이 응답해주세요.`),
+            ])
+            finalResponse = (naturalResponseRequest.content as string) || '작업을 완료했어요!'
           } else {
-            finalResponse = '✅ 모든 작업을 완료했습니다.'
+            // 🎭 도구 실행 완료 후 자연스러운 응답 요청
+            const naturalResponseRequest = await model.invoke([
+              ...messages,
+              new HumanMessage(userMessage),
+              new AIMessage(`[도구 실행 완료] 사용자의 요청을 수행했습니다.`),
+              new HumanMessage(`작업이 완료되었습니다. 이제 당신의 성격과 말투로 사용자에게 자연스럽게 결과를 알려주세요. 도구 이름이나 기술적인 내용은 언급하지 말고, 친근하게 대화하듯이 응답해주세요.`),
+            ])
+            finalResponse = (naturalResponseRequest.content as string) || '작업을 완료했어요!'
           }
         } else {
           finalResponse = finalSummary.content as string
