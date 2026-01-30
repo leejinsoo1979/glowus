@@ -2,16 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 
-// 타입 정의
+// 타입 정의 (새 스키마에 맞춤)
 interface ProjectData {
   id: string
   user_id: string
   company_id: string | null
   title: string
-  type: string
-  status: string
-  content: string
   sources: unknown[]
+  generated_contents: unknown[]
+  audio_overviews: unknown[]
+  chat_messages: unknown[]
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     // 특정 프로젝트 조회 (전체 데이터 포함)
     if (projectId) {
       const { data, error } = await supabase
-        .from('ai_studio_sessions')
+        .from('ai_studio_projects')
         .select('*')
         .eq('id', projectId)
         .eq('user_id', userId)
@@ -44,12 +44,24 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
 
-      return NextResponse.json({ data })
+      // 프론트엔드 호환을 위해 content 필드도 추가
+      const projectData = data as ProjectData
+      const responseData = {
+        ...projectData,
+        content: JSON.stringify({
+          sources: projectData.sources || [],
+          generated_contents: projectData.generated_contents || [],
+          audio_overviews: projectData.audio_overviews || [],
+          chat_messages: projectData.chat_messages || []
+        })
+      }
+
+      return NextResponse.json({ data: responseData })
     }
 
     // 프로젝트 목록 조회 (요약 정보만)
     const { data, error } = await supabase
-      .from('ai_studio_sessions')
+      .from('ai_studio_projects')
       .select('id, title, created_at, updated_at, metadata')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
@@ -92,23 +104,19 @@ export async function POST(request: NextRequest) {
     // 기존 프로젝트 업데이트
     if (project_id) {
       const { data, error } = await supabase
-        .from('ai_studio_sessions')
+        .from('ai_studio_projects')
         .update({
           title,
-          type: 'project',
-          content: JSON.stringify({
-            sources: sources || [],
-            generated_contents: generated_contents || [],
-            audio_overviews: audio_overviews || [],
-            chat_messages: chat_messages || []
-          }),
           sources: sources || [],
+          generated_contents: generated_contents || [],
+          audio_overviews: audio_overviews || [],
+          chat_messages: chat_messages || [],
           metadata: {
             ...metadata,
             sources_count: sources?.length || 0,
             contents_count: generated_contents?.length || 0
           }
-        } as any)
+        })
         .eq('id', project_id)
         .eq('user_id', user_id)
         .select()
@@ -126,26 +134,21 @@ export async function POST(request: NextRequest) {
 
     // 새 프로젝트 생성
     const { data, error } = await supabase
-      .from('ai_studio_sessions')
+      .from('ai_studio_projects')
       .insert({
         user_id,
         company_id: company_id || null,
         title,
-        type: 'project',
-        status: 'active',
-        content: JSON.stringify({
-          sources: sources || [],
-          generated_contents: generated_contents || [],
-          audio_overviews: audio_overviews || [],
-          chat_messages: chat_messages || []
-        }),
         sources: sources || [],
+        generated_contents: generated_contents || [],
+        audio_overviews: audio_overviews || [],
+        chat_messages: chat_messages || [],
         metadata: {
           ...metadata,
           sources_count: sources?.length || 0,
           contents_count: generated_contents?.length || 0
         }
-      } as any)
+      })
       .select()
       .single()
 
@@ -177,7 +180,7 @@ export async function PUT(request: NextRequest) {
 
     // 현재 프로젝트 데이터 가져오기
     const { data: currentData, error: fetchError } = await supabase
-      .from('ai_studio_sessions')
+      .from('ai_studio_projects')
       .select('*')
       .eq('id', project_id)
       .eq('user_id', user_id)
@@ -190,35 +193,38 @@ export async function PUT(request: NextRequest) {
 
     const current = currentData as ProjectData
 
-    // content JSON 파싱
-    let contentData: Record<string, unknown> = {}
-    try {
-      contentData = current.content ? JSON.parse(current.content) : {}
-    } catch {
-      contentData = {}
+    // 업데이트할 데이터 준비
+    const updateData: Record<string, unknown> = {}
+
+    if (updates.title) {
+      updateData.title = updates.title
+    }
+    if (updates.sources !== undefined) {
+      updateData.sources = updates.sources
+    }
+    if (updates.generated_contents !== undefined) {
+      updateData.generated_contents = updates.generated_contents
+    }
+    if (updates.audio_overviews !== undefined) {
+      updateData.audio_overviews = updates.audio_overviews
+    }
+    if (updates.chat_messages !== undefined) {
+      updateData.chat_messages = updates.chat_messages
     }
 
-    // 업데이트할 필드 병합
-    const newContentData: Record<string, unknown> = {
-      ...contentData,
-      ...(updates.sources !== undefined && { sources: updates.sources }),
-      ...(updates.generated_contents !== undefined && { generated_contents: updates.generated_contents }),
-      ...(updates.audio_overviews !== undefined && { audio_overviews: updates.audio_overviews }),
-      ...(updates.chat_messages !== undefined && { chat_messages: updates.chat_messages })
+    // 메타데이터 업데이트
+    const newSources = updates.sources ?? current.sources ?? []
+    const newGeneratedContents = updates.generated_contents ?? current.generated_contents ?? []
+
+    updateData.metadata = {
+      ...current.metadata,
+      sources_count: (newSources as unknown[]).length,
+      contents_count: (newGeneratedContents as unknown[]).length
     }
 
     const { data, error } = await supabase
-      .from('ai_studio_sessions')
-      .update({
-        ...(updates.title && { title: updates.title }),
-        content: JSON.stringify(newContentData),
-        sources: (newContentData.sources as unknown[]) || [],
-        metadata: {
-          ...current.metadata,
-          sources_count: (newContentData.sources as unknown[])?.length || 0,
-          contents_count: (newContentData.generated_contents as unknown[])?.length || 0
-        }
-      } as any)
+      .from('ai_studio_projects')
+      .update(updateData)
       .eq('id', project_id)
       .eq('user_id', user_id)
       .select()
@@ -251,7 +257,7 @@ export async function DELETE(request: NextRequest) {
 
     const supabase = createAdminClient()
     const { error } = await supabase
-      .from('ai_studio_sessions')
+      .from('ai_studio_projects')
       .delete()
       .eq('id', projectId)
       .eq('user_id', userId)

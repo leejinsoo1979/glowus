@@ -436,7 +436,7 @@ export default function AIStudioPage() {
       const project = result.data
       if (!project) return
 
-      // content JSON 파싱
+      // 데이터 로딩 (새 스키마: 직접 컬럼 또는 content JSON)
       let contentData: {
         sources?: Source[]
         generated_contents?: GeneratedContent[]
@@ -444,10 +444,21 @@ export default function AIStudioPage() {
         chat_messages?: ChatMessage[]
       } = {}
 
-      try {
-        contentData = project.content ? JSON.parse(project.content) : {}
-      } catch {
-        contentData = {}
+      // 새 스키마: 직접 컬럼에서 데이터 로드
+      if (project.sources || project.generated_contents || project.audio_overviews || project.chat_messages) {
+        contentData = {
+          sources: project.sources || [],
+          generated_contents: project.generated_contents || [],
+          audio_overviews: project.audio_overviews || [],
+          chat_messages: project.chat_messages || []
+        }
+      } else if (project.content) {
+        // 이전 스키마 호환: content JSON 파싱
+        try {
+          contentData = JSON.parse(project.content)
+        } catch {
+          contentData = {}
+        }
       }
 
       // 상태 복원
