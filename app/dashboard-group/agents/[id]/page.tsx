@@ -2289,8 +2289,8 @@ export default function AgentProfilePage() {
         </div>
 
         <div className={cn(
-          'flex-1',
-          activeTab === 'chat' ? 'overflow-hidden' : 'p-6 md:p-8 overflow-y-auto'
+          'flex-1 min-h-0',
+          activeTab === 'chat' ? 'overflow-hidden flex flex-col' : 'p-6 md:p-8 overflow-y-auto'
         )}>
           {/* About Tab */}
           {activeTab === 'about' && (
