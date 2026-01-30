@@ -6,10 +6,16 @@ import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createUnifiedMemory } from '@/lib/memory/unified-agent-memory'
 // 🧠 Long-term Memory (Agent OS v2.0 + JARVIS RAG)
 import {
+  buildJarvisContext,
   saveConversationMessage,
   analyzeAndLearn,
 } from '@/lib/memory/jarvis-memory-manager'
-import { processAgentConversation } from '@/lib/agent/work-memory'
+import {
+  loadAgentWorkContext,
+  formatContextForPrompt,
+  processAgentConversation,
+} from '@/lib/agent/work-memory'
+import { buildAgentContext } from '@/lib/memory/agent-os'
 
 /**
  * 디버그 메시지 표시 여부
@@ -1655,10 +1661,53 @@ ${transcriptText}
 
     console.log(`[Telegram Chat] Created ${tools.length} tools for agent ${agent.name}`)
 
+    // ========================================
+    // 🧠 Long-term Memory Context Load (LLM 독립적)
+    // GlowUS 계정 연결된 경우 롱텀 메모리 로드
+    // ========================================
+    let longTermMemoryContext = ''
+    const glowusUserId = telegramUser.user_id
+
+    if (glowusUserId) {
+      try {
+        // 1. Agent OS v2.0: 관계 정보, 능력치, 학습 인사이트
+        const agentOsContext = await buildAgentContext({
+          agentId: agent.id,
+          userId: glowusUserId,
+        })
+
+        // 2. JARVIS RAG: 관련 과거 대화 + 에피소드 메모리
+        const jarvisContext = await buildJarvisContext(agent.id, glowusUserId, instruction, {
+          recentLimit: 10,
+          ragLimit: 5,
+          includeEpisodes: true,
+        })
+
+        // 3. Work Memory: 업무 맥락
+        const workContext = await loadAgentWorkContext(agent.id, glowusUserId)
+        const workContextFormatted = formatContextForPrompt(workContext)
+
+        // 컨텍스트 병합
+        longTermMemoryContext = [
+          agentOsContext,
+          jarvisContext.formattedContext,
+          workContextFormatted,
+        ].filter(Boolean).join('\n\n---\n\n')
+
+        if (longTermMemoryContext) {
+          console.log(`[Telegram Chat] 🧠 Long-term Memory loaded: ${longTermMemoryContext.length} chars`)
+        }
+      } catch (memoryError) {
+        console.error('[Telegram Chat] Memory load error:', memoryError)
+        // 메모리 로드 실패해도 대화는 계속
+      }
+    }
+
     // 디버그 모드에서만 시작 알림 표시
     if (SHOW_DEBUG_MESSAGES) {
       const taskMode = isCodingTask ? ' [코딩 모드]' : isShoppingTask ? ' [쇼핑 모드]' : ''
-      await sendTelegramMessage(chatId, `🤖 ${agent.name} 에이전트 시작 (도구 ${tools.length}개)${taskMode}`)
+      const memoryStatus = longTermMemoryContext ? ' [메모리 활성화]' : ''
+      await sendTelegramMessage(chatId, `🤖 ${agent.name} 에이전트 시작 (도구 ${tools.length}개)${taskMode}${memoryStatus}`)
     }
 
     // Create GPT-4o model with tools - SMARTER, follows multi-step instructions better
@@ -1668,7 +1717,20 @@ ${transcriptText}
       openAIApiKey: process.env.OPENAI_API_KEY,
     }).bindTools(tools)
 
+    // 🧠 Long-term Memory를 시스템 프롬프트에 주입
+    const memorySection = longTermMemoryContext ? `
+
+# 🧠 YOUR LONG-TERM MEMORY (Cross-Platform - Telegram + GlowUS Web)
+The following is your memory about this user from past conversations across all platforms.
+Use this context to provide personalized responses. Remember their preferences, past requests, and relationship history.
+
+${longTermMemoryContext}
+
+---
+` : ''
+
     const systemPrompt = `You are ${agent.name}, a POWERFUL AUTONOMOUS AI AGENT with FULL SYSTEM ACCESS.
+${memorySection}
 
 # 🚨🚨🚨 CRITICAL: COMPLETE ALL STEPS - DO NOT STOP EARLY 🚨🚨🚨
 When a task requires multiple steps (e.g., "Pages 열고 가사 적어"):
@@ -2539,12 +2601,10 @@ DO NOT respond with text. Call the next tool NOW!`
     console.log(`[Telegram Chat] ✅ Saved conversation to database (PERMANENT STORAGE)`)
 
     // ========================================
-    // 🧠 Long-term Memory (Agent OS v2.0 + JARVIS RAG)
+    // 🧠 Long-term Memory 저장 (Agent OS v2.0 + JARVIS RAG)
     // 크로스 플랫폼 영구 메모리 - Telegram ↔ GlowUS Web 통합
+    // (glowusUserId는 위에서 이미 선언됨)
     // ========================================
-
-    // GlowUS 사용자 ID 확인 (연결된 경우 롱텀 메모리 저장)
-    const glowusUserId = telegramUser.user_id
 
     if (glowusUserId) {
       // 🔥 Long-term Memory 저장 (비동기 - 응답 지연 방지)
