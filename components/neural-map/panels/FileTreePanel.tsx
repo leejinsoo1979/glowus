@@ -1965,6 +1965,12 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     clearLinkedProject()
     setSelectedNodes([])  // 이전 선택 초기화 (노드 흐림 방지)
 
+    // 🔥 새 폴더 열 때 Claude Code 채팅도 새 스레드로 시작
+    const folderName = dirPath.split('/').pop() || '새 프로젝트'
+    const glowCodeStore = useGlowCodeStore.getState()
+    glowCodeStore.createThread(folderName)
+    console.log('[FileTree] 🔄 New chat thread created for folder:', folderName)
+
     // Web 모드: GCS에서 파일 로드
     if (isWeb()) {
       try {
