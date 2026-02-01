@@ -61,6 +61,8 @@ export function CodingToolbar({
   const openCodePreview = useNeuralMapStore((s) => s.openCodePreview)
   const mapId = useNeuralMapStore((s) => s.mapId)
   const linkedProjectId = useNeuralMapStore((s) => s.linkedProjectId)
+  const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
+  const setMapId = useNeuralMapStore((s) => s.setMapId)
 
   // User theme accent color
   const { accentColor } = useThemeStore()
@@ -161,21 +163,80 @@ export function CodingToolbar({
     }
   }
 
-  // 저장 처리
+  // 저장 처리 (프로젝트 미연결 시 자동 생성)
   const handleSave = useCallback(async () => {
-    if (!linkedProjectId || !mapId) return
+    if (!projectPath) {
+      alert('프로젝트 폴더를 먼저 열어주세요.')
+      return
+    }
 
     setIsSaving(true)
     try {
-      const state = useNeuralMapStore.getState()
-      await fetch(`/api/ai-coding/${mapId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ graph: state.graph }),
-      })
+      let currentProjectId = linkedProjectId
+      let currentMapId = mapId
 
-      if (projectPath) {
-        await fetch(`/api/projects/${linkedProjectId}`, {
+      // 🔥 프로젝트가 연결되지 않은 경우 자동 생성
+      if (!currentProjectId) {
+        const projectName = projectPath.split('/').pop() || '새 프로젝트'
+        console.log('[CodingToolbar] Creating new project:', projectName)
+
+        // 1. 프로젝트 생성
+        const projectRes = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: projectName,
+            description: `${projectName} 프로젝트`,
+            folder_path: projectPath,
+            project_type: 'code',
+            status: 'active',
+          })
+        })
+
+        if (!projectRes.ok) {
+          throw new Error('프로젝트 생성 실패')
+        }
+
+        const { project } = await projectRes.json()
+        currentProjectId = project.id
+        console.log('[CodingToolbar] Project created:', currentProjectId)
+
+        // 2. AI Coding Map 생성
+        const mapRes = await fetch('/api/ai-coding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: currentProjectId,
+            title: projectName,
+          })
+        })
+
+        if (mapRes.ok) {
+          const { map } = await mapRes.json()
+          currentMapId = map.id
+          console.log('[CodingToolbar] Map created:', currentMapId)
+        }
+
+        // 3. Store에 연결 정보 저장
+        setLinkedProject(currentProjectId, projectName)
+        if (currentMapId) {
+          setMapId(currentMapId)
+        }
+      }
+
+      // 4. 그래프 데이터 저장
+      if (currentMapId) {
+        const state = useNeuralMapStore.getState()
+        await fetch(`/api/ai-coding/${currentMapId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ graph: state.graph }),
+        })
+      }
+
+      // 5. 프로젝트 폴더 경로 업데이트
+      if (currentProjectId && projectPath) {
+        await fetch(`/api/projects/${currentProjectId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ folder_path: projectPath })
@@ -186,10 +247,11 @@ export function CodingToolbar({
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch (err) {
       console.error('Save failed:', err)
+      alert('저장 중 오류가 발생했습니다.')
     } finally {
       setIsSaving(false)
     }
-  }, [linkedProjectId, mapId, projectPath])
+  }, [linkedProjectId, mapId, projectPath, setLinkedProject, setMapId])
 
   // Run 버튼 - Browser 탭에서 로컬 서버로 프로젝트 실행
   const handleRun = useCallback(async () => {
@@ -293,15 +355,15 @@ export function CodingToolbar({
 
         <div className={cn('w-px h-6 shrink-0', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
 
-        {/* Save Button */}
+        {/* Save Button - 프로젝트 미연결 시에도 활성화 (자동 생성) */}
         <button
           onClick={handleSave}
-          disabled={isSaving || !linkedProjectId}
+          disabled={isSaving || !projectPath}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white shrink-0 disabled:opacity-50"
           style={{
             backgroundColor: saveSuccess ? '#22c55e' : currentAccent.color,
           }}
-          title="저장 (Cmd+S)"
+          title={linkedProjectId ? "저장 (Cmd+S)" : "프로젝트 생성 및 저장 (Cmd+S)"}
         >
           {isSaving ? (
             <Loader2 className="w-4 h-4 animate-spin" />
