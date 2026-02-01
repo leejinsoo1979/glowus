@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, X, Globe, MousePointer2, Terminal, MoreHorizontal, Plus, Eye, MessageSquare, Share2, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCw, X, Globe, MousePointer2, Terminal, MoreHorizontal, Plus, Eye, MessageSquare, Share2, ExternalLink, Camera } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { AIViewfinder, useViewfinder } from '../viewfinder'
+import html2canvas from 'html2canvas'
 
 // Electron 환경인지 감지
 const isElectron = typeof window !== 'undefined' && !!(window as any).electron
@@ -18,22 +19,29 @@ interface AIScreenContext {
 interface BrowserViewProps {
     /** AI에게 화면 공유 시 호출되는 콜백 */
     onShareToAI?: (context: AIScreenContext) => void
+    /** 초기 URL (실행 버튼으로 프로젝트 열 때) */
+    initialUrl?: string | null
+    /** Claude Code CLI용 스크린샷 저장 경로 */
+    screenshotPath?: string
 }
 
-export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
+export function BrowserView({ onShareToAI, initialUrl, screenshotPath }: BrowserViewProps = {}) {
     // 테마 설정
     const { resolvedTheme } = useTheme()
 
     // 상태 관리
+    // 🔥 initialUrl이 있으면 그걸 사용, 없으면 빈 문자열로 시작
+    const defaultUrl = initialUrl || ''
+
     // 탭 상태 관리
     const [tabs, setTabs] = useState<{ id: string; url: string; title: string; favicon?: string }[]>([
-        { id: '1', url: 'https://www.google.com', title: 'New Tab', favicon: '' }
+        { id: '1', url: defaultUrl, title: defaultUrl ? 'Project Preview' : 'New Tab', favicon: '' }
     ])
     const [activeTabId, setActiveTabId] = useState('1')
 
     // 복구된 상태 변수들
-    const [url, setUrl] = useState('https://www.google.com')
-    const [inputUrl, setInputUrl] = useState('https://www.google.com')
+    const [url, setUrl] = useState(defaultUrl)
+    const [inputUrl, setInputUrl] = useState(defaultUrl)
     const [isLoading, setIsLoading] = useState(false)
     const [canGoBack, setCanGoBack] = useState(false)
     const [canGoForward, setCanGoForward] = useState(false)
@@ -67,6 +75,32 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
 
     // 분석 결과 표시용
     const [showAnalysisPanel, setShowAnalysisPanel] = useState(false)
+
+    // 스크린샷 캡처 상태
+    const [isCapturing, setIsCapturing] = useState(false)
+    const [lastScreenshotPath, setLastScreenshotPath] = useState<string | null>(null)
+
+    // 🔥 initialUrl이 변경되면 활성 탭의 URL 업데이트
+    useEffect(() => {
+        if (initialUrl) {
+            console.log('[BrowserView] 🌐 Loading initialUrl:', initialUrl)
+            // 🔥 탭 상태와 URL 상태를 동시에 업데이트
+            const newUrl = initialUrl
+            setTabs(prev => {
+                const updated = prev.map(t =>
+                    t.id === activeTabId
+                        ? { ...t, url: newUrl, title: 'Project Preview' }
+                        : t
+                )
+                console.log('[BrowserView] 📋 Updated tabs:', updated.map(t => ({ id: t.id, url: t.url })))
+                return updated
+            })
+            setUrl(newUrl)
+            setInputUrl(newUrl)
+            setIsLoading(true)
+            setError(null)
+        }
+    }, [initialUrl, activeTabId])
 
     // AI에게 화면 공유 핸들러
     const handleShareToAI = useCallback((imageDataUrl: string, timestamp: number) => {
@@ -322,6 +356,107 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
         }
     }
 
+    // 🔥 Claude Code CLI용 스크린샷 캡처
+    const captureScreenshot = useCallback(async () => {
+        setIsCapturing(true)
+        try {
+            const container = browserContainerRef.current
+            if (!container) {
+                console.error('[BrowserView] No container ref')
+                return null
+            }
+
+            // iframe 또는 webview의 스크린샷 캡처
+            let canvas: HTMLCanvasElement | null = null
+
+            if (isElectron && webContentsId) {
+                // Electron: webContents.capturePage() 사용
+                const electron = (window as any).electron
+                if (electron?.capture?.screenshot) {
+                    const result = await electron.capture.screenshot(webContentsId)
+                    if (result?.dataUrl) {
+                        // dataUrl을 파일로 저장
+                        const timestamp = Date.now()
+                        const fileName = `browser-screenshot-${timestamp}.png`
+                        const savePath = screenshotPath || `/tmp/glowus-screenshots/${fileName}`
+
+                        // Base64 → 파일 저장 (API 사용)
+                        const response = await fetch('/api/workspace/save-screenshot', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                dataUrl: result.dataUrl,
+                                path: savePath
+                            })
+                        })
+
+                        if (response.ok) {
+                            const { path: savedPath } = await response.json()
+                            setLastScreenshotPath(savedPath)
+                            console.log('[BrowserView] 📸 Screenshot saved:', savedPath)
+                            return savedPath
+                        }
+                    }
+                }
+            } else {
+                // 웹: html2canvas로 iframe 영역 캡처
+                // 주의: Cross-origin iframe은 캡처 불가, 같은 origin 프리뷰만 가능
+                canvas = await html2canvas(container, {
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    scale: 1,
+                })
+
+                if (canvas) {
+                    const dataUrl = canvas.toDataURL('image/png')
+                    const timestamp = Date.now()
+                    const fileName = `browser-screenshot-${timestamp}.png`
+                    const savePath = `/tmp/glowus-screenshots/${fileName}`
+
+                    // API로 파일 저장
+                    const response = await fetch('/api/workspace/save-screenshot', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ dataUrl, path: savePath })
+                    })
+
+                    if (response.ok) {
+                        const { path: savedPath } = await response.json()
+                        setLastScreenshotPath(savedPath)
+                        console.log('[BrowserView] 📸 Screenshot saved:', savedPath)
+                        return savedPath
+                    }
+                }
+            }
+
+            return null
+        } catch (error) {
+            console.error('[BrowserView] Screenshot capture failed:', error)
+            return null
+        } finally {
+            setIsCapturing(false)
+        }
+    }, [isElectron, webContentsId, screenshotPath])
+
+    // 🔥 글로벌 스크린샷 요청 이벤트 리스너 (Claude Code CLI가 요청)
+    useEffect(() => {
+        const handleScreenshotRequest = async (event: CustomEvent<{ requestId: string }>) => {
+            console.log('[BrowserView] 📷 Screenshot requested by Claude Code CLI')
+            const path = await captureScreenshot()
+
+            // 결과 이벤트 발생
+            window.dispatchEvent(new CustomEvent('glowus:screenshot-result', {
+                detail: { requestId: event.detail.requestId, path, success: !!path }
+            }))
+        }
+
+        window.addEventListener('glowus:capture-browser', handleScreenshotRequest as unknown as EventListener)
+        return () => {
+            window.removeEventListener('glowus:capture-browser', handleScreenshotRequest as unknown as EventListener)
+        }
+    }, [captureScreenshot])
+
     return (
         <div className="absolute inset-0 flex flex-col bg-zinc-50 dark:bg-zinc-950">
             {/* 탭 바 영역 */}
@@ -396,6 +531,26 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
                 </div>
 
                 <div className="flex items-center gap-1 border-l border-zinc-200 dark:border-zinc-800 pl-2 ml-1 electron-no-drag">
+                    {/* 📸 Claude Code용 스크린샷 캡처 */}
+                    <button
+                        onClick={captureScreenshot}
+                        disabled={isCapturing}
+                        className={cn(
+                            "p-1.5 rounded-md transition-colors relative",
+                            isCapturing
+                                ? "bg-green-500/20 text-green-500"
+                                : lastScreenshotPath
+                                    ? "bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20"
+                                    : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                        )}
+                        title={lastScreenshotPath ? `스크린샷 저장됨: ${lastScreenshotPath}` : "Claude Code에게 화면 보여주기 (스크린샷)"}
+                    >
+                        <Camera className={cn("w-3.5 h-3.5", isCapturing && "animate-pulse")} />
+                        {lastScreenshotPath && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />
+                        )}
+                    </button>
+
                     {/* AI 뷰파인더 토글 */}
                     <button
                         onClick={viewfinder.toggle}
@@ -440,8 +595,20 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
             </div>
 
             <div ref={browserContainerRef} className="flex-1 relative bg-white dark:bg-zinc-950 overflow-hidden">
-                {/* Electron: webview, Web: iframe */}
-                {isElectron ? (
+                {/* 🔥 URL이 없으면 빈 상태 화면 표시 */}
+                {!activeTab.url ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-center p-6">
+                            <Globe className="w-16 h-16 text-zinc-300 dark:text-zinc-700 mx-auto mb-4" />
+                            <h2 className="text-lg font-medium text-zinc-600 dark:text-zinc-400 mb-2">
+                                프리뷰할 프로젝트가 없습니다
+                            </h2>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-500">
+                                프로젝트를 선택하고 <strong>실행</strong> 버튼을 클릭하세요
+                            </p>
+                        </div>
+                    </div>
+                ) : isElectron ? (
                     // @ts-ignore - Electron webview
                     <webview
                         ref={setWebviewRef}
@@ -451,19 +618,34 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
                 ) : (
                     // 웹 브라우저용 - iframe 제한 안내
                     <div className="w-full h-full flex flex-col">
-                        {/* 안내 배너 */}
-                        <div className="flex items-center justify-between px-3 py-2 bg-amber-500/10 border-b border-amber-500/20">
-                            <span className="text-xs text-amber-600 dark:text-amber-400">
-                                ⚠️ 웹 브라우저에서는 보안 제한으로 일부 사이트가 표시되지 않을 수 있습니다
-                            </span>
-                            <button
-                                onClick={() => window.open(activeTab.url, '_blank')}
-                                className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                새 탭에서 열기
-                            </button>
-                        </div>
+                        {/* 안내 배너 - /api/preview/ 경로는 같은 origin이므로 안내 메시지 변경 */}
+                        {activeTab.url.startsWith('/api/preview/') ? (
+                            <div className="flex items-center justify-between px-3 py-2 bg-green-500/10 border-b border-green-500/20">
+                                <span className="text-xs text-green-600 dark:text-green-400">
+                                    ✅ 프로젝트 프리뷰
+                                </span>
+                                <button
+                                    onClick={() => window.open(activeTab.url, '_blank')}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                >
+                                    <ExternalLink className="w-3 h-3" />
+                                    새 탭에서 열기
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-between px-3 py-2 bg-amber-500/10 border-b border-amber-500/20">
+                                <span className="text-xs text-amber-600 dark:text-amber-400">
+                                    ⚠️ 웹 브라우저에서는 보안 제한으로 일부 사이트가 표시되지 않을 수 있습니다
+                                </span>
+                                <button
+                                    onClick={() => window.open(activeTab.url, '_blank')}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                >
+                                    <ExternalLink className="w-3 h-3" />
+                                    새 탭에서 열기
+                                </button>
+                            </div>
+                        )}
                         {/* iframe */}
                         <iframe
                             ref={iframeRef as any}
@@ -472,11 +654,13 @@ export function BrowserView({ onShareToAI }: BrowserViewProps = {}) {
                             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
                             allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi"
                             referrerPolicy="no-referrer-when-downgrade"
-                            onLoad={() => {
+                            onLoad={(e) => {
+                                console.log('[BrowserView] ✅ iframe loaded:', activeTab.url)
                                 setIsLoading(false)
                                 setError(null)
                             }}
-                            onError={() => {
+                            onError={(e) => {
+                                console.error('[BrowserView] ❌ iframe error:', e, 'URL:', activeTab.url)
                                 setError('이 사이트는 iframe 삽입을 차단합니다. 새 탭에서 열어주세요.')
                                 setIsLoading(false)
                             }}

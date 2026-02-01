@@ -32,6 +32,7 @@ interface CodingToolbarProps {
   terminalOpen?: boolean
   projectPath?: string | null
   linkedProjectName?: string | null
+  onRun?: (previewUrl: string) => void  // Browser 탭에서 열기 위한 콜백
 }
 
 export function CodingToolbar({
@@ -39,6 +40,7 @@ export function CodingToolbar({
   terminalOpen = false,
   projectPath,
   linkedProjectName,
+  onRun,
 }: CodingToolbarProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -189,16 +191,63 @@ export function CodingToolbar({
     }
   }, [linkedProjectId, mapId, projectPath])
 
-  // Run 버튼 (예: npm run dev)
-  const handleRun = useCallback(() => {
-    // 터미널 열고 명령어 실행 로직
-    if (onToggleTerminal && !terminalOpen) {
-      onToggleTerminal()
-    }
+  // Run 버튼 - Browser 탭에서 로컬 서버로 프로젝트 실행
+  const handleRun = useCallback(async () => {
+    console.log('[CodingToolbar] handleRun called', { linkedProjectId, projectPath, linkedProjectName })
+
     setIsRunning(true)
-    // 실제 실행은 터미널에서 처리
-    setTimeout(() => setIsRunning(false), 1000)
-  }, [onToggleTerminal, terminalOpen])
+
+    try {
+      // Electron 환경인지 확인
+      const isElectron = typeof window !== 'undefined' && !!(window as any).electron?.projectPreview
+
+      if (isElectron && projectPath) {
+        // Electron: 팝업 창으로 프로젝트 열기
+        const indexPath = `${projectPath}/index.html`
+        console.log('[CodingToolbar] Opening in Electron:', indexPath)
+        const result = await (window as any).electron.projectPreview.open(indexPath, linkedProjectName || 'Preview')
+        if (!result?.success) {
+          console.error('[CodingToolbar] Failed to open preview:', result?.error)
+        }
+      } else if (projectPath) {
+        // 웹: Browser 탭에서 로컬 서버 URL로 열기
+        const sessionId = `preview_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+        const previewUrl = `/api/preview/index.html?basePath=${encodeURIComponent(projectPath)}&sessionId=${encodeURIComponent(sessionId)}`
+        console.log('[CodingToolbar] Opening in Browser tab:', previewUrl)
+
+        if (onRun) {
+          onRun(previewUrl)
+        } else {
+          window.open(previewUrl, '_blank', 'width=1024,height=768')
+        }
+      } else {
+        // projectPath 없음: store에서 HTML 찾아서 새 창에서 열기
+        console.log('[CodingToolbar] No projectPath, checking store')
+        const state = useNeuralMapStore.getState()
+        const htmlFile = state.files.find(f =>
+          f.name.endsWith('.html') || f.name.endsWith('.htm')
+        )
+
+        if (htmlFile && htmlFile.content) {
+          console.log('[CodingToolbar] Opening from store:', htmlFile.name)
+          const newWindow = window.open('', '_blank', 'width=1024,height=768')
+          if (newWindow) {
+            newWindow.document.write(htmlFile.content)
+            newWindow.document.close()
+          }
+        } else {
+          console.log('[CodingToolbar] No HTML in store, opening terminal')
+          if (onToggleTerminal && !terminalOpen) {
+            onToggleTerminal()
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[CodingToolbar] Run error:', err)
+    } finally {
+      setTimeout(() => setIsRunning(false), 500)
+    }
+  }, [linkedProjectId, projectPath, linkedProjectName, onToggleTerminal, terminalOpen, onRun])
 
   // 접힌 상태
   if (headerCollapsed) {
@@ -348,7 +397,7 @@ export function CodingToolbar({
           onClick={handleRun}
           disabled={isRunning}
           className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-white shrink-0"
-          style={{ backgroundColor: '#22c55e' }}
+          style={{ backgroundColor: currentAccent.color }}
           title="실행 (F5)"
         >
           {isRunning ? (
