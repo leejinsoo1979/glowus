@@ -59,31 +59,31 @@ import {
   Folder,
   Brain,
   CircleDot,
+  FileJson,
+  FileImage,
 } from 'lucide-react'
 
-// react-icons - VS Code 스타일 파일 아이콘
-import {
-  VscFile,
-  VscFileCode,
-  VscFilePdf,
-  VscFileMedia,
-  VscMarkdown,
-  VscJson,
-  VscFolder,
-  VscFolderOpened,
-} from 'react-icons/vsc'
-import {
-  SiTypescript,
-  SiJavascript,
-  SiReact,
-  SiCss3,
-  SiHtml5,
-  SiPython,
-  SiGit,
-} from 'react-icons/si'
+// 🔥 react-icons 완전 제거 - lucide-react로 통일 (16MB 번들 절약!)
+// 파일 타입별 별칭 (기존 코드 호환성)
+const VscFileCode = FileCode
+const VscFile = File
+const VscFilePdf = FileText
+const VscFileMedia = FileImage
+const VscMarkdown = FileText
+const VscJson = FileJson
+const VscFolder = Folder
+const VscFolderOpened = FolderOpen
 
+// 🔥 브랜드 아이콘을 lucide-react generic 아이콘으로 대체
+const SiTypescript = FileCode
+const SiJavascript = FileCode
+const SiReact = FileCode
+const SiCss3 = FileCode
+const SiHtml5 = FileCode
+const SiPython = FileCode
+const SiGit = GitBranch
 
-// VS Code 스타일 파일 아이콘 - react-icons 사용
+// 파일 아이콘 컴포넌트 - lucide-react 사용
 function FileIcon({ type, name }: { type: string; name?: string }) {
   const ext = name?.split('.').pop()?.toLowerCase()
   const iconClass = "w-4 h-4 flex-shrink-0"
@@ -337,6 +337,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
   const linkedProjectId = useNeuralMapStore((s) => s.linkedProjectId)
   const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
   const clearLinkedProject = useNeuralMapStore((s) => s.clearLinkedProject)
+  const setMapId = useNeuralMapStore((s) => s.setMapId)
   const setRightPanelTab = useNeuralMapStore((s) => s.setRightPanelTab)  // Agent Builder 탭 전환용
 
   // 🆕 linkedProjectId가 변경되면 에이전트 목록 새로고침
@@ -562,10 +563,16 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     return parts[parts.length - 1] || parts[parts.length - 2] || ''
   }
 
-  // 맵 제목: 프로젝트 이름 → 폴더 이름 → 그래프 제목 순서
+  // 맵 제목: 프로젝트 이름 → 폴더 이름 순서
+  // 🔥 linkedProjectId가 있을 때만 linkedProjectName 표시 (불일치 방지)
   const folderName = getFolderName(projectPath)
-  const hasProject = linkedProjectName || projectPath
-  const mapTitle = linkedProjectName || folderName || ''  // 🔥 graph.title 제거 - 프로젝트/폴더 이름만 표시
+  // 🔥 hasProject: linkedProjectId 또는 projectPath가 있어야 프로젝트가 있는 것
+  // linkedProjectName만 있는 경우는 불완전한 상태이므로 프로젝트 없음으로 처리
+  const hasProject = linkedProjectId || projectPath
+  // 🔥 mapTitle: linkedProjectId가 없으면 linkedProjectName도 사용하지 않음
+  const mapTitle = hasProject
+    ? ((linkedProjectId && linkedProjectName) ? linkedProjectName : folderName || '')
+    : ''
 
   // 파일 확장자로 타입 결정 (VS Code 스타일)
   const getFileTypeFromExt = useCallback((fileName: string): NeuralFile['type'] => {
@@ -733,6 +740,96 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     setExpandedNodes([])
   }, [setExpandedNodes])
 
+  // 🔥 프로젝트 저장 핸들러 (File 메뉴 Save)
+  const [isSavingProject, setIsSavingProject] = useState(false)
+  const handleSaveProject = useCallback(async () => {
+    if (!projectPath) {
+      alert('프로젝트 폴더를 먼저 열어주세요.')
+      return
+    }
+
+    setIsSavingProject(true)
+    try {
+      let currentProjectId = linkedProjectId
+      let currentMapId = mapId
+
+      // 프로젝트가 연결되지 않은 경우 자동 생성
+      if (!currentProjectId) {
+        const projectName = projectPath.split('/').pop() || '새 프로젝트'
+        console.log('[FileTree] Creating new project:', projectName)
+
+        // 1. 프로젝트 생성
+        const projectRes = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: projectName,
+            description: `${projectName} 프로젝트`,
+            folder_path: projectPath,
+            project_type: 'code',
+            status: 'active',
+          })
+        })
+
+        if (!projectRes.ok) {
+          throw new Error('프로젝트 생성 실패')
+        }
+
+        const { project } = await projectRes.json()
+        currentProjectId = project.id
+        console.log('[FileTree] Project created:', currentProjectId)
+
+        // 2. AI Coding Map 생성
+        const mapRes = await fetch('/api/ai-coding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: currentProjectId,
+            title: projectName,
+          })
+        })
+
+        if (mapRes.ok) {
+          const { map } = await mapRes.json()
+          currentMapId = map.id
+          console.log('[FileTree] Map created:', currentMapId)
+        }
+
+        // 3. Store에 연결 정보 저장
+        setLinkedProject(currentProjectId, projectName)
+        if (currentMapId) {
+          setMapId(currentMapId)
+        }
+      }
+
+      // 4. 그래프 데이터 저장
+      if (currentMapId) {
+        const state = useNeuralMapStore.getState()
+        await fetch(`/api/ai-coding/${currentMapId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ graph: state.graph }),
+        })
+      }
+
+      // 5. 프로젝트 폴더 경로 업데이트
+      if (currentProjectId && projectPath) {
+        await fetch(`/api/projects/${currentProjectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_path: projectPath })
+        })
+      }
+
+      alert('✅ 저장되었습니다!')
+    } catch (err) {
+      console.error('Save failed:', err)
+      alert('저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSavingProject(false)
+    }
+  }, [linkedProjectId, mapId, projectPath, setLinkedProject, setMapId])
+
   // 사이드바에서 프로젝트 생성 핸들러
   const handleCreateProjectFromSidebar = useCallback(async () => {
     const trimmedName = newProjectName.trim()
@@ -752,6 +849,27 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
           console.error('[FileTree] Failed to create workspace:', result.error)
           alert('로컬 폴더 생성에 실패했습니다: ' + (result.error || 'Unknown error'))
           return
+        }
+      } else {
+        // 🔥 웹 환경: 프로젝트를 열려면 로컬 폴더 선택 필요
+        // FileSystem Access API 사용해서 폴더 선택
+        if ('showDirectoryPicker' in window) {
+          try {
+            const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+            folderPath = dirHandle.name  // 웹에서는 핸들의 name만 사용 가능
+            console.log('[FileTree] Web: Directory selected:', folderPath)
+          } catch (pickerError: any) {
+            if (pickerError.name !== 'AbortError') {
+              console.error('[FileTree] Directory picker error:', pickerError)
+            }
+            // 사용자가 취소하거나 API 미지원 시 가상 경로 사용
+            folderPath = `/workspace/${trimmedName}`
+            console.log('[FileTree] Web: Using virtual path:', folderPath)
+          }
+        } else {
+          // FileSystem Access API 미지원 브라우저: 가상 경로 사용
+          folderPath = `/workspace/${trimmedName}`
+          console.log('[FileTree] Web: Using virtual path (no FS API):', folderPath)
         }
       }
 
@@ -896,13 +1014,15 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         }
       }
 
-      // 5. 프로젝트 경로로 이동 및 Neural Map에 연결
-      if (folderPath) {
-        setProjectPath(folderPath)
-      }
+      // 5. Neural Map에 프로젝트 연결 → 경로 설정 (순서 중요!)
+      // 🔥 setLinkedProject가 먼저 호출되어야 setProjectPath에서 DB에 folder_path 저장됨
       if (newProject.id) {
         setLinkedProject(newProject.id, trimmedName)
       }
+      // 🔥 folderPath가 없어도 (웹 환경) 프로젝트 이름 기반 가상 경로 설정
+      const finalPath = folderPath || `/workspace/${trimmedName}`
+      setProjectPath(finalPath)
+      console.log('[FileTree] ✅ setProjectPath:', finalPath)
 
       // 7. 모달 닫기
       setIsCreatingProject(false)
@@ -2027,7 +2147,56 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         const result = await electronFs.selectDirectory()
         if (!result) return
 
-        // 공통 함수 호출
+        // 🔥 프로젝트가 이미 선택된 상태면 확인 다이얼로그 표시
+        const currentLinkedProjectId = useNeuralMapStore.getState().linkedProjectId
+        const currentProjectPath = useNeuralMapStore.getState().projectPath
+        const currentLinkedProjectName = useNeuralMapStore.getState().linkedProjectName
+
+        if (currentLinkedProjectId && currentProjectPath && result.path !== currentProjectPath) {
+          // 다른 폴더를 선택한 경우 - 새 프로젝트로 시작할지 물어봄
+          const projectDisplayName = currentLinkedProjectName || currentProjectPath.split('/').pop() || '현재 프로젝트'
+          const confirmNewProject = window.confirm(
+            `현재 '${projectDisplayName}' 프로젝트에 연결되어 있습니다.\n\n` +
+            `새로운 폴더로 새 프로젝트를 시작하시겠습니까?\n\n` +
+            `• 확인: 새 프로젝트로 시작 (기존 연결 해제)\n` +
+            `• 취소: 기존 프로젝트에 이 폴더 연결`
+          )
+
+          if (confirmNewProject) {
+            // 새 프로젝트로 시작 - clearLinkedProject 포함
+            console.log('[FileTree] Starting new project with folder:', result.path)
+            await loadFolderFromPath(result.path)
+            return
+          }
+          // 취소 -> 기존 프로젝트에 새 폴더 연결 (아래 로직 진행)
+        }
+
+        if (currentLinkedProjectId) {
+          console.log('[FileTree] Linking folder to existing project:', currentLinkedProjectId, '->', result.path)
+
+          // 1. DB에 folder_path 저장
+          try {
+            const res = await fetch(`/api/projects/${currentLinkedProjectId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder_path: result.path })
+            })
+            if (res.ok) {
+              console.log('[FileTree] ✅ Saved folder_path to DB')
+            } else {
+              console.error('[FileTree] Failed to save folder_path to DB:', res.status)
+            }
+          } catch (e) {
+            console.error('[FileTree] Error saving folder_path:', e)
+          }
+
+          // 2. Store에 projectPath 설정 (clearLinkedProject 없이)
+          useNeuralMapStore.getState().setProjectPath(result.path)
+          // 3. 파일 로드는 projectPath useEffect에서 자동으로 처리됨
+          return
+        }
+
+        // 프로젝트가 선택되지 않은 상태면 기존 로직 (새 로컬 프로젝트)
         await loadFolderFromPath(result.path)
         return
       }
@@ -2211,9 +2380,18 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     console.log('[FileTree] 🔄 Auto-loading folder for projectPath:', projectPath)
     lastLoadedPathRef.current = projectPath
 
-    // Electron 환경에서만 실행
+    // Electron 환경 확인
     const electron = (window as any).electron
-    if (!electron?.fs?.scanTree) return
+    const isElectron = !!electron?.fs?.scanTree
+
+    // 🔥 웹 환경: 파일 시스템 접근 불가 시에도 프로젝트 경로 설정만으로 에이전트 패널 활성화
+    if (!isElectron) {
+      console.log('[FileTree] 🌐 Web mode - projectPath set, building empty graph for:', projectPath)
+      setIsExpanded(true)
+      // 빈 파일 목록이라도 그래프 빌드 (프로젝트 노드만 표시)
+      buildGraphFromFilesAsync()
+      return
+    }
 
     // 🔥 linkedProjectId가 있으면 loadFolderFromPath 대신 직접 scanTree 호출
     // (loadFolderFromPath는 clearLinkedProject를 호출해서 프로젝트 연결이 끊어지므로)
@@ -2290,6 +2468,330 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     }
   }, [projectPath, showHiddenFiles, mapId, setFiles, buildGraphFromFilesAsync, addToRecentProjects])
 
+  // 🔥 세션 복원 이벤트 리스너 (새로고침 시 마지막 프로젝트 로드)
+  useEffect(() => {
+    const handleLoadProject = (e: CustomEvent<{ projectPath: string; projectId: string; projectName: string }>) => {
+      const { projectPath: path, projectId, projectName } = e.detail
+      console.log('[FileTree] 🔄 Received load-project event:', { path, projectId, projectName })
+
+      // lastLoadedPathRef 초기화 (강제 로드)
+      lastLoadedPathRef.current = null
+
+      // linkedProject 설정
+      setLinkedProject(projectId, projectName)
+
+      // projectPath 설정 → useEffect에서 파일 로드
+      setProjectPath(path)
+    }
+
+    window.addEventListener('glowus:load-project', handleLoadProject as EventListener)
+    return () => window.removeEventListener('glowus:load-project', handleLoadProject as EventListener)
+  }, [setLinkedProject, setProjectPath])
+
+  // 🔥 파일 시스템 변경 감지 (Claude CLI 등 외부 도구가 파일 생성/수정 시 실시간 반영)
+  useEffect(() => {
+    const electron = (window as any).electron
+    if (!electron?.fs?.onChanged) return
+    if (!projectPath) return
+
+    console.log('[FileTree] 👁️ Setting up file change listener for:', projectPath)
+
+    // 파일 변경 이벤트 리스너
+    const unsubscribe = electron.fs.onChanged((data: { path: string; type: 'create' | 'change' | 'delete' }) => {
+      console.log('[FileTree] 📝 File changed:', data.type, data.path)
+
+      // 변경된 파일이 현재 프로젝트 내의 파일인지 확인
+      if (!data.path.startsWith(projectPath)) return
+
+      // 파일 트리 새로고침 (debounce 적용)
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
+
+      refreshTimeoutRef.current = setTimeout(async () => {
+        console.log('[FileTree] 🔄 Refreshing file tree due to:', data.type, data.path)
+
+        try {
+          // 전체 트리 다시 스캔
+          const scanResult = await electron.fs.scanTree(projectPath, {
+            includeSystemFiles: showHiddenFiles,
+            includeContent: true,
+            contentExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.css', '.html', '.py', '.java', '.go', '.rs', '.sql', '.prisma', '.graphql', '.gql', '.yaml', '.yml']
+          })
+
+          const timestamp = Date.now()
+          const neuralFiles: NeuralFile[] = []
+
+          const getFileType = (ext: string) => {
+            const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+            const mdExts = ['md', 'markdown', 'mdx']
+            const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go', 'sql', 'prisma', 'graphql', 'gql', 'yaml', 'yml']
+            if (imageExts.includes(ext)) return 'image'
+            if (mdExts.includes(ext)) return 'markdown'
+            if (codeExts.includes(ext)) return 'code'
+            return 'text'
+          }
+
+          const flattenTree = (node: any) => {
+            if (node.kind === 'file') {
+              const ext = node.name.split('.').pop()?.toLowerCase() || ''
+              const type = getFileType(ext)
+
+              neuralFiles.push({
+                id: `local-${timestamp}-${neuralFiles.length}`,
+                name: node.name,
+                path: node.relativePath,
+                type: type as any,
+                content: node.content || '',
+                size: node.size || 0,
+                createdAt: new Date().toISOString(),
+                mapId: mapId || '',
+                url: '',
+              })
+            }
+            if (node.children) {
+              node.children.forEach(flattenTree)
+            }
+          }
+
+          if (scanResult.tree) {
+            flattenTree(scanResult.tree)
+          }
+
+          // Store 업데이트
+          setFiles(neuralFiles)
+          console.log('[FileTree] ✅ File tree refreshed:', neuralFiles.length, 'files')
+
+          // 🔥 새로 생성된 파일이면 에디터에서 자동으로 열기
+          if (data.type === 'create') {
+            const relativePath = data.path.replace(projectPath + '/', '')
+            const newFile = neuralFiles.find(f => f.path === relativePath)
+            if (newFile) {
+              console.log('[FileTree] 📂 Auto-opening new file:', newFile.name)
+              // 파일 선택 이벤트 발생
+              window.dispatchEvent(new CustomEvent('glowus:file-created', {
+                detail: { file: newFile, path: data.path }
+              }))
+            }
+          }
+
+        } catch (err) {
+          console.error('[FileTree] Failed to refresh file tree:', err)
+        }
+      }, 300) // 300ms debounce
+    })
+
+    return () => {
+      console.log('[FileTree] 👁️ Cleaning up file change listener')
+      unsubscribe()
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
+    }
+  }, [projectPath, showHiddenFiles, mapId, setFiles])
+
+  // Refresh timeout ref for debouncing
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const lastFileCountRef = useRef<number>(0)
+
+  // 🔥 웹 환경: 파일 변경 감지를 위한 폴링 (5초마다)
+  useEffect(() => {
+    const electron = (window as any).electron
+    // Electron 환경이면 워처 사용하므로 폴링 불필요
+    if (electron?.fs?.onChanged) return
+    // 가상 경로면 스킵
+    if (!projectPath || projectPath.startsWith('/workspace/')) return
+
+    console.log('[FileTree] 🔄 Starting polling for web environment:', projectPath)
+
+    const pollFiles = async () => {
+      try {
+        const response = await fetch('/api/workspace/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectPath, includeContent: true })
+        })
+
+        if (!response.ok) return
+
+        const result = await response.json()
+        if (!result.success || !result.tree) return
+
+        // 파일 개수가 변경되었는지 확인
+        const newFileCount = result.stats.fileCount
+        if (newFileCount === lastFileCountRef.current) return
+
+        console.log('[FileTree] 📝 File count changed:', lastFileCountRef.current, '->', newFileCount)
+        lastFileCountRef.current = newFileCount
+
+        // 파일 목록 업데이트
+        const timestamp = Date.now()
+        const neuralFiles: NeuralFile[] = []
+
+        const getFileType = (ext: string) => {
+          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+          const mdExts = ['md', 'markdown', 'mdx']
+          const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go', 'sql', 'prisma', 'graphql', 'gql', 'yaml', 'yml']
+          if (imageExts.includes(ext)) return 'image'
+          if (mdExts.includes(ext)) return 'markdown'
+          if (codeExts.includes(ext)) return 'code'
+          return 'text'
+        }
+
+        const flattenTree = (node: any) => {
+          if (node.kind === 'file') {
+            const ext = node.name.split('.').pop()?.toLowerCase() || ''
+            const type = getFileType(ext)
+
+            neuralFiles.push({
+              id: `web-${timestamp}-${neuralFiles.length}`,
+              name: node.name,
+              path: node.relativePath,
+              type: type as any,
+              content: node.content || '',
+              size: node.size || 0,
+              createdAt: new Date().toISOString(),
+              mapId: mapId || '',
+              url: '',
+            })
+          }
+          if (node.children) {
+            node.children.forEach(flattenTree)
+          }
+        }
+
+        flattenTree(result.tree)
+        setFiles(neuralFiles)
+        console.log('[FileTree] ✅ Web polling: updated', neuralFiles.length, 'files')
+
+      } catch (err) {
+        // 에러는 조용히 무시 (네트워크 문제 등)
+      }
+    }
+
+    // 초기 파일 개수 설정
+    const currentFiles = useNeuralMapStore.getState().files
+    lastFileCountRef.current = currentFiles?.length || 0
+
+    // 5초마다 폴링
+    pollingIntervalRef.current = setInterval(pollFiles, 5000)
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
+    }
+  }, [projectPath, mapId, setFiles])
+
+  // 🔥 GlowCode에서 파일 변경 이벤트 수신 (실시간 업데이트)
+  useEffect(() => {
+    if (!projectPath || projectPath.startsWith('/workspace/')) return
+
+    const handleFileChanged = async (event: CustomEvent<{ path: string; type: 'create' | 'change' | 'delete' }>) => {
+      const { path: filePath, type: changeType } = event.detail
+      console.log('[FileTree] 🔔 File change event received:', changeType, filePath)
+
+      // 변경된 파일이 현재 프로젝트 내의 파일인지 확인
+      if (!filePath.startsWith(projectPath)) return
+
+      // Debounce 적용하여 파일 트리 새로고침
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
+
+      refreshTimeoutRef.current = setTimeout(async () => {
+        console.log('[FileTree] 🔄 Refreshing file tree due to GlowCode event:', changeType, filePath)
+
+        const electron = (window as any).electron
+        try {
+          let scanResult: any
+
+          if (electron?.fs?.scanTree) {
+            // Electron 환경
+            scanResult = await electron.fs.scanTree(projectPath, {
+              showHidden: showHiddenFiles,
+              includeContent: true
+            })
+          } else {
+            // 웹 환경
+            const response = await fetch('/api/workspace/scan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ projectPath, includeContent: true })
+            })
+            if (response.ok) {
+              const result = await response.json()
+              scanResult = result.tree
+            }
+          }
+
+          if (!scanResult) return
+
+          // NeuralFile 형식으로 변환
+          const timestamp = Date.now()
+          const neuralFiles: NeuralFile[] = []
+
+          const getFileType = (ext: string) => {
+            const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+            const mdExts = ['md', 'markdown', 'mdx']
+            const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go', 'sql', 'prisma', 'graphql', 'gql', 'yaml', 'yml']
+            if (imageExts.includes(ext)) return 'image'
+            if (mdExts.includes(ext)) return 'markdown'
+            if (codeExts.includes(ext)) return 'code'
+            return 'text'
+          }
+
+          const flattenTree = (node: any) => {
+            if (node.kind === 'file') {
+              const ext = node.name.split('.').pop()?.toLowerCase() || ''
+              const type = getFileType(ext)
+
+              neuralFiles.push({
+                id: `event-${timestamp}-${neuralFiles.length}`,
+                name: node.name,
+                path: node.relativePath || node.path?.replace(projectPath + '/', '') || node.name,
+                type: type as any,
+                content: node.content || '',
+                size: node.size || 0,
+                createdAt: new Date().toISOString(),
+                mapId: mapId || '',
+                url: '',
+              })
+            }
+            if (node.children) {
+              node.children.forEach(flattenTree)
+            }
+          }
+
+          flattenTree(scanResult)
+          setFiles(neuralFiles)
+          console.log('[FileTree] ✅ Updated', neuralFiles.length, 'files from GlowCode event')
+
+          // 파일 생성인 경우 자동 열기 이벤트 발생
+          if (changeType === 'create') {
+            const relativePath = filePath.replace(projectPath + '/', '')
+            window.dispatchEvent(new CustomEvent('glowus:file-created', {
+              detail: { path: filePath, relativePath }
+            }))
+          }
+
+        } catch (err) {
+          console.error('[FileTree] Error refreshing after GlowCode event:', err)
+        }
+      }, 200) // 200ms debounce (더 빠른 반응)
+    }
+
+    window.addEventListener('glowus:file-changed', handleFileChanged as unknown as EventListener)
+
+    return () => {
+      window.removeEventListener('glowus:file-changed', handleFileChanged as unknown as EventListener)
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
+    }
+  }, [projectPath, showHiddenFiles, mapId, setFiles])
+
   // Electron 메뉴 이벤트 리스너
   useEffect(() => {
     const electron = (window as any).electron
@@ -2299,6 +2801,36 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
     const unsubFolderSelected = electron.onMenuEvent('menu:folder-selected', async (_event: any, dirInfo: { name: string, path: string }) => {
       console.log('[Menu] Folder selected:', dirInfo)
       if (!dirInfo?.path) return
+
+      // 🔥 프로젝트가 이미 선택된 상태면 folder_path를 DB에 저장하고 파일만 로드
+      const currentLinkedProjectId = useNeuralMapStore.getState().linkedProjectId
+      if (currentLinkedProjectId) {
+        console.log('[Menu] Linking folder to existing project:', currentLinkedProjectId, '->', dirInfo.path)
+
+        // 1. DB에 folder_path 저장
+        try {
+          const res = await fetch(`/api/projects/${currentLinkedProjectId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_path: dirInfo.path })
+          })
+          if (res.ok) {
+            console.log('[Menu] ✅ Saved folder_path to DB')
+          } else {
+            console.error('[Menu] Failed to save folder_path to DB:', res.status)
+          }
+        } catch (e) {
+          console.error('[Menu] Error saving folder_path:', e)
+        }
+
+        // 2. Store에 projectPath 설정 (clearLinkedProject 없이)
+        useNeuralMapStore.getState().setProjectPath(dirInfo.path)
+
+        // 3. 파일 로드는 projectPath useEffect에서 자동으로 처리됨
+        return
+      }
+
+      // 프로젝트가 선택되지 않은 상태면 기존 로직 (새 로컬 프로젝트)
       await loadFolderFromPathRef.current(dirInfo.path)
     })
 
@@ -2496,19 +3028,20 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                 {/* 구분선 */}
                 <div className={cn('my-1 h-px', isDark ? 'bg-[#454545]' : 'bg-[#e0e0e0]')} />
 
-                {/* Save */}
+                {/* Save Project */}
                 <button
                   onClick={() => {
-                    // menu:save 이벤트 트리거 (에디터에서 처리)
-                    window.dispatchEvent(new CustomEvent('menu:save'))
+                    handleSaveProject()
                     setShowFileMenu(false)
                   }}
+                  disabled={isSavingProject || !projectPath}
                   className={cn(
                     'w-full px-4 py-2 text-left flex items-center justify-between',
-                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700'
+                    isDark ? 'hover:bg-[#094771] text-[#cccccc]' : 'hover:bg-blue-50 text-zinc-700',
+                    (isSavingProject || !projectPath) && 'opacity-50 cursor-not-allowed'
                   )}
                 >
-                  <span>Save</span>
+                  <span>{isSavingProject ? '저장 중...' : 'Save Project'}</span>
                   <span className={cn('text-[11px]', isDark ? 'text-[#6e6e6e]' : 'text-zinc-400')}>⌘S</span>
                 </button>
 
@@ -2572,7 +3105,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
       </div>
 
       {/* 파일 트리 영역 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto flex flex-col">
         {/* 루트 폴더 헤더 - 프로젝트가 있을 때만 표시 */}
         {hasProject ? (
           <div
@@ -2699,27 +3232,7 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
             </button>
           </div>
         </div>
-        ) : (
-          /* 프로젝트 없을 때 - 새 프로젝트 생성 버튼 */
-          <div className="flex flex-col items-center justify-center py-12 px-4">
-            <button
-              onClick={() => {
-                setIsCreatingProject(true)
-                setNewProjectName('')
-                setTimeout(() => projectNameInputRef.current?.focus(), 100)
-              }}
-              className={cn(
-                'flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all',
-                isDark
-                  ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
-              )}
-            >
-              <Plus className="w-4 h-4" />
-              <span>새 프로젝트</span>
-            </button>
-          </div>
-        )}
+        ) : null}
 
         {/* 새 파일/폴더 입력창 - VS Code 스타일 */}
         {isCreatingNew && (
@@ -2792,33 +3305,10 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
             >
               {fileTree.length === 0 ? (
                 <div className={cn(
-                  'py-4 px-4 text-xs',
-                  isDark ? 'text-zinc-600' : 'text-zinc-400'
+                  'py-4 px-4 text-xs text-center',
+                  isDark ? 'text-zinc-500' : 'text-zinc-400'
                 )}>
-                  {projectPath ? (
-                    <span>빈 폴더입니다. 파일을 추가하세요.</span>
-                  ) : linkedProjectName ? (
-                    <span>프로젝트를 로드 중입니다...</span>
-                  ) : (
-                    <div className="py-3 px-2">
-                      <button
-                        onClick={() => {
-                          setIsCreatingProject(true)
-                          setNewProjectName('')
-                          setTimeout(() => projectNameInputRef.current?.focus(), 100)
-                        }}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] transition-colors',
-                          isDark
-                            ? 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
-                            : 'text-zinc-400 hover:text-zinc-600 hover:bg-black/5'
-                        )}
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>새 프로젝트</span>
-                      </button>
-                    </div>
-                  )}
+                  빈 폴더입니다
                 </div>
               ) : (
                 <TreeNodeList
@@ -2843,40 +3333,25 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         </AnimatePresence>
         ) : (
           /* 프로젝트가 없을 때 - 프로젝트 생성 버튼 표시 */
-          <div className="flex flex-col items-center justify-center py-12 px-4">
-            <div className={cn(
-              'w-16 h-16 rounded-2xl flex items-center justify-center mb-4',
-              isDark ? 'bg-zinc-800' : 'bg-zinc-100'
-            )}>
-              <FolderPlus className={cn(
-                'w-8 h-8',
-                isDark ? 'text-zinc-500' : 'text-zinc-400'
-              )} />
-            </div>
-            <p className={cn(
-              'text-sm font-medium mb-1',
-              isDark ? 'text-zinc-300' : 'text-zinc-700'
-            )}>
-              프로젝트가 없습니다
-            </p>
-            <p className={cn(
-              'text-xs mb-6 text-center',
-              isDark ? 'text-zinc-500' : 'text-zinc-400'
-            )}>
-              새 프로젝트를 생성하거나<br />기존 폴더를 열어보세요
-            </p>
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
             <button
               onClick={() => {
                 setIsCreatingProject(true)
                 setNewProjectName('')
                 setTimeout(() => projectNameInputRef.current?.focus(), 100)
               }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:brightness-110 hover:scale-105"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:brightness-110 hover:scale-105 mb-4"
               style={{ backgroundColor: currentAccent.color }}
             >
               <Plus className="w-4 h-4" />
               프로젝트 생성
             </button>
+            <p className={cn(
+              'text-xs text-center',
+              isDark ? 'text-zinc-500' : 'text-zinc-400'
+            )}>
+              새 프로젝트를 생성하거나<br />기존 폴더를 열어보세요
+            </p>
           </div>
         )}
       </div>
@@ -3341,8 +3816,9 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
                           // 프로젝트 선택 시 Neural Map에 연결
                           setLinkedProject(project.id, project.name)
                           if (project.folder_path) {
+                            // 🔥 setProjectPath만 호출 - useEffect에서 파일 로드 자동 처리됨
+                            // loadFolderFromPath를 호출하면 clearLinkedProject()가 실행되어 연결이 끊어짐
                             useNeuralMapStore.getState().setProjectPath(project.folder_path)
-                            await loadFolderFromPathRef.current(project.folder_path)
                           }
                           setIsOpenProjectModal(false)
                         }}
