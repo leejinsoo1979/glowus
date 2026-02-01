@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
+import { useGlowCodeStore } from '@/stores/glowCodeStore'
 import {
   ChevronDown,
   ChevronUp,
@@ -222,9 +223,14 @@ export function CodingToolbar({
         if (currentMapId) {
           setMapId(currentMapId)
         }
+
+        // 4. 🔥 새 프로젝트 생성 시 Claude Code 채팅도 새 스레드로 시작
+        const glowCodeStore = useGlowCodeStore.getState()
+        glowCodeStore.createThread(`${projectName} 프로젝트`)
+        console.log('[CodingToolbar] New chat thread created for project:', projectName)
       }
 
-      // 4. 그래프 데이터 저장
+      // 5. 그래프 데이터 저장
       if (currentMapId) {
         const state = useNeuralMapStore.getState()
         await fetch(`/api/ai-coding/${currentMapId}`, {
@@ -234,7 +240,7 @@ export function CodingToolbar({
         })
       }
 
-      // 5. 프로젝트 폴더 경로 업데이트
+      // 6. 프로젝트 폴더 경로 업데이트
       if (currentProjectId && projectPath) {
         await fetch(`/api/projects/${currentProjectId}`, {
           method: 'PATCH',

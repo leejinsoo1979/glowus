@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import { useNeuralMapApi } from '@/lib/neural-map/useNeuralMapApi'
+import { useGlowCodeStore } from '@/stores/glowCodeStore'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import { parseWikiLinks, extractTitle } from '@/lib/neural-map/markdown-parser'
 import type { NeuralFile } from '@/lib/neural-map/types'
@@ -800,6 +801,11 @@ export function FileTreePanel({ mapId }: FileTreePanelProps) {
         if (currentMapId) {
           setMapId(currentMapId)
         }
+
+        // 4. 🔥 새 프로젝트 생성 시 Claude Code 채팅도 새 스레드로 시작
+        const glowCodeStore = useGlowCodeStore.getState()
+        glowCodeStore.createThread(`${projectName} 프로젝트`)
+        console.log('[FileTree] New chat thread created for project:', projectName)
       }
 
       // 4. 그래프 데이터 저장
