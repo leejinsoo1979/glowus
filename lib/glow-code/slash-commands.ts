@@ -415,37 +415,37 @@ export const SLASH_COMMANDS: Record<string, SlashCommand> = {
 
   model: {
     name: 'model',
-    description: '모델을 변경합니다',
-    args: '<model-name>',
-    execute: (args, ctx) => {
-      const model = args.trim().toLowerCase()
-      const modelMap: Record<string, string> = {
-        'opus': 'claude-opus-4-5-20250514',
-        'sonnet': 'claude-sonnet-4-5-20250514',
-        'haiku': 'claude-haiku-4-5-20250514'
-      }
+    description: '모델 선택 (드롭다운)',
+    execute: () => ({
+      type: 'action',
+      data: { action: 'showModelSelector' }
+    })
+  },
 
-      if (!model) {
-        return {
-          type: 'message',
-          content: `## 모델 선택\n\n- \`/model opus\` - Claude Opus 4.5\n- \`/model sonnet\` - Claude Sonnet 4.5\n- \`/model haiku\` - Claude Haiku 4.5`
-        }
-      }
+  opus: {
+    name: 'opus',
+    description: 'Claude Opus 4.5 (최고 성능)',
+    execute: (_, ctx) => {
+      ctx.updateSettings({ model: 'opus' })
+      return { type: 'action', data: { action: 'modelChanged', model: 'opus' } }
+    }
+  },
 
-      const selectedModel = modelMap[model]
-      if (!selectedModel) {
-        return {
-          type: 'message',
-          content: `알 수 없는 모델입니다. opus, sonnet, haiku 중 하나를 선택해주세요.`
-        }
-      }
+  sonnet: {
+    name: 'sonnet',
+    description: 'Claude Sonnet 4.5 (균형)',
+    execute: (_, ctx) => {
+      ctx.updateSettings({ model: 'sonnet' })
+      return { type: 'action', data: { action: 'modelChanged', model: 'sonnet' } }
+    }
+  },
 
-      ctx.updateSettings({ model: selectedModel })
-      return {
-        type: 'settings',
-        content: `모델이 **${model.toUpperCase()}**로 변경되었습니다.`,
-        data: { model: selectedModel }
-      }
+  haiku: {
+    name: 'haiku',
+    description: 'Claude Haiku 4.5 (빠름)',
+    execute: (_, ctx) => {
+      ctx.updateSettings({ model: 'haiku' })
+      return { type: 'action', data: { action: 'modelChanged', model: 'haiku' } }
     }
   },
 
@@ -466,6 +466,91 @@ export const SLASH_COMMANDS: Record<string, SlashCommand> = {
       return {
         type: 'message',
         content: '사용법: `/thinking on` 또는 `/thinking off`'
+      }
+    }
+  },
+
+  // ============ 실행 모드 ============
+  agent: {
+    name: 'agent',
+    description: 'Agent Mode 활성화 (PM으로서 서브 에이전트 생성/위임)',
+    aliases: ['pm', 'team'],
+    execute: (_, ctx) => {
+      ctx.updateSettings({ executionMode: 'agent' })
+      return {
+        type: 'settings',
+        content: `## 🎯 Agent Mode 활성화
+
+Claude Code가 **PM(프로젝트 매니저)** 역할을 수행합니다.
+
+**작동 방식:**
+1. 요청을 분석하여 필요한 전문가 에이전트 결정
+2. 프로젝트 규모에 맞는 최적의 팀 구성
+3. 각 에이전트에게 작업 위임 (병렬 처리)
+4. 결과 취합 및 통합
+
+**사용 가능한 에이전트:**
+• Planner (기획자) - 구조 설계
+• Frontend (UI 개발자) - React/Vue 컴포넌트
+• Backend (백엔드) - API/DB/서버
+• Tester (QA) - 테스트 작성
+• Reviewer (리뷰어) - 코드 품질
+• DevOps - 배포/CI/CD
+• Security (보안) - 취약점 분석
+• AI Integration - LLM 통합
+
+Quick Mode로 전환: \`/quick\``
+      }
+    }
+  },
+
+  quick: {
+    name: 'quick',
+    description: 'Quick Mode 활성화 (직접 실행)',
+    aliases: ['direct', 'solo'],
+    execute: (_, ctx) => {
+      ctx.updateSettings({ executionMode: 'quick' })
+      return {
+        type: 'settings',
+        content: `## ⚡ Quick Mode 활성화
+
+Claude Code가 **직접** 모든 작업을 처리합니다.
+
+**특징:**
+- 빠른 응답 속도
+- 단순 작업에 최적
+- 직접 파일 읽기/쓰기/수정
+
+Agent Mode로 전환: \`/agent\``
+      }
+    }
+  },
+
+  mode: {
+    name: 'mode',
+    description: '실행 모드 확인 및 변경',
+    execute: (args, ctx) => {
+      const value = args.trim().toLowerCase()
+
+      if (value === 'agent' || value === 'pm' || value === 'team') {
+        ctx.updateSettings({ executionMode: 'agent' })
+        return { type: 'settings', content: '🎯 **Agent Mode** 활성화됨 - PM으로서 서브 에이전트 관리' }
+      }
+      if (value === 'quick' || value === 'direct' || value === 'solo') {
+        ctx.updateSettings({ executionMode: 'quick' })
+        return { type: 'settings', content: '⚡ **Quick Mode** 활성화됨 - 직접 실행' }
+      }
+
+      return {
+        type: 'message',
+        content: `## 실행 모드
+
+- \`/mode agent\` - Agent Mode (PM으로서 서브 에이전트 관리)
+- \`/mode quick\` - Quick Mode (직접 실행)
+
+**또는 단축 명령어:**
+- \`/agent\` - Agent Mode 활성화
+- \`/quick\` - Quick Mode 활성화`
       }
     }
   },

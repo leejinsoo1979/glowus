@@ -27,6 +27,8 @@ export interface GlowCodeThread {
   messages: GlowCodeMessage[]
   createdAt: number
   updatedAt: number
+  /** DB에 저장된 스레드 ID (동기화용) */
+  dbThreadId?: string
 }
 
 interface GlowCodeState {
@@ -67,7 +69,7 @@ interface GlowCodeState {
   // Settings
   settings: {
     /** Claude Code model selection */
-    model: 'claude-opus-4-5-20250514' | 'claude-sonnet-4-5-20250514' | 'claude-haiku-4-5-20250514' | 'custom'
+    model: 'opus' | 'sonnet' | 'haiku' | 'custom'
     /** Custom model ID (when model === 'custom') */
     customModelId: string
     temperature: number
@@ -82,6 +84,8 @@ interface GlowCodeState {
     extendedThinking: boolean
     /** 🔥 프로젝트 컨텍스트 자동 포함 여부 */
     includeProjectContext: boolean
+    /** 🔥 실행 모드: quick (직접 실행) | agent (PM 모드, 서브 에이전트 위임) */
+    executionMode: 'quick' | 'agent'
   }
 
   // Actions
@@ -115,6 +119,9 @@ interface GlowCodeState {
 
   // Settings Actions
   updateSettings: (settings: Partial<GlowCodeState['settings']>) => void
+
+  // Reset Actions
+  resetThreads: () => void
 }
 
 // ============================================
@@ -140,7 +147,7 @@ export const useGlowCodeStore = create<GlowCodeState>()(
       },
 
       settings: {
-        model: 'claude-opus-4-5-20250514',
+        model: 'opus',
         customModelId: '',
         temperature: 0.7,
         maxTokens: 8192,
@@ -150,6 +157,7 @@ export const useGlowCodeStore = create<GlowCodeState>()(
         permissionMode: 'default',
         extendedThinking: false,
         includeProjectContext: true,  // 🔥 기본값: 프로젝트 컨텍스트 자동 포함
+        executionMode: 'quick',  // 🔥 기본값: Quick Mode (직접 실행)
       },
 
       // UI Actions
@@ -273,11 +281,15 @@ export const useGlowCodeStore = create<GlowCodeState>()(
       updateSettings: (settings) => set((state) => ({
         settings: { ...state.settings, ...settings },
       })),
+
+      // Reset threads (for cleanup)
+      resetThreads: () => set({ threads: [], activeThreadId: null }),
     }),
     {
       name: 'glow-code-storage',
       partialize: (state) => ({
         threads: state.threads.slice(0, 50), // Keep last 50 threads
+        activeThreadId: state.activeThreadId, // 🔥 마지막 활성 스레드 저장
         settings: state.settings,
         // 🔥 작업 디렉토리 경로도 저장
         context: {

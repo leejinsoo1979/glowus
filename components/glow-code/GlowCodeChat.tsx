@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useGlowCodeStore } from '@/stores/glowCodeStore'
+import { useNeuralMapStore } from '@/lib/neural-map/store'
 import {
   ChevronDown,
   ChevronUp,
@@ -22,6 +24,9 @@ import {
   Image as ImageIcon,
   FolderOpen,
   FolderCog,
+  Square,
+  Zap,
+  Users,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
@@ -34,6 +39,8 @@ import {
 } from '@/lib/glow-code/slash-commands'
 import { useApprovalStore } from '@/lib/glow-code/approval-system'
 import { ApprovalModal, ApprovalBadge } from '@/components/glow-code/ApprovalModal'
+import { useAIThreadSync } from '@/hooks/useAIThreadSync'
+import { emitAgentSpawnEvent, emitAgentUpdateEvent } from '@/lib/agent/agent-mode'
 
 // Claude Code 브랜드 색상
 const CLAUDE_ORANGE = '#D97757'
@@ -45,19 +52,22 @@ const SparkIcon = ({ className, style }: { className?: string; style?: React.CSS
   </svg>
 )
 
-// 픽셀 마스코트 (Claude Code 스타일)
+// 픽셀 마스코트 (Claude Code 오리지널)
 const PixelMascot = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 64 48" className={className}>
-    {/* Body */}
-    <rect x="16" y="16" width="32" height="24" fill={CLAUDE_ORANGE} />
-    {/* Head top */}
-    <rect x="20" y="8" width="24" height="8" fill={CLAUDE_ORANGE} />
-    {/* Eyes */}
-    <rect x="24" y="20" width="4" height="4" fill="#1a1a1a" />
-    <rect x="36" y="20" width="4" height="4" fill="#1a1a1a" />
-    {/* Legs */}
-    <rect x="20" y="40" width="8" height="8" fill={CLAUDE_ORANGE} />
-    <rect x="36" y="40" width="8" height="8" fill={CLAUDE_ORANGE} />
+  <svg viewBox="0 0 22 13" className={className}>
+    {/* Ears - 양옆으로 돌출 (눈 아래) */}
+    <rect x="1" y="4" width="2" height="3" fill={CLAUDE_ORANGE} />
+    <rect x="19" y="4" width="2" height="3" fill={CLAUDE_ORANGE} />
+    {/* Body - 메인 몸통 (더 크게) */}
+    <rect x="3" y="0" width="16" height="10" fill={CLAUDE_ORANGE} />
+    {/* Eyes - 넓게 퍼짐 */}
+    <rect x="5" y="4" width="2" height="2" fill="#2a2a2a" />
+    <rect x="15" y="4" width="2" height="2" fill="#2a2a2a" />
+    {/* Legs - 짧게 */}
+    <rect x="4" y="10" width="2" height="3" fill={CLAUDE_ORANGE} />
+    <rect x="7" y="10" width="2" height="3" fill={CLAUDE_ORANGE} />
+    <rect x="13" y="10" width="2" height="3" fill={CLAUDE_ORANGE} />
+    <rect x="16" y="10" width="2" height="3" fill={CLAUDE_ORANGE} />
   </svg>
 )
 
@@ -71,6 +81,9 @@ interface StreamEvent {
   toolUseId?: string
   isError?: boolean
 }
+
+// 🔥 현재 활성 이벤트 타입 (순차적 표시용)
+type ActiveEventType = 'idle' | 'thinking' | 'tool' | 'responding'
 
 // 🔥 Tool별 아이콘 및 색상
 const TOOL_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
@@ -87,18 +100,229 @@ const TOOL_CONFIG: Record<string, { icon: string; color: string; label: string }
   WebSearch: { icon: '🔍', color: 'text-emerald-400', label: '웹 검색' },
 }
 
+// 🔥 Tool 이벤트 컴포넌트 - Cursor/Windsurf 스타일
+const ToolEventItem = ({
+  event,
+  result,
+  isLatest
+}: {
+  event: StreamEvent
+  result?: StreamEvent
+  isLatest: boolean
+}) => {
+  const config = TOOL_CONFIG[event.name || ''] || { icon: '🔧', color: 'text-zinc-400', label: event.name }
+  const [isOpen, setIsOpen] = useState(false)
+  const hasResult = !!result
+  const isError = result?.isError
+
+  // 파일명 추출
+  const fileName = event.input?.file_path?.split('/').pop() || ''
+  const isFileOp = ['Read', 'Write', 'Edit', 'MultiEdit'].includes(event.name || '')
+
+  return (
+    <div className={cn(
+      "my-1 rounded-lg overflow-hidden transition-all duration-200",
+      isLatest && !hasResult ? "ring-1 ring-blue-500/50 bg-blue-500/5" : "bg-zinc-800/30"
+    )}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "w-full flex items-center gap-2 text-sm py-2 px-3 transition-colors text-left",
+          hasResult ? (isError ? "text-red-400" : "text-zinc-300") : config.color
+        )}
+      >
+        {/* 상태 아이콘 - 더 크고 눈에 띄게 */}
+        <div className={cn(
+          "w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 text-sm",
+          isLatest && !hasResult
+            ? "bg-blue-500/20 text-blue-400"
+            : hasResult
+              ? (isError ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400")
+              : "bg-zinc-700/50"
+        )}>
+          {isLatest && !hasResult ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : hasResult ? (
+            <span>{isError ? '✗' : '✓'}</span>
+          ) : (
+            <span>{config.icon}</span>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{config.label}</span>
+            {isLatest && !hasResult && (
+              <span className="text-xs text-blue-400 animate-pulse">실행 중...</span>
+            )}
+          </div>
+
+          {/* 파일 정보 - 더 눈에 띄게 */}
+          {isFileOp && fileName && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <code className={cn(
+                "text-xs px-1.5 py-0.5 rounded",
+                event.name === 'Write' ? "bg-green-500/10 text-green-400" :
+                event.name === 'Edit' ? "bg-yellow-500/10 text-yellow-400" :
+                "bg-zinc-700/50 text-zinc-400"
+              )}>
+                {fileName}
+              </code>
+              {event.name === 'Write' && <span className="text-xs text-green-500">+new</span>}
+              {event.name === 'Edit' && <span className="text-xs text-yellow-500">modified</span>}
+            </div>
+          )}
+
+          {/* Bash 명령어 */}
+          {event.name === 'Bash' && event.input?.command && (
+            <code className="text-xs text-purple-400 block mt-0.5 truncate">
+              $ {event.input.command.substring(0, 40)}{event.input.command.length > 40 ? '...' : ''}
+            </code>
+          )}
+
+          {/* 검색 패턴 */}
+          {(event.name === 'Glob' || event.name === 'Grep') && event.input && (
+            <code className="text-xs text-cyan-400 block mt-0.5">
+              🔍 {(event.input.pattern || event.input.query || '').substring(0, 30)}
+            </code>
+          )}
+        </div>
+
+        <ChevronDown className={cn(
+          "w-4 h-4 transition-transform flex-shrink-0 text-zinc-500",
+          isOpen && "rotate-180"
+        )} />
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-zinc-700/50 p-3 bg-zinc-900/50">
+          {/* Tool Input Details */}
+          {event.name === 'Write' && event.input?.file_path && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-green-400 text-xs">
+                <span>📄</span>
+                <span className="font-mono">{event.input.file_path}</span>
+              </div>
+              {event.input.content && (
+                <pre className="text-xs text-zinc-500 bg-zinc-900 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto">
+                  {event.input.content.substring(0, 500)}{event.input.content.length > 500 ? '\n...' : ''}
+                </pre>
+              )}
+            </div>
+          )}
+
+          {event.name === 'Edit' && event.input && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-yellow-400 text-xs">
+                <span>✏️</span>
+                <span className="font-mono">{event.input.file_path}</span>
+              </div>
+              <div className="grid gap-2 text-xs">
+                {event.input.old_string && (
+                  <div className="bg-red-500/10 rounded p-2 border-l-2 border-red-500">
+                    <div className="text-red-400 mb-1">- 삭제</div>
+                    <pre className="text-red-300/70 overflow-x-auto whitespace-pre-wrap">
+                      {event.input.old_string.substring(0, 150)}{event.input.old_string.length > 150 ? '...' : ''}
+                    </pre>
+                  </div>
+                )}
+                {event.input.new_string && (
+                  <div className="bg-green-500/10 rounded p-2 border-l-2 border-green-500">
+                    <div className="text-green-400 mb-1">+ 추가</div>
+                    <pre className="text-green-300/70 overflow-x-auto whitespace-pre-wrap">
+                      {event.input.new_string.substring(0, 150)}{event.input.new_string.length > 150 ? '...' : ''}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {event.name === 'Read' && event.input?.file_path && (
+            <div className="flex items-center gap-2 text-blue-400 text-xs">
+              <span>📖</span>
+              <span className="font-mono">{event.input.file_path}</span>
+            </div>
+          )}
+
+          {event.name === 'Bash' && event.input?.command && (
+            <div className="bg-zinc-900 rounded p-2 font-mono text-sm">
+              <span className="text-purple-400">$ </span>
+              <span className="text-zinc-300">{event.input.command}</span>
+            </div>
+          )}
+
+          {/* Tool Result */}
+          {result && (
+            <div className={cn(
+              "mt-2 text-xs font-mono rounded p-2 max-h-24 overflow-y-auto",
+              isError ? "bg-red-900/30 text-red-300 border border-red-500/30" : "bg-zinc-900/50 text-zinc-400"
+            )}>
+              <div className="text-zinc-500 mb-1">{isError ? '❌ Error:' : '✅ Result:'}</div>
+              {typeof result.content === 'string'
+                ? result.content.substring(0, 300)
+                : JSON.stringify(result.content).substring(0, 300)}
+              {(typeof result.content === 'string' ? result.content.length : 0) > 300 && '...'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Message Component
 const MessageBubble = ({
   role,
   content,
   isStreaming,
-  streamEvents = []
+  streamEvents = [],
+  startTime,
+  tokenCount = 0
 }: {
   role: 'user' | 'assistant' | 'system'
   content: string
   isStreaming?: boolean
   streamEvents?: StreamEvent[]
+  startTime?: number
+  tokenCount?: number
 }) => {
+  // 🔥 실시간 경과 시간 계산
+  const [elapsedTime, setElapsedTime] = useState(0)
+
+  useEffect(() => {
+    if (!isStreaming || !startTime) {
+      setElapsedTime(0)
+      return
+    }
+
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isStreaming, startTime])
+  // 🔥 이벤트 분류
+  const hasThinking = streamEvents.some(e => e.type === 'thinking')
+  const toolEvents = streamEvents.filter(e => e.type === 'tool')
+  const toolResults = streamEvents.filter(e => e.type === 'tool_result')
+  const latestToolId = toolEvents[toolEvents.length - 1]?.id
+  const hasContent = content.trim().length > 0
+
+  // 🔥 tool_result를 해당 tool에 매핑
+  const getResultForTool = (toolId?: string) => {
+    if (!toolId) return undefined
+    return toolResults.find(r => r.toolUseId === toolId)
+  }
+
+  // 🔥 현재 상태: idle → thinking → tool → responding
+  const currentPhase: ActiveEventType = isStreaming
+    ? (hasContent ? 'responding' : (toolEvents.length > 0 ? 'tool' : (hasThinking ? 'thinking' : 'idle')))
+    : 'idle'
+
+  // 🔥 스트리밍 시작했지만 아직 아무 이벤트도 없는 상태 (처음 2초만)
+  const isInitialLoading = isStreaming && !hasThinking && toolEvents.length === 0 && !hasContent && elapsedTime < 3
+
   return (
     <div className={cn(
       "px-4 py-3",
@@ -106,154 +330,108 @@ const MessageBubble = ({
     )}>
       <div className="flex items-start gap-3">
         {role === 'assistant' && (
-          <SparkIcon className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: CLAUDE_ORANGE }} />
+          <div className="relative mt-0.5 flex-shrink-0">
+            {/* 🔥 주황색 깜빡이는 점 (스트리밍 중일 때) */}
+            {isStreaming ? (
+              <div className="relative">
+                <div
+                  className="w-2 h-2 rounded-full animate-pulse"
+                  style={{ backgroundColor: CLAUDE_ORANGE }}
+                />
+                <div
+                  className="absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-75"
+                  style={{ backgroundColor: CLAUDE_ORANGE }}
+                />
+              </div>
+            ) : (
+              <SparkIcon className="w-5 h-5" style={{ color: CLAUDE_ORANGE }} />
+            )}
+          </div>
         )}
         <div className="flex-1 min-w-0">
-          {/* 🔥 Thinking 블록 - 접이식 */}
-          {streamEvents.filter(e => e.type === 'thinking').length > 0 && (
-            <details className="my-2 group">
-              <summary className="text-zinc-400 text-sm cursor-pointer hover:text-zinc-300 flex items-center gap-2">
-                <span className="animate-pulse">💭</span>
-                <span>Thinking...</span>
-                <span className="text-zinc-600 text-xs">(클릭하여 펼치기)</span>
-              </summary>
-              <div className="mt-2 pl-4 border-l-2 border-zinc-700 space-y-1">
-                {streamEvents.filter(e => e.type === 'thinking').map((e, i) => (
-                  <div key={`thinking-${i}`} className="text-zinc-500 text-sm italic">
-                    {e.content}
-                  </div>
-                ))}
-              </div>
-            </details>
+          {/* 🔥 스트리밍 헤더 - 시간 + 토큰 */}
+          {isStreaming && role === 'assistant' && (
+            <div className="flex items-center gap-2 mb-2 text-xs">
+              <span className="text-zinc-400">
+                {toolEvents.length > 0
+                  ? `${toolEvents[toolEvents.length - 1]?.name || 'Working'}...`
+                  : hasThinking
+                    ? 'Thinking...'
+                    : 'Connecting...'}
+              </span>
+              <span className="text-zinc-600">
+                ({elapsedTime}s · ↓ {tokenCount.toLocaleString()} tokens)
+              </span>
+            </div>
           )}
 
-          {/* 🔥 Tool 사용 - 타입별 UI */}
-          {streamEvents.filter(e => e.type === 'tool').map((e, i) => {
-            const config = TOOL_CONFIG[e.name || ''] || { icon: '🔧', color: 'text-zinc-400', label: e.name }
-
-            return (
-              <div key={`tool-${i}`} className="my-2">
-                {/* Tool Header */}
-                <div className={`flex items-center gap-2 text-sm ${config.color}`}>
-                  <span>{config.icon}</span>
-                  <span className="font-medium">{config.label}</span>
-                  {e.name === 'Bash' && e.input?.command && (
-                    <code className="bg-zinc-800 px-2 py-0.5 rounded text-xs">
-                      {e.input.command}
-                    </code>
-                  )}
+          {/* 🔥 초기 로딩 상태 - 연결 중 */}
+          {isInitialLoading && (
+            <div className="my-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
                 </div>
-
-                {/* Write Tool - 파일 diff */}
-                {e.name === 'Write' && e.input?.file_path && (
-                  <div className="bg-zinc-900 rounded p-3 mt-1 font-mono text-xs">
-                    <div className="text-green-400 mb-2">📝 {e.input.file_path}</div>
-                    {e.input.content && (
-                      <pre className="text-zinc-400 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
-                        {e.input.content.substring(0, 1000)}
-                        {e.input.content.length > 1000 && '...'}
-                      </pre>
-                    )}
-                  </div>
-                )}
-
-                {/* Edit Tool - 변경 내용 */}
-                {e.name === 'Edit' && e.input && (
-                  <div className="bg-zinc-900 rounded p-3 mt-1 font-mono text-xs">
-                    <div className="text-yellow-400 mb-2">✏️ {e.input.file_path}</div>
-                    {e.input.old_string && (
-                      <div className="mb-2">
-                        <span className="text-red-400">- </span>
-                        <span className="text-red-300 line-through">{e.input.old_string.substring(0, 200)}</span>
-                      </div>
-                    )}
-                    {e.input.new_string && (
-                      <div>
-                        <span className="text-green-400">+ </span>
-                        <span className="text-green-300">{e.input.new_string.substring(0, 200)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Read Tool - 파일 경로 */}
-                {e.name === 'Read' && e.input?.file_path && (
-                  <div className="bg-zinc-900/50 rounded px-3 py-2 mt-1 text-xs">
-                    <span className="text-blue-400">📖 Reading:</span>
-                    <code className="ml-2 text-zinc-400">{e.input.file_path}</code>
-                  </div>
-                )}
-
-                {/* Bash Tool - 명령어 */}
-                {e.name === 'Bash' && e.input?.command && (
-                  <div className="bg-zinc-900 rounded p-3 mt-1 font-mono text-xs">
-                    <div className="flex items-center gap-2 text-purple-400">
-                      <span>$</span>
-                      <code className="text-zinc-300">{e.input.command}</code>
-                    </div>
-                    {e.input.description && (
-                      <div className="text-zinc-500 mt-1 text-xs">{e.input.description}</div>
-                    )}
-                  </div>
-                )}
-
-                {/* Glob/Grep Tool - 검색 패턴 */}
-                {(e.name === 'Glob' || e.name === 'Grep') && e.input && (
-                  <div className="bg-zinc-900/50 rounded px-3 py-2 mt-1 text-xs">
-                    <span className={e.name === 'Glob' ? 'text-cyan-400' : 'text-orange-400'}>
-                      {e.name === 'Glob' ? '🔍 Pattern:' : '🔎 Search:'}
-                    </span>
-                    <code className="ml-2 text-zinc-400">
-                      {e.input.pattern || e.input.query}
-                    </code>
-                    {e.input.path && (
-                      <span className="ml-2 text-zinc-600">in {e.input.path}</span>
-                    )}
-                  </div>
-                )}
-
-                {/* 기타 Tool - 일반 JSON */}
-                {!['Write', 'Edit', 'Read', 'Bash', 'Glob', 'Grep'].includes(e.name || '') && e.input && (
-                  <div className="bg-zinc-900/50 rounded px-3 py-2 mt-1 text-xs font-mono text-zinc-500">
-                    {JSON.stringify(e.input, null, 2).substring(0, 300)}
-                  </div>
-                )}
+                <div>
+                  <div className="text-zinc-300 font-medium text-sm">Claude Code 연결 중...</div>
+                  <div className="text-zinc-500 text-xs">잠시만 기다려주세요</div>
+                </div>
               </div>
-            )
-          })}
-
-          {/* 🔥 Tool 결과 - 성공/실패 구분 */}
-          {streamEvents.filter(e => e.type === 'tool_result').map((e, i) => (
-            <div
-              key={`result-${i}`}
-              className={cn(
-                "text-sm font-mono rounded p-2 my-2 max-h-32 overflow-y-auto",
-                e.isError
-                  ? "bg-red-900/30 text-red-300 border border-red-800"
-                  : "bg-zinc-800/50 text-zinc-400"
-              )}
-            >
-              <span className="mr-2">{e.isError ? '❌' : '✅'}</span>
-              {typeof e.content === 'string'
-                ? e.content.substring(0, 500)
-                : JSON.stringify(e.content).substring(0, 500)}
-              {(typeof e.content === 'string' ? e.content.length : JSON.stringify(e.content).length) > 500 && '...'}
             </div>
-          ))}
+          )}
 
-          {/* 🔥 Status - 진행률 표시 */}
-          {streamEvents.filter(e => e.type === 'status').map((e, i) => (
-            <div key={`status-${i}`} className="flex items-center gap-2 text-yellow-400 text-xs font-mono my-1">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span>{e.content}</span>
+          {/* 🔥 Thinking - Cursor/Windsurf 스타일 */}
+          {isStreaming && hasThinking && currentPhase === 'thinking' && (
+            <div className="my-3 p-3 rounded-lg bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                    <span className="text-lg">🧠</span>
+                  </div>
+                  <div className="absolute inset-0 rounded-full border-2 border-purple-400/50 animate-ping" />
+                </div>
+                <div>
+                  <div className="text-purple-300 font-medium text-sm">생각하는 중...</div>
+                  <div className="text-purple-400/60 text-xs">코드를 분석하고 최적의 방법을 찾고 있어요</div>
+                </div>
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* 🔥 Tool 사용 - 순차적 표시, 결과와 연결 */}
+          {toolEvents.length > 0 && (
+            <div className="my-2">
+              {toolEvents.map((e, i) => (
+                <ToolEventItem
+                  key={`tool-${e.id || i}`}
+                  event={e}
+                  result={getResultForTool(e.id)}
+                  isLatest={!!(isStreaming && e.id === latestToolId && !getResultForTool(e.id))}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 🔥 현재 Status - 더 눈에 띄게 */}
+          {isStreaming && (() => {
+            const latestStatus = streamEvents.filter(e => e.type === 'status').pop()
+            return latestStatus ? (
+              <div className="flex items-center gap-2 text-blue-400 text-sm my-2 py-1.5 px-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>{latestStatus.content}</span>
+              </div>
+            ) : null
+          })()}
 
           {/* 텍스트 응답 */}
-          <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown>{content}</ReactMarkdown>
-          </div>
-          {isStreaming && (
+          {(hasContent || !isStreaming) && (
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown>{content || (isStreaming ? '' : '응답 없음')}</ReactMarkdown>
+            </div>
+          )}
+
+          {/* 커서 */}
+          {isStreaming && hasContent && (
             <span className="inline-block w-2 h-4 bg-zinc-400 animate-pulse ml-1" />
           )}
         </div>
@@ -284,20 +462,40 @@ export function ClaudeCodeUI() {
     setContext,
   } = useGlowCodeStore()
 
+  // 🔥 NeuralMapStore에서 프로젝트 경로 가져오기 (현재 메뉴의 프로젝트 컨텍스트)
+  const neuralMapProjectPath = useNeuralMapStore((state) => state.projectPath)
+  const linkedProjectId = useNeuralMapStore((state) => state.linkedProjectId)
+  const linkedProjectName = useNeuralMapStore((state) => state.linkedProjectName)
+  const setNeuralMapProjectPath = useNeuralMapStore((state) => state.setProjectPath)
+
   // 🔥 승인 시스템 스토어
   const {
     activeRequest: approvalRequest,
     setActiveRequest: setApprovalRequest,
   } = useApprovalStore()
 
+  // 🔥 DB 동기화 훅
+  const { addMessageWithSync, updateThreadTitleWithSync } = useAIThreadSync()
+
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  // 🔥 실시간 토큰 카운트 및 스트리밍 시작 시간
+  const [streamStartTime, setStreamStartTime] = useState<number | null>(null)
+  const [streamTokenCount, setStreamTokenCount] = useState(0)
+  // 🔥 대기열 메시지 (에이전트 작업 중 미리 입력)
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  // 🔥 IME 조합 상태 추적 (한글 입력 시 마지막 글자 중복 방지)
+  const [isComposing, setIsComposing] = useState(false)
   const [showPastConversations, setShowPastConversations] = useState(false)
   const [showTerminalBanner, setShowTerminalBanner] = useState(true)
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false)
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   // 🔥 Permission mode dropdown
   const [showPermissionMenu, setShowPermissionMenu] = useState(false)
+  // 🔥 Model selector modal
+  const [showModelSelector, setShowModelSelector] = useState(false)
+  const modelSelectorRef = useRef<HTMLDivElement>(null)
   // 🔥 Project path popup
   const [showProjectPathInput, setShowProjectPathInput] = useState(false)
   const [projectPathInput, setProjectPathInput] = useState('')
@@ -312,8 +510,59 @@ export function ClaudeCodeUI() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const permissionMenuRef = useRef<HTMLDivElement>(null)
+  const inputAreaRef = useRef<HTMLDivElement>(null)
+  const projectPathButtonRef = useRef<HTMLButtonElement>(null)
+  const permissionButtonRef = useRef<HTMLButtonElement>(null)
+  // 🔥 Tool 이벤트 추적 (파일 변경 감지용)
+  const pendingToolsRef = useRef<Map<string, { name: string; input: any }>>(new Map())
+
+  // 🔥 Portal mount state
+  const [portalMounted, setPortalMounted] = useState(false)
+  useEffect(() => {
+    setPortalMounted(true)
+  }, [])
+
+  // 🔥 마운트 시 활성 스레드가 없으면 가장 최근 스레드 자동 선택
+  const setActiveThread = useGlowCodeStore((state) => state.setActiveThread)
+  useEffect(() => {
+    if (!activeThreadId && threads.length > 0) {
+      console.log('[GlowCode] 🔄 자동으로 마지막 스레드 선택:', threads[0].id)
+      setActiveThread(threads[0].id)
+    }
+  }, [activeThreadId, threads, setActiveThread])
+
+  // 🔥 NeuralMapStore의 프로젝트 경로와 자동 동기화
+  // 각 메뉴의 채팅 에이전트는 해당 메뉴의 프로젝트 경로를 자동으로 사용
+  useEffect(() => {
+    if (neuralMapProjectPath && neuralMapProjectPath !== context.projectPath) {
+      setContext({ projectPath: neuralMapProjectPath })
+      console.log('[GlowCode] 🔄 프로젝트 경로 자동 동기화:', neuralMapProjectPath)
+    }
+  }, [neuralMapProjectPath, context.projectPath, setContext])
+
+  // 🔥 프로젝트 연결 시 DB에서 folder_path 자동 가져오기
+  // linkedProjectId가 있는데 projectPath가 없으면 DB에서 folder_path 조회
+  useEffect(() => {
+    if (linkedProjectId && !neuralMapProjectPath) {
+      console.log('[GlowCode] 🔍 프로젝트 folder_path 조회 중:', linkedProjectId)
+      fetch(`/api/projects/${linkedProjectId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(project => {
+          if (project?.folder_path) {
+            console.log('[GlowCode] ✅ folder_path 자동 설정:', project.folder_path)
+            setNeuralMapProjectPath(project.folder_path)
+          }
+        })
+        .catch(err => {
+          console.error('[GlowCode] folder_path 조회 실패:', err)
+        })
+    }
+  }, [linkedProjectId, neuralMapProjectPath, setNeuralMapProjectPath])
 
   const messages = getMessages()
+
+  // 🔥 프로젝트 경로 필수 체크 - 코딩 에이전트는 프로젝트 컨텍스트 없이 작동하면 안 됨
+  const hasProjectContext = !!(context.projectPath || neuralMapProjectPath)
 
   // 🔥 슬래시 명령어 자동완성
   const commandSuggestions = useMemo(() => {
@@ -342,6 +591,35 @@ export function ClaudeCodeUI() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamContent, streamEvents])
 
+  // 🔥 대기열 메시지 자동 전송용 ref (클로저 문제 방지)
+  const queuedMessageRef = useRef<string | null>(null)
+
+  // 🔥 대기열 메시지 ref 동기화
+  useEffect(() => {
+    queuedMessageRef.current = queuedMessage
+  }, [queuedMessage])
+
+  // 🔥 대기열 메시지 자동 전송 (에이전트 작업 완료 후)
+  useEffect(() => {
+    if (!isLoading && queuedMessage) {
+      const messageToSend = queuedMessage
+      console.log('[GlowCode] 📤 Sending queued message:', messageToSend.substring(0, 50))
+
+      // 🔥 대기열 먼저 클리어 (중복 전송 방지)
+      setQueuedMessage(null)
+
+      // 약간의 딜레이 후 input 설정 및 전송
+      setTimeout(() => {
+        setInput(messageToSend)
+        // 🔥 다음 틱에서 전송 (input 상태 업데이트 보장)
+        setTimeout(() => {
+          const sendButton = document.querySelector('[data-send-button]') as HTMLButtonElement
+          sendButton?.click()
+        }, 50)
+      }, 100)
+    }
+  }, [isLoading, queuedMessage])
+
   // 🔥 Click outside to close permission menu
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -367,6 +645,19 @@ export function ClaudeCodeUI() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showProjectPathInput])
+
+  // 🔥 Click outside to close model selector
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelSelectorRef.current && !modelSelectorRef.current.contains(e.target as Node)) {
+        setShowModelSelector(false)
+      }
+    }
+    if (showModelSelector) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showModelSelector])
 
   // 🔥 File attachment handler
   const handleFileAttach = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -412,6 +703,44 @@ export function ClaudeCodeUI() {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index))
   }, [])
 
+  // 🔥 파일 변경 이벤트 발생 함수 (실시간 파일 트리 업데이트용)
+  const emitFileChangeEvent = useCallback((filePath: string, changeType: 'create' | 'change' | 'delete') => {
+    console.log('[GlowCode] 📁 File change event:', changeType, filePath)
+    // Electron 환경에서는 파일 시스템 감시자가 자동으로 이벤트를 발생시키지만,
+    // 웹 환경에서는 직접 이벤트를 발생시켜야 함
+    window.dispatchEvent(new CustomEvent('glowus:file-changed', {
+      detail: { path: filePath, type: changeType }
+    }))
+  }, [])
+
+  // 🔥 Tool 결과 처리 시 파일 변경 감지
+  const handleToolResult = useCallback((toolUseId: string, isError: boolean) => {
+    console.log('[GlowCode] 🔧 handleToolResult called:', toolUseId, 'isError:', isError)
+    console.log('[GlowCode] 📋 pendingToolsRef contents:', Array.from(pendingToolsRef.current.entries()))
+
+    const toolInfo = pendingToolsRef.current.get(toolUseId)
+    if (!toolInfo) {
+      console.log('[GlowCode] ⚠️ No tool info found for:', toolUseId)
+      return
+    }
+
+    console.log('[GlowCode] 📝 Tool info:', toolInfo.name, toolInfo.input?.file_path)
+
+    // 에러가 아니고 Write/Edit 도구인 경우 파일 변경 이벤트 발생
+    if (!isError && toolInfo.input?.file_path) {
+      if (toolInfo.name === 'Write') {
+        console.log('[GlowCode] ✅ Emitting file create event:', toolInfo.input.file_path)
+        emitFileChangeEvent(toolInfo.input.file_path, 'create')
+      } else if (toolInfo.name === 'Edit') {
+        console.log('[GlowCode] ✅ Emitting file change event:', toolInfo.input.file_path)
+        emitFileChangeEvent(toolInfo.input.file_path, 'change')
+      }
+    }
+
+    // 처리 완료된 도구 정보 삭제
+    pendingToolsRef.current.delete(toolUseId)
+  }, [emitFileChangeEvent])
+
   // Handle /login command - CLI opens OAuth automatically
   const handleLogin = async () => {
     try {
@@ -426,6 +755,9 @@ export function ClaudeCodeUI() {
     setIsLoading(true)
     clearStreamContent()
     clearStreamEvents()
+    // 🔥 스트리밍 시작 시간 및 토큰 카운트 초기화
+    setStreamStartTime(Date.now())
+    setStreamTokenCount(0)
 
     addMessage({ role: 'user', content: prompt })
     addMessage({ role: 'assistant', content: '', isStreaming: true })
@@ -451,6 +783,7 @@ export function ClaudeCodeUI() {
             model: settings.model !== 'custom' ? settings.model : settings.customModelId,
             cwd: context.projectPath || undefined,
             includeProjectContext: settings.includeProjectContext,
+            executionMode: settings.executionMode, // 🔥 Agent Mode 전달
           },
           context: requestContext
         })
@@ -481,15 +814,28 @@ export function ClaudeCodeUI() {
                   case 'text':
                     fullContent = data.content
                     setStreamContent(fullContent)
+                    // 🔥 토큰 카운트 업데이트 (대략적 계산: 4자당 1토큰)
+                    setStreamTokenCount(Math.floor(fullContent.length / 4))
                     break
                   case 'thinking':
                     addStreamEvent({ type: 'thinking', content: data.content })
                     break
                   case 'tool':
+                    console.log('[GlowCode/Prompt] 🛠️ Tool event:', data.name, data.id, data.input?.file_path)
                     addStreamEvent({ type: 'tool', name: data.name, input: data.input, id: data.id })
+                    // 🔥 Write/Edit 도구는 바로 파일 변경 이벤트 발생 (tool_result 기다리지 않음)
+                    if (data.input?.file_path && (data.name === 'Write' || data.name === 'Edit')) {
+                      console.log('[GlowCode/Prompt] 📂 Emitting file change from tool event:', data.name, data.input.file_path)
+                      emitFileChangeEvent(data.input.file_path, data.name === 'Write' ? 'create' : 'change')
+                    }
                     break
                   case 'tool_result':
+                    console.log('[GlowCode/Prompt] 📦 Tool result:', data.toolUseId, 'isError:', data.isError)
                     addStreamEvent({ type: 'tool_result', content: data.content, toolUseId: data.toolUseId, isError: data.isError })
+                    // 🔥 파일 변경 이벤트 발생
+                    if (data.toolUseId) {
+                      handleToolResult(data.toolUseId, data.isError)
+                    }
                     break
                   case 'status':
                   case 'progress':
@@ -505,7 +851,9 @@ export function ClaudeCodeUI() {
                     addStreamEvent({ type: 'tool_result', content: data.content, isError: true })
                     break
                 }
-              } catch {}
+              } catch (e) {
+                console.warn('[GlowCode/Prompt] Parse error:', e)
+              }
             }
           }
         }
@@ -525,6 +873,7 @@ export function ClaudeCodeUI() {
     } finally {
       setIsLoading(false)
       clearStreamContent()
+      setStreamStartTime(null)
     }
   }, [messages, context, settings, addMessage, updateMessage, getMessages, setStreamContent, clearStreamContent, addStreamEvent, clearStreamEvents])
 
@@ -556,16 +905,49 @@ export function ClaudeCodeUI() {
         break
       case 'action':
         // 커스텀 액션 처리
+        if ((result.data as any)?.action === 'showModelSelector') {
+          setShowModelSelector(true)
+        }
         break
     }
   }, [addMessage, clearMessages, sendPromptToClaudeCode])
 
+  // 🔥 Stop/Cancel streaming
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setIsLoading(false)
+    setStreamStartTime(null)
+
+    // 스트리밍 중인 마지막 메시지 종료 처리
+    const msgs = getMessages()
+    const lastMsg = msgs[msgs.length - 1]
+    if (lastMsg?.role === 'assistant' && lastMsg?.isStreaming) {
+      updateMessage(lastMsg.id, {
+        content: lastMsg.content + '\n\n[중단됨]',
+        isStreaming: false
+      })
+    }
+
+    console.log('[GlowCode] ⏹️ Streaming stopped by user')
+  }, [getMessages, updateMessage])
+
   // Handle send message
   const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading) return
+    if (!input.trim()) return
 
     const userMessage = input.trim()
     setShowCommandSuggestions(false)
+
+    // 🔥 에이전트가 작업 중이면 대기열에 추가
+    if (isLoading) {
+      setQueuedMessage(userMessage)
+      setInput('')
+      console.log('[GlowCode] 📋 Message queued:', userMessage.substring(0, 50))
+      return
+    }
 
     // Handle /login command (legacy)
     if (userMessage === '/login') {
@@ -588,6 +970,9 @@ export function ClaudeCodeUI() {
     setIsLoading(true)
     clearStreamContent()
     clearStreamEvents()
+    // 🔥 스트리밍 시작 시간 및 토큰 카운트 초기화
+    setStreamStartTime(Date.now())
+    setStreamTokenCount(0)
 
     // 🔥 첨부 파일 컨텍스트 추가
     let messageWithAttachments = userMessage
@@ -606,7 +991,16 @@ export function ClaudeCodeUI() {
     addMessage({ role: 'user', content: userMessage })
     addMessage({ role: 'assistant', content: '', isStreaming: true })
 
+    // 🔥 DB에 사용자 메시지 저장
+    if (activeThreadId) {
+      addMessageWithSync(activeThreadId, 'user', userMessage).catch(console.error)
+    }
+
     try {
+      // 🔥 AbortController 생성 (Stop 버튼용)
+      abortControllerRef.current = new AbortController()
+      const signal = abortControllerRef.current.signal
+
       const apiMessages = [
         ...messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user' as const, content: messageWithAttachments }
@@ -623,11 +1017,13 @@ export function ClaudeCodeUI() {
       const response = await fetch('/api/glow-code/cli-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal, // 🔥 AbortController signal 전달
         body: JSON.stringify({
           messages: apiMessages,
           options: {
             model: settings.model !== 'custom' ? settings.model : settings.customModelId,
             cwd: context.projectPath || process.cwd?.() || undefined,
+            executionMode: settings.executionMode, // 🔥 Agent Mode 전달
           },
           context: requestContext
         })
@@ -659,25 +1055,39 @@ export function ClaudeCodeUI() {
                   case 'text':
                     fullContent = data.content
                     setStreamContent(fullContent)
+                    // 🔥 토큰 카운트 업데이트 (대략적 계산: 4자당 1토큰)
+                    setStreamTokenCount(Math.floor(fullContent.length / 4))
                     break
                   case 'thinking':
                     addStreamEvent({ type: 'thinking', content: data.content })
                     break
                   case 'tool':
+                    console.log('[GlowCode] 🛠️ Tool event received:', data.name, data.id, data.input?.file_path)
                     addStreamEvent({
                       type: 'tool',
                       name: data.name,
                       input: data.input,
                       id: data.id
                     })
+                    // 🔥 Write/Edit 도구는 바로 파일 변경 이벤트 발생 (tool_result 기다리지 않음)
+                    // CLI가 tool_result를 안 보내는 경우가 있어서 tool 이벤트에서 바로 처리
+                    if (data.input?.file_path && (data.name === 'Write' || data.name === 'Edit')) {
+                      console.log('[GlowCode] 📂 Emitting file change from tool event:', data.name, data.input.file_path)
+                      emitFileChangeEvent(data.input.file_path, data.name === 'Write' ? 'create' : 'change')
+                    }
                     break
                   case 'tool_result':
+                    console.log('[GlowCode] 📦 Tool result received:', data.toolUseId, 'isError:', data.isError)
                     addStreamEvent({
                       type: 'tool_result',
                       content: data.content,
                       toolUseId: data.toolUseId,
                       isError: data.isError
                     })
+                    // 🔥 파일 변경 이벤트 발생
+                    if (data.toolUseId) {
+                      handleToolResult(data.toolUseId, data.isError)
+                    }
                     break
                   case 'status':
                     addStreamEvent({ type: 'status', content: data.content })
@@ -707,6 +1117,22 @@ export function ClaudeCodeUI() {
                   case 'done':
                     console.log('[Claude] Done with code:', data.code)
                     break
+
+                  // 🔥 Agent Mode: 서브 에이전트 스폰 이벤트
+                  case 'agent_spawn':
+                    if (data.agent) {
+                      console.log('[Claude] Agent spawned:', data.agent)
+                      emitAgentSpawnEvent({
+                        name: data.agent.name,
+                        role: data.agent.role,
+                        task: data.agent.task
+                      })
+                      addStreamEvent({
+                        type: 'status',
+                        content: `🤖 Sub-agent spawned: ${data.agent.name} (${data.agent.role})`
+                      })
+                    }
+                    break
                 }
               } catch (e) {}
             }
@@ -721,6 +1147,11 @@ export function ClaudeCodeUI() {
           content: fullContent || '응답 없음',
           isStreaming: false
         })
+
+        // 🔥 DB에 assistant 응답 저장
+        if (activeThreadId && fullContent) {
+          addMessageWithSync(activeThreadId, 'assistant', fullContent).catch(console.error)
+        }
       }
     } catch (error: any) {
       const msgs = getMessages()
@@ -734,10 +1165,18 @@ export function ClaudeCodeUI() {
     } finally {
       setIsLoading(false)
       clearStreamContent()
+      setStreamStartTime(null)
     }
-  }, [input, isLoading, messages, addMessage, updateMessage, getMessages, setStreamContent, clearStreamContent, addStreamEvent, clearStreamEvents, context, settings])
+  }, [input, isLoading, messages, addMessage, updateMessage, getMessages, setStreamContent, clearStreamContent, addStreamEvent, clearStreamEvents, context, settings, activeThreadId, addMessageWithSync])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // 🔥 Escape 키로 스트리밍 중단
+    if (e.key === 'Escape' && isLoading) {
+      e.preventDefault()
+      handleStop()
+      return
+    }
+
     // 🔥 명령어 자동완성 네비게이션
     if (showCommandSuggestions && commandSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -765,10 +1204,129 @@ export function ClaudeCodeUI() {
       }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 🔥 IME 조합 중이면 Enter 무시 (한글 입력 시 마지막 글자 중복 방지)
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  // 🔥 프로젝트 경로 없으면 폴더 선택 유도 화면 표시
+  if (!hasProjectContext) {
+    return (
+      <div className="flex flex-col h-full bg-[#1a1a1a]">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <SparkIcon className="w-5 h-5" style={{ color: CLAUDE_ORANGE }} />
+            <span className="text-sm font-medium text-white">Claude Code</span>
+          </div>
+        </div>
+
+        {/* 프로젝트 필요 안내 */}
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-800/50 flex items-center justify-center mb-6">
+            <FolderCog className="w-8 h-8 text-zinc-500" />
+          </div>
+          <h3 className="text-lg font-medium text-white mb-2">
+            프로젝트를 먼저 열어주세요
+          </h3>
+          <p className="text-zinc-400 text-sm mb-6 max-w-[280px]">
+            Claude Code는 프로젝트 폴더 내에서 작동합니다.<br />
+            좌측 파일 트리에서 폴더를 선택하거나<br />
+            새 프로젝트를 생성해주세요.
+          </p>
+          <div className="flex flex-col gap-2 w-full max-w-[200px]">
+            <button
+              onClick={() => {
+                // Electron 폴더 선택 다이얼로그
+                const electron = typeof window !== 'undefined' ? (window as any).electron : null
+                if (electron?.fs?.selectDirectory) {
+                  electron.fs.selectDirectory().then((result: { path: string } | null) => {
+                    if (result?.path) {
+                      setNeuralMapProjectPath(result.path)
+                      setContext({ projectPath: result.path })
+                    }
+                  })
+                } else {
+                  // 웹 환경: 수동 입력 팝업
+                  setShowProjectPathInput(true)
+                }
+              }}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+              style={{ backgroundColor: CLAUDE_ORANGE }}
+            >
+              <FolderOpen className="w-4 h-4" />
+              폴더 열기
+            </button>
+            <button
+              onClick={() => setShowProjectPathInput(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              경로 직접 입력
+            </button>
+          </div>
+        </div>
+
+        {/* 🔥 Project Path Input Popup - Portal로 body에 렌더링 */}
+        {portalMounted && showProjectPathInput && createPortal(
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+            onClick={() => setShowProjectPathInput(false)}
+          >
+            <div
+              className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden w-[400px]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+                <span className="text-sm font-medium text-white">프로젝트 경로 입력</span>
+                <button
+                  onClick={() => setShowProjectPathInput(false)}
+                  className="text-zinc-500 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 space-y-4">
+                <input
+                  ref={projectPathInputRef}
+                  type="text"
+                  value={projectPathInput}
+                  onChange={(e) => setProjectPathInput(e.target.value)}
+                  placeholder="/path/to/your/project"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && projectPathInput.trim()) {
+                      setNeuralMapProjectPath(projectPathInput.trim())
+                      setContext({ projectPath: projectPathInput.trim() })
+                      setShowProjectPathInput(false)
+                    } else if (e.key === 'Escape') {
+                      setShowProjectPathInput(false)
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (projectPathInput.trim()) {
+                      setNeuralMapProjectPath(projectPathInput.trim())
+                      setContext({ projectPath: projectPathInput.trim() })
+                      setShowProjectPathInput(false)
+                    }
+                  }}
+                  disabled={!projectPathInput.trim()}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: projectPathInput.trim() ? CLAUDE_ORANGE : undefined }}
+                >
+                  프로젝트 열기
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+      </div>
+    )
   }
 
   return (
@@ -825,7 +1383,9 @@ export function ClaudeCodeUI() {
                 role={msg.role}
                 content={msg.isStreaming && streamContent ? streamContent : msg.content}
                 isStreaming={msg.isStreaming}
-                streamEvents={msg.isStreaming ? streamEvents : []}  // 🔥 스트리밍 중일 때만 이벤트 전달
+                streamEvents={msg.isStreaming ? streamEvents : []}
+                startTime={msg.isStreaming ? streamStartTime ?? undefined : undefined}
+                tokenCount={msg.isStreaming ? streamTokenCount : 0}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -853,7 +1413,7 @@ export function ClaudeCodeUI() {
       )}
 
       {/* Input Area */}
-      <div className="p-4 relative">
+      <div className="p-4 relative" ref={inputAreaRef}>
         {/* 🔥 슬래시 명령어 자동완성 */}
         {showCommandSuggestions && commandSuggestions.length > 0 && (
           <div className="absolute bottom-full left-4 right-4 mb-2 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden z-50">
@@ -889,6 +1449,7 @@ export function ClaudeCodeUI() {
             </div>
           </div>
         )}
+
 
         {/* 🔥 Hidden file input for attachments */}
         <input
@@ -950,27 +1511,81 @@ export function ClaudeCodeUI() {
           </div>
         )}
 
+        {/* 🔥 대기열 메시지 표시 */}
+        {queuedMessage && (
+          <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-amber-400 text-sm flex-1 truncate">
+              대기 중: {queuedMessage.substring(0, 50)}{queuedMessage.length > 50 ? '...' : ''}
+            </span>
+            <button
+              onClick={() => setQueuedMessage(null)}
+              className="text-amber-500/70 hover:text-amber-400 p-1"
+              title="대기열 취소"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         <div
           className="rounded-lg border-2 overflow-hidden"
-          style={{ borderColor: CLAUDE_ORANGE }}
+          style={{ borderColor: isLoading && input.trim() ? '#f59e0b' : CLAUDE_ORANGE }}
         >
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={context.selectedCode ? "선택한 코드에 대해 질문하세요..." : "Ask Claude to edit..."}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
+            placeholder={
+              isLoading
+                ? "메시지를 입력하면 대기열에 추가됩니다..."
+                : context.selectedCode
+                  ? "선택한 코드에 대해 질문하세요..."
+                  : "Ask Claude to edit..."
+            }
             className="w-full bg-zinc-900 px-4 py-3 text-white placeholder-zinc-500 resize-none focus:outline-none"
             rows={1}
-            disabled={isLoading}
           />
 
           {/* Bottom Bar */}
           <div className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-t border-zinc-800">
             <div className="flex items-center gap-3">
+              {/* 🔥 Execution Mode Toggle (Quick/Agent) */}
+              <button
+                onClick={() => updateSettings({
+                  executionMode: settings.executionMode === 'quick' ? 'agent' : 'quick'
+                })}
+                className={cn(
+                  "flex items-center gap-1.5 text-sm hover:text-white transition-colors px-2 py-1 rounded-md",
+                  settings.executionMode === 'agent'
+                    ? "text-purple-400 bg-purple-500/10"
+                    : "text-cyan-400 bg-cyan-500/10"
+                )}
+                title={settings.executionMode === 'agent'
+                  ? "Agent Mode: PM으로서 서브 에이전트 관리"
+                  : "Quick Mode: 직접 실행"
+                }
+              >
+                {settings.executionMode === 'agent' ? (
+                  <>
+                    <Users className="w-4 h-4" />
+                    <span>Agent</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    <span>Quick</span>
+                  </>
+                )}
+              </button>
+
               {/* 🔥 Permission Mode Toggle */}
               <div className="relative" ref={permissionMenuRef}>
                 <button
+                  ref={permissionButtonRef}
                   onClick={() => setShowPermissionMenu(!showPermissionMenu)}
                   className={cn(
                     "flex items-center gap-1.5 text-sm hover:text-white transition-colors",
@@ -1000,78 +1615,6 @@ export function ClaudeCodeUI() {
                   </span>
                   <ChevronDown className="w-3 h-3" />
                 </button>
-
-                {/* Permission Mode Dropdown */}
-                {showPermissionMenu && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[200px]">
-                    <div className="px-3 py-2 border-b border-zinc-800 text-xs text-zinc-500">
-                      권한 모드 선택
-                    </div>
-                    <button
-                      onClick={() => {
-                        updateSettings({ permissionMode: 'default' })
-                        setShowPermissionMenu(false)
-                      }}
-                      className={cn(
-                        "w-full px-3 py-2 text-left flex items-center gap-3 transition-colors",
-                        settings.permissionMode === 'default'
-                          ? "bg-zinc-800 text-white"
-                          : "text-zinc-400 hover:bg-zinc-800/50"
-                      )}
-                    >
-                      <Shield className="w-4 h-4" />
-                      <div className="flex-1">
-                        <div className="text-sm">Ask before edits</div>
-                        <div className="text-xs text-zinc-500">모든 변경사항 확인</div>
-                      </div>
-                      {settings.permissionMode === 'default' && (
-                        <Check className="w-4 h-4 text-green-400" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
-                        updateSettings({ permissionMode: 'plan' })
-                        setShowPermissionMenu(false)
-                      }}
-                      className={cn(
-                        "w-full px-3 py-2 text-left flex items-center gap-3 transition-colors",
-                        settings.permissionMode === 'plan'
-                          ? "bg-zinc-800 text-white"
-                          : "text-zinc-400 hover:bg-zinc-800/50"
-                      )}
-                    >
-                      <ShieldCheck className="w-4 h-4" />
-                      <div className="flex-1">
-                        <div className="text-sm">Plan mode</div>
-                        <div className="text-xs text-zinc-500">실행 전 계획 검토</div>
-                      </div>
-                      {settings.permissionMode === 'plan' && (
-                        <Check className="w-4 h-4 text-green-400" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
-                        updateSettings({ permissionMode: 'acceptEdits' })
-                        setShowPermissionMenu(false)
-                      }}
-                      className={cn(
-                        "w-full px-3 py-2 text-left flex items-center gap-3 transition-colors",
-                        settings.permissionMode === 'acceptEdits'
-                          ? "bg-zinc-800 text-white"
-                          : "text-zinc-400 hover:bg-zinc-800/50"
-                      )}
-                    >
-                      <ShieldOff className="w-4 h-4" />
-                      <div className="flex-1">
-                        <div className="text-sm">Auto accept</div>
-                        <div className="text-xs text-zinc-500">자동으로 모든 변경 승인</div>
-                      </div>
-                      {settings.permissionMode === 'acceptEdits' && (
-                        <Check className="w-4 h-4 text-green-400" />
-                      )}
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Current file */}
@@ -1082,9 +1625,10 @@ export function ClaudeCodeUI() {
                 </span>
               </div>
 
-              {/* 🔥 Project Path Selector */}
+              {/* 🔥 Project Path Selector - 자동 동기화됨 */}
               <div className="relative">
                 <button
+                  ref={projectPathButtonRef}
                   onClick={() => {
                     setProjectPathInput(context.projectPath || '')
                     setShowProjectPathInput(!showProjectPathInput)
@@ -1092,10 +1636,18 @@ export function ClaudeCodeUI() {
                   className={cn(
                     "flex items-center gap-1.5 text-sm transition-colors",
                     context.projectPath
-                      ? "text-green-400 hover:text-green-300"
+                      ? neuralMapProjectPath === context.projectPath
+                        ? "text-blue-400 hover:text-blue-300"  // 🔥 동기화됨 = 파란색
+                        : "text-green-400 hover:text-green-300"
                       : "text-orange-400 hover:text-orange-300"
                   )}
-                  title={context.projectPath ? `작업 경로: ${context.projectPath}` : '작업 경로 미설정 (클릭하여 설정)'}
+                  title={
+                    context.projectPath
+                      ? neuralMapProjectPath === context.projectPath
+                        ? `🔗 프로젝트와 동기화됨: ${context.projectPath}`
+                        : `작업 경로: ${context.projectPath}`
+                      : '작업 경로 미설정'
+                  }
                 >
                   {context.projectPath ? (
                     <FolderOpen className="w-4 h-4" />
@@ -1105,71 +1657,13 @@ export function ClaudeCodeUI() {
                   <span className="max-w-[100px] truncate">
                     {context.projectPath
                       ? context.projectPath.split('/').pop() || context.projectPath
-                      : 'Set path'}
+                      : linkedProjectName || 'No project'}
                   </span>
+                  {/* 🔥 동기화 아이콘 표시 */}
+                  {neuralMapProjectPath && neuralMapProjectPath === context.projectPath && (
+                    <span className="text-blue-400 text-xs" title="프로젝트와 동기화됨">🔗</span>
+                  )}
                 </button>
-
-                {/* Project Path Input Popup */}
-                {showProjectPathInput && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[300px]">
-                    <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
-                      <span className="text-xs text-zinc-500">프로젝트 경로 설정</span>
-                      <button
-                        onClick={() => setShowProjectPathInput(false)}
-                        className="text-zinc-500 hover:text-white"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <div className="p-3 space-y-2">
-                      <input
-                        ref={projectPathInputRef}
-                        type="text"
-                        value={projectPathInput}
-                        onChange={(e) => setProjectPathInput(e.target.value)}
-                        placeholder="/path/to/your/project"
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && projectPathInput.trim()) {
-                            setContext({ projectPath: projectPathInput.trim() })
-                            setShowProjectPathInput(false)
-                          } else if (e.key === 'Escape') {
-                            setShowProjectPathInput(false)
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (projectPathInput.trim()) {
-                              setContext({ projectPath: projectPathInput.trim() })
-                              setShowProjectPathInput(false)
-                            }
-                          }}
-                          className="flex-1 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded transition-colors"
-                        >
-                          설정
-                        </button>
-                        {context.projectPath && (
-                          <button
-                            onClick={() => {
-                              setContext({ projectPath: undefined })
-                              setProjectPathInput('')
-                              setShowProjectPathInput(false)
-                            }}
-                            className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm rounded transition-colors"
-                          >
-                            초기화
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-xs text-zinc-500">
-                        💡 <code>/cd /path</code> 명령어로도 변경 가능
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1205,30 +1699,365 @@ export function ClaudeCodeUI() {
                 /
               </button>
 
-              {/* Send */}
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isLoading}
-                className={cn(
-                  "p-2 rounded-lg transition-all",
-                  (!input.trim() || isLoading)
-                    ? "bg-zinc-700 text-zinc-500"
-                    : "text-white"
-                )}
-                style={{
-                  backgroundColor: (!input.trim() || isLoading) ? undefined : CLAUDE_ORANGE
-                }}
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
+              {/* Send / Stop / Queue */}
+              {isLoading ? (
+                <div className="flex items-center gap-1">
+                  {/* 대기열 추가 버튼 */}
+                  {input.trim() && (
+                    <button
+                      onClick={handleSend}
+                      className="p-2 rounded-lg transition-all bg-amber-600 hover:bg-amber-500 text-white"
+                      title="대기열에 추가 (작업 완료 후 자동 전송)"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  )}
+                  {/* 중단 버튼 */}
+                  <button
+                    onClick={handleStop}
+                    className="p-2 rounded-lg transition-all bg-red-600 hover:bg-red-500 text-white"
+                    title="중단 (Escape)"
+                  >
+                    <Square className="w-4 h-4 fill-current" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  data-send-button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className={cn(
+                    "p-2 rounded-lg transition-all",
+                    !input.trim()
+                      ? "bg-zinc-700 text-zinc-500"
+                      : "text-white"
+                  )}
+                  style={{
+                    backgroundColor: !input.trim() ? undefined : CLAUDE_ORANGE
+                  }}
+                >
                   <ArrowUp className="w-4 h-4" />
-                )}
-              </button>
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* 🔥 Model Selector Modal - Portal로 body에 렌더링 */}
+      {portalMounted && showModelSelector && createPortal(
+        <div
+          ref={modelSelectorRef}
+          className="fixed bg-[#1e3a5f] border border-[#3d5a80] rounded-xl shadow-2xl overflow-hidden"
+          style={{
+            zIndex: 9999,
+            width: inputAreaRef.current ? inputAreaRef.current.offsetWidth - 32 : 300,
+            ...(inputAreaRef.current ? (() => {
+              const rect = inputAreaRef.current.getBoundingClientRect()
+              return {
+                bottom: window.innerHeight - rect.top + 8,
+                left: rect.left + 16,
+              }
+            })() : { bottom: 100, left: 50 })
+          }}
+        >
+          <div className="px-4 py-3 border-b border-[#3d5a80]/50 text-sm text-zinc-300">
+            Select a model
+          </div>
+          <div className="py-1">
+            {/* Opus */}
+            <button
+              onClick={() => {
+                updateSettings({ model: 'opus' })
+                setShowModelSelector(false)
+              }}
+              className={cn(
+                "w-full px-4 py-3 text-left flex items-center justify-between transition-colors",
+                settings.model === 'opus' || !settings.model
+                  ? "bg-[#2d5a87] text-white"
+                  : "text-zinc-300 hover:bg-[#2d4a6f]"
+              )}
+            >
+              <div>
+                <div className="font-medium">Default (recommended)</div>
+                <div className="text-sm text-zinc-400">Opus 4.5 - Most capable for complex work</div>
+              </div>
+              {(settings.model === 'opus' || !settings.model) && (
+                <Check className="w-5 h-5 text-white" />
+              )}
+            </button>
+
+            {/* Sonnet */}
+            <button
+              onClick={() => {
+                updateSettings({ model: 'sonnet' })
+                setShowModelSelector(false)
+              }}
+              className={cn(
+                "w-full px-4 py-3 text-left flex items-center justify-between transition-colors",
+                settings.model === 'sonnet'
+                  ? "bg-[#2d5a87] text-white"
+                  : "text-zinc-300 hover:bg-[#2d4a6f]"
+              )}
+            >
+              <div>
+                <div className="font-medium">Sonnet</div>
+                <div className="text-sm text-zinc-400">Sonnet 4.5 - Best for everyday tasks</div>
+              </div>
+              {settings.model === 'sonnet' && (
+                <Check className="w-5 h-5 text-white" />
+              )}
+            </button>
+
+            {/* Haiku */}
+            <button
+              onClick={() => {
+                updateSettings({ model: 'haiku' })
+                setShowModelSelector(false)
+              }}
+              className={cn(
+                "w-full px-4 py-3 text-left flex items-center justify-between transition-colors",
+                settings.model === 'haiku'
+                  ? "bg-[#2d5a87] text-white"
+                  : "text-zinc-300 hover:bg-[#2d4a6f]"
+              )}
+            >
+              <div>
+                <div className="font-medium">Haiku</div>
+                <div className="text-sm text-zinc-400">Haiku 4.5 - Fastest for quick answers</div>
+              </div>
+              {settings.model === 'haiku' && (
+                <Check className="w-5 h-5 text-white" />
+              )}
+            </button>
+
+            {/* Custom model option */}
+            <button
+              onClick={() => {
+                const customModel = prompt('모델 ID를 입력하세요:', settings.customModelId || 'claude-3-5-sonnet-20241022')
+                if (customModel) {
+                  updateSettings({ model: 'custom', customModelId: customModel })
+                  setShowModelSelector(false)
+                }
+              }}
+              className={cn(
+                "w-full px-4 py-3 text-left flex items-center justify-between transition-colors",
+                settings.model === 'custom'
+                  ? "bg-[#2d5a87] text-white"
+                  : "text-zinc-300 hover:bg-[#2d4a6f]"
+              )}
+            >
+              <div>
+                <div className="font-medium">{settings.customModelId || 'Custom model'}</div>
+                <div className="text-sm text-zinc-400">Enter custom model ID</div>
+              </div>
+              {settings.model === 'custom' && (
+                <Check className="w-5 h-5 text-white" />
+              )}
+            </button>
+          </div>
+
+          <div className="px-4 py-2 border-t border-[#3d5a80]/50 text-xs text-zinc-500">
+            Esc to close
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 🔥 Permission Mode Dropdown - Portal로 body에 렌더링 */}
+      {portalMounted && showPermissionMenu && createPortal(
+        <div
+          ref={permissionMenuRef}
+          className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl overflow-hidden min-w-[200px]"
+          style={{
+            zIndex: 9999,
+            ...(permissionButtonRef.current ? (() => {
+              const rect = permissionButtonRef.current.getBoundingClientRect()
+              return {
+                bottom: window.innerHeight - rect.top + 8,
+                left: Math.max(8, rect.left),
+              }
+            })() : { bottom: 100, left: 50 })
+          }}
+        >
+          <div className="px-3 py-2 border-b border-zinc-800 text-xs text-zinc-500">
+            권한 모드 선택
+          </div>
+          <button
+            onClick={() => {
+              updateSettings({ permissionMode: 'default' })
+              setShowPermissionMenu(false)
+            }}
+            className={cn(
+              "w-full px-3 py-2 text-left flex items-center gap-3 transition-colors",
+              settings.permissionMode === 'default'
+                ? "bg-zinc-800 text-white"
+                : "text-zinc-400 hover:bg-zinc-800/50"
+            )}
+          >
+            <Shield className="w-4 h-4" />
+            <div className="flex-1">
+              <div className="text-sm">Ask before edits</div>
+              <div className="text-xs text-zinc-500">모든 변경사항 확인</div>
+            </div>
+            {settings.permissionMode === 'default' && (
+              <Check className="w-4 h-4 text-green-400" />
+            )}
+          </button>
+          <button
+            onClick={() => {
+              updateSettings({ permissionMode: 'plan' })
+              setShowPermissionMenu(false)
+            }}
+            className={cn(
+              "w-full px-3 py-2 text-left flex items-center gap-3 transition-colors",
+              settings.permissionMode === 'plan'
+                ? "bg-zinc-800 text-white"
+                : "text-zinc-400 hover:bg-zinc-800/50"
+            )}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <div className="flex-1">
+              <div className="text-sm">Plan mode</div>
+              <div className="text-xs text-zinc-500">실행 전 계획 검토</div>
+            </div>
+            {settings.permissionMode === 'plan' && (
+              <Check className="w-4 h-4 text-green-400" />
+            )}
+          </button>
+          <button
+            onClick={() => {
+              updateSettings({ permissionMode: 'acceptEdits' })
+              setShowPermissionMenu(false)
+            }}
+            className={cn(
+              "w-full px-3 py-2 text-left flex items-center gap-3 transition-colors",
+              settings.permissionMode === 'acceptEdits'
+                ? "bg-zinc-800 text-white"
+                : "text-zinc-400 hover:bg-zinc-800/50"
+            )}
+          >
+            <ShieldOff className="w-4 h-4" />
+            <div className="flex-1">
+              <div className="text-sm">Auto accept</div>
+              <div className="text-xs text-zinc-500">자동으로 모든 변경 승인</div>
+            </div>
+            {settings.permissionMode === 'acceptEdits' && (
+              <Check className="w-4 h-4 text-green-400" />
+            )}
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* 🔥 Project Path Input Popup - Portal로 body에 렌더링 */}
+      {portalMounted && showProjectPathInput && createPortal(
+        <div
+          className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl overflow-hidden"
+          style={{
+            zIndex: 9999,
+            width: 320,
+            maxWidth: 'calc(100vw - 16px)',
+            ...(projectPathButtonRef.current ? (() => {
+              const rect = projectPathButtonRef.current.getBoundingClientRect()
+              // 우측 패널 안에서 표시되도록 right 기준으로 위치 계산
+              const rightOffset = window.innerWidth - rect.right
+              return {
+                bottom: window.innerHeight - rect.top + 8,
+                right: Math.max(8, rightOffset),
+              }
+            })() : { bottom: 100, right: 8 })
+          }}
+        >
+          <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
+            <span className="text-xs text-zinc-500">프로젝트 작업 경로</span>
+            <button
+              onClick={() => setShowProjectPathInput(false)}
+              className="text-zinc-500 hover:text-white"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="p-3 space-y-3">
+            {/* 🔥 동기화 상태 표시 */}
+            {neuralMapProjectPath && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <span className="text-blue-400">🔗</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-blue-300">현재 프로젝트와 동기화됨</div>
+                  <div className="text-xs text-zinc-400 truncate">
+                    {linkedProjectName || neuralMapProjectPath.split('/').pop()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 🔥 현재 경로 표시 (읽기 전용으로 변경) */}
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500">작업 디렉토리</label>
+              <div className="w-full bg-zinc-800/50 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-300 font-mono">
+                {context.projectPath || neuralMapProjectPath || '설정되지 않음'}
+              </div>
+            </div>
+
+            {/* 🔥 수동 경로 설정 (고급) */}
+            <details className="group">
+              <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-400 flex items-center gap-1">
+                <ChevronDown className="w-3 h-3 group-open:rotate-180 transition-transform" />
+                수동 경로 설정 (고급)
+              </summary>
+              <div className="mt-2 space-y-2">
+                <input
+                  ref={projectPathInputRef}
+                  type="text"
+                  value={projectPathInput}
+                  onChange={(e) => setProjectPathInput(e.target.value)}
+                  placeholder="/path/to/your/project"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && projectPathInput.trim()) {
+                      setContext({ projectPath: projectPathInput.trim() })
+                      setShowProjectPathInput(false)
+                    } else if (e.key === 'Escape') {
+                      setShowProjectPathInput(false)
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (projectPathInput.trim()) {
+                        setContext({ projectPath: projectPathInput.trim() })
+                        setShowProjectPathInput(false)
+                      }
+                    }}
+                    className="flex-1 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded transition-colors"
+                  >
+                    수동 설정
+                  </button>
+                  {neuralMapProjectPath && context.projectPath !== neuralMapProjectPath && (
+                    <button
+                      onClick={() => {
+                        setContext({ projectPath: neuralMapProjectPath })
+                        setProjectPathInput(neuralMapProjectPath)
+                        setShowProjectPathInput(false)
+                      }}
+                      className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm rounded transition-colors"
+                    >
+                      동기화
+                    </button>
+                  )}
+                </div>
+              </div>
+            </details>
+
+            <p className="text-xs text-zinc-500">
+              💡 프로젝트 경로는 현재 메뉴의 프로젝트와 자동 동기화됩니다
+            </p>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* 🔥 승인 모달 */}
       <ApprovalModal
