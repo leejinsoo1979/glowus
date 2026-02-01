@@ -533,12 +533,18 @@ export function ClaudeCodeUI() {
 
   // 🔥 NeuralMapStore의 프로젝트 경로와 자동 동기화
   // 각 메뉴의 채팅 에이전트는 해당 메뉴의 프로젝트 경로를 자동으로 사용
+  // 폴더가 바뀌면 새 스레드로 시작
   useEffect(() => {
     if (neuralMapProjectPath && neuralMapProjectPath !== context.projectPath) {
       setContext({ projectPath: neuralMapProjectPath })
       console.log('[GlowCode] 🔄 프로젝트 경로 자동 동기화:', neuralMapProjectPath)
+
+      // 🔥 폴더 변경 시 새 스레드 생성
+      const folderName = neuralMapProjectPath.split('/').pop() || '새 프로젝트'
+      createThread(folderName)
+      console.log('[GlowCode] 🆕 새 스레드 생성:', folderName)
     }
-  }, [neuralMapProjectPath, context.projectPath, setContext])
+  }, [neuralMapProjectPath, context.projectPath, setContext, createThread])
 
   // 🔥 프로젝트 연결 시 DB에서 folder_path 자동 가져오기
   // linkedProjectId가 있는데 projectPath가 없으면 DB에서 folder_path 조회
