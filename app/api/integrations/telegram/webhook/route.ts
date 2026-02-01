@@ -16,6 +16,7 @@ import {
   processAgentConversation,
 } from '@/lib/agent/work-memory'
 import { buildAgentContext } from '@/lib/memory/agent-os'
+import { buildSkillsContext, type AgentSkill } from '@/lib/agent/shared-prompts'
 
 /**
  * 디버그 메시지 표시 여부
@@ -734,6 +735,55 @@ export async function POST(request: NextRequest) {
       } else {
         await sendTelegramMessage(chatId, `📊 계정 상태\n\n⚠️ GlowUS 연결 안됨\n💬 총 메시지: ${telegramUser.total_messages || 0}회\n🧠 크로스 플랫폼 메모리: 비활성화\n\n/link your@email.com 으로 GlowUS 계정을 연결하면\n텔레그램과 웹에서의 대화가 통합됩니다!`)
       }
+      return NextResponse.json({ ok: true })
+    }
+
+    // Command: /pc - 로컬 PC 제어 (Jarvis Local Server)
+    if (text.startsWith('/pc ') || text === '/pc') {
+      const adminClient = createAdminClient()
+      const telegramUserId = String(message.from.id)
+
+      // GlowUS 계정 연결 확인
+      const { data: telegramUser } = await (adminClient as any)
+        .from('telegram_users')
+        .select('user_id')
+        .eq('id', telegramUserId)
+        .single()
+
+      if (!telegramUser?.user_id) {
+        await sendTelegramMessage(chatId, `❌ GlowUS 계정 연결이 필요합니다.\n\n/link your@email.com 으로 먼저 연결해주세요.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      const pcCommand = text === '/pc' ? 'help' : text.substring(4).trim()
+      const pcResult = await handlePCCommand(pcCommand, telegramUser.user_id, chatId)
+      await sendTelegramMessage(chatId, pcResult)
+      return NextResponse.json({ ok: true })
+    }
+
+    // Command: /jarvis - GlowUS 제어 (Jarvis 시스템)
+    if (text.startsWith('/jarvis ') || text === '/jarvis') {
+      const adminClient = createAdminClient()
+      const telegramUserId = String(message.from.id)
+
+      // GlowUS 계정 연결 확인
+      const { data: telegramUser } = await (adminClient as any)
+        .from('telegram_users')
+        .select('user_id')
+        .eq('id', telegramUserId)
+        .single()
+
+      if (!telegramUser?.user_id) {
+        await sendTelegramMessage(chatId, `❌ GlowUS 계정 연결이 필요합니다.\n\n/link your@email.com 으로 먼저 연결해주세요.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      const userId = telegramUser.user_id
+      const jarvisCommand = text === '/jarvis' ? 'help' : text.substring(8).trim()
+
+      // Jarvis 명령 처리
+      const jarvisResult = await handleJarvisCommand(jarvisCommand, userId, chatId)
+      await sendTelegramMessage(chatId, jarvisResult)
       return NextResponse.json({ ok: true })
     }
 
@@ -1714,11 +1764,29 @@ ${transcriptText}
       }
     }
 
+    // 🎯 에이전트 스킬 로드 (Supabase에서 장착된 스킬 가져오기)
+    let skillsContext = ''
+    try {
+      const { data: skills } = await supabase
+        .from('agent_skills')
+        .select('id, name, description, content, enabled, files, metadata')
+        .eq('agent_id', agent.id)
+        .eq('enabled', true)
+
+      if (skills && skills.length > 0) {
+        skillsContext = buildSkillsContext(skills as AgentSkill[])
+        console.log(`[Telegram Chat] 🎯 Skills loaded: ${skills.length} enabled skills for ${agent.name}`)
+      }
+    } catch (skillError) {
+      console.warn('[Telegram Chat] Failed to load agent skills:', skillError)
+    }
+
     // 디버그 모드에서만 시작 알림 표시
     if (SHOW_DEBUG_MESSAGES) {
       const taskMode = isCodingTask ? ' [코딩 모드]' : isShoppingTask ? ' [쇼핑 모드]' : ''
       const memoryStatus = longTermMemoryContext ? ' [메모리 활성화]' : ''
-      await sendTelegramMessage(chatId, `🤖 ${agent.name} 에이전트 시작 (도구 ${tools.length}개)${taskMode}${memoryStatus}`)
+      const skillsStatus = skillsContext ? ' [스킬 활성화]' : ''
+      await sendTelegramMessage(chatId, `🤖 ${agent.name} 에이전트 시작 (도구 ${tools.length}개)${taskMode}${memoryStatus}${skillsStatus}`)
     }
 
     // Create GPT-4o model with tools - SMARTER, follows multi-step instructions better
@@ -1781,8 +1849,14 @@ ${longTermMemoryContext}
 ---
 ` : ''
 
+    // 🎯 스킬 섹션 생성
+    const skillsSection = skillsContext ? `
+${skillsContext}
+---
+` : ''
+
     const systemPrompt = `You are ${agent.name}, a POWERFUL AUTONOMOUS AI AGENT with FULL SYSTEM ACCESS.
-${identitySection}${memorySection}
+${identitySection}${memorySection}${skillsSection}
 
 # 🚨🚨🚨 CRITICAL: COMPLETE ALL STEPS - DO NOT STOP EARLY 🚨🚨🚨
 When a task requires multiple steps (e.g., "Pages 열고 가사 적어"):
@@ -2895,5 +2969,432 @@ async function sendTelegramMessage(chatId: number, text: string) {
     }
   } catch (error) {
     console.error('[Telegram] Send message error:', error)
+  }
+}
+
+/**
+ * Jarvis 명령 처리 - GlowUS 제어
+ */
+async function handleJarvisCommand(command: string, userId: string, chatId: number): Promise<string> {
+  const adminClient = createAdminClient()
+  const args = command.split(' ')
+  const action = args[0].toLowerCase()
+
+  try {
+    switch (action) {
+      case 'help':
+      case '':
+        return `🤖 Jarvis GlowUS 제어 명령어
+
+📋 에이전트 관리:
+/jarvis agents - 내 에이전트 목록
+/jarvis agent create <이름> - 새 에이전트 생성
+/jarvis agent delete <이름> - 에이전트 삭제
+
+📁 프로젝트 관리:
+/jarvis projects - 내 프로젝트 목록
+/jarvis project create <이름> - 새 프로젝트 생성
+/jarvis project delete <이름> - 프로젝트 삭제
+
+🔧 스킬 관리:
+/jarvis skills <에이전트> - 에이전트 스킬 목록
+
+📊 상태:
+/jarvis status - 시스템 상태`
+
+      // === 에이전트 목록 ===
+      case 'agents':
+        const { data: agents, error: agentsError } = await adminClient
+          .from('deployed_agents')
+          .select('id, name, description, status, llm_model')
+          .eq('owner_id', userId)
+          .order('created_at', { ascending: false })
+
+        if (agentsError) throw new Error(agentsError.message)
+        if (!agents || agents.length === 0) {
+          return '📋 에이전트가 없습니다.\n\n/jarvis agent create <이름> 으로 생성하세요.'
+        }
+
+        let agentList = `🤖 내 에이전트 (${agents.length}개)\n\n`
+        agents.forEach((a: any, i: number) => {
+          const status = a.status === 'ACTIVE' ? '✅' : '⏸️'
+          agentList += `${i + 1}. ${status} ${a.name}\n`
+          if (a.description) agentList += `   ${a.description}\n`
+          agentList += `   모델: ${a.llm_model || 'gpt-4o-mini'}\n\n`
+        })
+        return agentList
+
+      // === 에이전트 생성 ===
+      case 'agent':
+        const agentAction = args[1]?.toLowerCase()
+        const agentName = args.slice(2).join(' ')
+
+        if (agentAction === 'create') {
+          if (!agentName) return '❌ 에이전트 이름을 입력하세요.\n\n/jarvis agent create <이름>'
+
+          const { data: newAgent, error: createError } = await adminClient
+            .from('deployed_agents')
+            .insert({
+              owner_id: userId,
+              name: agentName,
+              description: '',
+              llm_provider: 'openai',
+              llm_model: 'gpt-4o-mini',
+              status: 'ACTIVE',
+            })
+            .select()
+            .single()
+
+          if (createError) throw new Error(createError.message)
+          return `✅ 에이전트 "${agentName}" 생성 완료!\n\nID: ${newAgent.id}`
+        }
+
+        if (agentAction === 'delete') {
+          if (!agentName) return '❌ 에이전트 이름을 입력하세요.\n\n/jarvis agent delete <이름>'
+
+          const { error: deleteError } = await adminClient
+            .from('deployed_agents')
+            .delete()
+            .eq('name', agentName)
+            .eq('owner_id', userId)
+
+          if (deleteError) throw new Error(deleteError.message)
+          return `✅ 에이전트 "${agentName}" 삭제 완료`
+        }
+
+        return '❌ 알 수 없는 명령입니다.\n\n사용법:\n/jarvis agent create <이름>\n/jarvis agent delete <이름>'
+
+      // === 프로젝트 목록 ===
+      case 'projects':
+        const { data: projects, error: projectsError } = await adminClient
+          .from('projects')
+          .select('id, name, description, status')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+
+        if (projectsError) throw new Error(projectsError.message)
+        if (!projects || projects.length === 0) {
+          return '📁 프로젝트가 없습니다.\n\n/jarvis project create <이름> 으로 생성하세요.'
+        }
+
+        let projectList = `📁 내 프로젝트 (${projects.length}개)\n\n`
+        projects.forEach((p: any, i: number) => {
+          projectList += `${i + 1}. ${p.name}\n`
+          if (p.description) projectList += `   ${p.description}\n`
+          projectList += '\n'
+        })
+        return projectList
+
+      // === 프로젝트 생성/삭제 ===
+      case 'project':
+        const projectAction = args[1]?.toLowerCase()
+        const projectName = args.slice(2).join(' ')
+
+        if (projectAction === 'create') {
+          if (!projectName) return '❌ 프로젝트 이름을 입력하세요.\n\n/jarvis project create <이름>'
+
+          const { data: newProject, error: createProjError } = await adminClient
+            .from('projects')
+            .insert({
+              user_id: userId,
+              name: projectName,
+              description: '',
+            })
+            .select()
+            .single()
+
+          if (createProjError) throw new Error(createProjError.message)
+          return `✅ 프로젝트 "${projectName}" 생성 완료!\n\nID: ${newProject.id}`
+        }
+
+        if (projectAction === 'delete') {
+          if (!projectName) return '❌ 프로젝트 이름을 입력하세요.\n\n/jarvis project delete <이름>'
+
+          const { error: deleteProjError } = await adminClient
+            .from('projects')
+            .delete()
+            .eq('name', projectName)
+            .eq('user_id', userId)
+
+          if (deleteProjError) throw new Error(deleteProjError.message)
+          return `✅ 프로젝트 "${projectName}" 삭제 완료`
+        }
+
+        return '❌ 알 수 없는 명령입니다.\n\n사용법:\n/jarvis project create <이름>\n/jarvis project delete <이름>'
+
+      // === 스킬 목록 ===
+      case 'skills':
+        const targetAgent = args.slice(1).join(' ')
+        if (!targetAgent) return '❌ 에이전트 이름을 입력하세요.\n\n/jarvis skills <에이전트이름>'
+
+        // 에이전트 찾기
+        const { data: foundAgent } = await adminClient
+          .from('deployed_agents')
+          .select('id, name')
+          .eq('name', targetAgent)
+          .eq('owner_id', userId)
+          .single()
+
+        if (!foundAgent) return `❌ 에이전트 "${targetAgent}"를 찾을 수 없습니다.`
+
+        // 스킬 조회
+        const { data: skills } = await (adminClient as any)
+          .from('agent_skills')
+          .select('id, name, description, enabled')
+          .eq('agent_id', foundAgent.id)
+
+        if (!skills || skills.length === 0) {
+          return `🔧 "${foundAgent.name}" 에이전트에 장착된 스킬이 없습니다.`
+        }
+
+        let skillList = `🔧 ${foundAgent.name}의 스킬 (${skills.length}개)\n\n`
+        skills.forEach((s: any, i: number) => {
+          const status = s.enabled ? '✅' : '⏸️'
+          skillList += `${i + 1}. ${status} ${s.name}\n`
+          if (s.description) skillList += `   ${s.description}\n`
+        })
+        return skillList
+
+      // === 시스템 상태 ===
+      case 'status':
+        const { count: agentCount } = await adminClient
+          .from('deployed_agents')
+          .select('*', { count: 'exact', head: true })
+          .eq('owner_id', userId)
+
+        const { count: projectCount } = await adminClient
+          .from('projects')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+
+        return `📊 GlowUS 상태
+
+🤖 에이전트: ${agentCount || 0}개
+📁 프로젝트: ${projectCount || 0}개
+🔌 Jarvis: 온라인
+⏰ 시간: ${new Date().toLocaleString('ko-KR')}`
+
+      default:
+        return `❌ 알 수 없는 명령: ${action}\n\n/jarvis help 로 사용법을 확인하세요.`
+    }
+  } catch (error: any) {
+    console.error('[Jarvis Telegram] Error:', error)
+    return `❌ 오류 발생: ${error.message}`
+  }
+}
+
+/**
+ * PC 제어 명령 처리 - 로컬 Jarvis 서버 호출
+ */
+async function handlePCCommand(command: string, userId: string, chatId: number): Promise<string> {
+  const JARVIS_LOCAL_URL = process.env.JARVIS_LOCAL_URL || 'http://localhost:3099'
+  const JARVIS_API_SECRET = process.env.JARVIS_API_SECRET || 'jarvis-local-secret-change-me'
+
+  const args = command.split(' ')
+  const action = args[0].toLowerCase()
+
+  // 도움말
+  if (action === 'help' || action === '') {
+    return `🖥️ PC 제어 명령어 (Jarvis Local)
+
+📂 파일 관리:
+/pc search <경로> <검색어> - 파일 검색
+/pc list <경로> - 폴더 내용 보기
+/pc read <파일경로> - 파일 읽기
+
+🚀 앱 제어:
+/pc open <앱이름> - 앱 실행
+/pc close <앱이름> - 앱 종료
+/pc apps - 실행 중인 앱 목록
+
+📋 시스템:
+/pc info - 시스템 정보
+/pc screenshot - 스크린샷 촬영
+/pc url <URL> - URL 열기
+
+🔧 기타:
+/pc clipboard - 클립보드 내용
+/pc notify <제목> <메시지> - 알림 보내기
+
+⚠️ 맥북에서 jarvis-local-server가 실행 중이어야 합니다.
+npm run jarvis:local`
+  }
+
+  // 로컬 서버 호출 헬퍼
+  async function callLocalServer(tool: string, toolArgs: Record<string, any> = {}): Promise<any> {
+    try {
+      const response = await fetch(`${JARVIS_LOCAL_URL}/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${JARVIS_API_SECRET}`,
+        },
+        body: JSON.stringify({ tool, args: toolArgs }),
+      })
+
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(`서버 오류: ${error}`)
+      }
+
+      return await response.json()
+    } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED') {
+        throw new Error('로컬 Jarvis 서버가 실행되지 않았습니다.\n\n맥북에서 실행:\nnpm run jarvis:local')
+      }
+      throw err
+    }
+  }
+
+  try {
+    switch (action) {
+      // === 파일 검색 ===
+      case 'search':
+        const searchPath = args[1] || '~/Downloads'
+        const searchQuery = args.slice(2).join(' ')
+        if (!searchQuery) return '❌ 검색어를 입력하세요.\n\n/pc search <경로> <검색어>'
+
+        const expandedPath = searchPath.replace('~', '/Users/' + (process.env.USER || 'user'))
+        const searchResult = await callLocalServer('search_files', {
+          path: expandedPath,
+          query: searchQuery,
+          recursive: true,
+        })
+
+        if (searchResult.count === 0) {
+          return `🔍 "${searchQuery}" 검색 결과 없음\n경로: ${searchPath}`
+        }
+
+        let searchMsg = `🔍 "${searchQuery}" 검색 결과 (${searchResult.count}개)\n\n`
+        searchResult.results.slice(0, 10).forEach((f: string, i: number) => {
+          searchMsg += `${i + 1}. ${f}\n`
+        })
+        if (searchResult.count > 10) {
+          searchMsg += `\n... 외 ${searchResult.count - 10}개`
+        }
+        return searchMsg
+
+      // === 폴더 목록 ===
+      case 'list':
+      case 'ls':
+        const listPath = args[1] || '~'
+        const expandedListPath = listPath.replace('~', '/Users/' + (process.env.USER || 'user'))
+        const listResult = await callLocalServer('list_directory', { path: expandedListPath })
+
+        if (!listResult.items || listResult.items.length === 0) {
+          return `📂 빈 폴더: ${listPath}`
+        }
+
+        let listMsg = `📂 ${listPath} (${listResult.items.length}개)\n\n`
+        listResult.items.slice(0, 20).forEach((item: any) => {
+          const icon = item.type === 'directory' ? '📁' : '📄'
+          listMsg += `${icon} ${item.name}\n`
+        })
+        if (listResult.items.length > 20) {
+          listMsg += `\n... 외 ${listResult.items.length - 20}개`
+        }
+        return listMsg
+
+      // === 파일 읽기 ===
+      case 'read':
+      case 'cat':
+        const readPath = args.slice(1).join(' ')
+        if (!readPath) return '❌ 파일 경로를 입력하세요.\n\n/pc read <파일경로>'
+
+        const expandedReadPath = readPath.replace('~', '/Users/' + (process.env.USER || 'user'))
+        const readResult = await callLocalServer('read_file', { path: expandedReadPath })
+
+        if (!readResult.success) {
+          return `❌ 파일 읽기 실패: ${readResult.error}`
+        }
+
+        const content = readResult.content.substring(0, 3000)
+        return `📄 ${readPath}\n\n${content}${readResult.content.length > 3000 ? '\n\n... (내용 생략)' : ''}`
+
+      // === 앱 실행 ===
+      case 'open':
+        const appToOpen = args.slice(1).join(' ')
+        if (!appToOpen) return '❌ 앱 이름을 입력하세요.\n\n/pc open <앱이름>\n예: /pc open Safari'
+
+        const openResult = await callLocalServer('launch_app', { appName: appToOpen })
+        return openResult.success ? `🚀 ${appToOpen} 실행 완료` : `❌ 실행 실패: ${openResult.error}`
+
+      // === 앱 종료 ===
+      case 'close':
+      case 'kill':
+        const appToClose = args.slice(1).join(' ')
+        if (!appToClose) return '❌ 앱 이름을 입력하세요.\n\n/pc close <앱이름>'
+
+        const closeResult = await callLocalServer('kill_app', { appName: appToClose })
+        return closeResult.success ? `⏹️ ${appToClose} 종료 완료` : `❌ 종료 실패: ${closeResult.error}`
+
+      // === 실행 중인 앱 ===
+      case 'apps':
+        const appsResult = await callLocalServer('list_running_apps', {})
+        const appList = appsResult.apps?.filter((a: string) => !a.startsWith('/') && a.length > 0) || []
+
+        if (appList.length === 0) {
+          return '📱 실행 중인 앱 없음'
+        }
+
+        return `📱 실행 중인 앱 (${appList.length}개)\n\n${appList.slice(0, 20).join('\n')}`
+
+      // === 시스템 정보 ===
+      case 'info':
+        const infoResult = await callLocalServer('get_system_info', {})
+        return `🖥️ 시스템 정보
+
+💻 호스트: ${infoResult.hostname}
+👤 사용자: ${infoResult.username}
+🖥️ 플랫폼: ${infoResult.platform} (${infoResult.arch})
+🧠 CPU: ${infoResult.cpus}코어
+💾 메모리: ${infoResult.freeMemory} / ${infoResult.totalMemory}
+⏱️ 가동시간: ${infoResult.uptime}`
+
+      // === 스크린샷 ===
+      case 'screenshot':
+      case 'ss':
+        const ssResult = await callLocalServer('take_screenshot', {})
+        return ssResult.success ? `📸 스크린샷 저장: ${ssResult.path}` : `❌ 실패: ${ssResult.error}`
+
+      // === URL 열기 ===
+      case 'url':
+        const url = args[1]
+        if (!url) return '❌ URL을 입력하세요.\n\n/pc url <URL>'
+
+        const urlResult = await callLocalServer('open_url', { url })
+        return urlResult.success ? `🌐 URL 열기: ${url}` : `❌ 실패: ${urlResult.error}`
+
+      // === 클립보드 ===
+      case 'clipboard':
+      case 'clip':
+        const clipResult = await callLocalServer('get_clipboard', {})
+        if (!clipResult.success) return `❌ 클립보드 읽기 실패`
+
+        const clipContent = clipResult.content?.substring(0, 1000) || '(비어있음)'
+        return `📋 클립보드:\n\n${clipContent}`
+
+      // === 알림 ===
+      case 'notify':
+        const notifyTitle = args[1] || 'Jarvis'
+        const notifyMessage = args.slice(2).join(' ') || '알림'
+
+        const notifyResult = await callLocalServer('send_notification', {
+          title: notifyTitle,
+          message: notifyMessage,
+        })
+        return notifyResult.success ? `🔔 알림 전송 완료` : `❌ 실패: ${notifyResult.error}`
+
+      // === 핑 ===
+      case 'ping':
+        const pingResult = await callLocalServer('ping', {})
+        return pingResult.success ? `✅ Jarvis Local 서버 온라인\n⏰ ${pingResult.timestamp}` : `❌ 오프라인`
+
+      default:
+        return `❌ 알 수 없는 명령: ${action}\n\n/pc help 로 사용법을 확인하세요.`
+    }
+  } catch (error: any) {
+    console.error('[PC Command] Error:', error)
+    return `❌ 오류: ${error.message}`
   }
 }

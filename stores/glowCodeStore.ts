@@ -29,6 +29,8 @@ export interface GlowCodeThread {
   updatedAt: number
   /** DB에 저장된 스레드 ID (동기화용) */
   dbThreadId?: string
+  /** 🔥 이 스레드가 연결된 프로젝트 경로 (Cursor/Windsurf처럼 프로젝트별 대화 유지) */
+  projectPath?: string
 }
 
 interface GlowCodeState {
@@ -95,11 +97,15 @@ interface GlowCodeState {
   setSidebarTab: (tab: 'threads' | 'files' | 'settings') => void
 
   // Thread Actions
-  createThread: (title?: string) => string
+  createThread: (title?: string, projectPath?: string) => string
   deleteThread: (id: string) => void
   setActiveThread: (id: string | null) => void
   getActiveThread: () => GlowCodeThread | null
   getMessages: () => GlowCodeMessage[]
+  /** 🔥 프로젝트 경로로 기존 스레드 찾거나 새로 생성 (Cursor/Windsurf 스타일) */
+  getOrCreateThreadForProject: (projectPath: string) => string
+  /** 🔥 프로젝트 경로로 스레드 찾기 */
+  findThreadByProjectPath: (projectPath: string) => GlowCodeThread | null
 
   // Message Actions
   addMessage: (message: Omit<GlowCodeMessage, 'id' | 'timestamp'>) => void
@@ -167,7 +173,7 @@ export const useGlowCodeStore = create<GlowCodeState>()(
       setSidebarTab: (sidebarTab) => set({ sidebarTab }),
 
       // Thread Actions
-      createThread: (title) => {
+      createThread: (title, projectPath) => {
         const id = nanoid()
         const thread: GlowCodeThread = {
           id,
@@ -175,6 +181,7 @@ export const useGlowCodeStore = create<GlowCodeState>()(
           messages: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          projectPath, // 🔥 프로젝트 경로 저장
         }
         set((state) => ({
           threads: [thread, ...state.threads],
@@ -203,6 +210,39 @@ export const useGlowCodeStore = create<GlowCodeState>()(
       getMessages: () => {
         const thread = get().getActiveThread()
         return thread?.messages || []
+      },
+
+      // 🔥 프로젝트 경로로 기존 스레드 찾기
+      findThreadByProjectPath: (projectPath) => {
+        const state = get()
+        return state.threads.find((t) => t.projectPath === projectPath) || null
+      },
+
+      // 🔥 프로젝트 경로로 기존 스레드 찾거나 새로 생성 (Cursor/Windsurf 스타일)
+      getOrCreateThreadForProject: (projectPath) => {
+        const state = get()
+
+        // 0. 현재 활성 스레드가 이미 해당 프로젝트의 것이면 스킵
+        const activeThread = state.threads.find((t) => t.id === state.activeThreadId)
+        if (activeThread?.projectPath === projectPath) {
+          console.log('[GlowCode] ✅ 이미 해당 프로젝트 스레드 활성화됨:', projectPath)
+          return activeThread.id
+        }
+
+        // 1. 해당 프로젝트의 기존 스레드 찾기
+        const existingThread = state.threads.find((t) => t.projectPath === projectPath)
+
+        if (existingThread) {
+          // 기존 스레드 활성화 (이전 대화 복원)
+          console.log('[GlowCode] 📂 프로젝트 스레드 복원:', projectPath, '→', existingThread.id)
+          set({ activeThreadId: existingThread.id })
+          return existingThread.id
+        }
+
+        // 2. 없으면 새 스레드 생성
+        const folderName = projectPath.split('/').pop() || 'New Project'
+        console.log('[GlowCode] 🆕 프로젝트용 새 스레드 생성:', projectPath)
+        return state.createThread(folderName, projectPath)
       },
 
       // Message Actions
@@ -278,9 +318,14 @@ export const useGlowCodeStore = create<GlowCodeState>()(
       })),
 
       // Settings Actions
-      updateSettings: (settings) => set((state) => ({
-        settings: { ...state.settings, ...settings },
-      })),
+      updateSettings: (settings) => {
+        console.log('[GlowCodeStore] updateSettings 호출:', settings)
+        set((state) => {
+          const newSettings = { ...state.settings, ...settings }
+          console.log('[GlowCodeStore] 새 설정:', newSettings)
+          return { settings: newSettings }
+        })
+      },
 
       // Reset threads (for cleanup)
       resetThreads: () => set({ threads: [], activeThreadId: null }),

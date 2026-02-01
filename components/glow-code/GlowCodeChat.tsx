@@ -41,6 +41,126 @@ import { useApprovalStore } from '@/lib/glow-code/approval-system'
 import { ApprovalModal, ApprovalBadge } from '@/components/glow-code/ApprovalModal'
 import { useAIThreadSync } from '@/hooks/useAIThreadSync'
 import { emitAgentSpawnEvent, emitAgentUpdateEvent } from '@/lib/agent/agent-mode'
+import { AgentTabs, useAgentTabsStore, type AgentTabsStore } from '@/components/glow-code/AgentTabs'
+
+// 🔥 Agent Team 백그라운드 실행 함수 (비블로킹)
+async function runAgentTeamInBackground(
+  userRequest: string,
+  cwd: string,
+  store: AgentTabsStore,
+  chatActions: {
+    addMessage: (msg: any) => void
+    getMessages: () => any[]
+    updateMessage: (id: string, updates: any) => void
+    setStreamContent: (content: string) => void
+  }
+) {
+  try {
+    const response = await fetch('/api/glow-code/agent-team', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userRequest, cwd }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`API 오류: ${response.status} - ${errorText}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('스트림을 읽을 수 없습니다')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+
+        try {
+          const data = JSON.parse(line.slice(6))
+
+          switch (data.type) {
+            case 'agents_init':
+              // 에이전트 탭 추가
+              for (const agent of data.agents) {
+                store.addTab({
+                  id: agent.id,
+                  name: agent.name,
+                  role: agent.role,
+                  task: agent.task,
+                  status: 'idle',
+                })
+              }
+              // 채팅에 팀 구성 알림
+              chatActions.addMessage({
+                role: 'assistant',
+                content: `## 👥 에이전트 팀 구성 완료\n\n${data.agents.map((a: any) => `- **${a.name}** (${a.role}): ${a.task}`).join('\n')}\n\n각 에이전트가 병렬로 작업을 시작합니다...`,
+                isStreaming: false
+              })
+              break
+
+            case 'agent_status':
+              store.updateTab(data.agentId, {
+                status: data.status,
+                progress: data.progress || 0,
+                ...(data.status === 'complete' || data.status === 'error'
+                  ? { endTime: Date.now() }
+                  : {})
+              })
+              if (data.status === 'error' && data.error) {
+                store.addMessage(data.agentId, { type: 'text', content: `❌ 오류: ${data.error}` })
+              }
+              break
+
+            case 'agent_output':
+              store.updateTab(data.agentId, { progress: data.progress || 0 })
+              if (data.data?.error || (typeof data.data?.content === 'string' && data.data.content.includes('error'))) {
+                const errContent = data.data?.error || data.data?.content
+                store.addMessage(data.agentId, { type: 'text', content: `⚠️ ${errContent}` })
+              }
+              break
+
+            case 'agent_log':
+              store.addMessage(data.agentId, { type: 'text', content: data.log })
+              break
+
+            case 'all_complete':
+              const currentTabs = useAgentTabsStore.getState().tabs
+              const errorTabs = currentTabs.filter(t => t.status === 'error')
+              const completeTabs = currentTabs.filter(t => t.status === 'complete')
+
+              let completeMsg = ''
+              if (errorTabs.length > 0) {
+                completeMsg = `## ⚠️ 작업 완료 (일부 오류)\n\n✅ 성공: ${completeTabs.length}개\n❌ 실패: ${errorTabs.length}개`
+              } else {
+                completeMsg = `## ✅ 모든 에이전트 작업 완료\n\n${currentTabs.map(t => `- **${t.name}**: 완료`).join('\n')}`
+              }
+              chatActions.addMessage({ role: 'assistant', content: completeMsg, isStreaming: false })
+              break
+          }
+        } catch (e) {
+          // JSON 파싱 에러 무시
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error('[Agent Mode] Background error:', error)
+    chatActions.addMessage({
+      role: 'assistant',
+      content: `## ❌ 에이전트 팀 오류\n\n${error.message}\n\n**해결 방법:**\n- Claude CLI 설치 확인: \`claude --version\`\n- 프로젝트 경로 확인`,
+      isStreaming: false
+    })
+    useAgentTabsStore.getState().clearTabs()
+  }
+}
 
 // Claude Code 브랜드 색상
 const CLAUDE_ORANGE = '#D97757'
@@ -460,6 +580,7 @@ export function ClaudeCodeUI() {
     updateSettings,
     context,
     setContext,
+    getOrCreateThreadForProject, // 🔥 프로젝트별 스레드 관리
   } = useGlowCodeStore()
 
   // 🔥 NeuralMapStore에서 프로젝트 경로 가져오기 (현재 메뉴의 프로젝트 컨텍스트)
@@ -522,29 +643,24 @@ export function ClaudeCodeUI() {
     setPortalMounted(true)
   }, [])
 
-  // 🔥 마운트 시 활성 스레드가 없으면 가장 최근 스레드 자동 선택
+  // 🔥 NeuralMapStore의 프로젝트 경로와 자동 동기화
+  // 각 메뉴의 채팅 에이전트는 해당 메뉴의 프로젝트 경로를 자동으로 사용
+  // 🔥 Cursor/Windsurf 스타일: 프로젝트 변경 시 해당 프로젝트의 이전 대화 복원
   const setActiveThread = useGlowCodeStore((state) => state.setActiveThread)
   useEffect(() => {
-    if (!activeThreadId && threads.length > 0) {
+    if (neuralMapProjectPath) {
+      // 프로젝트 경로가 있으면 해당 프로젝트의 스레드로 전환
+      setContext({ projectPath: neuralMapProjectPath })
+      console.log('[GlowCode] 🔄 프로젝트 경로 동기화:', neuralMapProjectPath)
+
+      // 🔥 프로젝트 경로로 기존 스레드 찾거나 새로 생성 (이전 대화 복원)
+      getOrCreateThreadForProject(neuralMapProjectPath)
+    } else if (!activeThreadId && threads.length > 0) {
+      // 프로젝트 경로가 없고 활성 스레드도 없으면 가장 최근 스레드 선택
       console.log('[GlowCode] 🔄 자동으로 마지막 스레드 선택:', threads[0].id)
       setActiveThread(threads[0].id)
     }
-  }, [activeThreadId, threads, setActiveThread])
-
-  // 🔥 NeuralMapStore의 프로젝트 경로와 자동 동기화
-  // 각 메뉴의 채팅 에이전트는 해당 메뉴의 프로젝트 경로를 자동으로 사용
-  // 폴더가 바뀌면 새 스레드로 시작
-  useEffect(() => {
-    if (neuralMapProjectPath && neuralMapProjectPath !== context.projectPath) {
-      setContext({ projectPath: neuralMapProjectPath })
-      console.log('[GlowCode] 🔄 프로젝트 경로 자동 동기화:', neuralMapProjectPath)
-
-      // 🔥 폴더 변경 시 새 스레드 생성
-      const folderName = neuralMapProjectPath.split('/').pop() || '새 프로젝트'
-      createThread(folderName)
-      console.log('[GlowCode] 🆕 새 스레드 생성:', folderName)
-    }
-  }, [neuralMapProjectPath, context.projectPath, setContext, createThread])
+  }, [neuralMapProjectPath, activeThreadId, threads, setContext, getOrCreateThreadForProject, setActiveThread])
 
   // 🔥 프로젝트 연결 시 DB에서 folder_path 자동 가져오기
   // linkedProjectId가 있는데 projectPath가 없으면 DB에서 folder_path 조회
@@ -581,7 +697,7 @@ export function ClaudeCodeUI() {
     setSelectedSuggestionIndex(0)
   }, [commandSuggestions])
 
-  // 🔥 슬래시 명령어 컨텍스트
+  // 🔥 슬래시 명령어 컨텍스트 (스토어 함수 직접 참조로 최신 상태 보장)
   const slashCommandContext: CommandContext = useMemo(() => ({
     cwd: context.projectPath || undefined,
     sessionId: null, // TODO: 세션 ID 관리
@@ -590,8 +706,11 @@ export function ClaudeCodeUI() {
     clearMessages,
     addMessage,
     setContext: (ctx) => setContext(ctx as any),
-    updateSettings: (s) => updateSettings(s as any),
-  }), [context, clearMessages, addMessage, setContext, updateSettings])
+    updateSettings: (s) => {
+      console.log('[GlowCodeChat] slashCommandContext.updateSettings 호출:', s)
+      useGlowCodeStore.getState().updateSettings(s as any)
+    },
+  }), [context, clearMessages, addMessage, setContext])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -995,12 +1114,194 @@ export function ClaudeCodeUI() {
     setAttachedFiles([]) // 첨부 파일 초기화
 
     addMessage({ role: 'user', content: userMessage })
-    addMessage({ role: 'assistant', content: '', isStreaming: true })
 
     // 🔥 DB에 사용자 메시지 저장
     if (activeThreadId) {
       addMessageWithSync(activeThreadId, 'user', userMessage).catch(console.error)
     }
+
+    // 🔥 Team Mode: Orchestrator API 사용 (PM + 서브 에이전트 실시간 스트리밍)
+    // Quick Mode: cli-proxy API 사용 (단일 CLI)
+
+    if (settings.executionMode === 'agent') {
+      // 에이전트 패널 초기화
+      const store = useAgentTabsStore.getState()
+      store.clearTabs()
+
+      addMessage({ role: 'assistant', content: '', isStreaming: true })
+
+      try {
+        abortControllerRef.current = new AbortController()
+        const signal = abortControllerRef.current.signal
+
+        const response = await fetch('/api/glow-code/orchestrator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal,
+          body: JSON.stringify({
+            userRequest: messageWithAttachments,
+            cwd: context.projectPath || '',
+            model: settings.model !== 'custom' ? settings.model : settings.customModelId,
+          })
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Orchestrator 오류: ${response.status} - ${errorText}`)
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error('스트림을 읽을 수 없습니다')
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let pmContent = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              switch (data.type) {
+                // PM 상태
+                case 'pm_status':
+                  if (data.status === 'started') {
+                    addStreamEvent({ type: 'status', content: '🎯 PM(Project Manager) 분석 시작...' })
+                  } else if (data.status === 'complete') {
+                    addStreamEvent({ type: 'status', content: '✅ PM 작업 완료' })
+                  } else if (data.status === 'error') {
+                    addStreamEvent({ type: 'status', content: `❌ PM 오류: ${data.message}` })
+                  }
+                  break
+
+                // PM 텍스트 응답
+                case 'pm_text':
+                  pmContent += data.content
+                  setStreamContent(pmContent)
+                  break
+
+                // PM 도구 사용
+                case 'pm_tool':
+                  addStreamEvent({
+                    type: 'tool',
+                    name: data.name,
+                    input: data.input,
+                    id: data.id
+                  })
+                  break
+
+                // 에이전트 spawn
+                case 'agent_spawn':
+                  console.log('[Orchestrator] Agent spawned:', data.agent)
+                  store.addTab({
+                    id: data.agent.id,
+                    name: data.agent.name,
+                    role: data.agent.role,
+                    task: data.agent.task,
+                    status: 'idle',
+                  })
+                  addStreamEvent({
+                    type: 'status',
+                    content: `🤖 ${data.agent.name} 시작: ${data.agent.task}`
+                  })
+                  break
+
+                // 에이전트 상태
+                case 'agent_status':
+                  store.updateTab(data.agentId, {
+                    status: data.status,
+                    progress: data.progress || 0,
+                    ...(data.status === 'complete' || data.status === 'error'
+                      ? { endTime: Date.now() }
+                      : {})
+                  })
+                  if (data.status === 'complete') {
+                    addStreamEvent({ type: 'status', content: `✅ 에이전트 완료: ${data.agentId}` })
+                  }
+                  break
+
+                // 에이전트 로그
+                case 'agent_log':
+                  store.addMessage(data.agentId, { type: 'text', content: data.log })
+                  store.updateTab(data.agentId, { progress: data.progress || 0 })
+                  break
+
+                // 에이전트 도구 사용
+                case 'agent_tool':
+                  store.addMessage(data.agentId, {
+                    type: 'tool',
+                    content: `🔧 ${data.toolName}: ${JSON.stringify(data.toolInput).substring(0, 100)}`
+                  })
+                  store.updateTab(data.agentId, { progress: data.progress || 0, status: 'working' })
+                  break
+
+                // 에이전트 도구 결과
+                case 'agent_tool_result':
+                  store.addMessage(data.agentId, {
+                    type: 'tool_result',
+                    content: data.isError ? `❌ ${data.content}` : `✅ ${data.content}`
+                  })
+                  break
+
+                // 오케스트레이터 완료
+                case 'orchestrator_complete':
+                  const tabs = store.tabs
+                  const completedCount = tabs.filter(t => t.status === 'complete').length
+                  const errorCount = tabs.filter(t => t.status === 'error').length
+                  if (tabs.length > 0) {
+                    pmContent += `\n\n---\n## 📊 작업 결과\n- 완료: ${completedCount}개\n- 오류: ${errorCount}개`
+                    setStreamContent(pmContent)
+                  }
+                  break
+              }
+            } catch (e) {
+              // JSON 파싱 에러 무시
+            }
+          }
+        }
+
+        // 스트리밍 완료
+        const msgs = getMessages()
+        const lastMsg = msgs[msgs.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          updateMessage(lastMsg.id, {
+            content: pmContent || '작업 완료',
+            isStreaming: false
+          })
+          if (activeThreadId && pmContent) {
+            addMessageWithSync(activeThreadId, 'assistant', pmContent).catch(console.error)
+          }
+        }
+
+      } catch (error: any) {
+        const msgs = getMessages()
+        const lastMsg = msgs[msgs.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          updateMessage(lastMsg.id, {
+            content: `Error: ${error.message}`,
+            isStreaming: false
+          })
+        }
+      } finally {
+        setIsLoading(false)
+        clearStreamContent()
+        setStreamStartTime(null)
+      }
+
+      return
+    }
+
+    // 🔥 Quick Mode: 기존 cli-proxy API 사용
+    addMessage({ role: 'assistant', content: '', isStreaming: true })
 
     try {
       // 🔥 AbortController 생성 (Stop 버튼용)
@@ -1023,13 +1324,13 @@ export function ClaudeCodeUI() {
       const response = await fetch('/api/glow-code/cli-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal, // 🔥 AbortController signal 전달
+        signal,
         body: JSON.stringify({
           messages: apiMessages,
           options: {
             model: settings.model !== 'custom' ? settings.model : settings.customModelId,
             cwd: context.projectPath || process.cwd?.() || undefined,
-            executionMode: settings.executionMode, // 🔥 Agent Mode 전달
+            executionMode: 'quick',
           },
           context: requestContext
         })
@@ -1093,6 +1394,27 @@ export function ClaudeCodeUI() {
                     // 🔥 파일 변경 이벤트 발생
                     if (data.toolUseId) {
                       handleToolResult(data.toolUseId, data.isError)
+
+                      // 🔥 Agent Panel: Task 도구 결과로 에이전트 상태 업데이트
+                      const agentStore = useAgentTabsStore.getState()
+                      const agentTab = agentStore.tabs.find(t => t.id === data.toolUseId)
+                      if (agentTab) {
+                        agentStore.updateTab(data.toolUseId, {
+                          status: data.isError ? 'error' : 'complete',
+                          progress: 100,
+                          endTime: Date.now()
+                        })
+                        // 결과를 에이전트 메시지에 추가
+                        if (data.content) {
+                          const resultText = typeof data.content === 'string'
+                            ? data.content
+                            : JSON.stringify(data.content).substring(0, 500)
+                          agentStore.addMessage(data.toolUseId, {
+                            type: 'text',
+                            content: data.isError ? `❌ 오류: ${resultText}` : `✅ 완료: ${resultText}`
+                          })
+                        }
+                      }
                     }
                     break
                   case 'status':
@@ -1124,18 +1446,31 @@ export function ClaudeCodeUI() {
                     console.log('[Claude] Done with code:', data.code)
                     break
 
-                  // 🔥 Agent Mode: 서브 에이전트 스폰 이벤트
+                  // 🔥 Agent Mode: 서브 에이전트 스폰 이벤트 → Agent Panel에 표시
                   case 'agent_spawn':
                     if (data.agent) {
                       console.log('[Claude] Agent spawned:', data.agent)
+
+                      // 🔥 Agent Panel에 탭 추가
+                      const agentStore = useAgentTabsStore.getState()
+                      agentStore.addTab({
+                        id: data.agent.id || `agent-${Date.now()}`,
+                        name: data.agent.name,
+                        role: data.agent.role,
+                        task: data.agent.task,
+                        status: 'working',
+                      })
+
+                      // 이벤트도 발생 (다른 컴포넌트용)
                       emitAgentSpawnEvent({
                         name: data.agent.name,
                         role: data.agent.role,
                         task: data.agent.task
                       })
+
                       addStreamEvent({
                         type: 'status',
-                        content: `🤖 Sub-agent spawned: ${data.agent.name} (${data.agent.role})`
+                        content: `🤖 서브 에이전트 시작: ${data.agent.name}`
                       })
                     }
                     break
@@ -1335,12 +1670,26 @@ export function ClaudeCodeUI() {
     )
   }
 
+  // 🔥 Agent Mode 상태
+  const agentTabs = useAgentTabsStore((state) => state.tabs)
+  const hasActiveAgents = agentTabs.length > 0
+
   return (
-    <div className="flex flex-col h-full bg-[#1a1a1a]">
-      {/* Header */}
+    <div className="flex h-full bg-[#1a1a1a]">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-white">Claude Code</div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-white">Claude Code</span>
+            {settings.executionMode === 'agent' && (
+              <span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                Team Mode
+              </span>
+            )}
+          </div>
           {/* 🔥 승인 대기 뱃지 */}
           <ApprovalBadge />
         </div>
@@ -1398,6 +1747,7 @@ export function ClaudeCodeUI() {
           </>
         )}
       </div>
+
 
       {/* Terminal Banner */}
       {showTerminalBanner && (
@@ -1561,9 +1911,14 @@ export function ClaudeCodeUI() {
             <div className="flex items-center gap-3">
               {/* 🔥 Execution Mode Toggle (Quick/Agent) */}
               <button
-                onClick={() => updateSettings({
-                  executionMode: settings.executionMode === 'quick' ? 'agent' : 'quick'
-                })}
+                onClick={() => {
+                  const newMode = settings.executionMode === 'quick' ? 'agent' : 'quick'
+                  updateSettings({ executionMode: newMode })
+                  // Quick Mode로 전환 시 에이전트 탭 초기화
+                  if (newMode === 'quick') {
+                    useAgentTabsStore.getState().clearTabs()
+                  }
+                }}
                 className={cn(
                   "flex items-center gap-1.5 text-sm hover:text-white transition-colors px-2 py-1 rounded-md",
                   settings.executionMode === 'agent'
@@ -1571,8 +1926,8 @@ export function ClaudeCodeUI() {
                     : "text-cyan-400 bg-cyan-500/10"
                 )}
                 title={settings.executionMode === 'agent'
-                  ? "Agent Mode: PM으로서 서브 에이전트 관리"
-                  : "Quick Mode: 직접 실행"
+                  ? "Team Mode: /team [작업] 으로 에이전트 팀 spawn 가능"
+                  : "Quick Mode: 직접 실행 (단일 CLI)"
                 }
               >
                 {settings.executionMode === 'agent' ? (
@@ -2070,6 +2425,10 @@ export function ClaudeCodeUI() {
         isOpen={!!approvalRequest}
         onClose={() => setApprovalRequest(null)}
       />
+      </div>
+
+      {/* 🔥 Agent Tabs Panel - 우측에 접었다 폈다 가능 */}
+      {hasActiveAgents && <AgentTabs />}
     </div>
   )
 }
