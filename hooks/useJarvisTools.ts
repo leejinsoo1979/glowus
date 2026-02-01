@@ -192,6 +192,45 @@ export function useJarvisTools() {
     return () => clearInterval(interval)
   }, [loadPendingApprovals])
 
+  // 브라우저 자동화 실행
+  const executeBrowserTask = useCallback(async (
+    instruction: string,
+    forceAI: boolean = false
+  ): Promise<{ success: boolean; message?: string; needsAI?: boolean; tokensEstimate?: number; error?: string }> => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/jarvis/browser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction, forceAI }),
+      })
+      const data = await res.json()
+      return data
+    } catch (err: any) {
+      setError(err.message)
+      return { success: false, error: err.message }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // 저장된 브라우저 스크립트 목록 조회
+  const loadBrowserScripts = useCallback(async (domain?: string) => {
+    try {
+      const url = domain
+        ? `/api/jarvis/browser?domain=${domain}`
+        : '/api/jarvis/browser'
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      return data.scripts || []
+    } catch (err: any) {
+      setError(err.message)
+      return []
+    }
+  }, [])
+
   return {
     // 상태
     tools,
@@ -212,5 +251,9 @@ export function useJarvisTools() {
 
     // 로그
     loadLogs,
+
+    // 브라우저 자동화
+    executeBrowserTask,
+    loadBrowserScripts,
   }
 }

@@ -761,6 +761,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // Command: /browser or /브라우저 - 브라우저 자동화
+    if (text.startsWith('/browser ') || text === '/browser' || text.startsWith('/브라우저 ') || text === '/브라우저') {
+      const adminClient = createAdminClient()
+      const telegramUserId = String(message.from.id)
+
+      // GlowUS 계정 연결 확인
+      const { data: telegramUser } = await (adminClient as any)
+        .from('telegram_users')
+        .select('user_id')
+        .eq('id', telegramUserId)
+        .single()
+
+      if (!telegramUser?.user_id) {
+        await sendTelegramMessage(chatId, `❌ GlowUS 계정 연결이 필요합니다.\n\n/link your@email.com 으로 먼저 연결해주세요.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      const browserInstruction = text.replace(/^\/(browser|브라우저)\s*/, '').trim()
+
+      if (!browserInstruction || browserInstruction === 'help') {
+        await sendTelegramMessage(chatId, `🌐 브라우저 자동화 명령어
+
+사용법: /browser <지시>
+
+예시:
+/browser 쿠팡에서 에어팟 장바구니 담아
+/browser 네이버에서 날씨 검색해
+/browser 유튜브에서 뉴진스 틀어
+/browser 구글에서 맛집 검색
+
+💡 자주 쓰는 작업은 자동으로 스크립트로 저장되어 토큰을 절약합니다.
+
+⚠️ 맥북에서 jarvis-local-server가 실행 중이어야 합니다.`)
+        return NextResponse.json({ ok: true })
+      }
+
+      const browserResult = await handleBrowserCommand(browserInstruction, telegramUser.user_id, chatId)
+      await sendTelegramMessage(chatId, browserResult)
+      return NextResponse.json({ ok: true })
+    }
+
     // Command: /jarvis - GlowUS 제어 (Jarvis 시스템)
     if (text.startsWith('/jarvis ') || text === '/jarvis') {
       const adminClient = createAdminClient()
@@ -3395,6 +3436,201 @@ npm run jarvis:local`
     }
   } catch (error: any) {
     console.error('[PC Command] Error:', error)
+    return `❌ 오류: ${error.message}`
+  }
+}
+
+/**
+ * 브라우저 자동화 명령 처리
+ * 스크립트 우선, 없으면 AI 폴백 안내
+ */
+async function handleBrowserCommand(instruction: string, userId: string, chatId: number): Promise<string> {
+  const JARVIS_LOCAL_URL = process.env.JARVIS_LOCAL_URL || 'http://localhost:3099'
+  const JARVIS_API_SECRET = process.env.JARVIS_API_SECRET || 'jarvis-local-secret-change-me'
+
+  try {
+    // 1. 저장된 스크립트 찾기
+    const adminClient = createAdminClient()
+
+    // 도메인 추출
+    const domainMap: Record<string, string[]> = {
+      'coupang.com': ['쿠팡', 'coupang'],
+      'naver.com': ['네이버', 'naver'],
+      'google.com': ['구글', 'google'],
+      'youtube.com': ['유튜브', 'youtube'],
+      'gmarket.com': ['지마켓', 'gmarket'],
+      '11st.co.kr': ['11번가', '11st'],
+    }
+
+    let domain: string | null = null
+    const lowerInstruction = instruction.toLowerCase()
+    for (const [d, keywords] of Object.entries(domainMap)) {
+      if (keywords.some(k => lowerInstruction.includes(k))) {
+        domain = d
+        break
+      }
+    }
+
+    if (!domain) {
+      return `❌ 지원하는 사이트를 찾을 수 없습니다.
+
+현재 지원 사이트:
+• 쿠팡 (coupang.com)
+• 네이버 (naver.com)
+• 구글 (google.com)
+• 유튜브 (youtube.com)
+• 지마켓 (gmarket.com)
+• 11번가 (11st.co.kr)
+
+예시: /browser 쿠팡에서 에어팟 검색해`
+    }
+
+    // 2. 스크립트 조회
+    const { data: scripts } = await (adminClient as any)
+      .from('browser_scripts')
+      .select('*')
+      .eq('site_domain', domain)
+      .eq('is_active', true)
+      .or(`user_id.eq.${userId},is_public.eq.true`)
+      .order('success_count', { ascending: false })
+      .limit(1)
+
+    if (!scripts || scripts.length === 0) {
+      return `⚠️ "${domain}"에 대한 저장된 스크립트가 없습니다.
+
+🤖 AI로 실행하시겠습니까? (토큰 약 15,000 소모)
+
+GlowUS 웹에서 AI 브라우저 모드를 사용하거나,
+스크립트를 먼저 등록해주세요.`
+    }
+
+    const script = scripts[0]
+
+    // 3. 변수 추출
+    const variables: Record<string, any> = {}
+    const scriptVars = script.variables || []
+
+    for (const v of scriptVars) {
+      if (v.name === 'productName' || v.name === 'query') {
+        // "에어팟을 장바구니에 담아" → "에어팟"
+        const patterns = [
+          /(.+?)을?\s*(장바구니|카트|담|구매|검색|찾)/,
+          /에서\s+(.+?)\s*(검색|찾|틀어|재생)/,
+          /(.+?)\s*(틀어|재생|봐)/,
+        ]
+
+        for (const pattern of patterns) {
+          const match = instruction.match(pattern)
+          if (match) {
+            variables[v.name] = match[1].trim()
+            break
+          }
+        }
+
+        // 패턴 실패시 주요 단어 추출
+        if (!variables[v.name]) {
+          const words = instruction.split(/\s+/)
+          const stopWords = ['에서', '을', '를', '좀', '해줘', '해', '담아', '검색', '찾아', '틀어', '재생', '쿠팡', '네이버', '구글', '유튜브']
+          const nouns = words.filter(w => !stopWords.some(s => w.includes(s)) && w.length > 1)
+          if (nouns.length > 0) {
+            variables[v.name] = nouns[0]
+          }
+        }
+      }
+
+      if (v.name === 'sortByPrice') {
+        variables[v.name] = instruction.includes('최저가') || instruction.includes('싼')
+      }
+
+      // 기본값 적용
+      if (variables[v.name] === undefined && v.default !== undefined) {
+        variables[v.name] = v.default
+      }
+    }
+
+    // 필수 변수 체크
+    const missingRequired = scriptVars
+      .filter((v: any) => v.required && !variables[v.name])
+      .map((v: any) => v.name)
+
+    if (missingRequired.length > 0) {
+      return `❌ 필수 정보가 부족합니다: ${missingRequired.join(', ')}
+
+예시: /browser ${domain.split('.')[0]}에서 [검색어] 검색해`
+    }
+
+    // 4. 로컬 서버에서 스크립트 실행
+    console.log(`[Browser] 🚀 Executing script: ${script.site_name}/${script.action_name}`)
+    console.log(`[Browser] 📝 Variables:`, variables)
+
+    const response = await fetch(`${JARVIS_LOCAL_URL}/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${JARVIS_API_SECRET}`,
+      },
+      body: JSON.stringify({
+        tool: 'run_browser_script',
+        args: {
+          scriptCode: script.script_code,
+          variables,
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`서버 오류: ${error}`)
+    }
+
+    const result = await response.json()
+
+    // 5. 통계 업데이트
+    if (result.success) {
+      await (adminClient as any)
+        .from('browser_scripts')
+        .update({
+          success_count: script.success_count + 1,
+          last_success_at: new Date().toISOString(),
+        })
+        .eq('id', script.id)
+
+      return `✅ ${script.site_name} - ${script.action_description || script.action_name}
+
+${result.message || '작업 완료'}
+
+📊 스크립트 사용 (토큰 절약!)
+⏱️ 실행 시간: ${result.executionTimeMs || 0}ms`
+    } else {
+      await (adminClient as any)
+        .from('browser_scripts')
+        .update({
+          fail_count: script.fail_count + 1,
+          last_fail_at: new Date().toISOString(),
+          last_fail_reason: result.error,
+        })
+        .eq('id', script.id)
+
+      return `❌ 스크립트 실행 실패
+
+오류: ${result.error}
+
+💡 사이트 구조가 변경되었을 수 있습니다.
+AI 모드로 다시 시도하시겠습니까?`
+    }
+
+  } catch (error: any) {
+    if (error.code === 'ECONNREFUSED' || error.cause?.code === 'ECONNREFUSED') {
+      return `❌ 로컬 Jarvis 서버에 연결할 수 없습니다.
+
+맥북에서 실행:
+npm run jarvis:local
+
+그리고 ngrok으로 외부 접속 열기:
+ngrok http 3099`
+    }
+
+    console.error('[Browser Command] Error:', error)
     return `❌ 오류: ${error.message}`
   }
 }

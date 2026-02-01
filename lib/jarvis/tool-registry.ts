@@ -305,6 +305,20 @@ export const BROWSER_TOOLS: ToolDefinition[] = [
     riskLevel: 'LOW',
     requiresApproval: false,
   },
+  {
+    name: 'run_browser_script',
+    description: '저장된 브라우저 스크립트 실행',
+    category: 'browser',
+    riskLevel: 'MEDIUM',
+    requiresApproval: true,
+  },
+  {
+    name: 'browser_automation',
+    description: '브라우저 자동화 (스크립트 우선, AI 폴백)',
+    category: 'browser',
+    riskLevel: 'MEDIUM',
+    requiresApproval: true,
+  },
 ]
 
 // ============================================

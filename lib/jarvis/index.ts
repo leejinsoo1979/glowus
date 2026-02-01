@@ -31,3 +31,13 @@ export {
   getPendingApprovals,
   getExecutionLogs,
 } from './executor'
+
+// Browser Automation
+export {
+  findMatchingScript,
+  extractVariables,
+  executeBrowserTask,
+  saveLearnedScript,
+  logScriptExecution,
+} from './browser-automation'
+export type { BrowserScript, ScriptVariable, BrowserTaskResult } from './browser-automation'

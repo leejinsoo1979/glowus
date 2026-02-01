@@ -308,6 +308,104 @@ const handlers = {
   async ping() {
     return { success: true, message: 'pong', timestamp: new Date().toISOString() };
   },
+
+  // 브라우저 스크립트 실행 (Playwright)
+  async run_browser_script(args) {
+    const { scriptCode, variables } = args;
+    const startTime = Date.now();
+
+    try {
+      // Playwright 동적 로드
+      let playwright;
+      try {
+        playwright = require('playwright');
+      } catch (e) {
+        return {
+          success: false,
+          error: 'Playwright가 설치되지 않았습니다. npm install playwright 실행 필요',
+        };
+      }
+
+      // 브라우저 실행
+      const browser = await playwright.chromium.launch({
+        headless: false, // 사용자가 볼 수 있게
+        slowMo: 100, // 동작 확인용 딜레이
+      });
+
+      const context = await browser.newContext();
+      const page = await context.newPage();
+
+      // 스크립트를 함수로 변환하여 실행
+      // scriptCode는 "async function execute(page, variables) { ... }" 형태
+      const executeFunc = new Function('page', 'variables', `
+        return (async () => {
+          ${scriptCode.replace(/^async function execute\(page, variables\)\s*\{/, '').replace(/\}$/, '')}
+        })();
+      `);
+
+      const result = await executeFunc(page, variables);
+
+      // 브라우저는 열어둠 (사용자가 확인할 수 있게)
+      // 30초 후 자동 종료
+      setTimeout(async () => {
+        try {
+          await browser.close();
+        } catch (e) {}
+      }, 30000);
+
+      return {
+        success: true,
+        message: result?.message || '스크립트 실행 완료',
+        executionTimeMs: Date.now() - startTime,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err.message,
+        executionTimeMs: Date.now() - startTime,
+      };
+    }
+  },
+
+  // 브라우저 열기 (간단)
+  async open_browser(args) {
+    const { url } = args;
+    try {
+      await execAsync(`open "${url || 'https://www.google.com'}"`);
+      return { success: true, message: `브라우저 열기: ${url}` };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // URL로 이동 (AppleScript - Chrome)
+  async navigate_url(args) {
+    const { url } = args;
+    try {
+      // Chrome이 열려있으면 새 탭, 아니면 열기
+      const script = `
+        tell application "Google Chrome"
+          if (count of windows) = 0 then
+            make new window
+          end if
+          tell front window
+            make new tab with properties {URL:"${url}"}
+          end tell
+          activate
+        end tell
+      `;
+      await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`);
+      return { success: true, message: `Chrome에서 열기: ${url}` };
+    } catch (err) {
+      // Chrome 없으면 기본 브라우저로
+      try {
+        await execAsync(`open "${url}"`);
+        return { success: true, message: `브라우저에서 열기: ${url}` };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+  },
 };
 
 // ============================================
