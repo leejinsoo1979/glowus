@@ -3014,12 +3014,23 @@ async function sendTelegramMessage(chatId: number, text: string) {
 }
 
 /**
- * Jarvis 명령 처리 - GlowUS 제어
+ * Jarvis 명령 처리 - GlowUS 제어 (Control API 통합)
  */
 async function handleJarvisCommand(command: string, userId: string, chatId: number): Promise<string> {
   const adminClient = createAdminClient()
   const args = command.split(' ')
   const action = args[0].toLowerCase()
+
+  // GlowUS Control API 호출 헬퍼
+  const callControlAPI = async (apiAction: string, params: Record<string, any> = {}) => {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const res = await fetch(`${baseUrl}/api/jarvis/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: apiAction, params, _userId: userId }),
+    })
+    return res.json()
+  }
 
   try {
     switch (action) {
@@ -3039,6 +3050,21 @@ async function handleJarvisCommand(command: string, userId: string, chatId: numb
 
 🔧 스킬 관리:
 /jarvis skills <에이전트> - 에이전트 스킬 목록
+/jarvis skill add <에이전트> <스킬명> - 스킬 추가
+/jarvis skill toggle <스킬ID> <on|off> - 스킬 활성화/비활성화
+
+🧩 스킬 빌더:
+/jarvis nodes <에이전트> - 스킬 빌더 노드 목록
+/jarvis node add <에이전트> <타입> - 노드 추가
+/jarvis node connect <에이전트> <소스ID> <타겟ID> - 노드 연결
+/jarvis nodetypes - 사용 가능한 노드 타입
+
+🗺️ 네비게이션:
+/jarvis goto <페이지> - 페이지 이동
+/jarvis pages - 이동 가능한 페이지 목록
+
+💬 채팅:
+/jarvis chat <에이전트> <메시지> - 에이전트에게 메시지 전송
 
 📊 상태:
 /jarvis status - 시스템 상태`
@@ -3198,22 +3224,234 @@ async function handleJarvisCommand(command: string, userId: string, chatId: numb
 
       // === 시스템 상태 ===
       case 'status':
-        const { count: agentCount } = await adminClient
-          .from('deployed_agents')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', userId)
+        const stateResult = await callControlAPI('getState')
+        if (stateResult.error) {
+          // 폴백: 직접 조회
+          const { count: agentCount } = await adminClient
+            .from('deployed_agents')
+            .select('*', { count: 'exact', head: true })
+            .eq('owner_id', userId)
 
-        const { count: projectCount } = await adminClient
-          .from('projects')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
+          const { count: projectCount } = await adminClient
+            .from('projects')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId)
 
-        return `📊 GlowUS 상태
+          return `📊 GlowUS 상태
 
 🤖 에이전트: ${agentCount || 0}개
 📁 프로젝트: ${projectCount || 0}개
 🔌 Jarvis: 온라인
 ⏰ 시간: ${new Date().toLocaleString('ko-KR')}`
+        }
+
+        return `📊 GlowUS 상태
+
+🤖 에이전트: ${stateResult.agentCount || 0}개 (활성: ${stateResult.activeAgentCount || 0})
+📁 프로젝트: ${stateResult.projectCount || 0}개
+🔌 Jarvis: 온라인
+⏰ 시간: ${new Date().toLocaleString('ko-KR')}`
+
+      // === 스킬 추가/토글 ===
+      case 'skill':
+        const skillAction = args[1]?.toLowerCase()
+
+        if (skillAction === 'add') {
+          const skillAgentName = args[2]
+          const skillName = args.slice(3).join(' ')
+          if (!skillAgentName || !skillName) {
+            return '❌ 사용법: /jarvis skill add <에이전트> <스킬명>'
+          }
+
+          // 에이전트 ID 찾기
+          const { data: foundSkillAgent } = await adminClient
+            .from('deployed_agents')
+            .select('id')
+            .eq('name', skillAgentName)
+            .eq('owner_id', userId)
+            .single()
+
+          if (!foundSkillAgent) return `❌ 에이전트 "${skillAgentName}"를 찾을 수 없습니다.`
+
+          const addResult = await callControlAPI('addSkill', {
+            agentId: foundSkillAgent.id,
+            name: skillName
+          })
+
+          if (addResult.error) return `❌ 스킬 추가 실패: ${addResult.error}`
+          return `✅ "${skillAgentName}"에 스킬 "${skillName}" 추가 완료!`
+        }
+
+        if (skillAction === 'toggle') {
+          const skillId = args[2]
+          const enabled = args[3]?.toLowerCase() === 'on'
+          if (!skillId) return '❌ 사용법: /jarvis skill toggle <스킬ID> <on|off>'
+
+          const toggleResult = await callControlAPI('toggleSkill', {
+            skillId,
+            enabled
+          })
+
+          if (toggleResult.error) return `❌ 스킬 토글 실패: ${toggleResult.error}`
+          return `✅ 스킬 ${enabled ? '활성화' : '비활성화'} 완료!`
+        }
+
+        return '❌ 사용법:\n/jarvis skill add <에이전트> <스킬명>\n/jarvis skill toggle <스킬ID> <on|off>'
+
+      // === 스킬 빌더 노드 목록 ===
+      case 'nodes':
+        const nodeAgentName = args.slice(1).join(' ')
+        if (!nodeAgentName) return '❌ 에이전트 이름을 입력하세요.\n\n/jarvis nodes <에이전트이름>'
+
+        const { data: nodeAgent } = await adminClient
+          .from('deployed_agents')
+          .select('id, name')
+          .eq('name', nodeAgentName)
+          .eq('owner_id', userId)
+          .single()
+
+        if (!nodeAgent) return `❌ 에이전트 "${nodeAgentName}"를 찾을 수 없습니다.`
+
+        const builderState = await callControlAPI('getSkillBuilderState', { agentId: nodeAgent.id })
+        if (builderState.error) return `❌ 스킬 빌더 조회 실패: ${builderState.error}`
+
+        const nodes = builderState.nodes || []
+        if (nodes.length === 0) {
+          return `🧩 "${nodeAgent.name}" 스킬 빌더에 노드가 없습니다.\n\n/jarvis node add ${nodeAgentName} <타입> 으로 추가하세요.`
+        }
+
+        let nodeList = `🧩 ${nodeAgent.name} 스킬 빌더 노드 (${nodes.length}개)\n\n`
+        nodes.forEach((n: any, i: number) => {
+          nodeList += `${i + 1}. [${n.type}] ${n.data?.label || n.id}\n`
+        })
+        return nodeList
+
+      // === 노드 추가/연결 ===
+      case 'node':
+        const nodeAction = args[1]?.toLowerCase()
+
+        if (nodeAction === 'add') {
+          const addNodeAgentName = args[2]
+          const nodeType = args[3]
+          if (!addNodeAgentName || !nodeType) {
+            return '❌ 사용법: /jarvis node add <에이전트> <타입>\n\n/jarvis nodetypes 로 사용 가능한 타입 확인'
+          }
+
+          const { data: addNodeAgent } = await adminClient
+            .from('deployed_agents')
+            .select('id')
+            .eq('name', addNodeAgentName)
+            .eq('owner_id', userId)
+            .single()
+
+          if (!addNodeAgent) return `❌ 에이전트 "${addNodeAgentName}"를 찾을 수 없습니다.`
+
+          const addNodeResult = await callControlAPI('addNode', {
+            agentId: addNodeAgent.id,
+            type: nodeType
+          })
+
+          if (addNodeResult.error) return `❌ 노드 추가 실패: ${addNodeResult.error}`
+          return `✅ [${nodeType}] 노드 추가 완료!\n\nID: ${addNodeResult.node?.id}`
+        }
+
+        if (nodeAction === 'connect') {
+          const connectAgentName = args[2]
+          const sourceId = args[3]
+          const targetId = args[4]
+          if (!connectAgentName || !sourceId || !targetId) {
+            return '❌ 사용법: /jarvis node connect <에이전트> <소스ID> <타겟ID>'
+          }
+
+          const { data: connectAgent } = await adminClient
+            .from('deployed_agents')
+            .select('id')
+            .eq('name', connectAgentName)
+            .eq('owner_id', userId)
+            .single()
+
+          if (!connectAgent) return `❌ 에이전트 "${connectAgentName}"를 찾을 수 없습니다.`
+
+          const connectResult = await callControlAPI('connectNodes', {
+            agentId: connectAgent.id,
+            source: sourceId,
+            target: targetId
+          })
+
+          if (connectResult.error) return `❌ 노드 연결 실패: ${connectResult.error}`
+          return `✅ 노드 연결 완료!\n\n${sourceId} → ${targetId}`
+        }
+
+        return '❌ 사용법:\n/jarvis node add <에이전트> <타입>\n/jarvis node connect <에이전트> <소스ID> <타겟ID>'
+
+      // === 노드 타입 목록 ===
+      case 'nodetypes':
+        const nodeTypesResult = await callControlAPI('getNodeTypes')
+        if (nodeTypesResult.error) {
+          return `🧩 사용 가능한 노드 타입:
+
+📥 trigger - 트리거 (시작점)
+🤖 llm - LLM 호출
+🔧 tool - 도구 실행
+⚡ action - 액션 실행
+🔀 condition - 조건 분기
+📤 output - 출력`
+        }
+
+        const types = nodeTypesResult.nodeTypes || []
+        let typeList = `🧩 사용 가능한 노드 타입 (${types.length}개)\n\n`
+        types.forEach((t: any) => {
+          typeList += `• ${t.type}: ${t.label}\n`
+        })
+        return typeList
+
+      // === 네비게이션 ===
+      case 'goto':
+        const pageName = args.slice(1).join(' ')
+        if (!pageName) return '❌ 페이지 이름을 입력하세요.\n\n/jarvis pages 로 이동 가능한 페이지 확인'
+
+        const navResult = await callControlAPI('navigate', { page: pageName })
+        if (navResult.error) return `❌ ${navResult.error}\n\n사용 가능: ${navResult.availablePages?.join(', ')}`
+
+        return `✅ ${pageName} 페이지로 이동합니다.\n\n경로: ${navResult.route}`
+
+      // === 페이지 목록 ===
+      case 'pages':
+        const pagesResult = await callControlAPI('getPages')
+        if (pagesResult.error) return `❌ 페이지 목록 조회 실패: ${pagesResult.error}`
+
+        const pages = pagesResult.pages || []
+        let pageList = `🗺️ 이동 가능한 페이지 (${pages.length}개)\n\n`
+        pages.forEach((p: string, i: number) => {
+          pageList += `${i + 1}. ${p}\n`
+        })
+        pageList += '\n/jarvis goto <페이지> 로 이동하세요.'
+        return pageList
+
+      // === 에이전트에게 채팅 전송 ===
+      case 'chat':
+        const chatAgentName = args[1]
+        const chatMessage = args.slice(2).join(' ')
+        if (!chatAgentName || !chatMessage) {
+          return '❌ 사용법: /jarvis chat <에이전트> <메시지>'
+        }
+
+        const { data: chatAgent } = await adminClient
+          .from('deployed_agents')
+          .select('id, name')
+          .eq('name', chatAgentName)
+          .eq('owner_id', userId)
+          .single()
+
+        if (!chatAgent) return `❌ 에이전트 "${chatAgentName}"를 찾을 수 없습니다.`
+
+        const chatResult = await callControlAPI('sendChat', {
+          agentId: chatAgent.id,
+          message: chatMessage
+        })
+
+        if (chatResult.error) return `❌ 메시지 전송 실패: ${chatResult.error}`
+        return `💬 "${chatAgent.name}"에게 메시지 전송 완료!\n\n응답: ${chatResult.response || '(응답 대기 중)'}`
 
       default:
         return `❌ 알 수 없는 명령: ${action}\n\n/jarvis help 로 사용법을 확인하세요.`
