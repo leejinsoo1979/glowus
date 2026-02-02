@@ -5,6 +5,9 @@
   "engines": {
     "node": ">=20.0.0 <23.0.0"
   },
+  "bin": {
+    "jarvis": "./scripts/jarvis-cli.js"
+  },
   "main": "electron/dist/main.js",
   "build": {
     "appId": "com.glowus.app",

@@ -1,10 +1,10 @@
 /**
- * Jarvis Local Server - 맥북 원격 제어용 로컬 서버
+ * Jarvis Local Server - 맥북 원격 제어 + GlowUS 통합 서버
  *
  * 기능:
- * 1. HTTP API로 Vercel에서 명령 수신
- * 2. 로컬 맥북에서 실제 명령 실행
- * 3. 결과를 Vercel로 반환
+ * 1. HTTP API로 PC 제어 (파일, 앱, 시스템)
+ * 2. GlowUS API 프록시 (에이전트, 프로젝트, 스킬 빌더)
+ * 3. 브라우저 자동화 (Playwright)
  *
  * 실행: node server/jarvis-local-server.js
  * 또는: npm run jarvis:local
@@ -22,6 +22,53 @@ const execAsync = promisify(exec);
 
 const PORT = process.env.JARVIS_LOCAL_PORT || 3099;
 const API_SECRET = process.env.JARVIS_API_SECRET || 'jarvis-local-secret-change-me';
+const GLOWUS_URL = process.env.GLOWUS_URL || 'http://localhost:3000';
+
+// ============================================
+// GlowUS API 프록시 헬퍼
+// ============================================
+
+async function callGlowUSAPI(action, params = {}, userId = null) {
+  return new Promise((resolve, reject) => {
+    const url = new URL('/api/jarvis/control', GLOWUS_URL);
+    const isHttps = url.protocol === 'https:';
+    const client = isHttps ? https : http;
+
+    const body = JSON.stringify({
+      action,
+      params,
+      _userId: userId,
+      _secret: API_SECRET,
+    });
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    };
+
+    const req = client.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve({ error: 'Invalid JSON response', raw: data });
+        }
+      });
+    });
+
+    req.on('error', (e) => reject(e));
+    req.write(body);
+    req.end();
+  });
+}
 
 // ============================================
 // 핸들러들
@@ -309,6 +356,120 @@ const handlers = {
     return { success: true, message: 'pong', timestamp: new Date().toISOString() };
   },
 
+  // ============================================
+  // GlowUS 제어
+  // ============================================
+
+  // 에이전트 목록
+  async glowus_agents(args) {
+    const result = await callGlowUSAPI('listAgents', {}, args?.userId);
+    return result;
+  },
+
+  // 에이전트 생성
+  async glowus_create_agent(args) {
+    const { name, description, llmModel } = args;
+    if (!name) return { success: false, error: '에이전트 이름이 필요합니다' };
+    const result = await callGlowUSAPI('createAgent', { name, description, llmModel }, args?.userId);
+    return result;
+  },
+
+  // 에이전트 삭제
+  async glowus_delete_agent(args) {
+    const { agentId } = args;
+    if (!agentId) return { success: false, error: 'agentId가 필요합니다' };
+    const result = await callGlowUSAPI('deleteAgent', { agentId }, args?.userId);
+    return result;
+  },
+
+  // 프로젝트 목록
+  async glowus_projects(args) {
+    const result = await callGlowUSAPI('listProjects', {}, args?.userId);
+    return result;
+  },
+
+  // 프로젝트 생성
+  async glowus_create_project(args) {
+    const { name, description } = args;
+    if (!name) return { success: false, error: '프로젝트 이름이 필요합니다' };
+    const result = await callGlowUSAPI('createProject', { name, description }, args?.userId);
+    return result;
+  },
+
+  // 스킬 목록
+  async glowus_skills(args) {
+    const { agentId } = args;
+    if (!agentId) return { success: false, error: 'agentId가 필요합니다' };
+    const result = await callGlowUSAPI('listSkills', { agentId }, args?.userId);
+    return result;
+  },
+
+  // 스킬 추가
+  async glowus_add_skill(args) {
+    const { agentId, name, description } = args;
+    if (!agentId || !name) return { success: false, error: 'agentId와 name이 필요합니다' };
+    const result = await callGlowUSAPI('addSkill', { agentId, name, description }, args?.userId);
+    return result;
+  },
+
+  // 스킬 빌더 상태
+  async glowus_skill_builder(args) {
+    const { agentId } = args;
+    if (!agentId) return { success: false, error: 'agentId가 필요합니다' };
+    const result = await callGlowUSAPI('getSkillBuilderState', { agentId }, args?.userId);
+    return result;
+  },
+
+  // 스킬 빌더 노드 추가
+  async glowus_add_node(args) {
+    const { agentId, type, position, data } = args;
+    if (!agentId || !type) return { success: false, error: 'agentId와 type이 필요합니다' };
+    const result = await callGlowUSAPI('addNode', { agentId, type, position, data }, args?.userId);
+    return result;
+  },
+
+  // 스킬 빌더 노드 연결
+  async glowus_connect_nodes(args) {
+    const { agentId, source, target } = args;
+    if (!agentId || !source || !target) return { success: false, error: 'agentId, source, target가 필요합니다' };
+    const result = await callGlowUSAPI('connectNodes', { agentId, source, target }, args?.userId);
+    return result;
+  },
+
+  // 노드 타입 목록
+  async glowus_node_types() {
+    const result = await callGlowUSAPI('getNodeTypes');
+    return result;
+  },
+
+  // 페이지 이동
+  async glowus_navigate(args) {
+    const { page } = args;
+    if (!page) return { success: false, error: '페이지 이름이 필요합니다' };
+    const result = await callGlowUSAPI('navigate', { page });
+    return result;
+  },
+
+  // 이동 가능한 페이지 목록
+  async glowus_pages() {
+    const result = await callGlowUSAPI('getPages');
+    return result;
+  },
+
+  // 에이전트에게 채팅
+  async glowus_chat(args) {
+    const { agentId, message } = args;
+    if (!agentId || !message) return { success: false, error: 'agentId와 message가 필요합니다' };
+    const result = await callGlowUSAPI('sendChat', { agentId, message }, args?.userId);
+    return result;
+  },
+
+  // GlowUS 상태
+  async glowus_status(args) {
+    const result = await callGlowUSAPI('getState', {}, args?.userId);
+    return result;
+  },
+
   // 브라우저 스크립트 실행 (Playwright)
   async run_browser_script(args) {
     const { scriptCode, variables } = args;
@@ -478,6 +639,56 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /glowus - GlowUS 간편 API
+  // 예: POST /glowus { "action": "agents" }
+  //     POST /glowus { "action": "create_agent", "name": "MyAgent" }
+  if (req.method === 'POST' && url.pathname === '/glowus') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { action, ...params } = data;
+
+        if (!action) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: 'action이 필요합니다',
+            availableActions: [
+              'agents', 'create_agent', 'delete_agent',
+              'projects', 'create_project',
+              'skills', 'add_skill',
+              'skill_builder', 'add_node', 'connect_nodes', 'node_types',
+              'navigate', 'pages',
+              'chat', 'status'
+            ]
+          }));
+          return;
+        }
+
+        // action을 glowus_ 핸들러로 매핑
+        const handlerName = `glowus_${action}`;
+        if (!handlers[handlerName]) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Unknown GlowUS action: ${action}` }));
+          return;
+        }
+
+        console.log(`[Jarvis GlowUS] Action: ${action}`, params);
+        const result = await handlers[handlerName](params);
+        console.log(`[Jarvis GlowUS] Result:`, result);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        console.error('[Jarvis GlowUS] Error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
   // 404
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
@@ -485,20 +696,25 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║                    JARVIS LOCAL SERVER                     ║
-╠═══════════════════════════════════════════════════════════╣
-║  Status:    Running                                        ║
-║  Port:      ${PORT}                                           ║
-║  Host:      0.0.0.0                                        ║
-╠═══════════════════════════════════════════════════════════╣
-║  Endpoints:                                                ║
-║    GET  /health   - 상태 확인                              ║
-║    GET  /tools    - 사용 가능한 도구 목록                  ║
-║    POST /execute  - 도구 실행                              ║
-╠═══════════════════════════════════════════════════════════╣
-║  Authorization: Bearer ${API_SECRET.substring(0, 10)}...                  ║
-╚═══════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════╗
+║                    JARVIS LOCAL SERVER                          ║
+║                  PC Control + GlowUS API                        ║
+╠════════════════════════════════════════════════════════════════╣
+║  Status:    Running                                             ║
+║  Port:      ${PORT}                                                ║
+║  GlowUS:    ${GLOWUS_URL.padEnd(45)}║
+╠════════════════════════════════════════════════════════════════╣
+║  Endpoints:                                                     ║
+║    GET  /health   - 상태 확인                                   ║
+║    GET  /tools    - 사용 가능한 도구 목록                       ║
+║    POST /execute  - 도구 실행                                   ║
+║    POST /glowus   - GlowUS 제어 (간편 API)                      ║
+╠════════════════════════════════════════════════════════════════╣
+║  PC Tools:     파일, 앱, 시스템, 브라우저 제어                  ║
+║  GlowUS Tools: 에이전트, 프로젝트, 스킬 빌더 제어               ║
+╠════════════════════════════════════════════════════════════════╣
+║  Authorization: Bearer ${API_SECRET.substring(0, 10)}...                       ║
+╚════════════════════════════════════════════════════════════════╝
   `);
 });
 
