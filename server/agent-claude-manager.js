@@ -4,6 +4,11 @@
  *
  * 각 에이전트별로 독립적인 Claude Code CLI 세션 관리
  * 맥스플랜 1개로 여러 에이전트가 동시에 사용
+ *
+ * 핵심 기능:
+ * - 에이전트별 독립 워크스페이스
+ * - 장기기억 동기화 (Supabase ↔ 워크스페이스)
+ * - 세션 시작 시 기억 로드, 종료 시 학습 내용 저장
  */
 
 const { spawn, exec } = require('child_process');
@@ -11,14 +16,100 @@ const { promisify } = require('util');
 const fs = require('fs').promises;
 const path = require('path');
 const http = require('http');
+const https = require('https');
 
 const execAsync = promisify(exec);
 
 const PORT = process.env.AGENT_CLAUDE_PORT || 3100;
 const WORKSPACES_DIR = process.env.WORKSPACES_DIR || path.join(__dirname, '..', 'workspaces');
+const GLOWUS_URL = process.env.GLOWUS_URL || 'http://localhost:3000';
 
 // 활성 에이전트 세션 저장
 const agentSessions = new Map();
+
+// ============================================
+// 메모리 동기화 API 호출
+// ============================================
+
+async function callMemorySyncAPI(agentId, action, params = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`/api/agents/${agentId}/memory-sync`, GLOWUS_URL);
+    const isHttps = url.protocol === 'https:';
+    const client = isHttps ? https : http;
+
+    const body = JSON.stringify({ action, ...params });
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    };
+
+    const req = client.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve({ error: 'Invalid JSON', raw: data });
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.warn(`[MemorySync] API call failed: ${e.message}`);
+      resolve({ success: false, error: e.message });
+    });
+
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * 세션 시작 시: Supabase 기억 → 워크스페이스로 동기화
+ */
+async function syncMemoriesToWorkspace(agentId, agentName, workspacePath, userId) {
+  console.log(`[MemorySync] Loading memories for ${agentName}...`);
+
+  const result = await callMemorySyncAPI(agentId, 'to_workspace', {
+    workspacePath,
+    userId,
+  });
+
+  if (result.success) {
+    console.log(`[MemorySync] ✅ Memories loaded to ${workspacePath}`);
+  } else {
+    console.warn(`[MemorySync] ⚠️ Failed to load memories: ${result.error}`);
+  }
+
+  return result;
+}
+
+/**
+ * 세션 종료 시: 워크스페이스 학습 내용 → Supabase로 저장
+ */
+async function syncWorkspaceToMemories(agentId, agentName, workspacePath) {
+  console.log(`[MemorySync] Saving learnings for ${agentName}...`);
+
+  const result = await callMemorySyncAPI(agentId, 'from_workspace', {
+    workspacePath,
+  });
+
+  if (result.success) {
+    console.log(`[MemorySync] ✅ Learnings saved to database`);
+  } else {
+    console.warn(`[MemorySync] ⚠️ Failed to save learnings: ${result.error}`);
+  }
+
+  return result;
+}
 
 // ============================================
 // 에이전트 워크스페이스 관리
@@ -63,7 +154,7 @@ Agent ID: ${agentId}
 // Claude Code CLI 세션 관리
 // ============================================
 
-async function startClaudeSession(agentId, agentName) {
+async function startClaudeSession(agentId, agentName, userId = null) {
   // 이미 실행 중이면 반환
   if (agentSessions.has(agentId)) {
     const session = agentSessions.get(agentId);
@@ -73,6 +164,9 @@ async function startClaudeSession(agentId, agentName) {
   }
 
   const workspacePath = await ensureWorkspace(agentId, agentName);
+
+  // 🧠 장기기억 동기화: Supabase → 워크스페이스
+  await syncMemoriesToWorkspace(agentId, agentName, workspacePath, userId);
 
   // Claude Code CLI 찾기
   let claudePath;
@@ -156,10 +250,13 @@ async function stopClaudeSession(agentId) {
     return { success: false, error: '세션을 찾을 수 없습니다' };
   }
 
+  // 🧠 학습 내용 동기화: 워크스페이스 → Supabase
+  await syncWorkspaceToMemories(agentId, session.agentName, session.workspacePath);
+
   session.process.kill('SIGTERM');
   agentSessions.delete(agentId);
 
-  return { success: true, message: '세션 종료됨', agentId };
+  return { success: true, message: '세션 종료됨 (기억 저장 완료)', agentId };
 }
 
 async function sendToAgent(agentId, message) {
@@ -354,16 +451,21 @@ server.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════════╗
 ║              AGENT CLAUDE CODE MANAGER                          ║
-║           에이전트별 Claude Code CLI 세션 관리                    ║
+║        에이전트별 Claude Code CLI + 장기기억 동기화               ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  Port: ${PORT}                                                     ║
-║  Workspaces: ${WORKSPACES_DIR.substring(0, 40)}...
+║  GlowUS: ${GLOWUS_URL.padEnd(50)}║
+║  Workspaces: ${WORKSPACES_DIR.substring(0, 45)}...
+╠════════════════════════════════════════════════════════════════╣
+║  🧠 Memory Sync:                                                ║
+║    - 세션 시작 → Supabase 기억 로드                             ║
+║    - 세션 종료 → 학습 내용 저장                                 ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  Endpoints:                                                     ║
 ║    GET  /health     - 상태 확인                                 ║
 ║    GET  /sessions   - 활성 세션 목록                            ║
-║    POST /start      - 에이전트 세션 시작                        ║
-║    POST /stop       - 에이전트 세션 종료                        ║
+║    POST /start      - 에이전트 세션 시작 (+ 기억 로드)          ║
+║    POST /stop       - 에이전트 세션 종료 (+ 학습 저장)          ║
 ║    POST /send       - 메시지 전송                               ║
 ║    POST /execute    - 작업 실행 (자동 시작)                     ║
 ╚════════════════════════════════════════════════════════════════╝
@@ -371,9 +473,13 @@ server.listen(PORT, () => {
 });
 
 // 종료 처리
-process.on('SIGINT', () => {
-  console.log('\n[Manager] 종료 중... 모든 세션 정리');
+process.on('SIGINT', async () => {
+  console.log('\n[Manager] 종료 중... 모든 세션의 기억 저장');
+
+  // 모든 세션의 학습 내용 저장
   for (const [agentId, session] of agentSessions) {
+    console.log(`[Manager] ${session.agentName} 기억 저장 중...`);
+    await syncWorkspaceToMemories(agentId, session.agentName, session.workspacePath);
     session.process.kill('SIGTERM');
   }
   server.close();
