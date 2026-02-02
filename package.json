@@ -95,7 +95,9 @@
     "jarvis": "node server/jarvis-server.js",
     "jarvis:local": "node server/jarvis-local-server.js",
     "dev:jarvis": "concurrently -k \"npm run dev\" \"npm run jarvis\"",
-    "dev:jarvis:local": "concurrently -k \"npm run dev\" \"npm run jarvis:local\""
+    "dev:jarvis:local": "concurrently -k \"npm run dev\" \"npm run jarvis:local\"",
+    "agent:claude": "node server/agent-claude-manager.js",
+    "dev:full-stack": "concurrently -k \"npm run dev\" \"npm run jarvis:local\" \"npm run agent:claude\""
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.45",
