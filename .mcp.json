@@ -1,9 +1,15 @@
 {
   "mcpServers": {
-    "agent-builder": {
+    "glowus": {
       "command": "node",
-      "args": ["server/mcp-realtime-server.js"],
-      "env": {}
+      "args": ["server/glowus-mcp-server.js"],
+      "env": {
+        "NEXT_PUBLIC_SUPABASE_URL": "https://zcykttygjglzyyxotzct.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeWt0dHlnamdsenl5eG90emN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTMzODkxNSwiZXhwIjoyMDgwOTE0OTE1fQ.SovGgYnnamWGIza0fiG0uYCzW8p4c5bG3qAeBRAz0UU",
+        "GLOWUS_API_URL": "http://localhost:3000",
+        "JARVIS_WS_URL": "ws://localhost:3098",
+        "JARVIS_API_SECRET": "jarvis-internal-secret"
+      }
     }
   }
 }

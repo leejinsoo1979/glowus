@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { SummarySidebar } from '@/components/tools/SummarySidebar'
 import { YoutubeViewer } from '@/components/tools/YoutubeViewer'
+import { useAIAppSync } from "@/hooks/useAIAppSync"
 
 // 유튜브 URL에서 비디오 ID 추출
 function extractYoutubeId(url: string): string | null {
@@ -43,12 +44,21 @@ export default function AiSummaryPage() {
     const [summary, setSummary] = useState<any>(null)
     const [error, setError] = useState<string | null>(null)
 
+    // 🔥 DB 동기화 훅
+    const { saveMessage: saveToDb, updateThreadTitle, updateThreadMetadata } = useAIAppSync({
+        appType: 'summary',
+        autoCreateThread: true,
+    })
+
     const handleYoutubeSubmit = async (url: string) => {
         const id = extractYoutubeId(url)
         if (!id) {
             alert('유효한 유튜브 링크를 입력해주세요')
             return
         }
+
+        // 🔥 사용자 요청 DB에 저장
+        saveToDb({ role: 'user', content: `YouTube 영상 요약: ${url}` })
 
         // 즉시 영상 보여주기
         setVideoId(id)
@@ -87,14 +97,24 @@ export default function AiSummaryPage() {
                 setTranscript(data.transcript || [])
                 setComments(data.comments || [])
                 setSummary(data.summary)
+
+                // 🔥 요약 완료 DB에 저장
+                const videoTitle = data.videoInfo?.title || '영상 제목 없음'
+                saveToDb({ role: 'assistant', content: `영상 요약 완료: ${videoTitle}`, metadata: { videoId: id, videoTitle, summary: data.summary } })
+                updateThreadTitle(videoTitle.slice(0, 50))
+                updateThreadMetadata({ videoId: id, videoInfo: data.videoInfo, summary: data.summary })
             } else {
                 // 에러 메시지 표시
                 setError(data.error || '요약 생성에 실패했습니다')
                 console.error('Summarize API error:', data.error)
+                // 🔥 에러 DB에 저장
+                saveToDb({ role: 'assistant', content: `요약 생성 실패: ${data.error || '알 수 없는 오류'}` })
             }
         } catch (error) {
             console.error('Failed to fetch transcript:', error)
             setError('네트워크 오류가 발생했습니다')
+            // 🔥 에러 DB에 저장
+            saveToDb({ role: 'assistant', content: '네트워크 오류가 발생했습니다' })
         } finally {
             setIsLoading(false)
         }

@@ -43,6 +43,7 @@ import {
     X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAIAppSync } from "@/hooks/useAIAppSync"
 
 interface Message {
     role: 'user' | 'assistant' | 'system'
@@ -60,6 +61,12 @@ export default function AIDocsPage() {
     const [editorMode, setEditorMode] = useState<EditorMode>('markdown')
     const [documentTitle, setDocumentTitle] = useState('AI 문서')
     const [documentContent, setDocumentContent] = useState('')
+
+    // 🔥 DB 동기화 훅
+    const { saveMessage: saveToDb, updateThreadTitle, updateThreadMetadata } = useAIAppSync({
+        appType: 'docs',
+        autoCreateThread: true,
+    })
 
     // Resizable panel
     const [leftPanelWidth, setLeftPanelWidth] = useState(480)
@@ -139,24 +146,33 @@ export default function AIDocsPage() {
                 setDocumentContent(data.content)
                 if (data.title) {
                     setDocumentTitle(data.title)
+                    // 🔥 스레드 제목 업데이트
+                    updateThreadTitle(data.title)
                 }
+                const assistantMessage = `문서가 생성되었습니다.\n\n수정이 필요하시면 말씀해주세요:\n• "제목을 바꿔줘"\n• "내용을 더 추가해줘"\n• "형식을 바꿔줘"`
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: `문서가 생성되었습니다.\n\n수정이 필요하시면 말씀해주세요:\n• "제목을 바꿔줘"\n• "내용을 더 추가해줘"\n• "형식을 바꿔줘"`
+                    content: assistantMessage
                 }])
+                // 🔥 DB에 저장
+                saveToDb({ role: 'assistant', content: assistantMessage, metadata: { documentTitle: data.title } })
+                // 🔥 문서 내용을 메타데이터로 저장
+                updateThreadMetadata({ documentContent: data.content, documentTitle: data.title })
             } else {
                 throw new Error('Failed to generate document')
             }
         } catch (error) {
             console.error('Document generation error:', error)
+            const errorMessage = '문서 생성 중 오류가 발생했습니다. 다시 시도해주세요.'
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: '문서 생성 중 오류가 발생했습니다. 다시 시도해주세요.'
+                content: errorMessage
             }])
+            saveToDb({ role: 'assistant', content: errorMessage })
         }
 
         setIsLoading(false)
-    }, [editorMode])
+    }, [editorMode, saveToDb, updateThreadTitle, updateThreadMetadata])
 
     // Edit document with AI
     const editDocument = useCallback(async (instruction: string) => {
@@ -179,21 +195,28 @@ export default function AIDocsPage() {
 
             if (data.success && data.content) {
                 setDocumentContent(data.content)
+                const assistantMessage = '문서가 수정되었습니다.'
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: '문서가 수정되었습니다.'
+                    content: assistantMessage
                 }])
+                // 🔥 DB에 저장
+                saveToDb({ role: 'assistant', content: assistantMessage })
+                // 🔥 문서 내용 업데이트
+                updateThreadMetadata({ documentContent: data.content })
             }
         } catch (error) {
             console.error('Document edit error:', error)
+            const errorMessage = '문서 수정 중 오류가 발생했습니다.'
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: '문서 수정 중 오류가 발생했습니다.'
+                content: errorMessage
             }])
+            saveToDb({ role: 'assistant', content: errorMessage })
         }
 
         setIsLoading(false)
-    }, [documentContent, editorMode])
+    }, [documentContent, editorMode, saveToDb, updateThreadMetadata])
 
     const sendMessage = async () => {
         if (!input.trim() || isLoading) return
@@ -201,6 +224,9 @@ export default function AIDocsPage() {
         const userMessage = input.trim()
         setInput('')
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+
+        // 🔥 사용자 메시지 DB에 저장
+        saveToDb({ role: 'user', content: userMessage })
 
         // Check if it's a document generation request
         if (
@@ -213,10 +239,13 @@ export default function AIDocsPage() {
             await editDocument(userMessage)
         } else {
             // Guide user
+            const guideMessage = '어떤 문서를 작성해드릴까요?\n\n예시:\n• "사업계획서 작성해줘"\n• "마케팅 제안서 만들어줘"\n• "회의록 양식 만들어줘"'
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: '어떤 문서를 작성해드릴까요?\n\n예시:\n• "사업계획서 작성해줘"\n• "마케팅 제안서 만들어줘"\n• "회의록 양식 만들어줘"'
+                content: guideMessage
             }])
+            // 🔥 가이드 메시지도 DB에 저장
+            saveToDb({ role: 'assistant', content: guideMessage })
         }
     }
 

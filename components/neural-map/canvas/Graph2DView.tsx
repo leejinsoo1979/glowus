@@ -63,32 +63,43 @@ function getExtension(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() || ''
 }
 
-// 세련된 파일 타입 아이콘 (얇은 선, 조화로운 색상)
+// 🔥 react-icons 완전 제거 - lucide-react로 통일 (번들 사이즈 대폭 절약)
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
-  BsFiletypePdf,
-  BsFiletypeJs,
-  BsFiletypeTsx,
-  BsFiletypeJsx,
-  BsFiletypeHtml,
-  BsFiletypeCss,
-  BsFiletypeJson,
-  BsFiletypeMd,
-  BsFiletypePy,
-  BsFiletypeJava,
-  BsFiletypeRb,
-  BsFiletypeSh,
-  BsFiletypeYml,
-  BsFiletypeXml,
-  BsFiletypePng,
-  BsFiletypeJpg,
-  BsFiletypeGif,
-  BsFiletypeSvg,
-  BsFileEarmarkText,
-  BsFileEarmarkCode,
-  BsFolder,
-  BsFolderFill
-} from 'react-icons/bs'
+  FileText,      // PDF, Markdown, Text
+  FileCode,      // JS, TS, TSX, JSX, HTML, CSS, Code
+  FileJson,      // JSON, YML, XML
+  FileImage,     // PNG, JPG, GIF, SVG
+  File,          // Default file
+  Folder,        // Folder
+  FolderOpen,    // Folder filled/open
+  FileType,      // Generic file type
+  Terminal,      // Shell scripts
+} from 'lucide-react'
+
+// 🔥 react-icons → lucide-react 별칭 (기존 코드 호환성)
+const BsFiletypePdf = FileText
+const BsFiletypeJs = FileCode
+const BsFiletypeTsx = FileCode
+const BsFiletypeJsx = FileCode
+const BsFiletypeHtml = FileCode
+const BsFiletypeCss = FileCode
+const BsFiletypeJson = FileJson
+const BsFiletypeMd = FileText
+const BsFiletypePy = FileCode
+const BsFiletypeJava = FileCode
+const BsFiletypeRb = FileCode
+const BsFiletypeSh = Terminal
+const BsFiletypeYml = FileJson
+const BsFiletypeXml = FileJson
+const BsFiletypePng = FileImage
+const BsFiletypeJpg = FileImage
+const BsFiletypeGif = FileImage
+const BsFiletypeSvg = FileImage
+const BsFileEarmarkText = FileText
+const BsFileEarmarkCode = FileCode
+const BsFolder = Folder
+const BsFolderFill = FolderOpen
 
 // 아이콘 이미지 캐시
 const iconImageCache: Record<string, HTMLImageElement> = {}

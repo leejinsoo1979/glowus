@@ -13,6 +13,9 @@ interface UIState {
   isResizingLevel2: boolean
   level2Collapsed: boolean
   taskHistoryOpen: boolean
+  leftPanelOpen: boolean
+  toggleLeftPanel: () => void
+  setLeftPanelOpen: (open: boolean) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setActiveCategory: (category: string | null) => void
@@ -44,6 +47,9 @@ export const useUIStore = create<UIState>((set) => ({
   isResizingLevel2: false,
   level2Collapsed: false,
   taskHistoryOpen: false,
+  leftPanelOpen: false,
+  toggleLeftPanel: () => set((state) => ({ leftPanelOpen: !state.leftPanelOpen })),
+  setLeftPanelOpen: (open) => set({ leftPanelOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setActiveCategory: (category) => set({ activeCategory: category }),

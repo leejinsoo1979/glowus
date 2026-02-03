@@ -6,9 +6,9 @@ function decryptApiKey(encrypted: string): string {
 }
 
 // Provider ID를 내부 provider 이름으로 매핑
+// ⚠️ Anthropic 제외 - Claude Code CLI (Max 플랜 OAuth)로만 사용
 const PROVIDER_MAPPING: Record<string, string> = {
   openai: 'openai',
-  anthropic: 'anthropic',
   google: 'gemini',
   xai: 'grok',
   mistral: 'mistral',
@@ -137,13 +137,13 @@ export async function getLLMConfigForAgent(
   }
 
   // 환경변수에서 기본 키 사용
+  // ⚠️ Anthropic 제외 - Claude Code CLI (Max 플랜 OAuth)로만 사용
   const envKeyMap: Record<string, string | undefined> = {
     openai: process.env.OPENAI_API_KEY,
     grok: process.env.XAI_API_KEY,
     xai: process.env.XAI_API_KEY,
     gemini: process.env.GOOGLE_API_KEY,
     google: process.env.GOOGLE_API_KEY,
-    anthropic: process.env.ANTHROPIC_API_KEY,
     mistral: process.env.MISTRAL_API_KEY,
     groq: process.env.GROQ_API_KEY,
   }

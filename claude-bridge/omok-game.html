@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오목 게임 (Omok / Gomoku)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #fff;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .game-info {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .player-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .player-indicator.active {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+
+        .stone-preview {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .stone-preview.black {
+            background: radial-gradient(circle at 30% 30%, #555, #000);
+        }
+
+        .stone-preview.white {
+            background: radial-gradient(circle at 30% 30%, #fff, #ccc);
+        }
+
+        .board-container {
+            position: relative;
+            padding: 25px;
+            background: linear-gradient(145deg, #dcb35c, #c9a227);
+            border-radius: 10px;
+            box-shadow:
+                0 10px 30px rgba(0, 0, 0, 0.4),
+                inset 0 2px 10px rgba(255, 255, 255, 0.2);
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(15, 40px);
+            grid-template-rows: repeat(15, 40px);
+            gap: 0;
+            position: relative;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cell::before {
+            content: '';
+            position: absolute;
+            background: #8b7355;
+        }
+
+        /* Horizontal lines */
+        .cell::before {
+            width: 100%;
+            height: 1px;
+            top: 50%;
+            left: 0;
+        }
+
+        .cell::after {
+            content: '';
+            position: absolute;
+            width: 1px;
+            height: 100%;
+            left: 50%;
+            top: 0;
+            background: #8b7355;
+        }
+
+        /* Edge adjustments */
+        .cell.top::after { height: 50%; top: 50%; }
+        .cell.bottom::after { height: 50%; }
+        .cell.left::before { width: 50%; left: 50%; }
+        .cell.right::before { width: 50%; }
+
+        /* Star points (화점) */
+        .cell.star::before {
+            content: '';
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #8b7355;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+
+        .stone {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 2;
+            transition: transform 0.1s ease;
+            animation: placeStone 0.2s ease-out;
+        }
+
+        @keyframes placeStone {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #555, #000);
+            box-shadow:
+                2px 2px 5px rgba(0, 0, 0, 0.5),
+                inset -2px -2px 5px rgba(255, 255, 255, 0.1);
+        }
+
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #fff, #ddd);
+            box-shadow:
+                2px 2px 5px rgba(0, 0, 0, 0.3),
+                inset -2px -2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .stone.last-move::after {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: rgba(255, 0, 0, 0.7);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .stone.winning {
+            animation: winPulse 0.5s ease infinite alternate;
+        }
+
+        @keyframes winPulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
+        }
+
+        .cell:hover::before {
+            z-index: 0;
+        }
+
+        .cell:not(.occupied):hover .hover-stone {
+            opacity: 0.5;
+        }
+
+        .hover-stone {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 1;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .btn-restart {
+            background: linear-gradient(145deg, #e94560, #c73e54);
+            color: white;
+        }
+
+        .btn-restart:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4);
+        }
+
+        .btn-undo {
+            background: linear-gradient(145deg, #4a90a4, #3d7a8c);
+            color: white;
+        }
+
+        .btn-undo:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 144, 164, 0.4);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(145deg, #2a2a4a, #1a1a2e);
+            padding: 40px 60px;
+            border-radius: 20px;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-content h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .modal-content p {
+            font-size: 1.2rem;
+            margin-bottom: 25px;
+            color: #aaa;
+        }
+
+        .winner-text {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .winner-stone {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+        }
+
+        .move-count {
+            margin-top: 15px;
+            padding: 8px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .coordinates {
+            position: absolute;
+            font-size: 12px;
+            color: #8b7355;
+            font-weight: bold;
+        }
+
+        .coord-top, .coord-bottom {
+            display: flex;
+            justify-content: space-around;
+            width: 600px;
+            left: 25px;
+        }
+
+        .coord-top { top: 5px; }
+        .coord-bottom { bottom: 5px; }
+
+        .coord-left, .coord-right {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            height: 600px;
+            top: 25px;
+        }
+
+        .coord-left { left: 5px; }
+        .coord-right { right: 5px; }
+    </style>
+</head>
+<body>
+    <h1>오목 (Gomoku)</h1>
+
+    <div class="game-info">
+        <div class="player-indicator active" id="black-player">
+            <div class="stone-preview black"></div>
+            <span>흑돌 (Black)</span>
+        </div>
+        <div class="move-count" id="move-count">수: 0</div>
+        <div class="player-indicator" id="white-player">
+            <div class="stone-preview white"></div>
+            <span>백돌 (White)</span>
+        </div>
+    </div>
+
+    <div class="board-container">
+        <div id="board"></div>
+    </div>
+
+    <div class="buttons">
+        <button class="btn-undo" onclick="undoMove()">무르기 (Undo)</button>
+        <button class="btn-restart" onclick="restartGame()">새 게임 (New Game)</button>
+    </div>
+
+    <div class="modal" id="win-modal">
+        <div class="modal-content">
+            <h2>게임 종료!</h2>
+            <div class="winner-text">
+                <div class="winner-stone" id="winner-stone"></div>
+                <span id="winner-text"></span>
+            </div>
+            <p id="win-message"></p>
+            <button class="btn-restart" onclick="restartGame()">다시 하기</button>
+        </div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 15;
+        const WINNING_COUNT = 5;
+
+        let board = [];
+        let currentPlayer = 'black';
+        let gameOver = false;
+        let moveHistory = [];
+        let moveCount = 0;
+
+        // Star points (화점) positions
+        const starPoints = [
+            [3, 3], [3, 7], [3, 11],
+            [7, 3], [7, 7], [7, 11],
+            [11, 3], [11, 7], [11, 11]
+        ];
+
+        function initBoard() {
+            const boardElement = document.getElementById('board');
+            boardElement.innerHTML = '';
+            board = [];
+            moveHistory = [];
+            moveCount = 0;
+            currentPlayer = 'black';
+            gameOver = false;
+
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                board[row] = [];
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    board[row][col] = null;
+
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+
+                    // Add edge classes
+                    if (row === 0) cell.classList.add('top');
+                    if (row === BOARD_SIZE - 1) cell.classList.add('bottom');
+                    if (col === 0) cell.classList.add('left');
+                    if (col === BOARD_SIZE - 1) cell.classList.add('right');
+
+                    // Add star point class
+                    if (starPoints.some(([r, c]) => r === row && c === col)) {
+                        cell.classList.add('star');
+                    }
+
+                    // Hover stone preview
+                    const hoverStone = document.createElement('div');
+                    hoverStone.className = 'hover-stone';
+                    cell.appendChild(hoverStone);
+
+                    cell.addEventListener('click', () => placeStone(row, col));
+                    cell.addEventListener('mouseenter', () => updateHoverStone(cell));
+
+                    boardElement.appendChild(cell);
+                }
+            }
+
+            updatePlayerIndicator();
+            updateMoveCount();
+            document.getElementById('win-modal').classList.remove('show');
+        }
+
+        function updateHoverStone(cell) {
+            if (gameOver) return;
+            const hoverStone = cell.querySelector('.hover-stone');
+            hoverStone.className = `hover-stone ${currentPlayer}`;
+        }
+
+        function placeStone(row, col) {
+            if (gameOver || board[row][col] !== null) return;
+
+            board[row][col] = currentPlayer;
+            moveHistory.push({ row, col, player: currentPlayer });
+            moveCount++;
+
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            cell.classList.add('occupied');
+
+            // Remove last-move indicator from previous stone
+            const lastMoveStone = document.querySelector('.stone.last-move');
+            if (lastMoveStone) lastMoveStone.classList.remove('last-move');
+
+            // Create stone element
+            const stone = document.createElement('div');
+            stone.className = `stone ${currentPlayer} last-move`;
+            cell.appendChild(stone);
+
+            // Check for win
+            const winningStones = checkWin(row, col);
+            if (winningStones) {
+                gameOver = true;
+                highlightWinningStones(winningStones);
+                showWinModal(currentPlayer);
+                return;
+            }
+
+            // Check for draw
+            if (moveCount === BOARD_SIZE * BOARD_SIZE) {
+                gameOver = true;
+                showDrawModal();
+                return;
+            }
+
+            // Switch player
+            currentPlayer = currentPlayer === 'black' ? 'white' : 'black';
+            updatePlayerIndicator();
+            updateMoveCount();
+        }
+
+        function checkWin(row, col) {
+            const directions = [
+                [[0, 1], [0, -1]],   // Horizontal
+                [[1, 0], [-1, 0]],   // Vertical
+                [[1, 1], [-1, -1]], // Diagonal \
+                [[1, -1], [-1, 1]]  // Diagonal /
+            ];
+
+            const player = board[row][col];
+
+            for (const [dir1, dir2] of directions) {
+                const stones = [[row, col]];
+
+                // Check in first direction
+                let r = row + dir1[0], c = col + dir1[1];
+                while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+                    stones.push([r, c]);
+                    r += dir1[0];
+                    c += dir1[1];
+                }
+
+                // Check in opposite direction
+                r = row + dir2[0];
+                c = col + dir2[1];
+                while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+                    stones.push([r, c]);
+                    r += dir2[0];
+                    c += dir2[1];
+                }
+
+                if (stones.length >= WINNING_COUNT) {
+                    return stones;
+                }
+            }
+
+            return null;
+        }
+
+        function highlightWinningStones(stones) {
+            stones.forEach(([row, col]) => {
+                const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                const stone = cell.querySelector('.stone');
+                if (stone) stone.classList.add('winning');
+            });
+        }
+
+        function showWinModal(winner) {
+            const modal = document.getElementById('win-modal');
+            const winnerStone = document.getElementById('winner-stone');
+            const winnerText = document.getElementById('winner-text');
+            const winMessage = document.getElementById('win-message');
+
+            winnerStone.className = `winner-stone ${winner}`;
+            winnerText.textContent = winner === 'black' ? '흑돌 승리!' : '백돌 승리!';
+            winMessage.textContent = `총 ${moveCount}수 만에 승리했습니다!`;
+
+            modal.classList.add('show');
+        }
+
+        function showDrawModal() {
+            const modal = document.getElementById('win-modal');
+            const winnerStone = document.getElementById('winner-stone');
+            const winnerText = document.getElementById('winner-text');
+            const winMessage = document.getElementById('win-message');
+
+            winnerStone.style.display = 'none';
+            winnerText.textContent = '무승부!';
+            winMessage.textContent = '바둑판이 가득 찼습니다.';
+
+            modal.classList.add('show');
+        }
+
+        function updatePlayerIndicator() {
+            document.getElementById('black-player').classList.toggle('active', currentPlayer === 'black');
+            document.getElementById('white-player').classList.toggle('active', currentPlayer === 'white');
+        }
+
+        function updateMoveCount() {
+            document.getElementById('move-count').textContent = `수: ${moveCount}`;
+        }
+
+        function undoMove() {
+            if (moveHistory.length === 0 || gameOver) return;
+
+            const lastMove = moveHistory.pop();
+            board[lastMove.row][lastMove.col] = null;
+            moveCount--;
+
+            const cell = document.querySelector(`[data-row="${lastMove.row}"][data-col="${lastMove.col}"]`);
+            cell.classList.remove('occupied');
+            const stone = cell.querySelector('.stone');
+            if (stone) stone.remove();
+
+            // Restore last-move indicator to previous stone
+            if (moveHistory.length > 0) {
+                const prevMove = moveHistory[moveHistory.length - 1];
+                const prevCell = document.querySelector(`[data-row="${prevMove.row}"][data-col="${prevMove.col}"]`);
+                const prevStone = prevCell.querySelector('.stone');
+                if (prevStone) prevStone.classList.add('last-move');
+            }
+
+            currentPlayer = lastMove.player;
+            updatePlayerIndicator();
+            updateMoveCount();
+        }
+
+        function restartGame() {
+            initBoard();
+        }
+
+        // Initialize the game
+        initBoard();
+    </script>
+</body>
+</html>

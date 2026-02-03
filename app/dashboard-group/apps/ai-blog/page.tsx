@@ -51,6 +51,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useThemeStore, accentColors } from "@/stores/themeStore"
+import { useAIAppSync } from "@/hooks/useAIAppSync"
 
 // 블로그 플랫폼 타입
 type BlogPlatform = 'tistory' | 'naver'
@@ -129,6 +130,12 @@ export default function AIBlogPage() {
     // 테마 설정
     const { accentColor } = useThemeStore()
     const themeColor = accentColors.find(c => c.id === accentColor)?.color || '#3b82f6'
+
+    // 🔥 DB 동기화 훅
+    const { saveMessage: saveToDb, updateThreadTitle, updateThreadMetadata } = useAIAppSync({
+        appType: 'blog',
+        autoCreateThread: true,
+    })
 
     // 탭 상태
     const [activeTab, setActiveTab] = useState<ActiveTab>('write')
@@ -628,6 +635,9 @@ export default function AIBlogPage() {
         if (!keyword.trim()) return
         setGenerationStep('generating')
 
+        // 🔥 사용자 요청 DB에 저장
+        saveToDb({ role: 'user', content: `키워드: ${keyword.trim()}으로 블로그 글 생성` })
+
         try {
             const response = await fetch('/api/skills/blog-writer/generate', {
                 method: 'POST',
@@ -659,6 +669,11 @@ export default function AIBlogPage() {
                 setEditContent(post.content)
                 setEditTags(post.tags)
                 setGenerationStep('preview')
+
+                // 🔥 생성 완료 DB에 저장
+                saveToDb({ role: 'assistant', content: `블로그 글이 생성되었습니다: ${data.title}`, metadata: { title: data.title, tags: data.tags, platform } })
+                updateThreadTitle(data.title.slice(0, 50))
+                updateThreadMetadata({ keyword: keyword.trim(), post, platform })
             } else {
                 throw new Error(data.error || '글 생성 실패')
             }
@@ -666,6 +681,8 @@ export default function AIBlogPage() {
             console.error('글 생성 오류:', error)
             alert('글 생성 중 오류가 발생했습니다.')
             setGenerationStep('idle')
+            // 🔥 에러 DB에 저장
+            saveToDb({ role: 'assistant', content: '블로그 글 생성 중 오류가 발생했습니다.' })
         }
     }
 

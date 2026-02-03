@@ -16,20 +16,42 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Bot,
   RefreshCw,
   FileText,
   AlertCircle,
   Settings2,
   Folder,
+  PanelLeft,
+  Key,
 } from 'lucide-react'
+
+const CLAUDE_ORANGE = '#D97757'
+
+// Claude Code 픽셀 마스코트 아이콘
+const ClaudeMascotIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 22 13" className={className}>
+    {/* Ears */}
+    <rect x="1" y="4" width="2" height="3" fill="currentColor" />
+    <rect x="19" y="4" width="2" height="3" fill="currentColor" />
+    {/* Body */}
+    <rect x="3" y="0" width="16" height="10" fill="currentColor" />
+    {/* Eyes */}
+    <rect x="5" y="4" width="2" height="2" fill="#1a1a1a" />
+    <rect x="15" y="4" width="2" height="2" fill="#1a1a1a" />
+    {/* Legs */}
+    <rect x="4" y="10" width="2" height="3" fill="currentColor" />
+    <rect x="7" y="10" width="2" height="3" fill="currentColor" />
+    <rect x="13" y="10" width="2" height="3" fill="currentColor" />
+    <rect x="16" y="10" width="2" height="3" fill="currentColor" />
+  </svg>
+)
 import { MainAssistantButton } from '@/components/notifications/MainAssistantButton'
 import { ProactiveNotificationBadge } from '@/components/proactive'
 
 export function Header() {
   const router = useRouter()
   const pathname = usePathname()
-  const { agentSidebarOpen, toggleAgentSidebar } = useUIStore()
+  const { leftPanelOpen, toggleLeftPanel, agentSidebarOpen, toggleAgentSidebar } = useUIStore()
   const { user, logout: clearAuth } = useAuthStore()
   const { resolvedTheme } = useTheme()
   const { accentColor } = useThemeStore()
@@ -145,29 +167,17 @@ export function Header() {
         isDark ? "bg-zinc-900/95 border-white/5" : "bg-white/90 border-zinc-200"
       )}
     >
-      {/* Left: Navigation Buttons */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => router.back()}
-          className={cn(
-            "p-1.5 rounded-md transition-colors",
-            isDark ? "hover:bg-white/5 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
-          )}
-          title="뒤로"
-        >
-          <ChevronRight className="w-4 h-4 rotate-180" />
-        </button>
-        <button
-          onClick={() => router.forward()}
-          className={cn(
-            "p-1.5 rounded-md transition-colors",
-            isDark ? "hover:bg-white/5 text-zinc-500 hover:text-white" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
-          )}
-          title="앞으로"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Left: Panel Toggle */}
+      <button
+        onClick={toggleLeftPanel}
+        className={cn(
+          "p-2 transition-colors mr-2",
+          isDark ? "text-zinc-400 hover:text-white" : "text-zinc-500 hover:text-zinc-900"
+        )}
+        title="대화 목록"
+      >
+        <PanelLeft className="w-4 h-4" />
+      </button>
 
       {/* Center: Search Bar */}
       <div className="flex-1 flex justify-center px-4" ref={searchRef}>
@@ -317,6 +327,15 @@ export function Header() {
                       router.push('/dashboard-group/settings')
                     }}
                   />
+                  <MenuButton
+                    icon={Key}
+                    label="API 키 관리"
+                    isDark={isDark}
+                    onClick={() => {
+                      setShowUserMenu(false)
+                      router.push('/dashboard-group/settings/api-keys')
+                    }}
+                  />
 
                   <div className={cn("my-1 border-t", isDark ? "border-white/5" : "border-zinc-100")} />
 
@@ -349,19 +368,24 @@ export function Header() {
           </AnimatePresence>
         </div>
 
-        {/* Agent Sidebar Toggle */}
+        {/* Claude Code Sidebar Toggle */}
         <button
           onClick={toggleAgentSidebar}
           className={cn(
             "p-2 rounded-md transition-colors",
             agentSidebarOpen
-              ? "bg-blue-500 text-white"
+              ? "text-white"
               : isDark
-                ? "text-zinc-500 hover:text-white hover:bg-white/5"
-                : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                ? "hover:bg-white/5"
+                : "hover:bg-zinc-100"
           )}
+          style={{
+            backgroundColor: agentSidebarOpen ? CLAUDE_ORANGE : undefined,
+            color: agentSidebarOpen ? 'white' : CLAUDE_ORANGE
+          }}
+          title="Claude Code"
         >
-          <Bot className="w-4 h-4" />
+          <ClaudeMascotIcon className="w-5 h-4" />
         </button>
       </div>
     </header>

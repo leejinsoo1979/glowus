@@ -135,54 +135,43 @@ export async function POST(request: NextRequest) {
       analysis = result.response.text() || '분석 결과를 가져오지 못했습니다.'
     }
 
-    // 🔥 Anthropic Claude Vision
+    // ⚠️ Anthropic API 사용 금지 - OpenAI로 fallback
     else if (provider === 'anthropic') {
-      const Anthropic = (await import('@anthropic-ai/sdk')).default
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+      console.warn('[Viewfinder] Anthropic API 사용 금지 - OpenAI로 fallback')
+
+      const OpenAI = (await import('openai')).default
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
       const systemPrompt = agentName
         ? `너는 ${agentName}야. 회의 중 공유된 자료를 분석하고 있어.`
         : '이미지/문서를 분석해서 핵심 내용을 설명해주세요.'
 
-      let imageData: any
+      let imageUrlForOpenAI: string
 
       if (imageBase64) {
-        imageData = {
-          type: 'base64',
-          media_type: mimeType,
-          data: imageBase64,
-        }
+        imageUrlForOpenAI = `data:${mimeType};base64,${imageBase64}`
       } else if (imageUrl) {
-        // Claude는 URL도 지원하지만 base64가 더 안정적
-        const imageResponse = await fetch(imageUrl)
-        const buffer = await imageResponse.arrayBuffer()
-        const base64 = Buffer.from(buffer).toString('base64')
-        const contentType = imageResponse.headers.get('content-type') || mimeType
-
-        imageData = {
-          type: 'base64',
-          media_type: contentType,
-          data: base64,
-        }
+        imageUrlForOpenAI = imageUrl
+      } else {
+        throw new Error('이미지 데이터가 없습니다')
       }
 
-      const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
         max_tokens: 1000,
-        system: systemPrompt,
         messages: [
+          { role: 'system', content: systemPrompt },
           {
             role: 'user',
             content: [
-              { type: 'image', source: imageData },
+              { type: 'image_url', image_url: { url: imageUrlForOpenAI } },
               { type: 'text', text: prompt },
             ],
           },
         ],
       })
 
-      const textBlock = response.content.find(block => block.type === 'text')
-      analysis = textBlock?.type === 'text' ? textBlock.text : '분석 결과를 가져오지 못했습니다.'
+      analysis = response.choices[0]?.message?.content || '분석 결과를 가져오지 못했습니다.'
     }
 
     console.log('[Viewfinder] ✅ Analysis complete:', {

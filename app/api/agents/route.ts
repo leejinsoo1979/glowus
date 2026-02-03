@@ -207,6 +207,14 @@ export async function POST(request: NextRequest) {
       llm_provider = 'openai',
       llm_model,
       speak_order = 0,
+      // Super Agent 추가 필드
+      voice_settings,
+      chat_main_gif,
+      emotion_avatars,
+      permissions,
+      agent_type,
+      user_title,  // 🆕 사용자 호칭
+      status = 'ACTIVE',
     } = body
 
     if (!name) {
@@ -228,7 +236,7 @@ export async function POST(request: NextRequest) {
       workflow_nodes,
       workflow_edges,
       capabilities: allCapabilities,
-      status: 'ACTIVE',
+      status,
       avatar_url: avatar_url || generateAvatarUrl(name),
       system_prompt: system_prompt || generateSystemPrompt(name, extractedCapabilities),
       model,
@@ -238,6 +246,13 @@ export async function POST(request: NextRequest) {
       llm_provider,
       llm_model: llm_model || (llm_provider === 'openai' ? 'gpt-4o-mini' : 'qwen-max'),
       speak_order,
+      // Super Agent 추가 필드
+      ...(voice_settings && { voice_settings }),
+      ...(chat_main_gif && { chat_main_gif }),
+      ...(emotion_avatars && { emotion_avatars }),
+      ...(permissions && { permissions }),
+      ...(agent_type && { agent_type }),
+      ...(user_title && { user_title }),  // 🆕 사용자 호칭
     }
 
     const { data, error } = await (adminClient as any)

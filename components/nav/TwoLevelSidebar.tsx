@@ -11,15 +11,32 @@ import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { createClient } from '@/lib/supabase/client'
 import { Logo } from '@/components/ui'
+import dynamic from 'next/dynamic'
 import { TeamCreateModal, TeamFormData } from '@/components/team/TeamCreateModal'
 import { CreateWorkModal } from '@/app/dashboard-group/works/create-modal'
-import { EmailSidebarChat } from '@/components/email/EmailSidebarChat'
 import { ThemeDropdown } from './ThemeDropdown'
-import { FileTreePanel } from '@/components/neural-map/panels/FileTreePanel'
-import GitPanel from '@/components/neural-map/panels/GitPanel'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
-import { TaskHistorySidebar } from '@/components/works/TaskHistorySidebar'
-import { AIStudioSidebar } from '@/components/ai-studio/AIStudioSidebar'
+
+// 🔥 Heavy components - Dynamic import to reduce initial bundle (was 55MB!)
+const FileTreePanel = dynamic(() => import('@/components/neural-map/panels/FileTreePanel').then(m => m.FileTreePanel), { ssr: false })
+const GitPanel = dynamic(() => import('@/components/neural-map/panels/GitPanel'), { ssr: false })
+const ExtensionsPanel = dynamic(() => import('@/components/neural-map/panels/ExtensionsPanel'), { ssr: false })
+// 🔥 설치된 확장 localStorage 키
+const INSTALLED_EXTENSIONS_KEY = 'glow-extensions-installed'
+
+// 설치된 확장 가져오기 헬퍼
+function getInstalledExtensionsFromStorage(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const saved = localStorage.getItem(INSTALLED_EXTENSIONS_KEY)
+    return new Set(saved ? JSON.parse(saved) : [])
+  } catch {
+    return new Set()
+  }
+}
+const TaskHistorySidebar = dynamic(() => import('@/components/works/TaskHistorySidebar').then(m => m.TaskHistorySidebar), { ssr: false })
+const AIStudioSidebar = dynamic(() => import('@/components/ai-studio/AIStudioSidebar').then(m => m.AIStudioSidebar), { ssr: false })
+const EmailSidebarChat = dynamic(() => import('@/components/email/EmailSidebarChat').then(m => m.EmailSidebarChat), { ssr: false })
 import type { EmailAccount, EmailMessage } from '@/types/email'
 import { useTeamStore } from '@/stores/teamStore'
 // 사이드바에서 직접 사용하는 아이콘만 import
@@ -47,8 +64,11 @@ import {
   Share2,
   Bot,
   Building2,
+  Code2,  // 🔥 SiPython 대체 - react-icons 제거로 83MB 절약
+  Sparkles,  // 🔥 Claude Code 아이콘
 } from 'lucide-react'
-import { SiPython } from 'react-icons/si'
+// 🔥 react-icons 제거 - SiPython을 Code2로 대체
+const SiPython = Code2
 
 // 사이드바 메뉴 데이터 import
 import {
@@ -409,6 +429,10 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
   const [pinnedToolbarItems, setPinnedToolbarItems] = useState<Set<string>>(new Set(['explorer', 'search', 'git', 'extensions']))
   const [activeToolbarItem, setActiveToolbarItem] = useState<string>('explorer')
 
+  // 🔥 설치된 확장 상태 (Claude Code 등)
+  const [installedExtensions, setInstalledExtensions] = useState<Set<string>>(new Set())
+  const [activeExtensionPanel, setActiveExtensionPanel] = useState<string | null>(null)
+
   // Toolbar menu items (VS Code style)
   const toolbarMenuItems = [
     { id: 'explorer', name: '탐색기', shortcut: '⇧⌘E', icon: Files },
@@ -440,6 +464,32 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // 🔥 설치된 확장 로드 및 storage 이벤트 리스닝
+  useEffect(() => {
+    // 초기 로드
+    setInstalledExtensions(getInstalledExtensionsFromStorage())
+
+    // localStorage 변경 이벤트 리스닝 (다른 탭/컴포넌트에서 변경 시)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === INSTALLED_EXTENSIONS_KEY) {
+        setInstalledExtensions(getInstalledExtensionsFromStorage())
+      }
+    }
+
+    // 커스텀 이벤트 리스닝 (같은 탭 내 변경 시)
+    const handleExtensionChange = () => {
+      setInstalledExtensions(getInstalledExtensionsFromStorage())
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('glow-extension-change', handleExtensionChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('glow-extension-change', handleExtensionChange)
+    }
   }, [])
 
   // 정부지원사업 페이지 진입 시 자동으로 해당 메뉴 선택, 아니면 리셋
@@ -802,6 +852,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                   setActiveCategory(category.id)
                   setSelectedCompanyMenu(null)
                   setSidebarOpen(true)
+                  setActiveExtensionPanel(null) // 확장 패널 닫기
 
                   // 페이지 이동 (startTransition으로 감싸서 블로킹 없이 처리)
                   if (targetPath && pathname !== targetPath) {
@@ -813,7 +864,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                 }}
                 className={cn(
                   'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 group relative',
-                  isActive
+                  isActive && !activeExtensionPanel
                     ? 'bg-accent text-white shadow-lg shadow-accent/25'
                     : isDashboardRoot
                       ? (isDark
@@ -842,6 +893,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
               </button>
             )
           })}
+
+          {/* 🔥 동적 확장 아이콘들 - Claude Code는 Monaco Editor에서 브릿지로 연동되므로 별도 패널 불필요 */}
         </nav>
 
         {/* Bottom Icons */}
@@ -907,6 +960,8 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
           <ChevronRight className="w-2.5 h-2.5" />
         </button>
       )}
+
+      {/* 🔥 Claude Code는 Monaco Editor에서 브릿지 서버로 연동 - 별도 패널 불필요 */}
 
       {!pathname?.includes('/works/new') && (
         <AnimatePresence>
@@ -1099,9 +1154,7 @@ export function TwoLevelSidebar({ hideLevel2 = false }: TwoLevelSidebarProps) {
                   <SearchPanel isDark={isDark} />
 
                 ) : activeToolbarItem === 'extensions' ? (
-                  <div className={cn("p-4 text-sm", isDark ? "text-zinc-400" : "text-zinc-500")}>
-                    확장 기능 준비 중...
-                  </div>
+                  <ExtensionsPanel isDark={isDark} />
                 ) : (
                   <FileTreePanel mapId={neuralMapId} />
                 )}

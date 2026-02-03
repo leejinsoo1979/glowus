@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     Search,
@@ -16,10 +16,20 @@ import {
     X,
     Image,
     Paperclip,
-    Bot
+    Bot,
+    FileCode,  // 🔥 react-icons 제거 - lucide-react로 통일
+    Wifi,
+    WifiOff,
+    CheckCircle,
+    XCircle,
 } from 'lucide-react'
-import { FaRegFileCode } from 'react-icons/fa6'
+
+// 🔥 react-icons → lucide-react 별칭
+const FaRegFileCode = FileCode
 import { cn } from '@/lib/utils'
+import { useJarvis, JarvisPersona, PermissionRequest } from '@/hooks/useJarvis'
+import { useAuthStore } from '@/stores/authStore'
+import stripAnsi from 'strip-ansi'
 import { BrowserPanel } from './BrowserPanel'
 import { GensparkResultView } from './GensparkResultView'
 import { CodeArtifactPanel, CodeArtifact } from './CodeArtifactPanel'
@@ -45,7 +55,31 @@ interface ChatViewProps {
     codingContext?: CodingContext | null
 }
 
+// JarvisPersona는 useJarvis에서 import
+
 export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps) {
+    // 사용자 정보 가져오기
+    const { user } = useAuthStore()
+    const userName = user?.full_name || user?.email?.split('@')[0] || 'User'
+
+    // Jarvis 페르소나 설정
+    const [jarvisPersona, setJarvisPersona] = useState<JarvisPersona | null>(null)
+
+    // 페르소나 설정 불러오기 (localStorage)
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('jarvis_persona')
+            console.log('[ChatView] Loading jarvis_persona from localStorage:', saved)
+            if (saved) {
+                const parsed = JSON.parse(saved)
+                console.log('[ChatView] Parsed persona:', parsed)
+                setJarvisPersona(parsed)
+            }
+        } catch (e) {
+            console.error('Failed to load Jarvis persona:', e)
+        }
+    }, [])
+
     const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -56,6 +90,46 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
     const [toolsUsed, setToolsUsed] = useState<string[]>([])
     const hasSentInitialRef = useRef(false)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+
+    // 🔥 자비스 (Claude Code CLI) 연결 - PTY 모드
+    const jarvisOutputRef = useRef('')
+    const jarvisDoneRef = useRef(false)
+    const jarvisReadyRef = useRef(false)
+    const isListeningRef = useRef(false)  // 내가 보낸 메시지 이후만 수신
+
+    const {
+        isConnected: jarvisConnected,
+        isReady: jarvisReady,
+        startSession: jarvisStartSession,
+        sendMessage: jarvisSendMessage,
+        stop: jarvisStop,
+    } = useJarvis({
+        shared: false,  // 🔥 ChatView는 독립 WebSocket 사용 (사이드바와 분리)
+        onOutput: useCallback((data: string) => {
+            // 내가 메시지 보낸 후에만 출력 수집
+            if (!isListeningRef.current) return
+
+            const cleaned = stripAnsi(data)
+            jarvisOutputRef.current += cleaned
+            console.log('[ChatView] Output:', cleaned.substring(0, 100))
+        }, []),
+        onReady: useCallback(() => {
+            console.log('[ChatView] Ready received!')
+            jarvisReadyRef.current = true
+        }, []),
+        onDone: useCallback((exitCode: number) => {
+            console.log('[ChatView] Done received, code:', exitCode)
+            jarvisDoneRef.current = true
+            isListeningRef.current = false  // 수신 종료
+        }, []),
+        onExit: useCallback((exitCode: number) => {
+            console.log('[ChatView] PTY exited:', exitCode)
+            jarvisDoneRef.current = true
+            isListeningRef.current = false
+        }, []),
+    })
+
+    const jarvisError = null // 에러 상태 제거
 
     // 브라우저 패널 상태
     const [browserOpen, setBrowserOpen] = useState(false)
@@ -360,6 +434,7 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
         setCurrentResponse('')
         setThinkingSteps([])
         setToolsUsed([])
+        jarvisOutputRef.current = ''
 
         try {
             // 에이전트 빌더 요청 처리
@@ -385,187 +460,95 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
                 return
             }
 
-            if (isBrowserTask(content)) {
-                setCurrentThinkingStep('브라우저 작업 분석 중...')
-                await new Promise(r => setTimeout(r, 300))
-                setThinkingSteps(prev => [...prev, '브라우저 작업 분석 완료'])
+            // 🔥 자비스로 메시지 전송 (PTY 모드 - 도구 사용 가능)
+            let persona: JarvisPersona | null = jarvisPersona
+            try {
+                const saved = localStorage.getItem('jarvis_persona')
+                if (saved) persona = JSON.parse(saved)
+            } catch (e) {}
 
-                const initialUrl = extractUrlFromContent(content)
-                if (initialUrl) {
-                    setCurrentThinkingStep('브라우저 열기...')
-                    setBrowserOpen(true)
-                    setBrowserUrl(initialUrl)
-                    await new Promise(r => setTimeout(r, 300))
-                    setThinkingSteps(prev => [...prev, '브라우저 열기 완료'])
+            const aiName = persona?.name || 'Jarvis'
+            setCurrentThinkingStep(`${aiName} 연결 중...`)
+
+            // 응답 초기화
+            jarvisOutputRef.current = ''
+            jarvisDoneRef.current = false
+            jarvisReadyRef.current = false
+
+            // 세션 시작 (PTY 모드)
+            const sessionStarted = await jarvisStartSession('~', userName, persona || undefined)
+            if (!sessionStarted) {
+                throw new Error(`${aiName} 서버 연결 실패. npm run jarvis 실행 확인하세요.`)
+            }
+
+            // CLI 초기화 대기 (ready 이벤트 또는 타임아웃)
+            setCurrentThinkingStep(`${aiName} 초기화 중...`)
+            const readyTimeout = 15000
+            const readyStart = Date.now()
+            while (!jarvisReadyRef.current && Date.now() - readyStart < readyTimeout) {
+                await new Promise(r => setTimeout(r, 100))
+            }
+
+            if (!jarvisReadyRef.current) {
+                console.log('[ChatView] Ready timeout, proceeding anyway...')
+            }
+
+            setThinkingSteps(prev => [...prev, `${aiName} 준비 완료`])
+            setCurrentThinkingStep(`${aiName}가 응답 생성 중...`)
+
+            // 메시지 전송 전 출력 수신 시작
+            isListeningRef.current = true
+
+            // 메시지 전송
+            const sent = jarvisSendMessage(content)
+            if (!sent) {
+                isListeningRef.current = false
+                throw new Error('메시지 전송 실패')
+            }
+
+            console.log('[ChatView] Message sent, listening for response...')
+
+            // done 이벤트 대기
+            const maxWait = 120000
+            const startTime = Date.now()
+
+            while (Date.now() - startTime < maxWait) {
+                await new Promise(r => setTimeout(r, 100))
+
+                // 실시간 응답 표시 (ANSI 제거)
+                if (jarvisOutputRef.current.length > 0) {
+                    setCurrentResponse(jarvisOutputRef.current)
                 }
 
-                setCurrentThinkingStep('웹 페이지 제어 중...')
-
-                const response = await fetch('/api/agents/super/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: content,
-                        chatHistory: currentMessages.map(m => ({ role: m.role, content: m.content })),
-                    })
-                })
-
-                const data = await response.json()
-
-                setThinkingSteps(prev => [...prev, '웹 페이지 제어 완료'])
-                setCurrentThinkingStep('')
-
-                if (data.browserUrl) {
-                    setBrowserUrl(data.browserUrl)
-                } else if (data.toolResults) {
-                    const browserResult = data.toolResults?.find((t: any) =>
-                        t.type === 'browser_automation' || t.currentUrl
-                    )
-                    if (browserResult?.currentUrl) {
-                        setBrowserUrl(browserResult.currentUrl)
-                    }
-                }
-
-                if (data.toolsUsed) {
-                    setToolsUsed(data.toolsUsed)
-                }
-
-                if (data.error) {
-                    setCurrentResponse(`오류: ${data.error}`)
-                    setMessages(prev => [...prev, { role: 'assistant', content: `오류: ${data.error}` }])
-                } else if (data.response) {
-                    setCurrentResponse(data.response)
-                    setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
-                } else {
-                    setCurrentResponse('응답을 받지 못했습니다.')
-                    setMessages(prev => [...prev, { role: 'assistant', content: '응답을 받지 못했습니다.' }])
-                }
-            } else {
-                setCurrentThinkingStep('요청 분석 중...')
-                await new Promise(r => setTimeout(r, 200))
-                setThinkingSteps(prev => [...prev, '요청 분석 완료'])
-
-                // 코딩 요청이면 즉시 코드 패널 열기 (스트리밍 상태로)
-                if (isCodingRequest(content)) {
-                    setCurrentThinkingStep('코드 생성 준비 중...')
-                    setCodeArtifact({
-                        id: Date.now().toString(),
-                        language: 'html',
-                        code: '// 코드를 생성하고 있습니다...\n// 잠시만 기다려주세요.',
-                        title: '코드 생성 중',
-                        isStreaming: true,
-                        createdAt: new Date()
-                    })
-                    await new Promise(r => setTimeout(r, 300))
-                    setThinkingSteps(prev => [...prev, '코드 패널 열림'])
-                }
-
-                setCurrentThinkingStep('정보 검색 중...')
-
-                const response = await fetch('/api/agents/super/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: content,
-                        chatHistory: currentMessages.map(m => ({
-                            role: m.role,
-                            content: m.content
-                        })),
-                    })
-                })
-
-                const data = await response.json()
-
-                if (data.toolsUsed && data.toolsUsed.length > 0) {
-                    setToolsUsed(data.toolsUsed)
-                    for (const tool of data.toolsUsed) {
-                        if (tool === 'web_search') {
-                            setThinkingSteps(prev => [...prev, '웹 검색 완료'])
-                        } else if (tool === 'browser_automation') {
-                            setThinkingSteps(prev => [...prev, '브라우저 작업 완료'])
-                        } else {
-                            setThinkingSteps(prev => [...prev, `${tool} 실행 완료`])
-                        }
-                    }
-                } else {
-                    setThinkingSteps(prev => [...prev, '정보 검색 완료'])
-                }
-
-                setCurrentThinkingStep('응답 생성 중...')
-                await new Promise(r => setTimeout(r, 200))
-                setThinkingSteps(prev => [...prev, '응답 생성 완료'])
-                setCurrentThinkingStep('')
-
-                if (data.error) {
-                    console.error('API Error:', data.error)
-                    setCurrentResponse(`오류: ${data.error}`)
-                    setMessages(prev => [...prev, { role: 'assistant', content: `오류: ${data.error}` }])
-                    // 코딩 요청이었지만 에러 발생 시 패널 닫기
-                    if (isCodingRequest(content)) {
-                        setCodeArtifact(null)
-                    }
-                } else if (data.response) {
-                    setCurrentResponse(data.response)
-                    setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
-
-                    // 코드 블록이 있으면 아티팩트 업데이트
-                    const codeBlock = extractCodeFromResponse(data.response)
-                    if (isCodingRequest(content)) {
-                        if (codeBlock) {
-                            setCodeArtifact({
-                                id: Date.now().toString(),
-                                language: codeBlock.language,
-                                code: codeBlock.code,
-                                title: '생성된 코드',
-                                isStreaming: false,
-                                createdAt: new Date()
-                            })
-                        } else {
-                            // 코드 블록 없으면 응답 내용을 코드로 표시
-                            setCodeArtifact({
-                                id: Date.now().toString(),
-                                language: 'plaintext',
-                                code: '// 코드 블록을 찾을 수 없습니다.\n// 다시 요청해주세요. 예: "HTML로 버튼 만들어줘"',
-                                title: '코드 없음',
-                                isStreaming: false,
-                                createdAt: new Date()
-                            })
-                        }
-                    }
-                } else if (data.content) {
-                    setCurrentResponse(data.content)
-                    setMessages(prev => [...prev, { role: 'assistant', content: data.content }])
-
-                    const codeBlock = extractCodeFromResponse(data.content)
-                    if (isCodingRequest(content)) {
-                        if (codeBlock) {
-                            setCodeArtifact({
-                                id: Date.now().toString(),
-                                language: codeBlock.language,
-                                code: codeBlock.code,
-                                title: '생성된 코드',
-                                isStreaming: false,
-                                createdAt: new Date()
-                            })
-                        } else {
-                            setCodeArtifact({
-                                id: Date.now().toString(),
-                                language: 'plaintext',
-                                code: '// 코드 블록을 찾을 수 없습니다.\n// 다시 요청해주세요.',
-                                title: '코드 없음',
-                                isStreaming: false,
-                                createdAt: new Date()
-                            })
-                        }
-                    }
-                } else {
-                    setCurrentResponse('응답을 받지 못했습니다.')
-                    setMessages(prev => [...prev, { role: 'assistant', content: '응답을 받지 못했습니다.' }])
-                    if (isCodingRequest(content)) {
-                        setCodeArtifact(null)
-                    }
+                // done 이벤트 수신 → 종료
+                if (jarvisDoneRef.current) {
+                    console.log('[ChatView] Done received')
+                    break
                 }
             }
+
+            setThinkingSteps(prev => [...prev, '응답 완료'])
+            setCurrentThinkingStep('')
+
+            const finalResponse = jarvisOutputRef.current.trim() || '응답을 받지 못했습니다. 서버 로그를 확인하세요.'
+            setCurrentResponse(finalResponse)
+            setMessages(prev => [...prev, { role: 'assistant', content: finalResponse }])
+
+            // 코드 블록 처리
+            if (isCodingRequest(content)) {
+                const codeBlock = extractCodeFromResponse(finalResponse)
+                if (codeBlock) {
+                    setCodeArtifact({
+                        id: Date.now().toString(),
+                        language: codeBlock.language,
+                        code: codeBlock.code,
+                        title: '생성된 코드',
+                        isStreaming: false,
+                        createdAt: new Date()
+                    })
+                }
+            }
+
         } catch (error) {
             console.error('Chat error:', error)
             setCurrentResponse('오류가 발생했습니다. 다시 시도해주세요.')
@@ -666,7 +649,24 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
                     >
                         <ArrowLeft className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
                     </button>
-                    <h2 className="text-xl font-bold text-zinc-900 dark:text-white">GlowUS AI Chat</h2>
+                    <h2 className="text-xl font-bold text-zinc-900 dark:text-white">{jarvisPersona?.name || 'Jarvis'}</h2>
+                    {/* 자비스 연결 상태 */}
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        {jarvisReady ? (
+                            <Wifi className="w-3.5 h-3.5 text-green-500" />
+                        ) : jarvisConnected ? (
+                            <Wifi className="w-3.5 h-3.5 text-yellow-500" />
+                        ) : (
+                            <WifiOff className="w-3.5 h-3.5 text-zinc-400" />
+                        )}
+                        <span className={cn(
+                            "text-xs font-medium",
+                            jarvisReady ? "text-green-600 dark:text-green-400" :
+                            jarvisConnected ? "text-yellow-600 dark:text-yellow-400" : "text-zinc-500"
+                        )}>
+                            {jarvisReady ? '준비됨' : jarvisConnected ? '연결 중...' : '대기 중'}
+                        </span>
+                    </div>
                     {!browserOpen && !codeArtifact && (
                         <button
                             onClick={() => setBrowserOpen(true)}
@@ -678,17 +678,60 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
                     )}
                 </header>
 
-                {/* Result View or Empty State */}
-                {currentQuery ? (
-                    <GensparkResultView
-                        query={currentQuery}
-                        response={currentResponse}
-                        toolsUsed={toolsUsed}
-                        isLoading={isLoading}
-                        thinkingSteps={thinkingSteps}
-                        currentThinkingStep={currentThinkingStep}
-                        onNewSearch={handleNewSearch}
-                    />
+                {/* 에러 표시 */}
+                {jarvisError && (
+                    <div className="px-4 py-3 bg-red-50 dark:bg-red-500/10 border-b border-red-200 dark:border-red-500/20">
+                        <div className="flex items-center gap-2">
+                            <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                            <span className="text-sm font-medium text-red-800 dark:text-red-300">
+                                {jarvisError}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Chat Messages or Empty State */}
+                {messages.length > 0 || currentQuery ? (
+                    <div className="flex-1 overflow-y-auto">
+                        <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
+                            {/* 이전 대화 기록 */}
+                            {messages.slice(0, -1).map((msg, idx) => (
+                                <div key={idx} className={cn(
+                                    "flex gap-3",
+                                    msg.role === 'user' ? "justify-end" : "justify-start"
+                                )}>
+                                    {msg.role === 'assistant' && (
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                                            <Bot className="w-4 h-4 text-white" />
+                                        </div>
+                                    )}
+                                    <div className={cn(
+                                        "max-w-[80%] rounded-2xl px-4 py-3",
+                                        msg.role === 'user'
+                                            ? "bg-blue-500 text-white"
+                                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                                    )}>
+                                        <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* 현재 대화 (GensparkResultView 스타일) */}
+                            {currentQuery && (
+                                <GensparkResultView
+                                    query={currentQuery}
+                                    response={currentResponse}
+                                    toolsUsed={toolsUsed}
+                                    isLoading={isLoading}
+                                    thinkingSteps={thinkingSteps}
+                                    currentThinkingStep={currentThinkingStep}
+                                    onNewSearch={handleNewSearch}
+                                />
+                            )}
+
+                            <div ref={messagesEndRef} />
+                        </div>
+                    </div>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center px-6">
                         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center mb-6">
@@ -725,8 +768,8 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
                             {/* Tabs */}
                             <div className="flex border-b border-zinc-200 dark:border-zinc-700">
                                 <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border-r border-zinc-200 dark:border-zinc-600">
-                                    <Sparkles className="w-4 h-4" />
-                                    슈퍼 에이전트
+                                    <Bot className="w-4 h-4" />
+                                    {jarvisPersona?.name || 'Jarvis'} (Claude Code)
                                 </button>
                                 <button
                                     onClick={() => setBrowserOpen(true)}
@@ -861,22 +904,32 @@ export function ChatView({ onBack, initialQuery, codingContext }: ChatViewProps)
                                     <span className="text-xs text-zinc-400">
                                         {attachedFiles.length > 0 && `${attachedFiles.length}개 파일`}
                                     </span>
-                                    <button
-                                        onClick={sendMessage}
-                                        disabled={isLoading || !input.trim()}
-                                        className={cn(
-                                            "p-2 rounded-lg transition-colors",
-                                            input.trim() && !isLoading
-                                                ? "bg-blue-500 hover:bg-blue-600 text-white"
-                                                : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
-                                        )}
-                                    >
-                                        {isLoading ? (
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                        ) : (
+                                    {isLoading ? (
+                                        <button
+                                            onClick={() => {
+                                                setIsLoading(false)
+                                                setCurrentThinkingStep('')
+                                                jarvisStop?.()
+                                            }}
+                                            className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                                            title="중단"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={sendMessage}
+                                            disabled={!input.trim()}
+                                            className={cn(
+                                                "p-2 rounded-lg transition-colors",
+                                                input.trim()
+                                                    ? "bg-blue-500 hover:bg-blue-600 text-white"
+                                                    : "hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500"
+                                            )}
+                                        >
                                             <Send className="w-5 h-5" />
-                                        )}
-                                    </button>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

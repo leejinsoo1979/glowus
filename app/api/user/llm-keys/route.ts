@@ -55,9 +55,9 @@ export async function GET(request: NextRequest) {
     }))
 
     // 환경변수에서 시스템 기본 키 확인
+    // ⚠️ Anthropic 제외 - Claude Code CLI (Max 플랜 OAuth)로만 사용
     const envKeys: { provider: string; hasKey: boolean }[] = [
       { provider: 'openai', hasKey: !!process.env.OPENAI_API_KEY },
-      { provider: 'anthropic', hasKey: !!process.env.ANTHROPIC_API_KEY },
       { provider: 'google', hasKey: !!process.env.GOOGLE_API_KEY },
       { provider: 'xai', hasKey: !!process.env.XAI_API_KEY },
       { provider: 'mistral', hasKey: !!process.env.MISTRAL_API_KEY },

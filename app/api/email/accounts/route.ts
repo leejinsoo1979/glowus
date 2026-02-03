@@ -9,12 +9,16 @@ export async function GET() {
   const supabase = await createClient()
   const { user } = await getAuthUser(supabase)
 
+  console.log('[Email Accounts] User:', user?.id, user?.email)
+
   if (!user) {
+    console.log('[Email Accounts] Unauthorized - no user')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const emailService = new EmailService()
   const accounts = await emailService.getAccounts(user.id)
+  console.log('[Email Accounts] Found accounts:', accounts.length)
 
   // Remove sensitive data
   const safeAccounts = accounts.map(account => ({

@@ -476,7 +476,9 @@ export const SLASH_COMMANDS: Record<string, SlashCommand> = {
     description: 'Agent Mode 활성화 (PM으로서 서브 에이전트 생성/위임)',
     aliases: ['pm', 'team'],
     execute: (_, ctx) => {
+      console.log('[SlashCommand] /agent 실행 - executionMode를 agent로 변경')
       ctx.updateSettings({ executionMode: 'agent' })
+      console.log('[SlashCommand] updateSettings 호출 완료')
       return {
         type: 'settings',
         content: `## 🎯 Agent Mode 활성화
@@ -509,7 +511,9 @@ Quick Mode로 전환: \`/quick\``
     description: 'Quick Mode 활성화 (직접 실행)',
     aliases: ['direct', 'solo'],
     execute: (_, ctx) => {
+      console.log('[SlashCommand] /quick 실행 - executionMode를 quick으로 변경')
       ctx.updateSettings({ executionMode: 'quick' })
+      console.log('[SlashCommand] updateSettings 호출 완료')
       return {
         type: 'settings',
         content: `## ⚡ Quick Mode 활성화

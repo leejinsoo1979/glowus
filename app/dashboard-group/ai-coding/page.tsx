@@ -277,12 +277,23 @@ export default function NeuralMapPage() {
   const setLinkedProject = useNeuralMapStore((s) => s.setLinkedProject)
   const clearLinkedProject = useNeuralMapStore((s) => s.clearLinkedProject)
 
-  // URL 파라미터에서 mapId, tab, newProject 처리
+  // URL 파라미터에서 mapId, tab, newProject, projectId 처리
   const searchParams = useSearchParams()
-  const urlMapId = searchParams.get('mapId')
-  const urlTab = searchParams.get('tab')
-  const urlNewProject = searchParams.get('newProject')
-  const urlProjectName = searchParams.get('name')
+  const urlMapId = searchParams?.get('mapId')
+  const urlTab = searchParams?.get('tab')
+  const urlNewProject = searchParams?.get('newProject')
+  const urlProjectName = searchParams?.get('name')
+  const urlProjectId = searchParams?.get('projectId') || searchParams?.get('project')
+
+  // 🔥 실제 파일 시스템 경로인지 확인 (가상 경로 /workspace/... 제외)
+  const isRealFilePath = (path: string | null): boolean => {
+    if (!path) return false
+    // 가상 경로는 /workspace/로 시작
+    if (path.startsWith('/workspace/')) return false
+    // 실제 경로는 절대 경로 (Unix: /, Windows: C:\)
+    return path.startsWith('/') || /^[A-Za-z]:\\/.test(path)
+  }
+  const hasRealProjectPath = isRealFilePath(projectPath)
 
   // URL에서 mapId가 있으면 store에 설정
   useEffect(() => {
@@ -319,6 +330,25 @@ export default function NeuralMapPage() {
         linkedProjectId: null
       })
 
+      // 🔥 웹 환경: 서버에 실제 폴더 생성 요청 (터미널 작동을 위해)
+      const electron = typeof window !== 'undefined' ? (window as any).electron : null
+      if (!electron?.fs?.selectDirectory) {
+        console.log('[NeuralMap] Web mode - creating project folder on server:', urlProjectName)
+        fetch('/api/workspace/create-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectName: urlProjectName })
+        })
+          .then(res => res.json())
+          .then(result => {
+            if (result.success && result.path) {
+              console.log('[NeuralMap] ✅ Server created project folder:', result.path)
+              useNeuralMapStore.getState().setProjectPath(result.path)
+            }
+          })
+          .catch(err => console.error('[NeuralMap] Folder creation error:', err))
+      }
+
       // URL 파라미터 제거 (깔끔한 URL 유지)
       if (typeof window !== 'undefined') {
         const newUrl = window.location.pathname
@@ -338,6 +368,44 @@ export default function NeuralMapPage() {
       glowCodeSetContext({ projectPath })
     }
   }, [projectPath, glowCodeSetContext])
+
+  // 🔥 가상 경로(/workspace/...)를 실제 경로로 자동 변환
+  useEffect(() => {
+    if (!projectPath?.startsWith('/workspace/')) return
+    if (!linkedProjectId) return
+
+    console.log('[NeuralMap] 🔄 Virtual path detected, checking DB for real folder_path:', projectPath)
+
+    // 먼저 DB에서 folder_path 확인
+    fetch(`/api/projects/${linkedProjectId}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(project => {
+        if (project?.folder_path && !project.folder_path.startsWith('/workspace/')) {
+          // DB에 실제 경로가 있으면 그걸 사용
+          console.log('[NeuralMap] ✅ Found real folder_path in DB:', project.folder_path)
+          setProjectPath(project.folder_path)
+        } else {
+          // DB에 없으면 새로 생성
+          const projectName = linkedProjectName || projectPath.replace('/workspace/', '')
+          console.log('[NeuralMap] 🆕 Creating new project folder:', projectName)
+
+          fetch('/api/workspace/create-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectName, projectId: linkedProjectId })
+          })
+            .then(res => res.json())
+            .then(result => {
+              if (result.success && result.path) {
+                console.log('[NeuralMap] ✅ Created real folder:', result.path)
+                setProjectPath(result.path)
+              }
+            })
+            .catch(err => console.error('[NeuralMap] Folder creation error:', err))
+        }
+      })
+      .catch(err => console.error('[NeuralMap] Folder conversion error:', err))
+  }, [projectPath, linkedProjectName, linkedProjectId, setProjectPath])
 
   // Viewfinder → Chat 연결 핸들러
   const handleViewfinderShareToAI = useCallback((context: { imageDataUrl: string; timestamp: number }) => {
@@ -378,6 +446,16 @@ export default function NeuralMapPage() {
   // Map Sub-View Mode (2D default)
   const [mapViewMode, setMapViewMode] = useState<'2d' | '3d'>('2d')
 
+  // 🔥 Browser 탭 URL (실행 버튼으로 프로젝트 프리뷰)
+  const [browserPreviewUrl, setBrowserPreviewUrl] = useState<string | null>(null)
+
+  // 실행 버튼 핸들러: Browser 탭으로 전환하고 URL 설정
+  const handleRunProject = useCallback((previewUrl: string) => {
+    console.log('[NeuralMap] 🚀 Running project in Browser tab:', previewUrl)
+    setBrowserPreviewUrl(previewUrl)
+    setActiveTab('browser')
+  }, [setActiveTab])
+
   // 🌐 AI Browser 패널 자동 열기 이벤트 리스너
   useEffect(() => {
     const electronApi = (window as any).electron?.aiBrowser
@@ -393,45 +471,90 @@ export default function NeuralMapPage() {
 
   useEffect(() => {
     setMounted(true)
+  }, [])
 
-    // URL에서 projectId 확인 (projectId 또는 project 파라미터 모두 지원)
-    const urlParams = new URLSearchParams(window.location.search)
-    const projectIdFromUrl = urlParams.get('projectId') || urlParams.get('project')
-
-    // 스토어에 이미 linkedProjectId가 있으면 (project 페이지에서 설정한 경우) 유지
-    // URL에서 projectId가 오거나, 스토어에 이미 프로젝트가 설정되어 있으면 유지
+  // 🔥 URL에서 projectId가 변경되면 프로젝트 로드 (작업 히스토리에서 클릭 시)
+  useEffect(() => {
+    // 스토어에서 현재 상태 가져오기
     const currentState = useNeuralMapStore.getState()
-    const hasLinkedProject = currentState.linkedProjectId || currentState.linkedProjectName
 
-    console.log('[NeuralMap] Init check:', {
-      projectIdFromUrl,
-      hasLinkedProject,
+    console.log('[NeuralMap] Project check:', {
+      urlProjectId,
       linkedProjectId: currentState.linkedProjectId,
-      linkedProjectName: currentState.linkedProjectName
+      linkedProjectName: currentState.linkedProjectName,
+      projectPath: currentState.projectPath
     })
 
-    // 🆕 URL에 projectId가 있지만 스토어에 없으면 프로젝트 정보를 가져와서 설정
-    if (projectIdFromUrl && !currentState.linkedProjectId) {
-      console.log('[NeuralMap] Setting linked project from URL:', projectIdFromUrl)
+    // 🔥 URL에 projectId가 없는 경우: persist된 프로젝트 복원 또는 클리어
+    if (!urlProjectId) {
+      // linkedProjectId가 있고 projectPath도 있으면 마지막 세션 복원
+      if (currentState.linkedProjectId && currentState.projectPath) {
+        console.log('[NeuralMap] 🔄 Restoring last session:', {
+          linkedProjectId: currentState.linkedProjectId,
+          linkedProjectName: currentState.linkedProjectName,
+          projectPath: currentState.projectPath
+        })
+
+        // 🔥 파일이 없으면 DB에서 프로젝트 정보 가져와서 복원
+        const currentFiles = useNeuralMapStore.getState().files
+        if (!currentFiles || currentFiles.length === 0) {
+          console.log('[NeuralMap] 🔄 Restoring project from DB:', currentState.linkedProjectId)
+          // DB에서 프로젝트 정보 다시 가져오기 (folder_path 확인)
+          fetch(`/api/projects/${currentState.linkedProjectId}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(project => {
+              if (project) {
+                console.log('[NeuralMap] ✅ Project restored:', project.name, 'folder_path:', project.folder_path)
+                // folder_path가 DB에 있으면 그걸 사용 (persist된 값보다 신뢰성 높음)
+                const folderPath = project.folder_path || currentState.projectPath
+                if (folderPath) {
+                  // 강제로 파일 로드 트리거 (이벤트 발행)
+                  window.dispatchEvent(new CustomEvent('glowus:load-project', {
+                    detail: { projectPath: folderPath, projectId: project.id, projectName: project.name }
+                  }))
+                }
+              }
+            })
+            .catch(err => console.error('[NeuralMap] Failed to restore project:', err))
+        }
+      } else {
+        // 그 외 모든 경우: 불완전한 상태 → 클리어
+        // (linkedProjectId만 있거나, linkedProjectName만 있거나, projectPath만 있는 경우)
+        if (currentState.linkedProjectId || currentState.linkedProjectName || currentState.projectPath) {
+          console.log('[NeuralMap] Clearing stale/incomplete project state:', {
+            linkedProjectId: currentState.linkedProjectId,
+            linkedProjectName: currentState.linkedProjectName,
+            projectPath: currentState.projectPath
+          })
+          useNeuralMapStore.getState().clearLinkedProject()
+        }
+      }
+      return // URL에 projectId가 없으면 여기서 종료
+    }
+
+    // 🆕 URL에 projectId가 있는 경우: 프로젝트 정보 로드
+    if (!currentState.linkedProjectId || currentState.linkedProjectId !== urlProjectId) {
+      console.log('[NeuralMap] Setting linked project from URL:', urlProjectId)
       // 프로젝트 정보 가져와서 스토어에 설정
-      fetch(`/api/projects/${projectIdFromUrl}`)
+      fetch(`/api/projects/${urlProjectId}`)
         .then(res => res.ok ? res.json() : null)
         .then(project => {
           if (project) {
             console.log('[NeuralMap] Project fetched, setting linked project:', project.id, project.name, 'folder_path:', project.folder_path)
-            setLinkedProject(project.id, project.name)
-            // 🔥 프로젝트의 folder_path가 있으면 projectPath도 설정 (에이전트가 파일 접근 가능)
+            useNeuralMapStore.getState().setLinkedProject(project.id, project.name)
+            // 🔥 프로젝트의 folder_path가 있으면 projectPath도 설정
             if (project.folder_path) {
               console.log('[NeuralMap] Setting projectPath from DB folder_path:', project.folder_path)
-              setProjectPath(project.folder_path)
+              useNeuralMapStore.getState().setProjectPath(project.folder_path)
             } else {
-              // 🔥 folder_path가 없으면 Electron에서 자동 폴더 선택 다이얼로그
+              // 🔥 folder_path가 없으면 환경에 따라 처리
               const electron = typeof window !== 'undefined' ? (window as any).electron : null
               if (electron?.fs?.selectDirectory) {
+                // Electron: 폴더 선택 다이얼로그
                 console.log('[NeuralMap] No folder_path, opening folder selection dialog')
                 electron.fs.selectDirectory().then((result: { path: string } | null) => {
                   if (result?.path) {
-                    setProjectPath(result.path)
+                    useNeuralMapStore.getState().setProjectPath(result.path)
                     // DB에도 저장
                     fetch(`/api/projects/${project.id}`, {
                       method: 'PATCH',
@@ -440,50 +563,45 @@ export default function NeuralMapPage() {
                     })
                   }
                 })
+              } else {
+                // 🔥 웹: 서버에 실제 폴더 생성 요청 (터미널 작동을 위해)
+                console.log('[NeuralMap] Web mode - requesting server to create project folder:', project.name)
+                fetch('/api/workspace/create-folder', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ projectName: project.name, projectId: project.id })
+                })
+                  .then(res => res.json())
+                  .then(result => {
+                    if (result.success && result.path) {
+                      console.log('[NeuralMap] ✅ Server created project folder:', result.path)
+                      useNeuralMapStore.getState().setProjectPath(result.path)
+                    } else {
+                      // 폴더 생성 실패 시 가상 경로로 폴백
+                      console.warn('[NeuralMap] Failed to create folder, using virtual path')
+                      const virtualPath = `/workspace/${project.name}`
+                      useNeuralMapStore.getState().setProjectPath(virtualPath)
+                    }
+                  })
+                  .catch(err => {
+                    console.error('[NeuralMap] Folder creation error:', err)
+                    const virtualPath = `/workspace/${project.name}`
+                    useNeuralMapStore.getState().setProjectPath(virtualPath)
+                  })
               }
             }
           } else {
             // 프로젝트 정보가 없어도 ID라도 설정
-            console.log('[NeuralMap] Project not found, setting ID only:', projectIdFromUrl)
-            setLinkedProject(projectIdFromUrl, null)
+            console.log('[NeuralMap] Project not found, setting ID only:', urlProjectId)
+            useNeuralMapStore.getState().setLinkedProject(urlProjectId, null)
           }
         })
         .catch(err => {
           console.error('[NeuralMap] Failed to fetch project:', err)
-          // 에러 시에도 ID 설정
-          setLinkedProject(projectIdFromUrl, null)
+          useNeuralMapStore.getState().setLinkedProject(urlProjectId!, null)
         })
     }
-
-    // 🔥 URL에 projectId가 없어도 기존 프로젝트 유지 (다른 메뉴 갔다 와도 유지됨)
-    // 프로젝트 초기화는 사용자가 명시적으로 "New Project" 버튼을 클릭할 때만 수행
-    if (!projectIdFromUrl && hasLinkedProject) {
-      console.log('[NeuralMap] No project in URL but keeping existing linked project:', {
-        linkedProjectId: currentState.linkedProjectId,
-        linkedProjectName: currentState.linkedProjectName,
-        projectPath: currentState.projectPath
-      })
-
-      // 🔥 linkedProjectId는 있는데 projectPath가 없으면 폴더 선택 다이얼로그
-      if (currentState.linkedProjectId && !currentState.projectPath) {
-        const electron = typeof window !== 'undefined' ? (window as any).electron : null
-        if (electron?.fs?.selectDirectory) {
-          console.log('[NeuralMap] Existing project has no folder_path, opening folder selection')
-          electron.fs.selectDirectory().then((result: { path: string } | null) => {
-            if (result?.path) {
-              setProjectPath(result.path)
-              // DB에도 저장
-              fetch(`/api/projects/${currentState.linkedProjectId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ folder_path: result.path })
-              })
-            }
-          })
-        }
-      }
-    }
-  }, [setLinkedProject, clearLinkedProject, setProjectPath])
+  }, [urlProjectId]) // 🔥 urlProjectId 변경 시 실행 (작업 히스토리에서 클릭 시)
 
   // Expose store to window for debugging + keyboard shortcut
   useEffect(() => {
@@ -491,11 +609,18 @@ export default function NeuralMapPage() {
       // Expose store for debugging
       (window as any).__neuralMapStore = useNeuralMapStore
 
-      // Keyboard shortcut: Ctrl+` to toggle terminal
+      // Keyboard shortcut: Ctrl+` to toggle terminal (실제 폴더 경로 있을 때만)
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.ctrlKey && e.key === '`') {
           e.preventDefault()
-          toggleTerminal()
+          // 🔥 실제 파일 시스템 경로가 있을 때만 터미널 토글
+          const currentPath = useNeuralMapStore.getState().projectPath
+          // 가상 경로(/workspace/...)는 제외
+          const isReal = currentPath && !currentPath.startsWith('/workspace/') &&
+            (currentPath.startsWith('/') || /^[A-Za-z]:\\/.test(currentPath))
+          if (isReal) {
+            toggleTerminal()
+          }
         }
       }
       window.addEventListener('keydown', handleKeyDown)
@@ -892,6 +1017,129 @@ export default function NeuralMapPage() {
     }
   }, [mounted, projectPath, mapId, setFiles, buildGraphFromFilesAsync])
 
+  // 🔥 Claude CLI에서 파일 생성/수정 시 자동으로 에디터에서 열기
+  useEffect(() => {
+    if (!mounted) {
+      console.log('[NeuralMap] ⏳ Waiting for mount to register file-changed listener')
+      return
+    }
+
+    console.log('[NeuralMap] ✅ Registering glowus:file-changed listener')
+
+    const handleFileChanged = async (event: CustomEvent<{ path: string; type: 'create' | 'change' | 'delete' }>) => {
+      const { path: filePath, type: changeType } = event.detail
+      console.log('[NeuralMap] 🔔 GlowCode file event:', changeType, filePath)
+
+      // 삭제는 처리하지 않음
+      if (changeType === 'delete') return
+
+      // 🔥 프로젝트 경로가 있으면 매칭 확인 (없으면 모든 파일 허용)
+      const currentProjectPath = useNeuralMapStore.getState().projectPath
+      if (currentProjectPath && !currentProjectPath.startsWith('/workspace/')) {
+        // 실제 경로가 있으면 그 경로로 시작하는지 확인
+        if (!filePath.startsWith(currentProjectPath)) {
+          console.log('[NeuralMap] File not in project path, skipping:', filePath)
+          return
+        }
+      }
+
+      // 약간의 딜레이 후 파일 열기 (파일 트리 업데이트 완료 대기)
+      setTimeout(async () => {
+        const basePath = currentProjectPath || ''
+        const relativePath = basePath ? filePath.replace(basePath + '/', '') : filePath
+        const fileName = filePath.split('/').pop() || ''
+        const ext = fileName.split('.').pop()?.toLowerCase() || ''
+
+        // 파일 타입 결정
+        const getFileType = (extension: string) => {
+          const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico']
+          const mdExts = ['md', 'markdown', 'mdx']
+          const codeExts = ['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'rs', 'go', 'sql', 'prisma', 'graphql', 'gql', 'yaml', 'yml']
+          if (imageExts.includes(extension)) return 'image'
+          if (mdExts.includes(extension)) return 'markdown'
+          if (codeExts.includes(extension)) return 'code'
+          return 'text'
+        }
+
+        // 파일 내용 읽기
+        let content = ''
+        try {
+          const electron = (window as any).electron
+          if (electron?.fs?.readFile) {
+            content = await electron.fs.readFile(filePath)
+          } else {
+            // 웹 환경: API로 파일 내용 가져오기
+            const response = await fetch('/api/workspace/read-file', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filePath })
+            })
+            if (response.ok) {
+              const result = await response.json()
+              content = result.content || ''
+            }
+          }
+        } catch (err) {
+          console.warn('[NeuralMap] Failed to read file content:', err)
+        }
+
+        // NeuralFile 객체 생성 후 에디터에서 열기
+        const neuralFile = {
+          id: `opened-${Date.now()}`,
+          name: fileName,
+          path: relativePath,
+          type: getFileType(ext) as any,
+          content,
+          size: content.length,
+          createdAt: new Date().toISOString(),
+          mapId: mapId || '',
+          url: '',
+        }
+
+        const fileType = getFileType(ext)
+        console.log('[NeuralMap] 📂 Opening file in editor:', relativePath, 'ext:', ext, 'type:', fileType)
+
+        // 🔥 코드 파일은 CodePreviewPanel로, 마크다운은 MarkdownEditorPanel로
+        // 한 번에 하나의 패널만 열리도록 다른 패널은 닫기
+        if (fileType === 'code' || fileType === 'text') {
+          console.log('[NeuralMap] 🖥️ Opening in CodePreviewPanel')
+          useNeuralMapStore.setState({
+            codePreviewOpen: true,
+            codePreviewFile: neuralFile,
+            // 🔥 MarkdownEditorPanel 닫기
+            editorOpen: false,
+            editingFile: null,
+          })
+        } else if (fileType === 'markdown') {
+          console.log('[NeuralMap] 📝 Opening in MarkdownEditorPanel')
+          useNeuralMapStore.setState({
+            editorOpen: true,
+            editorCollapsed: false,
+            editingFile: neuralFile,
+            // 🔥 CodePreviewPanel 닫기
+            codePreviewOpen: false,
+            codePreviewFile: null,
+          })
+        } else {
+          console.log('[NeuralMap] 🖼️ Opening in CodePreviewPanel (other)')
+          useNeuralMapStore.setState({
+            codePreviewOpen: true,
+            codePreviewFile: neuralFile,
+            // 🔥 MarkdownEditorPanel 닫기
+            editorOpen: false,
+            editingFile: null,
+          })
+        }
+      }, 300) // 파일 트리 업데이트(200ms) 후 열기
+    }
+
+    window.addEventListener('glowus:file-changed', handleFileChanged as unknown as EventListener)
+
+    return () => {
+      window.removeEventListener('glowus:file-changed', handleFileChanged as unknown as EventListener)
+    }
+  }, [mounted, mapId]) // 🔥 projectPath 의존성 제거 - 스토어에서 직접 가져옴
+
   // 🆕 BroadcastChannel로 파일 리스캔 요청 수신 (에이전트 생성 등)
   useEffect(() => {
     if (!mounted) return
@@ -1163,6 +1411,7 @@ export default function NeuralMapPage() {
             terminalOpen={terminalOpen}
             projectPath={projectPath}
             linkedProjectName={linkedProjectName}
+            onRun={handleRunProject}
           />
 
           {/* Top View Controls (Tabs, etc) */}
@@ -1173,16 +1422,19 @@ export default function NeuralMapPage() {
 
             <div className="flex items-center gap-2 flex-shrink-0">
 
-              {/* Terminal Toggle */}
+              {/* Terminal Toggle - 실제 폴더 경로가 있을 때만 활성화 */}
               <button
-                onClick={toggleTerminal}
+                onClick={() => hasRealProjectPath && toggleTerminal()}
+                disabled={!hasRealProjectPath}
                 className={cn(
                   "p-1.5 rounded-md transition-colors",
-                  terminalOpen
-                    ? isDark ? "bg-white/10 text-zinc-200" : "bg-zinc-200 text-zinc-700"
-                    : isDark ? "hover:bg-white/5 text-zinc-400 hover:text-zinc-200" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700"
+                  !hasRealProjectPath
+                    ? "opacity-40 cursor-not-allowed text-zinc-500"
+                    : terminalOpen
+                      ? isDark ? "bg-white/10 text-zinc-200" : "bg-zinc-200 text-zinc-700"
+                      : isDark ? "hover:bg-white/5 text-zinc-400 hover:text-zinc-200" : "hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700"
                 )}
-                title="Toggle Terminal (Ctrl + `)"
+                title={hasRealProjectPath ? "Toggle Terminal (Ctrl + `)" : "실제 폴더를 선택해주세요 (Open Folder)"}
               >
                 <Terminal className="w-4 h-4" />
               </button>
@@ -1269,7 +1521,7 @@ export default function NeuralMapPage() {
                 </div>
               </div>
             ) : activeTab === 'browser' ? (
-              <BrowserView onShareToAI={handleViewfinderShareToAI} />
+              <BrowserView onShareToAI={handleViewfinderShareToAI} initialUrl={browserPreviewUrl} />
             ) : activeTab === 'mermaid' ? (
               // Interactive diagram views based on type
               mermaidDiagramType === 'flowchart' ? (
@@ -1301,7 +1553,7 @@ export default function NeuralMapPage() {
           {/* Terminal Panel - Always rendered for persistence */}
           <div
             className={cn(
-              "shrink-0 border-t overflow-hidden transition-all duration-200",
+              "shrink-0 border-t overflow-hidden",
               isDark ? "border-zinc-800" : "border-zinc-200"
             )}
             style={{ height: terminalOpen ? terminalHeight : 0 }}
@@ -1312,7 +1564,7 @@ export default function NeuralMapPage() {
               onClose={toggleTerminal}
               height={terminalHeight}
               onHeightChange={setTerminalHeight}
-              cwd={projectPath || undefined}
+              cwd={hasRealProjectPath ? projectPath! : undefined}
             />
           </div>
           {/* Right Panel Resize Handle (Absolute Positioned for no gap) */}

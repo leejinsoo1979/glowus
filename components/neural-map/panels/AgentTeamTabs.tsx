@@ -1,889 +1,437 @@
 'use client'
 
 /**
- * AgentTeamTabs - 5개 전문 에이전트 탭 시스템
+ * DynamicAgentPanel - Claude Code CLI 리더 + 동적 서브 에이전트 시스템
  *
- * 1. Orchestrator (Team Lead) - 요구사항 정리, 라우팅
- * 2. Planner (Architect) - 설계, 구조 결정
- * 3. Implementer (Coder) - 실제 코딩
- * 4. Tester (QA) - 테스트, 검증
- * 5. Reviewer (Critic) - 코드 리뷰, 품질 감시
+ * 새로운 아키텍처:
+ * - Claude Code CLI가 유일한 리더/PM
+ * - 사용자 요청 시 모드 선택: Quick Mode (직렬) vs Agent Mode (팀 오케스트레이션)
+ * - Agent Mode에서 리더가 프로젝트 분석 후 필요한 서브 에이전트를 동적으로 생성
+ * - 서브 에이전트는 리더의 Task 도구를 통해 스폰됨
  */
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import {
-  Users,
-  Map,
-  Code2,
-  TestTube,
-  Eye,
+  Terminal,
   Loader2,
   Bot,
   Sparkles,
   CheckCircle,
   AlertTriangle,
-  FileCode,
   ChevronDown,
   ArrowUp,
-  Globe,
-  Image as ImageIcon,
-  Mic,
-  AtSign,
   Send,
+  Zap,
+  Users,
+  Play,
+  X,
+  Plus,
+  Clock,
+  FileCode,
+  Layers,
 } from 'lucide-react'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
-import { useChatStore } from '@/stores/chatStore'
-import { getModelList, type ChatModelId } from '@/lib/ai/models'
-import { executeSuperAgentActions, formatActionResultsForChat, type ToolAction } from '@/lib/ai/agent-actions'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { ClaudeCodeUI } from '@/components/glow-code/GlowCodeChat'
+import { useGlowCodeStore } from '@/stores/glowCodeStore'
 
-const MODELS = getModelList()
-
-// 에이전트 역할 정의
-export type AgentRole = 'orchestrator' | 'planner' | 'implementer' | 'tester' | 'reviewer'
-
-interface AgentConfig {
-  id: AgentRole
-  name: string
-  nameKr: string
-  icon: typeof Users
-  color: string
-  description: string
-  systemPrompt: string
-}
-
-export const AGENT_TEAM: AgentConfig[] = [
-  {
-    id: 'orchestrator',
-    name: 'Orchestrator',
-    nameKr: '오케스트레이터',
-    icon: Users,
-    color: '#8B5CF6', // purple
-    description: '요구사항 분석 및 작업 자동 분배',
-    systemPrompt: `당신은 Team Lead / Orchestrator 에이전트입니다.
-
-## 🚨 핵심 역할: 자동 업무 분배!
-사용자가 요청하면 **당신이 알아서** 다른 에이전트들에게 업무를 위임합니다.
-사용자가 각 에이전트한테 따로따로 지시할 필요 없습니다!
-
-## 🔥 필수 행동: call_agent 도구로 자동 위임!
-
-사용자가 뭔가를 만들어달라고 하면 **반드시** 다음 순서로 call_agent를 호출하세요:
-
-### 1단계: Planner 호출 (설계)
-\`\`\`
-call_agent(targetAgent="planner", task="[사용자 요청]에 대한 설계를 해주세요. 폴더 구조, 파일 목록, 데이터 흐름을 정리해주세요.")
-\`\`\`
-
-### 2단계: Implementer 호출 (구현)
-\`\`\`
-call_agent(targetAgent="implementer", task="다음 설계를 기반으로 코드를 작성하세요: [Planner 결과]. create_file_with_node 도구로 파일을 생성하세요.")
-\`\`\`
-
-### 3단계: Tester 호출 (테스트)
-\`\`\`
-call_agent(targetAgent="tester", task="다음 코드에 대한 테스트를 작성하세요: [Implementer 결과]")
-\`\`\`
-
-### 4단계: Reviewer 호출 (리뷰)
-\`\`\`
-call_agent(targetAgent="reviewer", task="다음 코드를 리뷰하세요: [전체 결과]. 보안, 성능, 품질 검토해주세요.")
-\`\`\`
-
-## 응답 형식
-1. 📋 요구사항 분석 (1-2줄)
-2. 🚀 에이전트 호출 (call_agent 도구 사용!)
-3. ✅ 최종 결과 요약
-
-## 🚨 절대 규칙
-❌ 설명만 하고 끝내지 마!
-❌ "~할 수 있습니다" 같은 말만 하지 마!
-❌ 사용자한테 다른 에이전트 탭으로 가라고 하지 마!
-✅ 반드시 call_agent 도구로 직접 에이전트 호출!
-✅ 모든 작업을 자동으로 진행!`,
-  },
-  {
-    id: 'planner',
-    name: 'Planner',
-    nameKr: '플래너',
-    icon: Map,
-    color: '#3B82F6', // blue
-    description: '설계 및 아키텍처 결정',
-    systemPrompt: `당신은 Planner / Architect 에이전트입니다.
-
-## 역할
-- Plan-and-Act 기반으로 설계 먼저 확정
-- 폴더 구조, 모듈 경계(관심사 분리), 데이터 흐름 정의
-- 인터페이스 정의 (API, 컴포넌트 Props, DB 스키마)
-- "작게 나눠서" 실행 가능한 작업 목록으로 쪼개기
-
-## 응답 형식
-1. 아키텍처 설계도 (폴더 구조, 모듈)
-2. 데이터 흐름도
-3. 인터페이스 정의 (TypeScript 타입)
-4. 구현 작업 목록 (우선순위 순)
-
-## 행동 규칙
-- 코드 작성 전 반드시 설계 먼저
-- SOLID, DRY 원칙 준수
-- 확장성과 유지보수성 고려
-- Implementer가 바로 작업할 수 있는 수준으로 상세화
-
-## 🔥 Agent Builder 워크플로우 도구
-AI 에이전트 워크플로우를 설계할 때 다음 도구로 캔버스에 직접 노드를 생성하세요:
-- agent_create_node: 노드 생성 (type: start/llm/prompt/router/tool/rag/memory/javascript/end)
-- agent_connect_nodes: 노드 연결 (sourceNodeId, targetNodeId)
-- agent_generate_workflow: 전체 워크플로우를 한번에 생성`,
-  },
-  {
-    id: 'implementer',
-    name: 'Implementer',
-    nameKr: '임플리멘터',
-    icon: Code2,
-    color: '#10B981', // green
-    description: '실제 코드 구현',
-    systemPrompt: `당신은 Implementer / Builder / Coder 에이전트입니다.
-
-## 🚨 핵심 역할: 코드 작성 + 파일 생성!
-설명만 하지 말고 **반드시 create_file_with_node 도구로 파일을 생성**하세요!
-
-## 🔥 필수 도구 사용!
-
-### 파일 생성 (가장 중요!)
-\`\`\`
-create_file_with_node(path="src/game.tsx", content="코드내용", title="게임 컴포넌트")
-\`\`\`
-
-### 파일 수정
-\`\`\`
-edit_file(path="src/game.tsx", old_content="기존코드", new_content="새코드")
-\`\`\`
-
-### 터미널 명령
-\`\`\`
-run_terminal(command="npm install react-game-engine")
-\`\`\`
-
-## 행동 순서
-1. 요청 분석 (1줄로)
-2. **create_file_with_node로 파일 생성** (반드시!)
-3. 결과 보고
-
-## 🚨 절대 규칙
-❌ 코드를 텍스트로만 보여주지 마!
-❌ "이렇게 하면 됩니다" 설명만 하지 마!
-❌ 외부 도구 추천하지 마!
-❌ 파일 생성 없이 응답 끝내지 마!
-
-✅ 반드시 create_file_with_node 도구 호출!
-✅ 실제 동작하는 코드 작성!
-✅ 한 번에 여러 파일 생성 가능!
-
-## 예시
-사용자: "게임 만들어줘"
-→ create_file_with_node(path="game.html", content="<!DOCTYPE html>...", title="게임")
-→ "게임을 생성했습니다!"`,
-  },
-  {
-    id: 'tester',
-    name: 'Tester',
-    nameKr: '테스터',
-    icon: TestTube,
-    color: '#F59E0B', // amber
-    description: '테스트 및 검증',
-    systemPrompt: `당신은 Tester / Verifier / QA 에이전트입니다.
-
-## 역할
-- 단위/통합 테스트 작성
-- 엣지케이스 발견 및 테스트
-- 회귀 방지 테스트
-- "재현 → 원인 → 고정 테스트 → 수정" 루프 강제
-
-## 응답 형식
-1. 테스트 케이스 목록
-2. 테스트 코드 (Jest, Vitest, Playwright 등)
-3. 발견된 버그/이슈
-4. 수정 제안
-
-## 행동 규칙
-- 모든 주요 기능에 테스트 작성
-- 엣지케이스 적극 탐색
-- 테스트 실패 시 원인 분석
-- 버그 재현 스텝 명확히 기록
-
-\`\`\`typescript
-// 테스트 코드 예시
-describe('기능명', () => {
-  it('정상 케이스', () => {
-    // ...
-  })
-  it('엣지 케이스', () => {
-    // ...
-  })
-})
-\`\`\``,
-  },
-  {
-    id: 'reviewer',
-    name: 'Reviewer',
-    nameKr: '리뷰어',
-    icon: Eye,
-    color: '#EF4444', // red
-    description: '코드 리뷰 및 품질 감시',
-    systemPrompt: `당신은 Reviewer / Critic 에이전트입니다.
-
-## 역할
-- 코드 품질, 보안, 성능, 아키텍처 위반 감시
-- 환각/추측 방지 ("근거 없는 구현" 차단)
-- 최종 머지 게이트 역할
-
-## 응답 형식
-### 코드 리뷰 결과
-
-✅ **통과 항목**
-- ...
-
-⚠️ **경고 (수정 권장)**
-- ...
-
-❌ **블로커 (수정 필수)**
-- ...
-
-### 보안 체크
-- [ ] SQL Injection
-- [ ] XSS
-- [ ] CSRF
-- [ ] 인증/인가
-
-### 성능 체크
-- [ ] N+1 쿼리
-- [ ] 메모리 누수
-- [ ] 불필요한 리렌더링
-
-### 최종 판정: ✅ APPROVE / ⚠️ REQUEST_CHANGES / ❌ REJECT
-
-## 행동 규칙
-- 근거 없는 코드는 거부
-- 보안 취약점은 반드시 지적
-- 성능 이슈 적극 발견
-- 아키텍처 위반 차단`,
-  },
-]
-
-interface AgentMessage {
+// 동적으로 생성되는 서브 에이전트 타입
+export interface DynamicSubAgent {
   id: string
-  role: 'user' | 'assistant'
-  content: string
-  agentRole: AgentRole
-  timestamp: number
-  status?: 'pending' | 'complete' | 'error'
-  toolCalls?: { name: string; result?: string }[]
+  name: string
+  role: string // e.g., "PaymentExpert", "UIDesigner", "SecurityAuditor"
+  status: 'idle' | 'working' | 'complete' | 'error'
+  progress?: number
+  currentTask?: string
+  createdAt: number
+  completedAt?: number
 }
 
-interface AgentTeamTabsProps {
+// 실행 모드
+type ExecutionMode = 'quick' | 'agent'
+
+interface DynamicAgentPanelProps {
   isDark: boolean
 }
 
-export function AgentTeamTabs({ isDark }: AgentTeamTabsProps) {
-  const [activeAgent, setActiveAgent] = useState<AgentRole>('orchestrator')
-  const [messages, setMessages] = useState<AgentMessage[]>([])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const mapId = useNeuralMapStore((s) => s.mapId)
+export function DynamicAgentPanel({ isDark }: DynamicAgentPanelProps) {
+  const projectPath = useNeuralMapStore((s) => s.projectPath)
   const currentTheme = useNeuralMapStore((s) => s.currentTheme)
-
-  // 🎨 사용자 테마 액센트 색상 사용
   const accentColor = currentTheme?.ui?.accentColor || '#3b82f6'
 
-  // 각 에이전트별 모델 설정 저장
-  const [agentModels, setAgentModels] = useState<Record<AgentRole, ChatModelId>>({
-    orchestrator: 'gemini-2.0-flash',
-    planner: 'gemini-2.0-flash',
-    implementer: 'gemini-2.0-flash',
-    tester: 'gemini-2.0-flash',
-    reviewer: 'gemini-2.0-flash',
-  })
+  // 실행 모드 상태
+  const [mode, setMode] = useState<ExecutionMode>('quick')
+  const [showModeSelector, setShowModeSelector] = useState(false)
 
-  // 각 에이전트별 Agent 모드 on/off - 🔥 모두 기본 true!
-  const [agentModes, setAgentModes] = useState<Record<AgentRole, boolean>>({
-    orchestrator: true, // 🔥 도구 사용!
-    planner: true,      // 🔥 도구 사용!
-    implementer: true,
-    tester: true,
-    reviewer: true,     // 🔥 도구 사용!
-  })
+  // 동적 서브 에이전트 목록
+  const [subAgents, setSubAgents] = useState<DynamicSubAgent[]>([])
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
 
-  const currentAgent = AGENT_TEAM.find((a) => a.id === activeAgent)!
-  const currentModel = agentModels[activeAgent]
-  const isAgentMode = agentModes[activeAgent]
-  const currentModelInfo = MODELS.find((m) => m.id === currentModel) || MODELS[0]
+  // GlowCode 스토어에서 연결 상태 감시
+  const isConnected = useGlowCodeStore((s) => s.settings.isConnected)
 
-  // 자동 스크롤
+  // 서브 에이전트 추가 (리더가 Task 도구로 스폰할 때 호출)
+  const addSubAgent = useCallback((agent: Omit<DynamicSubAgent, 'id' | 'createdAt'>) => {
+    const newAgent: DynamicSubAgent = {
+      ...agent,
+      id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: Date.now(),
+    }
+    setSubAgents(prev => [...prev, newAgent])
+    return newAgent.id
+  }, [])
+
+  // 서브 에이전트 상태 업데이트
+  const updateSubAgent = useCallback((id: string, updates: Partial<DynamicSubAgent>) => {
+    setSubAgents(prev => prev.map(agent =>
+      agent.id === id ? { ...agent, ...updates } : agent
+    ))
+  }, [])
+
+  // 서브 에이전트 제거
+  const removeSubAgent = useCallback((id: string) => {
+    setSubAgents(prev => prev.filter(agent => agent.id !== id))
+    if (selectedAgentId === id) {
+      setSelectedAgentId(null)
+    }
+  }, [selectedAgentId])
+
+  // 전역 이벤트 리스너 (Claude Code CLI에서 서브 에이전트 생성 이벤트 수신)
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages])
-
-  // Textarea auto-resize
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`
-    }
-  }, [input])
-
-  // 현재 에이전트 모델 변경
-  const setCurrentModel = (modelId: ChatModelId) => {
-    setAgentModels((prev) => ({ ...prev, [activeAgent]: modelId }))
-  }
-
-  // 현재 에이전트 Agent 모드 토글
-  const toggleCurrentAgentMode = () => {
-    setAgentModes((prev) => ({ ...prev, [activeAgent]: !prev[activeAgent] }))
-  }
-
-  // 🔥 에이전트 체인 워크플로우: Orchestrator → Planner → Implementer → Tester → Reviewer
-  const AGENT_WORKFLOW: AgentRole[] = ['orchestrator', 'planner', 'implementer', 'tester', 'reviewer']
-
-  // 단일 에이전트 호출
-  const callSingleAgent = async (
-    agentRole: AgentRole,
-    message: string,
-    context?: string
-  ): Promise<{ response: string; actions?: ToolAction[] }> => {
-    const agent = AGENT_TEAM.find((a) => a.id === agentRole)!
-
-    const response = await fetch('/api/neural-map/agent-team/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: context ? `## 이전 에이전트 결과\n${context}\n\n## 현재 요청\n${message}` : message,
-        agentRole,
-        systemPrompt: agent.systemPrompt,
-        mapId,
-        model: agentModels[agentRole],
-        agentMode: agentModes[agentRole],
-        history: messages.filter((m) => m.agentRole === agentRole).slice(-5),
-      }),
-    })
-
-    if (!response.ok) throw new Error(`${agentRole} API 호출 실패`)
-    return response.json()
-  }
-
-  // 🔥 Flowchart에 에이전트 워크플로우 시각화
-  const visualizeWorkflowInCanvas = async () => {
-    // 1. Flowchart 탭으로 전환
-    const store = useNeuralMapStore.getState()
-    store.setActiveTab('mermaid')
-    store.setMermaidDiagramType('flowchart')
-
-    // 2. 기존 워크플로우 노드 삭제 후 새로 생성
-    const projectPath = store.projectPath || 'default'
-    const baseX = 150
-    const baseY = 100
-    const spacing = 180
-
-    // 에이전트 노드 생성
-    for (let i = 0; i < AGENT_WORKFLOW.length; i++) {
-      const agentRole = AGENT_WORKFLOW[i]
-      const agent = AGENT_TEAM.find((a) => a.id === agentRole)!
-
-      try {
-        await fetch('/api/flowchart', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectPath,
-            action: 'create_node',
-            nodeId: `agent-${agentRole}`,
-            label: `${agent.nameKr}\n(대기중)`,
-            shape: 'round',
-            position: { x: baseX + i * spacing, y: baseY },
-            style: { backgroundColor: '#3f3f46', borderColor: agent.color },
-          }),
-        })
-
-        // 이전 노드와 연결 (첫 번째 제외)
-        if (i > 0) {
-          const prevRole = AGENT_WORKFLOW[i - 1]
-          await fetch('/api/flowchart', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              projectPath,
-              action: 'create_edge',
-              sourceId: `agent-${prevRole}`,
-              targetId: `agent-${agentRole}`,
-              edgeLabel: '',
-            }),
-          })
-        }
-      } catch (e) {
-        console.warn(`[Workflow] 노드 생성 실패: ${agentRole}`, e)
-      }
-    }
-  }
-
-  // 🔥 에이전트 상태 업데이트 (Flowchart 노드 색상 변경)
-  const updateAgentNodeStatus = async (
-    agentRole: AgentRole,
-    status: 'working' | 'complete' | 'error'
-  ) => {
-    const agent = AGENT_TEAM.find((a) => a.id === agentRole)!
-    const store = useNeuralMapStore.getState()
-    const projectPath = store.projectPath || 'default'
-
-    const statusLabel = status === 'working' ? '작업중...' : status === 'complete' ? '완료 ✓' : '오류 ✗'
-    const bgColor = status === 'working' ? '#3b82f6' : status === 'complete' ? '#22c55e' : '#ef4444'
-
-    try {
-      await fetch('/api/flowchart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectPath,
-          action: 'update_node',
-          nodeId: `agent-${agentRole}`,
-          label: `${agent.nameKr}\n(${statusLabel})`,
-          style: { backgroundColor: bgColor, borderColor: agent.color },
-        }),
+    const handleAgentSpawn = (event: CustomEvent<{ name: string; role: string; task: string }>) => {
+      const { name, role, task } = event.detail
+      addSubAgent({
+        name,
+        role,
+        status: 'working',
+        currentTask: task,
       })
-    } catch (e) {
-      console.warn(`[Workflow] 노드 업데이트 실패: ${agentRole}`, e)
     }
+
+    const handleAgentUpdate = (event: CustomEvent<{ id: string; status: DynamicSubAgent['status']; progress?: number }>) => {
+      const { id, status, progress } = event.detail
+      updateSubAgent(id, {
+        status,
+        progress,
+        ...(status === 'complete' ? { completedAt: Date.now() } : {})
+      })
+    }
+
+    window.addEventListener('agent:spawn', handleAgentSpawn as EventListener)
+    window.addEventListener('agent:update', handleAgentUpdate as EventListener)
+
+    return () => {
+      window.removeEventListener('agent:spawn', handleAgentSpawn as EventListener)
+      window.removeEventListener('agent:update', handleAgentUpdate as EventListener)
+    }
+  }, [addSubAgent, updateSubAgent])
+
+  // 프로젝트 없으면 안내
+  if (!projectPath) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-6 text-center">
+        <div className={cn(
+          'w-16 h-16 rounded-2xl flex items-center justify-center mb-5',
+          isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+        )}>
+          <Layers className={cn('w-8 h-8', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
+        </div>
+        <h3 className={cn('text-lg font-medium mb-2', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
+          프로젝트를 먼저 열어주세요
+        </h3>
+        <p className={cn('text-sm max-w-[260px] mb-4', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
+          코딩 에이전트는 프로젝트 폴더 내에서 작동합니다.
+        </p>
+        <div className={cn('text-xs', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
+          좌측 파일 트리에서 폴더를 선택하세요
+        </div>
+      </div>
+    )
   }
-
-  // 🔥 전체 워크플로우 실행 (Orchestrator에서 시작할 때)
-  const runFullWorkflow = async (userInput: string) => {
-    // 메인 캔버스에 워크플로우 시각화
-    await visualizeWorkflowInCanvas()
-
-    let previousResult = ''
-
-    for (let i = 0; i < AGENT_WORKFLOW.length; i++) {
-      const agentRole = AGENT_WORKFLOW[i]
-      const agent = AGENT_TEAM.find((a) => a.id === agentRole)!
-
-      // 현재 에이전트로 탭 전환
-      setActiveAgent(agentRole)
-
-      // 🔥 Flowchart 노드 상태: 작업중
-      await updateAgentNodeStatus(agentRole, 'working')
-
-      // 시작 메시지 표시
-      const startMsg: AgentMessage = {
-        id: `${Date.now()}-${agentRole}-start`,
-        role: 'assistant',
-        content: `🔄 ${agent.nameKr} 작업 시작...`,
-        agentRole,
-        timestamp: Date.now(),
-        status: 'pending',
-      }
-      setMessages((prev) => [...prev, startMsg])
-
-      try {
-        // 에이전트 호출
-        const data = await callSingleAgent(agentRole, userInput, previousResult || undefined)
-
-        // 액션 실행
-        let actionResultsText = ''
-        if (data.actions && data.actions.length > 0) {
-          console.log(`[${agentRole}] Executing actions:`, data.actions)
-          const results = await executeSuperAgentActions(data.actions as ToolAction[])
-          actionResultsText = formatActionResultsForChat(results)
-        }
-
-        // 🔥 Flowchart 노드 상태: 완료
-        await updateAgentNodeStatus(agentRole, 'complete')
-
-        // 결과 메시지
-        const resultMsg: AgentMessage = {
-          id: `${Date.now()}-${agentRole}-result`,
-          role: 'assistant',
-          content: actionResultsText
-            ? `${data.response}\n\n---\n**실행 결과:**\n${actionResultsText}`
-            : data.response,
-          agentRole,
-          timestamp: Date.now(),
-          status: 'complete',
-        }
-        setMessages((prev) =>
-          prev.map((m) => (m.id === startMsg.id ? resultMsg : m))
-        )
-
-        // 다음 에이전트에게 전달할 컨텍스트
-        previousResult = data.response
-
-        // 잠시 대기 (UI 업데이트용)
-        await new Promise((r) => setTimeout(r, 500))
-      } catch (error) {
-        // 🔥 Flowchart 노드 상태: 오류
-        await updateAgentNodeStatus(agentRole, 'error')
-
-        const errorMsg: AgentMessage = {
-          id: `${Date.now()}-${agentRole}-error`,
-          role: 'assistant',
-          content: `❌ ${agent.nameKr} 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
-          agentRole,
-          timestamp: Date.now(),
-          status: 'error',
-        }
-        setMessages((prev) =>
-          prev.map((m) => (m.id === startMsg.id ? errorMsg : m))
-        )
-        break // 오류 시 워크플로우 중단
-      }
-    }
-  }
-
-  // 메시지 전송
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return
-
-    const userMessage: AgentMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      agentRole: activeAgent,
-      timestamp: Date.now(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    const userInput = input
-    setInput('')
-    setIsLoading(true)
-
-    try {
-      // 🔥 Orchestrator에서 시작하면 전체 워크플로우 실행
-      if (activeAgent === 'orchestrator') {
-        await runFullWorkflow(userInput)
-      } else {
-        // 개별 에이전트 호출 (기존 방식)
-        const data = await callSingleAgent(activeAgent, userInput)
-
-        // 액션 실행
-        let actionResultsText = ''
-        if (data.actions && data.actions.length > 0) {
-          console.log('[AgentTeam] Executing actions:', data.actions)
-          const results = await executeSuperAgentActions(data.actions as ToolAction[])
-          actionResultsText = formatActionResultsForChat(results)
-        }
-
-        const assistantMessage: AgentMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: actionResultsText
-            ? `${data.response}\n\n---\n**실행 결과:**\n${actionResultsText}`
-            : data.response,
-          agentRole: activeAgent,
-          timestamp: Date.now(),
-          status: 'complete',
-        }
-
-        setMessages((prev) => [...prev, assistantMessage])
-      }
-    } catch (error) {
-      console.error('Agent chat error:', error)
-      const errorMessage: AgentMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
-        agentRole: activeAgent,
-        timestamp: Date.now(),
-        status: 'error',
-      }
-      setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      if (e.nativeEvent.isComposing) return
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  // 현재 에이전트의 메시지만 필터링
-  const filteredMessages = messages.filter((m) => m.agentRole === activeAgent)
 
   return (
     <div className="h-full flex flex-col">
-      {/* Agent Tabs - 5개 에이전트 */}
-      <div className={cn('flex border-b overflow-x-auto', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-        {AGENT_TEAM.map((agent) => (
+      {/* 🔥 모드 선택 헤더 */}
+      <div className={cn(
+        'flex items-center gap-2 px-3 py-2 border-b',
+        isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50'
+      )}>
+        {/* 모드 토글 */}
+        <div className={cn(
+          'flex items-center rounded-lg p-0.5',
+          isDark ? 'bg-zinc-800' : 'bg-zinc-200'
+        )}>
           <button
-            key={agent.id}
-            onClick={() => setActiveAgent(agent.id)}
+            onClick={() => setMode('quick')}
             className={cn(
-              'flex-1 min-w-0 flex flex-col items-center justify-center py-2 px-1 text-[10px] font-medium transition-all relative',
-              activeAgent === agent.id
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+              mode === 'quick'
+                ? 'text-white shadow-sm'
+                : isDark
+                  ? 'text-zinc-400 hover:text-zinc-200'
+                  : 'text-zinc-500 hover:text-zinc-700'
+            )}
+            style={{
+              backgroundColor: mode === 'quick' ? '#3b82f6' : undefined,
+            }}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            Quick
+          </button>
+          <button
+            onClick={() => setMode('agent')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+              mode === 'agent'
+                ? 'text-white shadow-sm'
+                : isDark
+                  ? 'text-zinc-400 hover:text-zinc-200'
+                  : 'text-zinc-500 hover:text-zinc-700'
+            )}
+            style={{
+              backgroundColor: mode === 'agent' ? '#8b5cf6' : undefined,
+            }}
+          >
+            <Users className="w-3.5 h-3.5" />
+            Agent
+          </button>
+        </div>
+
+        {/* 모드 설명 */}
+        <div className={cn('flex-1 text-[10px]', isDark ? 'text-zinc-500' : 'text-zinc-400')}>
+          {mode === 'quick' ? (
+            'Claude Code가 직접 처리'
+          ) : (
+            'PM 모드: 서브 에이전트 자동 생성'
+          )}
+        </div>
+
+        {/* 연결 상태 */}
+        <div className={cn(
+          'flex items-center gap-1 px-2 py-1 rounded-full text-[10px]',
+          isConnected
+            ? isDark ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-600'
+            : isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-200 text-zinc-400'
+        )}>
+          <div className={cn(
+            'w-1.5 h-1.5 rounded-full',
+            isConnected ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'
+          )} />
+          {isConnected ? 'Connected' : 'Disconnected'}
+        </div>
+      </div>
+
+      {/* Agent Mode: 서브 에이전트 탭 바 (Agent 모드일 때 항상 표시) */}
+      {mode === 'agent' && (
+        <div className={cn(
+          'flex items-center gap-1 px-2 py-1.5 border-b overflow-x-auto',
+          isDark ? 'border-zinc-800 bg-zinc-900/30' : 'border-zinc-200 bg-zinc-50/50'
+        )}>
+          {/* 리더 탭 (항상 고정) */}
+          <button
+            onClick={() => setSelectedAgentId(null)}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all shrink-0',
+              selectedAgentId === null
                 ? 'text-white'
                 : isDark
-                  ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
-                  : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100/50'
+                  ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                  : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
             )}
             style={{
-              backgroundColor: activeAgent === agent.id ? accentColor : undefined,
+              backgroundColor: selectedAgentId === null ? accentColor : undefined,
             }}
           >
-            <agent.icon className="w-4 h-4 mb-0.5" />
-            <span className="truncate w-full text-center">{agent.name}</span>
+            <Terminal className="w-3.5 h-3.5" />
+            Leader
           </button>
-        ))}
-      </div>
 
-      {/* Agent Info */}
-      <div
-        className={cn('px-3 py-2 border-b text-xs', isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50')}
-      >
-        <div className="flex items-center gap-2">
-          <currentAgent.icon className="w-4 h-4" style={{ color: accentColor }} />
-          <span className={cn('font-semibold', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
-            {currentAgent.nameKr}
-          </span>
-        </div>
-        <p className={cn('mt-0.5', isDark ? 'text-zinc-500' : 'text-zinc-500')}>{currentAgent.description}</p>
-      </div>
+          <div className={cn('w-px h-4', isDark ? 'bg-zinc-700' : 'bg-zinc-300')} />
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3" ref={scrollRef}>
-        {filteredMessages.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center space-y-2">
-              <currentAgent.icon
-                className="w-10 h-10 mx-auto"
-                style={{ color: accentColor, opacity: 0.5 }}
-              />
-              <p className={cn('text-sm', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
-                {currentAgent.nameKr}에게 질문하세요
-              </p>
-              <p className={cn('text-xs max-w-[200px]', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
-                {currentAgent.description}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <AnimatePresence initial={false}>
-            {filteredMessages.map((msg) => (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+          {/* 동적 서브 에이전트 탭들 */}
+          <AnimatePresence>
+            {subAgents.map((agent) => (
+              <motion.button
+                key={agent.id}
+                initial={{ opacity: 0, scale: 0.8, width: 0 }}
+                animate={{ opacity: 1, scale: 1, width: 'auto' }}
+                exit={{ opacity: 0, scale: 0.8, width: 0 }}
+                onClick={() => setSelectedAgentId(agent.id)}
                 className={cn(
-                  'text-sm rounded-lg p-3',
-                  msg.role === 'user'
-                    ? isDark
-                      ? 'bg-zinc-800 ml-8'
-                      : 'bg-zinc-100 ml-8'
+                  'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all shrink-0 group',
+                  selectedAgentId === agent.id
+                    ? isDark ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-200 text-zinc-800'
                     : isDark
-                      ? 'bg-zinc-900 border border-zinc-800'
-                      : 'bg-white border border-zinc-200'
+                      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
                 )}
               >
-                {msg.role === 'assistant' && (
-                  <div className="flex items-center gap-1.5 mb-2 text-xs">
-                    <Bot className="w-3 h-3" style={{ color: accentColor }} />
-                    <span style={{ color: accentColor }} className="font-medium">
-                      {currentAgent.name}
-                    </span>
-                    {msg.status === 'complete' && <CheckCircle className="w-3 h-3 text-green-500 ml-auto" />}
-                    {msg.status === 'error' && <AlertTriangle className="w-3 h-3 text-red-500 ml-auto" />}
-                  </div>
+                {agent.status === 'working' ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                ) : agent.status === 'complete' ? (
+                  <CheckCircle className="w-3 h-3 text-green-500" />
+                ) : agent.status === 'error' ? (
+                  <AlertTriangle className="w-3 h-3 text-red-500" />
+                ) : (
+                  <Bot className="w-3 h-3" />
                 )}
-                <div className={cn('whitespace-pre-wrap', isDark ? 'text-zinc-300' : 'text-zinc-700')}>
-                  {msg.content}
-                </div>
-                {msg.toolCalls && msg.toolCalls.length > 0 && (
-                  <div className={cn('mt-2 pt-2 border-t flex flex-wrap gap-1', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
-                    {msg.toolCalls.map((tool, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]',
-                          isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
-                        )}
-                      >
-                        <FileCode className="w-2.5 h-2.5" />
-                        {tool.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        )}
+                <span className="max-w-[80px] truncate">{agent.name}</span>
 
-        {/* Loading */}
-        {isLoading && (
-          <div className="flex items-center gap-2 text-xs" style={{ color: accentColor }}>
-            <Loader2 className="w-3 h-3 animate-spin" />
-            {currentAgent.nameKr}가 작업 중...
-          </div>
-        )}
-      </div>
-
-      {/* Input - Original ChatInput Style */}
-      <div className={cn(
-        'mx-3 mb-3 border rounded-xl shadow-sm transition-all duration-200',
-        isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-      )}>
-        {/* Textarea Area */}
-        <div className="px-3 pt-2 pb-1">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`${currentAgent.nameKr}에게 메시지...`}
-            disabled={isLoading}
-            className={cn(
-              'no-focus-ring w-full bg-transparent border-none outline-none resize-none text-sm leading-snug placeholder:text-zinc-400 min-h-[24px] max-h-[150px]',
-              isDark ? 'text-zinc-100' : 'text-zinc-900',
-              isLoading && 'opacity-50'
-            )}
-            rows={1}
-          />
-        </div>
-
-        {/* Bottom Toolbar */}
-        <div className="flex items-center justify-between px-2 pb-2">
-          <div className="flex items-center gap-1">
-            {/* Agent/Model Toggle Group */}
-            <div className={cn(
-              'flex items-center rounded-lg p-0.5 mr-2',
-              isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
-            )}>
-              <button
-                onClick={toggleCurrentAgentMode}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
-                  isAgentMode
-                    ? 'text-white shadow-sm'
-                    : isDark
-                      ? 'text-zinc-400 hover:text-zinc-200'
-                      : 'text-zinc-500 hover:text-zinc-700'
-                )}
-                style={{
-                  backgroundColor: isAgentMode ? accentColor : undefined,
-                }}
-              >
-                <Bot className="w-3.5 h-3.5" />
-                <span>Agent</span>
-              </button>
-
-              <div className={cn('w-[1px] h-3 mx-0.5', isDark ? 'bg-zinc-700' : 'bg-zinc-200')} />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className={cn(
-                    'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
-                    isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-700'
-                  )}>
-                    <span>{currentModelInfo.name}</span>
-                    <ChevronDown className="w-3 h-3 opacity-50" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
+                {/* 닫기 버튼 */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeSubAgent(agent.id)
+                  }}
                   className={cn(
-                    'w-[200px] shadow-xl',
-                    isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'
+                    'opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-zinc-600',
                   )}
                 >
-                  {MODELS.map((model) => (
-                    <DropdownMenuItem
-                      key={model.id}
-                      onClick={() => setCurrentModel(model.id as ChatModelId)}
-                      className="gap-2"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      {model.name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* Quick Actions */}
-            <button
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
-              )}
-              title="Read Context (@)"
-            >
-              <AtSign className="w-4 h-4" />
-            </button>
-            <button
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
-              )}
-              title="Browse Web"
-            >
-              <Globe className="w-4 h-4" />
-            </button>
-            <button
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
-              )}
-              title="Add Image"
-            >
-              <ImageIcon className="w-4 h-4" />
-            </button>
-            <button
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600'
-              )}
-              title="Voice Input"
-            >
-              <Mic className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            className={cn(
-              'p-1.5 rounded-lg transition-all duration-200',
-              input.trim() && !isLoading
-                ? 'text-white shadow-md hover:opacity-90'
-                : isDark
-                  ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
-                  : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-            )}
-            style={{
-              backgroundColor: input.trim() && !isLoading ? accentColor : undefined,
-            }}
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <ArrowUp className="w-4 h-4" />
-            )}
-          </button>
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </motion.button>
+            ))}
+          </AnimatePresence>
         </div>
+      )}
+
+      {/* 메인 컨텐츠 영역 */}
+      <div className="flex-1 overflow-hidden">
+        {selectedAgentId === null ? (
+          // 🔥 리더 (Claude Code CLI) 채팅 UI
+          <ClaudeCodeUI executionMode={mode} />
+        ) : (
+          // 서브 에이전트 상태 표시
+          <SubAgentView
+            agent={subAgents.find(a => a.id === selectedAgentId)!}
+            isDark={isDark}
+            accentColor={accentColor}
+          />
+        )}
       </div>
     </div>
   )
 }
 
-export default AgentTeamTabs
+// 서브 에이전트 상세 뷰
+function SubAgentView({
+  agent,
+  isDark,
+  accentColor
+}: {
+  agent: DynamicSubAgent
+  isDark: boolean
+  accentColor: string
+}) {
+  if (!agent) return null
+
+  return (
+    <div className="h-full flex flex-col p-4">
+      {/* 에이전트 헤더 */}
+      <div className={cn(
+        'rounded-lg p-4 mb-4',
+        isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+      )}>
+        <div className="flex items-center gap-3 mb-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: `${accentColor}20` }}
+          >
+            <Bot className="w-5 h-5" style={{ color: accentColor }} />
+          </div>
+          <div className="flex-1">
+            <h3 className={cn('font-medium', isDark ? 'text-zinc-100' : 'text-zinc-800')}>
+              {agent.name}
+            </h3>
+            <p className={cn('text-xs', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
+              {agent.role}
+            </p>
+          </div>
+          <div className={cn(
+            'px-2 py-1 rounded-full text-xs font-medium',
+            agent.status === 'working'
+              ? 'bg-blue-500/20 text-blue-400'
+              : agent.status === 'complete'
+                ? 'bg-green-500/20 text-green-400'
+                : agent.status === 'error'
+                  ? 'bg-red-500/20 text-red-400'
+                  : isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-500'
+          )}>
+            {agent.status === 'working' ? 'Working...' :
+             agent.status === 'complete' ? 'Complete' :
+             agent.status === 'error' ? 'Error' : 'Idle'}
+          </div>
+        </div>
+
+        {/* 진행률 */}
+        {agent.status === 'working' && agent.progress !== undefined && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className={isDark ? 'text-zinc-400' : 'text-zinc-500'}>Progress</span>
+              <span className={isDark ? 'text-zinc-300' : 'text-zinc-600'}>{agent.progress}%</span>
+            </div>
+            <div className={cn('h-1.5 rounded-full overflow-hidden', isDark ? 'bg-zinc-700' : 'bg-zinc-200')}>
+              <motion.div
+                className="h-full rounded-full"
+                style={{ backgroundColor: accentColor }}
+                initial={{ width: 0 }}
+                animate={{ width: `${agent.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 현재 작업 */}
+        {agent.currentTask && (
+          <div className={cn(
+            'mt-3 p-2 rounded-md text-xs',
+            isDark ? 'bg-zinc-900/50 text-zinc-300' : 'bg-white text-zinc-600'
+          )}>
+            <span className={isDark ? 'text-zinc-500' : 'text-zinc-400'}>Current Task: </span>
+            {agent.currentTask}
+          </div>
+        )}
+      </div>
+
+      {/* 타임라인 */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs">
+            <Clock className={cn('w-3.5 h-3.5', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
+            <span className={isDark ? 'text-zinc-400' : 'text-zinc-500'}>
+              Created: {new Date(agent.createdAt).toLocaleTimeString()}
+            </span>
+          </div>
+          {agent.completedAt && (
+            <div className="flex items-center gap-2 text-xs">
+              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+              <span className={isDark ? 'text-zinc-400' : 'text-zinc-500'}>
+                Completed: {new Date(agent.completedAt).toLocaleTimeString()}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 에이전트 로그 (향후 확장) */}
+      <div className={cn(
+        'mt-4 p-3 rounded-lg text-xs',
+        isDark ? 'bg-zinc-900/50 border border-zinc-800' : 'bg-white border border-zinc-200'
+      )}>
+        <p className={isDark ? 'text-zinc-500' : 'text-zinc-400'}>
+          서브 에이전트의 작업 로그가 여기에 표시됩니다.
+          리더(Claude Code CLI)가 Task 도구로 이 에이전트를 관리합니다.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// 기존 export 유지 (하위 호환성)
+export const AGENT_TEAM: any[] = []
+export function AgentTeamTabs({ isDark }: { isDark: boolean }) {
+  return <DynamicAgentPanel isDark={isDark} />
+}
+
+export default DynamicAgentPanel

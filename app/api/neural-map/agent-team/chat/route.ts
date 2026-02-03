@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { message, agentRole, systemPrompt, mapId, model, agentMode, history = [] } = body
+    const { message, agentRole, systemPrompt, mapId, model, agentMode, history = [], projectPath } = body
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: '메시지가 필요합니다' }, { status: 400 })
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
           message,
           chatHistory,
           {
-            projectPath: null,
+            projectPath: projectPath || null,  // 🔥 프론트엔드에서 받은 프로젝트 경로 사용
             userName,
             userRole: userProfile?.job_title,
             workContext: mapId ? `Neural Map ID: ${mapId}` : '',

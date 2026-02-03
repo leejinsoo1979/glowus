@@ -1,14 +1,7 @@
 // 사이드바 메뉴 데이터
-import { CgMenuGridO } from 'react-icons/cg'
-import { BsPersonWorkspace } from 'react-icons/bs'
-import { IoCalendarNumberOutline, IoRocketOutline } from 'react-icons/io5'
-import { GoPerson, GoPeople } from 'react-icons/go'
-import { GrHomeRounded } from 'react-icons/gr'
-import { TbBrandWechat } from 'react-icons/tb'
-import { CiHardDrive } from 'react-icons/ci'
-import { RxRocket } from 'react-icons/rx'
-import { ShieldCheck } from 'lucide-react'
+// 🔥 react-icons 완전 제거 - lucide-react로 통일 (83MB 번들 사이즈 절약)
 import {
+  // 기존 아이콘들
   LayoutDashboard,
   Users,
   List,
@@ -76,9 +69,35 @@ import {
   XCircle,
   BookOpen,
   Brain,
+  ShieldCheck,
+  // 🔥 react-icons 대체 아이콘
+  Home,           // GrHomeRounded
+  MessageSquare,  // TbBrandWechat
+  HardDrive,      // CiHardDrive
+  Rocket,         // IoRocketOutline, RxRocket
+  Calendar,       // IoCalendarNumberOutline
+  Laptop,         // FaLaptopCode
+  GitBranch,      // FaCodeBranch
+  Mic,            // FaMicrophone
+  FileAudio,      // FaFileAudio
 } from 'lucide-react'
-import { FaLaptopCode, FaCodeBranch, FaMicrophone, FaFileAudio } from 'react-icons/fa6'
 import type { Category, NestedMenuItem } from './types'
+
+// 🔥 react-icons → lucide-react 별칭 (기존 코드 호환성)
+const CgMenuGridO = LayoutGrid
+const BsPersonWorkspace = Briefcase
+const IoCalendarNumberOutline = Calendar
+const IoRocketOutline = Rocket
+const GoPerson = User
+const GoPeople = Users
+const GrHomeRounded = Home
+const TbBrandWechat = MessageSquare
+const CiHardDrive = HardDrive
+const RxRocket = Rocket
+const FaLaptopCode = Laptop
+const FaCodeBranch = GitBranch
+const FaMicrophone = Mic
+const FaFileAudio = FileAudio
 
 // 회사 메뉴 구조
 export const companyMenuItems: NestedMenuItem[] = [
@@ -766,6 +785,7 @@ export const categories: Category[] = [
     items: [
       { name: '에이전트 목록', href: '/dashboard-group/agents', icon: Bot },
       { name: '슈퍼 에이전트 생성', href: '/dashboard-group/agents/create', icon: Plus },
+      { name: '에이전트 스킬 빌더', href: '/dashboard-group/agent-builder', icon: Workflow },
     ]
   },
   // 워크플로우 빌더
@@ -784,6 +804,7 @@ export const categories: Category[] = [
     name: 'AI 코딩',
     icon: FaLaptopCode,
     items: [
+      { name: 'GlowCode', href: '/dashboard-group/glow-code', icon: Sparkles },
       { name: 'AI 코딩', href: '/dashboard-group/ai-coding', icon: FaLaptopCode },
       { name: '새 프로젝트', href: '/dashboard-group/ai-coding/new', icon: Plus },
     ]

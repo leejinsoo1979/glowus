@@ -13,19 +13,19 @@ import {
     AGENT_CATEGORIES
 } from './types'
 
-// Lazy initialization to avoid browser-side instantiation
-let anthropic: any = null
+// ⚠️ Anthropic API 사용 금지 - OpenAI로 대체
+let openai: any = null
 
-function getAnthropicClient() {
+function getOpenAIClient() {
     if (typeof window !== 'undefined') {
-        throw new Error('Anthropic client cannot be used in browser')
+        throw new Error('OpenAI client cannot be used in browser')
     }
-    if (!anthropic) {
+    if (!openai) {
         // Dynamic import to avoid browser bundling
-        const Anthropic = require('@anthropic-ai/sdk').default
-        anthropic = new Anthropic()
+        const OpenAI = require('openai').default
+        openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
     }
-    return anthropic
+    return openai
 }
 
 // 에이전트 생성 프롬프트
@@ -68,20 +68,18 @@ export async function generateAgentFromPrompt(
             ? `${request.userPrompt}\n\n추가 요구사항:\n${request.refinements.join('\n')}`
             : request.userPrompt
 
-        const response = await getAnthropicClient().messages.create({
-            model: 'claude-sonnet-4-20250514',
+        // ⚠️ Anthropic API 사용 금지 - OpenAI 사용
+        const response = await getOpenAIClient().chat.completions.create({
+            model: 'gpt-4o',
             max_tokens: 2000,
-            system: AGENT_BUILDER_PROMPT,
             messages: [
-                {
-                    role: 'user',
-                    content: userMessage
-                }
+                { role: 'system', content: AGENT_BUILDER_PROMPT },
+                { role: 'user', content: userMessage }
             ]
         })
 
-        const content = response.content[0]
-        if (content.type !== 'text') {
+        const content = response.choices[0]?.message?.content
+        if (!content) {
             throw new Error('Unexpected response type')
         }
 
@@ -89,13 +87,13 @@ export async function generateAgentFromPrompt(
         let parsed: any
         try {
             // JSON 블록 추출 (```json ... ``` 형식 처리)
-            let jsonStr = content.text.trim()
+            let jsonStr = content.trim()
             if (jsonStr.startsWith('```')) {
                 jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim()
             }
             parsed = JSON.parse(jsonStr)
         } catch (e) {
-            console.error('JSON parse error:', content.text)
+            console.error('JSON parse error:', content)
             throw new Error('Failed to parse agent configuration')
         }
 

@@ -8,6 +8,7 @@ import { Header } from '@/components/nav/Header'
 import { AgentNotificationProvider } from '@/lib/contexts/AgentNotificationContext'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useGlowContextStore } from '@/stores/glowContextStore'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import type { User, Startup } from '@/types'
@@ -27,6 +28,10 @@ const GlobalAgentSidebar = dynamic(
 )
 const ElectronHeader = dynamic(
   () => import('@/components/nav/ElectronHeader').then(mod => ({ default: mod.ElectronHeader })),
+  { ssr: false }
+)
+const LeftPanel = dynamic(
+  () => import('@/components/nav/LeftPanel').then(mod => ({ default: mod.LeftPanel })),
   { ssr: false }
 )
 const AgentNotificationPopup = dynamic(
@@ -68,6 +73,7 @@ export default function DashboardLayout({
   const { user, setUser, setCurrentStartup, setIsLoading, isLoading, _hasHydrated } = useAuthStore()
   // Include isResizingLevel2 for global resize fix
   const { sidebarOpen, emailSidebarWidth, isResizingEmail, agentSidebarOpen, toggleAgentSidebar, level2Width, isResizingLevel2, level2Collapsed } = useUIStore()
+  const setCurrentPage = useGlowContextStore((s) => s.setCurrentPage)
   const [mounted, setMounted] = useState(false)
   const [isElectron, setIsElectron] = useState(false)
   // user가 persist에서 이미 로드되었으면 바로 렌더링
@@ -117,11 +123,36 @@ export default function DashboardLayout({
 
     return () => unsubscribe?.()
   }, [router])
+  // 페이지 변경 추적 (Claude Code 컨텍스트용)
+  useEffect(() => {
+    if (pathname) {
+      // 페이지 타이틀 추출
+      const pageMap: Record<string, string> = {
+        '/dashboard-group': '대시보드',
+        '/dashboard-group/ai-coding': 'AI 코딩 (Neural Map)',
+        '/dashboard-group/apps/ai-slides': 'AI 슬라이드',
+        '/dashboard-group/apps/ai-docs': 'AI 문서',
+        '/dashboard-group/apps/ai-sheet': 'AI 시트',
+        '/dashboard-group/messenger': '메신저',
+        '/dashboard-group/calendar': '캘린더',
+        '/dashboard-group/files': '파일',
+        '/dashboard-group/works': '작업',
+        '/dashboard-group/settings': '설정',
+        '/dashboard-group/neurons': '뉴런',
+        '/dashboard-group/agents': '에이전트',
+        '/dashboard-group/task-hub': '태스크 허브',
+        '/dashboard-group/connect': '연결',
+      }
+      const title = Object.entries(pageMap).find(([key]) => pathname.startsWith(key))?.[1] || pathname
+      setCurrentPage(pathname, title)
+    }
+  }, [pathname, setCurrentPage])
+
   const isTaskHistoryPage = pathname?.includes('/task-history')
   const isCodingWorkspace = pathname?.includes('/works/coding')
   const isMeetingsPage = pathname?.includes('/messenger/meetings')
   const isWorkflowBuilderPage = pathname?.includes('/workflow-builder')
-  const isFullWidthPage = (pathname?.includes('/messenger') && !isMeetingsPage) || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/apps/ai-studio') || pathname?.includes('/company/government-programs') || pathname?.includes('/ai-coding') || pathname?.includes('/neurons') || pathname?.includes('/gantt') || isTaskHistoryPage || isCodingWorkspace || isWorkflowBuilderPage
+  const isFullWidthPage = (pathname?.includes('/messenger') && !isMeetingsPage) || pathname?.includes('/agent-builder') || pathname?.includes('/email') || pathname?.includes('/project') || pathname?.includes('/task-hub') || pathname?.includes('/works/new') || pathname?.includes('/apps/ai-slides') || pathname?.includes('/apps/ai-sheet') || pathname?.includes('/apps/ai-docs') || pathname?.includes('/apps/ai-summary') || pathname?.includes('/apps/ai-blog') || pathname?.includes('/apps/ai-studio') || pathname?.includes('/company/government-programs') || pathname?.includes('/ai-coding') || pathname?.includes('/neurons') || pathname?.includes('/gantt') || pathname?.includes('/agents/create') || isTaskHistoryPage || isCodingWorkspace || isWorkflowBuilderPage
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -259,6 +290,7 @@ export default function DashboardLayout({
         <div className={cn("h-screen flex flex-col", isDashboardRoot ? "bg-transparent" : "bg-theme")}>
         {isElectron ? <ElectronHeader /> : <Header />}
         <TwoLevelSidebar />
+        <LeftPanel />
         <CommitModal />
         {/* neurons 페이지에서는 GlobalAgentSidebar 렌더링 안함 - 자체 마크다운 에디터 사용 */}
         {!isNeuronsPage && <GlobalAgentSidebar isOpen={agentSidebarOpen} onToggle={toggleAgentSidebar} />}

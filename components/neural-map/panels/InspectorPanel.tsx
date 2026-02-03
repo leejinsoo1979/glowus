@@ -39,14 +39,14 @@ import {
 } from '@/components/ui/select'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { useChatStore } from '@/stores/chatStore'
-import { AgentTeamTabs } from './AgentTeamTabs'
-import { MissionControlPanel } from '@/components/mission-control/MissionControlPanel'
+import { ClaudeCodeUI } from '@/components/glow-code/GlowCodeChat'
+import { DynamicAgentPanel } from './AgentTeamTabs'
+import { Terminal } from 'lucide-react'
 
+// 🔥 탭 구조 단일화: Agent 탭 = Claude Code CLI (리더)
+// 서브 에이전트는 리더가 동적으로 생성
 const tabs: { id: RightPanelTab; label: string; icon: typeof Info }[] = [
-  { id: 'inspector', label: 'Inspector', icon: Info },
-  { id: 'actions', label: 'Actions', icon: Zap },
-  { id: 'chat', label: 'Agents', icon: MessageSquare },  // Chat → Agents로 변경
-  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'chat', label: 'Agent', icon: Terminal }, // 🔥 Claude Code CLI as Leader
 ]
 
 const nodeTypes: { value: NodeType; label: string }[] = [
@@ -858,13 +858,57 @@ export function InspectorPanel() {
   const rightPanelTab = useNeuralMapStore((s) => s.rightPanelTab)
   const setRightPanelTab = useNeuralMapStore((s) => s.setRightPanelTab)
   const mapId = useNeuralMapStore((s) => s.mapId) // 🔥 Neural Map ID for Mission Control
+  const projectPath = useNeuralMapStore((s) => s.projectPath) // 🔥 프로젝트 경로
 
   // 사용자 테마 색상 사용
   const { accentColor } = useThemeStore()
   const currentAccent = accentColors.find((c) => c.id === accentColor) || accentColors[0]
 
-  // Orchestration Mode Toggle (Solo Agent vs Team Orchestration)
-  const [orchestrationMode, setOrchestrationMode] = useState(false)
+
+  // 🔥 프로젝트 없으면 코딩 에이전트 탭 접근 불가
+  const hasProject = !!projectPath
+
+  // 🔥 프로젝트 없으면 프로젝트 열기 안내 화면만 표시
+  if (!hasProject) {
+    return (
+      <div className="h-full flex flex-col">
+        {/* Tabs - 비활성 상태 */}
+        <div className={cn('h-10 flex items-center px-1 gap-1 border-b opacity-50', isDark ? 'border-zinc-800' : 'border-zinc-200')}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md cursor-not-allowed',
+                isDark ? 'text-zinc-600' : 'text-zinc-400'
+              )}
+            >
+              <tab.icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* 프로젝트 필요 안내 */}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <div className={cn(
+            'w-16 h-16 rounded-2xl flex items-center justify-center mb-5',
+            isDark ? 'bg-zinc-800/50' : 'bg-zinc-100'
+          )}>
+            <Layers className={cn('w-8 h-8', isDark ? 'text-zinc-500' : 'text-zinc-400')} />
+          </div>
+          <h3 className={cn('text-lg font-medium mb-2', isDark ? 'text-zinc-200' : 'text-zinc-800')}>
+            프로젝트를 먼저 열어주세요
+          </h3>
+          <p className={cn('text-sm max-w-[260px] mb-4', isDark ? 'text-zinc-500' : 'text-zinc-500')}>
+            코딩 에이전트는 프로젝트 폴더 내에서 작동합니다.
+          </p>
+          <div className={cn('text-xs', isDark ? 'text-zinc-600' : 'text-zinc-400')}>
+            👈 좌측 파일 트리에서 폴더를 선택하세요
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -900,53 +944,16 @@ export function InspectorPanel() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
+        {/* 🔥 Agent 탭 = Claude Code CLI (리더) + 동적 서브 에이전트 */}
+        {rightPanelTab === 'chat' && (
+          <DynamicAgentPanel isDark={isDark} />
+        )}
+
+        {/* 숨겨진 탭들 (하위 호환성 유지) */}
         {rightPanelTab === 'inspector' && <InspectorTab isDark={isDark} currentAccent={currentAccent} />}
         {rightPanelTab === 'actions' && <ActionsTab isDark={isDark} />}
-        {rightPanelTab === 'chat' && (
-          <div className="flex flex-col h-full">
-            {/* Mode Toggle Header */}
-            <div className={cn(
-              'flex items-center gap-1 px-2 py-1.5 border-b',
-              isDark ? 'border-zinc-800 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50'
-            )}>
-              <button
-                onClick={() => setOrchestrationMode(false)}
-                className={cn(
-                  'flex-1 px-2 py-1 text-[10px] font-medium rounded transition-all',
-                  !orchestrationMode
-                    ? 'bg-blue-500 text-white shadow-sm'
-                    : isDark
-                      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                      : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
-                )}
-              >
-                Solo Agent
-              </button>
-              <button
-                onClick={() => setOrchestrationMode(true)}
-                className={cn(
-                  'flex-1 px-2 py-1 text-[10px] font-medium rounded transition-all',
-                  orchestrationMode
-                    ? 'bg-violet-500 text-white shadow-sm'
-                    : isDark
-                      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                      : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
-                )}
-              >
-                Team Orchestration
-              </button>
-            </div>
-
-            {/* Conditional Render: Solo or Orchestration */}
-            <div className="flex-1 overflow-hidden">
-              {orchestrationMode
-                ? <MissionControlPanel isDark={isDark} mapId={mapId} />
-                : <AgentTeamTabs isDark={isDark} />
-              }
-            </div>
-          </div>
-        )}
         {rightPanelTab === 'settings' && <SettingsTab isDark={isDark} currentAccent={currentAccent} />}
+        {rightPanelTab === 'claude-code' && <ClaudeCodeUI />}
       </div>
     </div>
   )

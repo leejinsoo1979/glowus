@@ -87,6 +87,19 @@ export function JarvisTerminal({
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
+  // xterm에 출력하는 콜백
+  const handleOutput = useCallback((data: string) => {
+    if (xtermRef.current) {
+      xtermRef.current.write(data)
+    }
+  }, [])
+
+  const handleExit = useCallback((code: number) => {
+    if (xtermRef.current) {
+      xtermRef.current.writeln(`\r\n[세션 종료: ${code}]`)
+    }
+  }, [])
+
   const {
     isConnected,
     isRunning,
@@ -104,12 +117,8 @@ export function JarvisTerminal({
   } = useJarvis({
     autoConnect: true,
     cwd,
-    onOutput: (data) => {
-      xtermRef.current?.write(data)
-    },
-    onExit: (code) => {
-      xtermRef.current?.writeln(`\r\n[세션 종료: ${code}]`)
-    },
+    onOutput: handleOutput,
+    onExit: handleExit,
   })
 
   // xterm 초기화
@@ -177,14 +186,17 @@ export function JarvisTerminal({
 
   // 세션 시작
   const handleStart = useCallback(() => {
+    const cols = xtermRef.current?.cols || 80
+    const rows = xtermRef.current?.rows || 24
+
     if (!isConnected) {
       connect()
       setTimeout(() => {
-        startSession(cwd, sessionId)
+        startSession(cwd, sessionId, undefined, cols, rows)
         onSessionStart?.()
       }, 500)
     } else {
-      startSession(cwd, sessionId)
+      startSession(cwd, sessionId, undefined, cols, rows)
       onSessionStart?.()
     }
 

@@ -269,12 +269,48 @@ async function executeClaudeCode(projectPath, prompt, repoName, chatId, telegram
   await sendTelegramMessage(chatId, `⏳ <b>Claude Code 작업 중...</b>\n\n잠시 기다려 주세요. 완료되면 알림드립니다.`, telegramBotToken)
 
   try {
-    // Claude Code 실행 (최대 10분 타임아웃)
-    const { stdout, stderr } = await execPromise(claudeCommand, {
-      maxBuffer: 50 * 1024 * 1024, // 50MB
-      timeout: 600000, // 10분
-      env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' }
+    // Claude Code 실행 (spawn 사용 - stdin 즉시 닫기)
+    const { spawn } = require('child_process')
+
+    const claudeOutput = await new Promise((resolve, reject) => {
+      let stdout = ''
+      let stderr = ''
+
+      const proc = spawn('/bin/bash', ['-c', claudeCommand], {
+        env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: false
+      })
+
+      // stdin을 즉시 닫아서 Claude가 입력 대기하지 않도록
+      proc.stdin.end()
+
+      proc.stdout.on('data', (data) => {
+        stdout += data.toString()
+      })
+
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr })
+        } else {
+          reject(new Error(`Process exited with code ${code}: ${stderr || stdout}`))
+        }
+      })
+
+      proc.on('error', reject)
+
+      // 10분 타임아웃
+      setTimeout(() => {
+        proc.kill('SIGTERM')
+        reject(new Error('Timeout: Claude Code took too long'))
+      }, 600000)
     })
+
+    const { stdout, stderr } = claudeOutput
 
     console.log(`[Claude Automation] Claude Code completed`)
     console.log(`[Claude Automation] Output length: ${stdout.length}`)

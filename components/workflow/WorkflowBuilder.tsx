@@ -18,7 +18,8 @@ import ReactFlow, {
   useReactFlow,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { motion } from "framer-motion"
+import { useWorkflowStore } from "@/stores/workflowStore"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Save,
   Upload,
@@ -31,6 +32,10 @@ import {
   Maximize2,
   AlertCircle,
   CheckCircle2,
+  XCircle,
+  Loader2,
+  Terminal,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { NodeLibrary } from "./NodeLibrary"
@@ -74,6 +79,18 @@ const initialNodes: Node<NodeData>[] = [
 
 const initialEdges: Edge[] = []
 
+// 노드 실행 상태 타입
+type NodeExecutionStatus = "pending" | "running" | "completed" | "failed"
+
+interface ExecutionLog {
+  nodeId: string
+  nodeName: string
+  status: NodeExecutionStatus
+  message?: string
+  result?: unknown
+  timestamp: string
+}
+
 function WorkflowBuilderInner() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -85,6 +102,50 @@ function WorkflowBuilderInner() {
   } | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const { project, fitView, zoomIn, zoomOut } = useReactFlow()
+
+  // Jarvis 제어를 위해 전역 스토어와 동기화 - 액션만 가져오기 (안정적 참조)
+  const storeSetNodes = useWorkflowStore((s) => s.setNodes)
+  const storeSetEdges = useWorkflowStore((s) => s.setEdges)
+  const storeSelectNode = useWorkflowStore((s) => s.selectNode)
+  const storeSetIsExecuting = useWorkflowStore((s) => s.setIsExecuting)
+
+  // 로컬 상태 → 스토어 동기화
+  useEffect(() => {
+    storeSetNodes(nodes)
+  }, [nodes, storeSetNodes])
+
+  useEffect(() => {
+    storeSetEdges(edges)
+  }, [edges, storeSetEdges])
+
+  useEffect(() => {
+    storeSelectNode(selectedNode?.id || null)
+  }, [selectedNode, storeSelectNode])
+
+  useEffect(() => {
+    storeSetIsExecuting(isExecuting)
+  }, [isExecuting, storeSetIsExecuting])
+
+  // 스토어 → 로컬 상태 동기화 (Jarvis 제어 수신)
+  useEffect(() => {
+    const unsubscribe = useWorkflowStore.subscribe((state, prevState) => {
+      // 노드 변경 감지 (Jarvis에서 추가/삭제/수정)
+      if (state.nodes !== prevState.nodes && state.nodes !== nodes) {
+        setNodes(state.nodes)
+      }
+      // 엣지 변경 감지
+      if (state.edges !== prevState.edges && state.edges !== edges) {
+        setEdges(state.edges as Edge[])
+      }
+    })
+    return () => unsubscribe()
+  }, [nodes, edges, setNodes, setEdges])
+
+  // 🔥 실행 상태 관리
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeExecutionStatus>>({})
+  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([])
+  const [showLogPanel, setShowLogPanel] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   // History for undo/redo
   const [history, setHistory] = useState<{ nodes: Node<NodeData>[]; edges: Edge[] }[]>([])
@@ -102,6 +163,60 @@ function WorkflowBuilderInner() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges])
+
+  // 노드 스타일 업데이트 (실행 상태에 따라)
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const status = nodeStatuses[node.id]
+        let className = ""
+        let style = { ...node.style }
+
+        switch (status) {
+          case "running":
+            className = "ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 animate-pulse"
+            style = { ...style, boxShadow: "0 0 20px rgba(59, 130, 246, 0.5)" }
+            break
+          case "completed":
+            className = "ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-900"
+            style = { ...style, boxShadow: "0 0 20px rgba(34, 197, 94, 0.3)" }
+            break
+          case "failed":
+            className = "ring-2 ring-red-500 ring-offset-2 ring-offset-zinc-900"
+            style = { ...style, boxShadow: "0 0 20px rgba(239, 68, 68, 0.3)" }
+            break
+          default:
+            className = ""
+            style = { ...node.style, boxShadow: undefined }
+        }
+
+        return { ...node, className, style }
+      })
+    )
+  }, [nodeStatuses, setNodes])
+
+  // 엣지 애니메이션 업데이트
+  useEffect(() => {
+    setEdges((eds) =>
+      eds.map((edge) => {
+        const sourceStatus = nodeStatuses[edge.source]
+        const targetStatus = nodeStatuses[edge.target]
+
+        // 소스가 완료되고 타겟이 실행 중이면 강조
+        const isActive = sourceStatus === "completed" && targetStatus === "running"
+
+        return {
+          ...edge,
+          animated: isActive || edge.animated,
+          style: {
+            ...edge.style,
+            stroke: isActive ? "#22c55e" : "#52525b",
+            strokeWidth: isActive ? 2 : 1,
+          },
+        }
+      })
+    )
+  }, [nodeStatuses, setEdges])
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -254,6 +369,7 @@ function WorkflowBuilderInner() {
     input.click()
   }, [setNodes, setEdges, fitView])
 
+  // 🔥 실제 워크플로우 실행
   const handleExecute = useCallback(async () => {
     const validation = validateWorkflow(nodes, edges)
     if (!validation.valid) {
@@ -261,13 +377,199 @@ function WorkflowBuilderInner() {
       return
     }
 
+    // 상태 초기화
     setIsExecuting(true)
-    // Simulate execution
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setIsExecuting(false)
-    setValidationResult({ valid: true, errors: [] })
-    setTimeout(() => setValidationResult(null), 3000)
+    setNodeStatuses({})
+    setExecutionLogs([])
+    setShowLogPanel(true)
+
+    // 모든 노드를 pending으로 설정
+    const initialStatuses: Record<string, NodeExecutionStatus> = {}
+    nodes.forEach((node) => {
+      initialStatuses[node.id] = "pending"
+    })
+    setNodeStatuses(initialStatuses)
+
+    try {
+      // SSE 연결
+      const response = await fetch("/api/workflow/execute/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nodes,
+          edges,
+          inputs: {},
+        }),
+      })
+
+      if (!response.body) {
+        throw new Error("스트림을 받을 수 없습니다")
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const event = JSON.parse(line.slice(6))
+              handleSSEEvent(event)
+            } catch {
+              // JSON 파싱 실패 무시
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Workflow execution error:", error)
+      setValidationResult({
+        valid: false,
+        errors: [error instanceof Error ? error.message : "실행 중 오류 발생"],
+      })
+    } finally {
+      setIsExecuting(false)
+    }
   }, [nodes, edges])
+
+  // SSE 이벤트 처리
+  const handleSSEEvent = useCallback((event: {
+    type: string
+    executionId: string
+    nodeId?: string
+    data?: unknown
+    timestamp: string
+  }) => {
+    const nodeId = event.nodeId
+    const data = event.data as Record<string, unknown> | undefined
+
+    switch (event.type) {
+      case "workflow_started":
+        setExecutionLogs((prev) => [
+          ...prev,
+          {
+            nodeId: "workflow",
+            nodeName: "워크플로우",
+            status: "running",
+            message: `워크플로우 시작 (${(data?.stepCount || 0)}개 노드)`,
+            timestamp: event.timestamp,
+          },
+        ])
+        break
+
+      case "node_started":
+        if (nodeId) {
+          setNodeStatuses((prev) => ({ ...prev, [nodeId]: "running" }))
+          setExecutionLogs((prev) => [
+            ...prev,
+            {
+              nodeId,
+              nodeName: (data?.name as string) || nodeId,
+              status: "running",
+              message: `실행 시작`,
+              timestamp: event.timestamp,
+            },
+          ])
+        }
+        break
+
+      case "node_completed":
+        if (nodeId) {
+          setNodeStatuses((prev) => ({ ...prev, [nodeId]: "completed" }))
+          setExecutionLogs((prev) => [
+            ...prev,
+            {
+              nodeId,
+              nodeName: nodeId,
+              status: "completed",
+              message: `완료 (${(data?.duration as number) || 0}ms)`,
+              result: data?.result,
+              timestamp: event.timestamp,
+            },
+          ])
+        }
+        break
+
+      case "node_failed":
+        if (nodeId) {
+          setNodeStatuses((prev) => ({ ...prev, [nodeId]: "failed" }))
+          setExecutionLogs((prev) => [
+            ...prev,
+            {
+              nodeId,
+              nodeName: nodeId,
+              status: "failed",
+              message: (data?.error as string) || "오류 발생",
+              timestamp: event.timestamp,
+            },
+          ])
+        }
+        break
+
+      case "log":
+        if (nodeId) {
+          setExecutionLogs((prev) => [
+            ...prev,
+            {
+              nodeId,
+              nodeName: nodeId,
+              status: "running",
+              message: (data?.message as string) || "",
+              timestamp: event.timestamp,
+            },
+          ])
+        }
+        break
+
+      case "workflow_completed":
+        setExecutionLogs((prev) => [
+          ...prev,
+          {
+            nodeId: "workflow",
+            nodeName: "워크플로우",
+            status: "completed",
+            message: `완료! ${(data?.stepsExecuted || 0)}개 노드 실행됨`,
+            result: data?.outputs,
+            timestamp: event.timestamp,
+          },
+        ])
+        setValidationResult({ valid: true, errors: [] })
+        setTimeout(() => setValidationResult(null), 5000)
+        break
+
+      case "workflow_failed":
+        setExecutionLogs((prev) => [
+          ...prev,
+          {
+            nodeId: "workflow",
+            nodeName: "워크플로우",
+            status: "failed",
+            message: (data?.error as string) || "워크플로우 실행 실패",
+            timestamp: event.timestamp,
+          },
+        ])
+        setValidationResult({
+          valid: false,
+          errors: [(data?.error as string) || "워크플로우 실행 실패"],
+        })
+        break
+    }
+  }, [])
+
+  // 실행 상태 초기화
+  const handleResetExecution = useCallback(() => {
+    setNodeStatuses({})
+    setExecutionLogs([])
+    setShowLogPanel(false)
+  }, [])
 
   return (
     <div className="flex h-full bg-zinc-950">
@@ -305,6 +607,12 @@ function WorkflowBuilderInner() {
           <MiniMap
             className="!bg-zinc-800 !border-zinc-700 !rounded-lg"
             nodeColor={(node) => {
+              // 실행 상태에 따른 색상
+              const status = nodeStatuses[node.id]
+              if (status === "running") return "#3b82f6"
+              if (status === "completed") return "#22c55e"
+              if (status === "failed") return "#ef4444"
+
               switch (node.type) {
                 case "trigger":
                   return "#22c55e"
@@ -395,6 +703,26 @@ function WorkflowBuilderInner() {
               >
                 검증
               </Button>
+              {Object.keys(nodeStatuses).length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetExecution}
+                  title="초기화"
+                  className="text-zinc-400"
+                >
+                  초기화
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLogPanel(!showLogPanel)}
+                title="로그"
+                className={showLogPanel ? "bg-zinc-700" : ""}
+              >
+                <Terminal className="w-4 h-4" />
+              </Button>
               <Button
                 onClick={handleExecute}
                 disabled={isExecuting}
@@ -403,13 +731,7 @@ function WorkflowBuilderInner() {
               >
                 {isExecuting ? (
                   <>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      className="mr-2"
-                    >
-                      ⚡
-                    </motion.div>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     실행 중...
                   </>
                 ) : (
@@ -454,6 +776,84 @@ function WorkflowBuilderInner() {
             </Panel>
           )}
         </ReactFlow>
+
+        {/* 🔥 실행 로그 패널 */}
+        <AnimatePresence>
+          {showLogPanel && (
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 20 }}
+              className="absolute right-0 top-0 bottom-0 w-80 bg-zinc-900 border-l border-zinc-800 flex flex-col z-10"
+            >
+              <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+                <h3 className="text-sm font-medium text-zinc-300">실행 로그</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowLogPanel(false)}
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                {executionLogs.length === 0 ? (
+                  <p className="text-sm text-zinc-500 text-center py-4">
+                    워크플로우를 실행하면 로그가 표시됩니다
+                  </p>
+                ) : (
+                  executionLogs.map((log, index) => (
+                    <div
+                      key={index}
+                      className={`p-2 rounded text-xs ${
+                        log.status === "completed"
+                          ? "bg-green-500/10 border border-green-500/20"
+                          : log.status === "failed"
+                          ? "bg-red-500/10 border border-red-500/20"
+                          : log.status === "running"
+                          ? "bg-blue-500/10 border border-blue-500/20"
+                          : "bg-zinc-800 border border-zinc-700"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {log.status === "completed" && (
+                          <CheckCircle2 className="w-3 h-3 text-green-400" />
+                        )}
+                        {log.status === "failed" && (
+                          <XCircle className="w-3 h-3 text-red-400" />
+                        )}
+                        {log.status === "running" && (
+                          <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+                        )}
+                        <span className="font-medium text-zinc-300">
+                          {log.nodeName}
+                        </span>
+                        <span className="text-zinc-500 text-[10px]">
+                          {new Date(log.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-zinc-400">{log.message}</p>
+                      {log.result !== undefined && (
+                        <details className="mt-1">
+                          <summary className="text-zinc-500 cursor-pointer hover:text-zinc-400">
+                            결과 보기
+                          </summary>
+                          <pre className="mt-1 p-2 bg-zinc-950 rounded text-[10px] overflow-x-auto">
+                            {typeof log.result === 'string'
+                              ? log.result
+                              : JSON.stringify(log.result, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Config Panel */}

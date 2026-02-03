@@ -93,41 +93,11 @@ async function handleOpenAI(messages: ChatMessage[], apiModel: string) {
   return completion.choices[0]?.message?.content || ''
 }
 
-async function handleAnthropic(messages: ChatMessage[], apiModel: string) {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is missing')
-  }
-
-  // Anthropic: system은 별도 필드, messages에서 제외
-  const systemMessages = messages.filter(m => m.role === 'system')
-  const chatMessages = messages.filter(m => m.role !== 'system')
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: apiModel,
-      max_tokens: 4096,
-      system: systemMessages.map(m => m.content).join('\n') || undefined,
-      messages: chatMessages.map(m => ({
-        role: m.role,
-        content: m.content,
-      })),
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Anthropic API Error (${response.status}): ${errorText}`)
-  }
-
-  const data = await response.json()
-  return data.content?.[0]?.text || ''
+// ⚠️ Anthropic API 사용 금지 - Claude Code CLI (Max 플랜 OAuth)로만 사용
+// anthropic 요청 시 OpenAI로 fallback
+async function handleAnthropic(messages: ChatMessage[], _apiModel: string) {
+  console.warn('[handleAnthropic] Anthropic API 사용 금지 - OpenAI로 fallback')
+  return handleOpenAI(messages, 'gpt-4o')
 }
 
 // ============================================

@@ -33,10 +33,14 @@ import {
   Orbit,
   GanttChart,
   Brain,
+  Laptop,     // 🔥 FaLaptopCode 대체
+  Link2,      // 🔥 GrConnect 대체
 } from 'lucide-react'
-import { TbBrandWechat } from 'react-icons/tb'
-import { GrConnect } from 'react-icons/gr'
-import { FaLaptopCode } from 'react-icons/fa6'
+
+// 🔥 react-icons → lucide-react 별칭 (번들 사이즈 절약)
+const TbBrandWechat = MessageSquare
+const GrConnect = Link2
+const FaLaptopCode = Laptop
 
 const navigation = [
   { name: '대시보드', href: '/dashboard-group', icon: LayoutDashboard },

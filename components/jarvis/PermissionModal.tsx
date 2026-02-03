@@ -86,13 +86,13 @@ const dangerColors = {
 }
 
 export function PermissionModal({
-  requests,
+  requests = [],
   onApprove,
   onDeny,
   onApproveAll,
   className,
 }: PermissionModalProps) {
-  if (requests.length === 0) return null
+  if (!requests || requests.length === 0) return null
 
   return (
     <AnimatePresence>

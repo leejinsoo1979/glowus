@@ -453,6 +453,9 @@ export interface DeployedAgent {
     vad_sensitivity: string
   } | null
 
+  // 사용자 호칭 (에이전트가 사용자를 부르는 말)
+  user_title: string | null
+
   created_at: string
   updated_at: string
 }

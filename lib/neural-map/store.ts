@@ -1534,27 +1534,52 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
           }),
 
         // Project Path
-        setProjectPath: (path) =>
+        setProjectPath: (path) => {
+          const currentState = get()
+          const linkedProjectId = currentState.linkedProjectId
+
           set((state) => {
             state.projectPath = path
-            // 프로젝트가 연결되어 있으면 폴더 경로 매핑 저장
+            // 프로젝트가 연결되어 있으면 폴더 경로 매핑 저장 (localStorage 백업)
             if (path && state.linkedProjectId && typeof window !== 'undefined') {
               try {
                 const mappings = JSON.parse(localStorage.getItem('project-folder-mappings') || '{}')
                 mappings[state.linkedProjectId] = path
                 localStorage.setItem('project-folder-mappings', JSON.stringify(mappings))
-                console.log('[NeuralMap Store] Saved folder path for project:', state.linkedProjectId, '->', path)
+                console.log('[NeuralMap Store] Saved folder path to localStorage:', state.linkedProjectId, '->', path)
               } catch (e) {
                 console.error('[NeuralMap Store] Failed to save folder mapping:', e)
               }
             }
-          }),
+          })
+
+          // 🔥 프로젝트가 연결되어 있으면 DB에도 folder_path 저장 (터미널에서 사용)
+          if (path && linkedProjectId && typeof window !== 'undefined') {
+            fetch(`/api/projects/${linkedProjectId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder_path: path })
+            })
+              .then(res => {
+                if (res.ok) {
+                  console.log('[NeuralMap Store] Saved folder_path to DB:', linkedProjectId, '->', path)
+                } else {
+                  console.error('[NeuralMap Store] Failed to save folder_path to DB:', res.status)
+                }
+              })
+              .catch(err => {
+                console.error('[NeuralMap Store] Failed to save folder_path to DB:', err)
+              })
+          }
+        },
 
         // Linked Database Project
-        setLinkedProject: (projectId, projectName = null) =>
+        setLinkedProject: (projectId, projectName = null) => {
+          const currentState = get()
+          const isProjectChanged = currentState.linkedProjectId !== projectId
+
           set((state) => {
             // 🔥 프로젝트가 변경되면 기존 그래프만 클리어 (projectPath는 유지!)
-            const isProjectChanged = state.linkedProjectId !== projectId
             if (isProjectChanged && state.linkedProjectId !== null) {
               console.log('[NeuralMap Store] Project changed, clearing graph:', state.linkedProjectId, '->', projectId)
               state.graph = null
@@ -1566,7 +1591,27 @@ export const useNeuralMapStore = create<NeuralMapState & NeuralMapActions>()(
             state.linkedProjectId = projectId
             state.linkedProjectName = projectName ?? null
             console.log('[NeuralMap Store] Project linked:', projectId, projectName)
-          }),
+          })
+
+          // 🔥 프로젝트 연결 시 DB에서 folder_path 자동 가져오기 (브라우저 환경에서만)
+          if (projectId && isProjectChanged && typeof window !== 'undefined') {
+            const currentProjectPath = get().projectPath
+            if (!currentProjectPath) {
+              console.log('[NeuralMap Store] 🔍 Fetching folder_path from DB:', projectId)
+              fetch(`/api/projects/${projectId}`)
+                .then(res => res.ok ? res.json() : null)
+                .then(project => {
+                  if (project?.folder_path) {
+                    console.log('[NeuralMap Store] ✅ Auto-setting projectPath from DB:', project.folder_path)
+                    get().setProjectPath(project.folder_path)
+                  }
+                })
+                .catch(err => {
+                  console.error('[NeuralMap Store] Failed to fetch folder_path:', err)
+                })
+            }
+          }
+        },
 
         clearLinkedProject: () =>
           set((state) => {

@@ -1,14 +1,11 @@
 /**
- * useJarvis - 완전한 대화형 Claude Code + PC 제어 훅
+ * useJarvis - Claude Code CLI WebSocket 연결 (PTY 대화형 모드)
  *
- * 기능:
- * 1. PTY 기반 실시간 대화형 Claude Code
- * 2. 도구 실행 전 권한 승인 UI
- * 3. GlowUS 앱 제어
- * 4. PC 제어
+ * 사이드바용: shared=true (기본값) - 싱글톤 WebSocket 공유
+ * ChatView용: shared=false - 독립 WebSocket, 별도 PTY 세션
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 const WS_URL = process.env.NEXT_PUBLIC_JARVIS_WS || 'ws://localhost:3098'
 
@@ -20,269 +17,377 @@ export interface PermissionRequest {
   timestamp: Date
 }
 
-export interface JarvisOptions {
-  autoConnect?: boolean
-  cwd?: string
-  cols?: number
-  rows?: number
-  onOutput?: (data: string) => void
-  onPermissionRequest?: (request: PermissionRequest) => void
-  onExit?: (code: number, signal?: string) => void
+export interface JarvisPersona {
+  name?: string
+  userTitle?: string
+  personality?: string
+  language?: string
+  greeting?: string
+  customInstructions?: string
 }
 
-export function useJarvis(options: JarvisOptions = {}) {
-  const {
-    autoConnect = false,
-    cwd,
-    cols = 120,
-    rows = 30,
-    onOutput,
-    onPermissionRequest,
-    onExit,
-  } = options
+// 워크플로우 제어 명령 타입
+export interface WorkflowControlCommand {
+  action: 'add_node' | 'remove_node' | 'update_node' | 'connect' | 'disconnect' | 'clear' | 'execute' | 'get_state'
+  nodeType?: string
+  nodeId?: string
+  position?: { x: number; y: number }
+  data?: Record<string, unknown>
+  sourceId?: string
+  targetId?: string
+  sourceHandle?: string
+  targetHandle?: string
+}
+
+interface UseJarvisOptions {
+  shared?: boolean  // true: 사이드바용 싱글톤, false: ChatView용 독립 연결
+  cwd?: string
+  onOutput?: (data: string) => void
+  onReady?: () => void
+  onDone?: (exitCode: number) => void
+  onExit?: (code: number, signal?: string) => void
+  onNavigate?: (route: string) => void
+  onControl?: (action: string, data?: unknown) => void
+  onWorkflowControl?: (command: WorkflowControlCommand) => void
+}
+
+// 사이드바용 싱글톤 WebSocket
+let sharedWs: WebSocket | null = null
+let sharedWsConnecting = false
+const sharedHandlers = new Set<(msg: Record<string, unknown>) => void>()
+
+function getSharedWebSocket(): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    if (sharedWs && sharedWs.readyState === WebSocket.OPEN) {
+      resolve(sharedWs)
+      return
+    }
+
+    if (sharedWsConnecting) {
+      const check = setInterval(() => {
+        if (sharedWs?.readyState === WebSocket.OPEN) {
+          clearInterval(check)
+          resolve(sharedWs)
+        } else if (!sharedWs || sharedWs.readyState === WebSocket.CLOSED) {
+          clearInterval(check)
+          reject(new Error('Connection failed'))
+        }
+      }, 100)
+      setTimeout(() => { clearInterval(check); reject(new Error('Timeout')) }, 10000)
+      return
+    }
+
+    console.log('[Jarvis:Shared] Connecting...')
+    sharedWsConnecting = true
+    const ws = new WebSocket(WS_URL)
+    sharedWs = ws
+
+    ws.onopen = () => {
+      console.log('[Jarvis:Shared] Connected')
+      sharedWsConnecting = false
+      resolve(ws)
+    }
+    ws.onerror = () => {
+      sharedWsConnecting = false
+      sharedWs = null
+      reject(new Error('Connection error'))
+    }
+    ws.onclose = () => {
+      sharedWsConnecting = false
+      sharedWs = null
+    }
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        sharedHandlers.forEach(h => h(msg))
+      } catch {}
+    }
+  })
+}
+
+export function useJarvis(options: UseJarvisOptions = {}) {
+  const { shared = true, cwd, onOutput, onReady, onDone, onExit, onNavigate, onControl, onWorkflowControl } = options
 
   const [isConnected, setIsConnected] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [currentCwd, setCurrentCwd] = useState(cwd || '')
   const [error, setError] = useState<string | null>(null)
-  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
+  const [pendingPermissions] = useState<PermissionRequest[]>([])
+  const [isBrowserRegistered, setIsBrowserRegistered] = useState(false)
 
-  const wsRef = useRef<WebSocket | null>(null)
-  const outputBufferRef = useRef('')
+  // 독립 모드용 WebSocket ref
+  const independentWsRef = useRef<WebSocket | null>(null)
 
-  // 콜백 refs (클로저 문제 해결) - 함수 자체가 아닌 최신 함수를 호출하는 래퍼 저장
-  const onOutputRef = useRef<((data: string) => void) | undefined>(onOutput)
-  const onPermissionRequestRef = useRef(onPermissionRequest)
+  const onOutputRef = useRef(onOutput)
+  const onReadyRef = useRef(onReady)
+  const onDoneRef = useRef(onDone)
   const onExitRef = useRef(onExit)
+  const onNavigateRef = useRef(onNavigate)
+  const onControlRef = useRef(onControl)
+  const onWorkflowControlRef = useRef(onWorkflowControl)
 
-  // 콜백 업데이트 - 매 렌더링마다 최신 함수로 업데이트
-  onOutputRef.current = onOutput
-  onPermissionRequestRef.current = onPermissionRequest
-  onExitRef.current = onExit
+  useEffect(() => {
+    onOutputRef.current = onOutput
+    onReadyRef.current = onReady
+    onDoneRef.current = onDone
+    onExitRef.current = onExit
+    onNavigateRef.current = onNavigate
+    onControlRef.current = onControl
+    onWorkflowControlRef.current = onWorkflowControl
+  }, [onOutput, onReady, onDone, onExit, onNavigate, onControl, onWorkflowControl])
 
-  // WebSocket 연결
-  const connect = useCallback(() => {
-    // 이미 연결되었거나 연결 중이면 스킵
-    if (wsRef.current?.readyState === WebSocket.OPEN ||
-        wsRef.current?.readyState === WebSocket.CONNECTING) {
-      console.log('[Jarvis] Already connected or connecting, skipping')
-      return
-    }
+  // 메시지 처리 함수
+  const handleMessage = useCallback((msg: Record<string, unknown>) => {
+    const msgType = msg.type as string
 
-    // 이전 연결이 있으면 정리
-    if (wsRef.current) {
-      console.log('[Jarvis] Cleaning up previous connection')
-      wsRef.current.onclose = null // onclose 핸들러 제거하여 상태 변경 방지
-      wsRef.current.close()
-      wsRef.current = null
-    }
-
-    console.log('[Jarvis] Connecting to', WS_URL)
-    const ws = new WebSocket(WS_URL)
-
-    ws.onopen = () => {
-      console.log('[Jarvis] Connected')
-      setIsConnected(true)
-      setError(null)
-    }
-
-    ws.onclose = () => {
-      console.log('[Jarvis] Disconnected')
-      setIsConnected(false)
-      setIsRunning(false)
-    }
-
-    ws.onerror = (e) => {
-      console.error('[Jarvis] Error:', e)
-      setError('Jarvis 서버에 연결할 수 없습니다.')
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        console.log('[Jarvis] WebSocket message received:', data.type)
-
-        switch (data.type) {
-          case 'started':
-            console.log('[Jarvis] Session started, PID:', data.pid)
-            setIsRunning(true)
-            if (data.cwd) setCurrentCwd(data.cwd)
-            break
-
-          case 'output':
-            // 터미널 출력 - 디버그 로그 추가
-            console.log('[Jarvis] Output received, length:', data.data?.length)
-            outputBufferRef.current += data.data
-            if (onOutputRef.current) {
-              console.log('[Jarvis] Calling onOutput callback')
-              onOutputRef.current(data.data)
-            } else {
-              console.warn('[Jarvis] onOutputRef.current is null/undefined!')
-            }
-            break
-
-          case 'permission-request':
-            // 권한 승인 요청
-            const request: PermissionRequest = {
-              requestId: data.requestId,
-              tool: data.tool,
-              action: data.action,
-              fullText: data.fullText,
-              timestamp: new Date(),
-            }
-            setPendingPermissions((prev) => [...prev, request])
-            onPermissionRequestRef.current?.(request)
-            break
-
-          case 'exit':
-            setIsRunning(false)
-            onExitRef.current?.(data.exitCode, data.signal)
-            break
-
-          case 'closed':
-            setIsConnected(false)
-            setIsRunning(false)
-            break
-
-          case 'pc-command-result':
-            console.log('[Jarvis] PC command result:', data)
-            break
-
-          case 'glowus-action':
-            console.log('[Jarvis] GlowUS action:', data.action, data.path)
-            break
+    switch (msgType) {
+      case 'started':
+        console.log('[Jarvis] Session started')
+        setIsRunning(true)
+        if (msg.cwd) setCurrentCwd(msg.cwd as string)
+        break
+      case 'ready':
+        console.log('[Jarvis] Ready')
+        onReadyRef.current?.()
+        break
+      case 'output':
+        onOutputRef.current?.(msg.data as string)
+        break
+      case 'done':
+        console.log('[Jarvis] Done')
+        onDoneRef.current?.(msg.exitCode as number)
+        break
+      case 'exit':
+        setIsRunning(false)
+        onExitRef.current?.(msg.exitCode as number, msg.signal as string)
+        break
+      case 'stopped':
+        setIsRunning(false)
+        break
+      case 'error':
+        setError(msg.error as string)
+        break
+      case 'closed':
+        setIsRunning(false)
+        break
+      case 'registered':
+        setIsBrowserRegistered(true)
+        break
+      case 'control':
+        if (msg.action === 'navigate' && msg.route) {
+          onNavigateRef.current?.(msg.route as string)
         }
-      } catch (e) {
-        console.error('[Jarvis] Parse error:', e)
+        onControlRef.current?.(msg.action as string, msg.data || msg.route)
+        break
+      case 'workflow_control':
+        // 워크플로우 빌더 제어 명령
+        console.log('[Jarvis] Workflow control:', msg)
+        onWorkflowControlRef.current?.(msg as unknown as WorkflowControlCommand)
+        break
+    }
+  }, [])
+
+  // 공유 모드: 핸들러 등록
+  useEffect(() => {
+    if (!shared) return
+
+    sharedHandlers.add(handleMessage)
+    if (sharedWs?.readyState === WebSocket.OPEN) {
+      setIsConnected(true)
+    }
+
+    return () => {
+      sharedHandlers.delete(handleMessage)
+    }
+  }, [shared, handleMessage])
+
+  // 독립 모드: 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (!shared && independentWsRef.current) {
+        independentWsRef.current.close()
+        independentWsRef.current = null
       }
     }
+  }, [shared])
 
-    wsRef.current = ws
-  }, [])
+  // 현재 사용할 WebSocket 가져오기
+  const getWs = useCallback((): WebSocket | null => {
+    return shared ? sharedWs : independentWsRef.current
+  }, [shared])
 
-  // Claude 세션 시작
-  const startSession = useCallback((sessionCwd?: string, sessionId?: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      connect()
-      setTimeout(() => startSession(sessionCwd, sessionId), 500)
-      return
+  // 연결
+  const connect = useCallback(async (): Promise<boolean> => {
+    try {
+      setError(null)
+
+      if (shared) {
+        await getSharedWebSocket()
+        setIsConnected(true)
+        return true
+      } else {
+        // 독립 모드: 새 WebSocket 생성
+        if (independentWsRef.current?.readyState === WebSocket.OPEN) {
+          return true
+        }
+
+        console.log('[Jarvis:Independent] Connecting...')
+        const ws = new WebSocket(WS_URL)
+        independentWsRef.current = ws
+
+        return new Promise((resolve) => {
+          ws.onopen = () => {
+            console.log('[Jarvis:Independent] Connected')
+            setIsConnected(true)
+            resolve(true)
+          }
+          ws.onerror = () => {
+            setError('연결 실패')
+            setIsConnected(false)
+            resolve(false)
+          }
+          ws.onclose = () => {
+            setIsConnected(false)
+            setIsRunning(false)
+          }
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data)
+              handleMessage(msg)
+            } catch {}
+          }
+          setTimeout(() => {
+            if (ws.readyState !== WebSocket.OPEN) {
+              setError('연결 타임아웃')
+              resolve(false)
+            }
+          }, 10000)
+        })
+      }
+    } catch (e) {
+      setError('연결 실패')
+      setIsConnected(false)
+      return false
     }
+  }, [shared, handleMessage])
 
-    const targetCwd = sessionCwd || currentCwd || process.env.HOME || '~'
-    console.log('[Jarvis] Starting session in:', targetCwd)
+  // 세션 시작
+  const startSession = useCallback(async (
+    sessionCwd?: string,
+    userName?: string,
+    persona?: JarvisPersona,
+    cols?: number,
+    rows?: number
+  ): Promise<boolean> => {
+    try {
+      setError(null)
 
-    wsRef.current.send(JSON.stringify({
-      type: 'start',
-      cwd: targetCwd,
-      sessionId,
-      cols,
-      rows,
-    }))
+      // 먼저 연결
+      const connected = await connect()
+      if (!connected) return false
 
-    setCurrentCwd(targetCwd)
-    outputBufferRef.current = ''
-  }, [connect, currentCwd, cols, rows])
+      const ws = getWs()
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setError('WebSocket not ready')
+        return false
+      }
+
+      const targetCwd = sessionCwd || cwd || '~'
+      console.log('[Jarvis] Starting session:', { cwd: targetCwd, shared })
+
+      ws.send(JSON.stringify({
+        type: 'start',
+        cwd: targetCwd,
+        userName,
+        persona,
+        cols: cols || 80,
+        rows: rows || 24,
+      }))
+
+      setCurrentCwd(targetCwd)
+      return true
+    } catch (e) {
+      setError((e as Error).message)
+      return false
+    }
+  }, [connect, getWs, cwd, shared])
 
   // 입력 전송
-  const sendInput = useCallback((data: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'input', data }))
-    }
-  }, [])
+  const sendInput = useCallback((data: string): boolean => {
+    const ws = getWs()
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false
+    ws.send(JSON.stringify({ type: 'input', data }))
+    return true
+  }, [getWs])
 
-  // Enter 키로 메시지 전송
-  const sendMessage = useCallback((message: string) => {
-    sendInput(message + '\r')
-  }, [sendInput])
+  // 메시지 전송
+  const sendMessage = useCallback((message: string): boolean => {
+    const ws = getWs()
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false
+    console.log('[Jarvis] Sending:', message.substring(0, 50))
+    ws.send(JSON.stringify({ type: 'input', data: message + '\r' }))
+    return true
+  }, [getWs])
 
-  // 권한 승인
-  const approvePermission = useCallback((requestId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'permission-response',
-        requestId,
-        approved: true,
-      }))
-    }
-    setPendingPermissions((prev) => prev.filter((p) => p.requestId !== requestId))
-  }, [])
-
-  // 권한 거부
-  const denyPermission = useCallback((requestId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'permission-response',
-        requestId,
-        approved: false,
-      }))
-    }
-    setPendingPermissions((prev) => prev.filter((p) => p.requestId !== requestId))
-  }, [])
-
-  // 모든 권한 승인
-  const approveAllPermissions = useCallback(() => {
-    pendingPermissions.forEach((p) => approvePermission(p.requestId))
-  }, [pendingPermissions, approvePermission])
-
-  // 중지 (Ctrl+C)
+  // 중지
   const stop = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'stop' }))
+    const ws = getWs()
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'stop' }))
     }
-  }, [])
+    setIsRunning(false)
+  }, [getWs])
 
   // 세션 종료
   const closeSession = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'close' }))
+    const ws = getWs()
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'close' }))
     }
-  }, [])
+    setIsRunning(false)
+  }, [getWs])
 
   // 리사이즈
-  const resize = useCallback((newCols: number, newRows: number) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'resize', cols: newCols, rows: newRows }))
+  const resize = useCallback((cols: number, rows: number) => {
+    const ws = getWs()
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resize', cols, rows }))
     }
-  }, [])
-
-  // PC 명령 실행
-  const executePCCommand = useCallback((command: string, args?: string[]) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'pc-command',
-        command,
-        args,
-      }))
-    }
-  }, [])
+  }, [getWs])
 
   // 연결 해제
   const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close()
-      wsRef.current = null
+    if (shared) {
+      // 공유 모드에서는 닫지 않음 (다른 컴포넌트가 사용 중일 수 있음)
+    } else {
+      independentWsRef.current?.close()
+      independentWsRef.current = null
     }
-  }, [])
+    setIsConnected(false)
+    setIsRunning(false)
+  }, [shared])
 
-  // 자동 연결
-  useEffect(() => {
-    if (autoConnect) {
-      connect()
+  // 브라우저 등록
+  const registerAsBrowser = useCallback(() => {
+    const ws = getWs()
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'register_browser' }))
     }
-    return () => {
-      disconnect()
-    }
-  }, [autoConnect, connect, disconnect])
+  }, [getWs])
+
+  // 권한 관련 (미구현)
+  const approvePermission = useCallback(() => {}, [])
+  const denyPermission = useCallback(() => {}, [])
+  const approveAllPermissions = useCallback(() => {}, [])
 
   return {
-    // 상태
     isConnected,
     isRunning,
+    isReady: isConnected,
     currentCwd,
     error,
     pendingPermissions,
-
-    // Claude 세션
+    isBrowserRegistered,
     connect,
     disconnect,
     startSession,
@@ -291,13 +396,9 @@ export function useJarvis(options: JarvisOptions = {}) {
     stop,
     closeSession,
     resize,
-
-    // 권한 관리
+    registerAsBrowser,
     approvePermission,
     denyPermission,
     approveAllPermissions,
-
-    // PC 제어
-    executePCCommand,
   }
 }

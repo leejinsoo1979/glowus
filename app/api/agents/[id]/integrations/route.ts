@@ -94,9 +94,73 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { action, providerId, userConnectionId, resourceId, resourceName, syncConfig } = body
+    const { action, providerId, userConnectionId, resourceId, resourceName, syncConfig, apiKey, webhookUrl, chatId } = body
 
     switch (action) {
+      case 'connect_api_key': {
+        // API Key 또는 Webhook 연결
+        if (!providerId) {
+          return NextResponse.json({ error: 'providerId 필요' }, { status: 400 })
+        }
+
+        const adminClient = createAdminClient()
+
+        // 기존 연결 확인 또는 생성
+        const connectionData: any = {
+          user_id: user.id,
+          provider_id: providerId,
+          status: 'connected',
+          account_info: {},
+          updated_at: new Date().toISOString(),
+        }
+
+        // 프로바이더별 설정
+        if (providerId === 'telegram-bot') {
+          if (!apiKey) {
+            return NextResponse.json({ error: '봇 토큰이 필요합니다' }, { status: 400 })
+          }
+          connectionData.api_key = apiKey
+          connectionData.account_info = { chat_id: chatId, type: 'telegram_bot' }
+        } else if (providerId === 'discord') {
+          if (!webhookUrl) {
+            return NextResponse.json({ error: 'Webhook URL이 필요합니다' }, { status: 400 })
+          }
+          connectionData.account_info = { webhook_url: webhookUrl, type: 'discord_webhook' }
+        } else if (providerId === 'whatsapp') {
+          if (!apiKey || !webhookUrl) {
+            return NextResponse.json({ error: 'Phone Number ID와 Access Token이 필요합니다' }, { status: 400 })
+          }
+          connectionData.api_key = webhookUrl // Access Token
+          connectionData.account_info = { phone_number_id: apiKey, type: 'whatsapp_business' }
+        } else if (providerId === 'microsoft-teams') {
+          if (!webhookUrl) {
+            return NextResponse.json({ error: 'Webhook URL이 필요합니다' }, { status: 400 })
+          }
+          connectionData.account_info = { webhook_url: webhookUrl, type: 'teams_webhook' }
+        }
+
+        // user_app_connections에 저장
+        const { data: connection, error: connError } = await (adminClient as any)
+          .from('user_app_connections')
+          .upsert(connectionData, { onConflict: 'user_id,provider_id' })
+          .select()
+          .single()
+
+        if (connError) {
+          console.error('API Key connection save error:', connError)
+          return NextResponse.json({ error: '연결 저장 실패' }, { status: 500 })
+        }
+
+        // 에이전트에 자동 연결
+        const agentConnection = await connectAppToAgent(agentId, connection.id)
+
+        return NextResponse.json({
+          success: true,
+          connection,
+          agentConnection,
+        })
+      }
+
       case 'start_oauth': {
         // OAuth 인증 시작
         if (!providerId) {

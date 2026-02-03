@@ -5,6 +5,7 @@ import { Terminal as TerminalIcon, X, ChevronDown, Plus, Trash2, Maximize2, Mini
 import dynamic from 'next/dynamic'
 import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { TerminalInstance } from '@/lib/neural-map/types'
+import { cn } from '@/lib/utils'
 
 // xterm을 동적으로 import (SSR 비활성화) - 로딩 상태 없이 즉시 렌더링
 const XTermComponent = dynamic(() => import('./XTermWrapper'), {
@@ -31,7 +32,22 @@ function useLinkedProjectPath() {
         const response = await fetch(`/api/projects/${linkedProjectId}`)
         if (response.ok) {
           const project = await response.json()
-          setLinkedProjectPath(project.folder_path || null)
+          let folderPath = project.folder_path || null
+
+          // 🔥 DB에 folder_path가 없으면 localStorage 백업에서 가져오기
+          if (!folderPath && typeof window !== 'undefined') {
+            try {
+              const mappings = JSON.parse(localStorage.getItem('project-folder-mappings') || '{}')
+              folderPath = mappings[linkedProjectId] || null
+              if (folderPath) {
+                console.log('[TerminalPanel] Using folder path from localStorage:', folderPath)
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          setLinkedProjectPath(folderPath)
         } else {
           setLinkedProjectPath(null)
         }
@@ -46,9 +62,18 @@ function useLinkedProjectPath() {
     fetchProjectPath()
   }, [linkedProjectId])
 
-  // 링크된 프로젝트가 있고 folder_path가 있으면 사용, 없으면 fallback
+  // 🔥 우선순위: 1) API folder_path  2) localStorage 매핑  3) store projectPath
+  const resolvedPath = linkedProjectId && linkedProjectPath ? linkedProjectPath : fallbackProjectPath
+
+  console.log('[TerminalPanel] useLinkedProjectPath resolved:', {
+    linkedProjectId,
+    linkedProjectPath,
+    fallbackProjectPath,
+    resolvedPath
+  })
+
   return {
-    projectPath: linkedProjectId && linkedProjectPath ? linkedProjectPath : fallbackProjectPath,
+    projectPath: resolvedPath,
     linkedProjectId,
     isLoading
   }
@@ -100,8 +125,16 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
   // 링크된 프로젝트의 folder_path 사용 (없으면 전역 projectPath 폴백)
   const { projectPath, linkedProjectId } = useLinkedProjectPath()
 
+  // 🔥 한 번이라도 열린 적이 있으면 터미널 컴포넌트 유지 (닫아도 연결 끊기지 않음)
+  const [hasBeenOpened, setHasBeenOpened] = useState(false)
+  useEffect(() => {
+    if (isOpen && !hasBeenOpened) {
+      setHasBeenOpened(true)
+    }
+  }, [isOpen, hasBeenOpened])
+
   // 디버그: cwd 값 확인
-  console.log('[TerminalPanel] RENDER - cwd:', cwd, 'isOpen:', isOpen)
+  console.log('[TerminalPanel] RENDER - cwd:', cwd, 'isOpen:', isOpen, 'hasBeenOpened:', hasBeenOpened)
 
   // cwd가 있으면 2초마다 체크해서 cd 명령 전송
   useEffect(() => {
@@ -175,6 +208,13 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
   const [isResizing, setIsResizing] = useState(false)
   const [panelHeight, setPanelHeight] = useState(height)
   const [isMaximized, setIsMaximized] = useState(false)
+
+  // 🔥 외부 height prop 변경 시 내부 상태 동기화 (드래그 중이 아닐 때만)
+  useEffect(() => {
+    if (!isResizing) {
+      setPanelHeight(height)
+    }
+  }, [height, isResizing])
   const [sidebarWidth, setSidebarWidth] = useState(160)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
 
@@ -696,13 +736,19 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
       style={{ height: panelHeight, transition: 'none', animation: 'none', willChange: 'auto' }}
       aria-hidden={!isOpen}
     >
-      {/* 리사이즈 핸들 */}
+      {/* 리사이즈 핸들 - 넓은 감지 영역 */}
       <div
         ref={resizeRef}
         onMouseDown={handleMouseDown}
-        className="absolute -top-1 left-0 right-0 h-3 cursor-ns-resize z-50 group"
+        className={cn(
+          "absolute -top-2 left-0 right-0 h-5 cursor-ns-resize z-50 group",
+          isResizing && "bg-accent/10"
+        )}
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600 group-hover:bg-accent" />
+        <div className={cn(
+          "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-1 rounded-full transition-colors",
+          isResizing ? "bg-accent" : "bg-zinc-300 dark:bg-zinc-600 group-hover:bg-accent"
+        )} />
       </div>
 
       {/* 탭 바 */}
@@ -781,9 +827,18 @@ export const TerminalPanel = forwardRef<TerminalPanelRef, TerminalPanelProps>(({
                     <div className="absolute left-1/2 top-0 bottom-0 w-[2px] -translate-x-1/2 bg-zinc-300 dark:bg-[#333] group-hover:bg-accent" />
                   </div>
                 )}
-                {(() => {
-                  const effectivePath = cwd || projectPath || undefined
-                  console.log('[TerminalPanel] XTermComponent projectPath:', effectivePath, { cwd, projectPath })
+                {/* 🔥 한 번이라도 열린 적 있으면 XTermComponent 유지 (닫아도 연결 유지) */}
+                {hasBeenOpened && (() => {
+                  // 🔥 가상 경로(/workspace/...)는 제외하고 실제 파일 시스템 경로만 사용
+                  const isRealPath = (p: string | null | undefined): boolean => {
+                    if (!p) return false
+                    if (p.startsWith('/workspace/')) return false
+                    return p.startsWith('/') || /^[A-Za-z]:\\/.test(p)
+                  }
+                  const realCwd = cwd && isRealPath(cwd) ? cwd : undefined
+                  const realProjectPath = projectPath && isRealPath(projectPath) ? projectPath : undefined
+                  const effectivePath = realCwd || realProjectPath || undefined
+                  console.log('[TerminalPanel] XTermComponent projectPath:', effectivePath, { cwd, projectPath, realCwd, realProjectPath })
                   return (
                     <XTermComponent
                       onExecute={onExecute}

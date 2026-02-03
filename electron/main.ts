@@ -7,7 +7,9 @@ import * as util from 'util';
 import { fork, ChildProcess, exec, spawn } from 'child_process';
 import * as chokidar from 'chokidar';
 import * as http from 'http';
-import Anthropic from '@anthropic-ai/sdk';
+// ⚠️ Anthropic API 사용 금지 - Claude Code CLI (Max 플랜 OAuth)로만 사용
+// import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 // EPIPE 에러 핸들러 - 앱 종료 시 파이프 에러 무시
 process.stdout.on('error', (err: any) => {
@@ -1143,9 +1145,9 @@ ipcMain.handle('app:open-webview-devtools', async (_, webContentsId?: number) =>
 // 등록된 AI 브라우저 webContentsId
 let aiBrowserWebContentsId: number | null = null;
 
-// Claude 클라이언트
-const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY || '',
+// ⚠️ Anthropic API 사용 금지 - OpenAI로 대체
+const openaiClient = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY || '',
 });
 
 // 🔍 자동으로 webview 찾기 (fallback)
@@ -1405,24 +1407,25 @@ ${previousActionsStr}
 정보 검색 목표라면 반드시 실제 결과 데이터를 추출하여 done의 reason에 포함하세요!`;
 
         try {
-            const response = await anthropic.messages.create({
-                model: 'claude-sonnet-4-20250514',
+            // ⚠️ Anthropic API 사용 금지 - OpenAI GPT-4o로 대체
+            const response = await openaiClient.chat.completions.create({
+                model: 'gpt-4o',
                 max_tokens: 1024,
                 messages: [{
                     role: 'user',
                     content: [
-                        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
                         { type: 'text', text: prompt }
                     ]
                 }]
             });
 
-            const content = response.content[0];
-            if (content.type !== 'text') continue;
+            const content = response.choices[0]?.message?.content;
+            if (!content) continue;
 
-            console.log('[AI Browser Agent] Claude response:', content.text);
+            console.log('[AI Browser Agent] GPT-4o response:', content);
 
-            const jsonMatch = content.text.match(/\{[\s\S]*?\}/);
+            const jsonMatch = content.match(/\{[\s\S]*?\}/);
             if (!jsonMatch) continue;
 
             const action = JSON.parse(jsonMatch[0]);
@@ -3524,72 +3527,17 @@ async function runOpenAIAgent(
 }
 
 // ============================================
-// Anthropic Agent
+// Anthropic Agent - ⚠️ 사용 금지, OpenAI로 fallback
 // ============================================
 async function runAnthropicAgent(
     messages: AgentMessage[],
     context: AgentContext,
-    apiKey: string,
-    apiModel: string
+    _apiKey: string,
+    _apiModel: string
 ): Promise<{ content: string; toolCalls: string[] }> {
-    const toolCallLog: string[] = [];
-    const tools = getAnthropicTools();
-
-    const systemMessages = messages.filter(m => m.role === 'system');
-    let currentMessages = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content }));
-
-    for (let i = 0; i < MAX_ITERATIONS; i++) {
-        // 첫 번째 반복에서는 도구 사용 강제
-        const toolChoice = i === 0 ? { type: 'any' } : { type: 'auto' };
-
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': apiKey,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: apiModel,
-                max_tokens: 4096,
-                system: systemMessages.map(m => m.content).join('\n'),
-                tools,
-                tool_choice: toolChoice,
-                messages: currentMessages
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Anthropic API Error: ${response.status} - ${error}`);
-        }
-
-        const data = await response.json();
-        const content = data.content || [];
-
-        const textParts = content.filter((c: any) => c.type === 'text');
-        const toolUses = content.filter((c: any) => c.type === 'tool_use');
-
-        if (toolUses.length === 0) {
-            return { content: textParts.map((c: any) => c.text).join('\n'), toolCalls: toolCallLog };
-        }
-
-        currentMessages.push({ role: 'assistant', content: JSON.stringify(content) });
-
-        // 병렬 도구 실행
-        const toolResults = await Promise.all(
-            toolUses.map(async (tu: any) => {
-                toolCallLog.push(`${tu.name}(${JSON.stringify(tu.input)})`);
-                const result = await executeAgentTool(tu.name, tu.input, context);
-                return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) };
-            })
-        );
-
-        // Anthropic expects tool results as user message with special format
-        currentMessages.push({ role: 'user', content: JSON.stringify(toolResults) });
-    }
-
-    return { content: '최대 반복 횟수 도달', toolCalls: toolCallLog };
+    // ⚠️ Anthropic API 사용 금지 - OpenAI로 fallback
+    console.warn('[runAnthropicAgent] Anthropic API 사용 금지 - OpenAI로 fallback');
+    return runOpenAIAgent(messages, context, process.env.OPENAI_API_KEY || '', 'gpt-4o');
 }
 
 // ============================================
@@ -3700,10 +3648,13 @@ function getApiModelName(model: string): string {
 }
 
 // API 키 가져오기
+// ⚠️ Anthropic API 사용 금지 - Claude Code CLI (Max 플랜 OAuth)로만 사용
 function getApiKey(provider: string): string | null {
     switch (provider) {
         case 'openai': return process.env.OPENAI_API_KEY || null;
-        case 'anthropic': return process.env.ANTHROPIC_API_KEY || null;
+        case 'anthropic':
+            console.warn('[getApiKey] Anthropic API 사용 금지 - OpenAI로 fallback');
+            return process.env.OPENAI_API_KEY || null; // fallback to OpenAI
         case 'google': return process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || null;
         case 'xai': return process.env.XAI_API_KEY || null;
         default: return null;

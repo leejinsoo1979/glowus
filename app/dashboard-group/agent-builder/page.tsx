@@ -1,18 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { AgentBuilder } from '@/components/agent/AgentBuilder'
 
-export default function AgentBuilderRedirect() {
-  const router = useRouter()
-
-  useEffect(() => {
-    router.replace('/dashboard-group/agents')
-  }, [router])
-
+export default function AgentBuilderPage() {
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-zinc-500">리다이렉트 중...</div>
+    <div className="h-full w-full overflow-hidden">
+      <AgentBuilder />
     </div>
   )
 }

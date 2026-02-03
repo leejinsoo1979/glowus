@@ -634,3 +634,61 @@ export const SKILL_BUILDER_NODE_TYPES = [
 export function getNodeTypeInfo(nodeType: string) {
   return SKILL_BUILDER_NODE_TYPES.find(n => n.type === nodeType)
 }
+
+// ============================================
+// 워크플로우 빌더 노드 타입 목록 (ReactFlow 기반)
+// ============================================
+
+export const WORKFLOW_NODE_TYPES = [
+  // INPUT
+  { type: 'trigger', name: '트리거', description: '워크플로우 시작점', category: 'input' },
+  { type: 'webhook', name: '웹훅', description: 'HTTP 웹훅 트리거', category: 'input' },
+  { type: 'schedule', name: '스케줄', description: '예약 실행', category: 'input' },
+  { type: 'input', name: '데이터 입력', description: '수동 데이터 입력', category: 'input' },
+
+  // AI
+  { type: 'ai', name: 'AI 채팅', description: 'LLM으로 텍스트 생성', category: 'ai' },
+  { type: 'openai', name: 'OpenAI', description: 'GPT, DALL-E 등', category: 'ai' },
+
+  // DATA
+  { type: 'json', name: 'JSON', description: 'JSON 파싱/변환', category: 'data' },
+  { type: 'text', name: '텍스트', description: '문자열 처리', category: 'data' },
+  { type: 'math', name: '수학', description: '수학 연산', category: 'data' },
+  { type: 'array', name: '배열', description: '배열 조작', category: 'data' },
+  { type: 'set', name: 'Set', description: '필드 값 설정', category: 'data' },
+
+  // PROCESS
+  { type: 'process', name: '데이터 처리', description: '필터/정렬/집계', category: 'process' },
+  { type: 'code', name: '코드', description: 'JavaScript 실행', category: 'process' },
+
+  // CONTROL
+  { type: 'conditional', name: 'IF 조건', description: '조건 분기', category: 'control' },
+  { type: 'switch', name: 'Switch', description: '다중 조건 분기', category: 'control' },
+  { type: 'loop', name: '루프', description: '반복 실행', category: 'control' },
+  { type: 'delay', name: '딜레이', description: '시간 대기', category: 'control' },
+  { type: 'merge', name: 'Merge', description: '데이터 병합', category: 'control' },
+
+  // INTEGRATION
+  { type: 'http', name: 'HTTP', description: 'REST API 호출', category: 'integration' },
+  { type: 'database', name: '데이터베이스', description: 'DB 쿼리', category: 'integration' },
+  { type: 'supabase', name: 'Supabase', description: 'Supabase 연동', category: 'integration' },
+  { type: 'slack', name: 'Slack', description: 'Slack 메시지', category: 'integration' },
+  { type: 'telegram', name: 'Telegram', description: '텔레그램 메시지', category: 'integration' },
+  { type: 'email', name: '이메일', description: '이메일 전송', category: 'integration' },
+  { type: 'notification', name: '알림', description: '멀티채널 알림', category: 'integration' },
+
+  // OUTPUT
+  { type: 'output', name: '결과 출력', description: '워크플로우 결과', category: 'output' },
+  { type: 'webhookResponse', name: '웹훅 응답', description: 'HTTP 응답 반환', category: 'output' },
+]
+
+export function getWorkflowNodeTypeInfo(nodeType: string) {
+  return WORKFLOW_NODE_TYPES.find(n => n.type === nodeType)
+}
+
+export function listWorkflowNodeTypes(category?: string) {
+  if (category) {
+    return WORKFLOW_NODE_TYPES.filter(n => n.category === category)
+  }
+  return WORKFLOW_NODE_TYPES
+}

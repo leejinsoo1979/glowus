@@ -1,26 +1,89 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from 'react'
-import {
-    Send,
-    Bot,
-    User,
-    Loader2,
-    X,
-    Sparkles,
-    Trash2,
-    MessageSquare,
-    Zap,
-    Cpu,
-    ArrowDown
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+/**
+ * GlobalAgentSidebar - Jarvis 기반 Claude Code 사이드바
+ *
+ * PTY 대화형 + 권한 승인 UI + GlowUS 컨텍스트 통합
+ */
 
-interface Message {
-    id: string
-    role: 'user' | 'assistant'
-    content: string
-    timestamp: Date
+import React, { useEffect, useRef, useState, useCallback } from 'react'
+import {
+    X,
+    Trash2,
+    FolderOpen,
+    Wifi,
+    WifiOff,
+    Play,
+    Square,
+    Maximize2,
+    Minimize2,
+} from 'lucide-react'
+import { useTheme } from 'next-themes'
+import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
+import { useJarvis, WorkflowControlCommand } from '@/hooks/useJarvis'
+import { useWorkflowStore } from '@/stores/workflowStore'
+import { PermissionModal } from '@/components/jarvis/PermissionModal'
+import { useGlowContextStore } from '@/stores/glowContextStore'
+
+// Claude Code 브랜드 색상
+const CLAUDE_ORANGE = '#D97757'
+
+// Spark 아이콘 (Claude Code 로고)
+const SparkIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <svg viewBox="0 0 24 24" className={className} style={style} fill="currentColor">
+        <path d="M12 2L13.09 8.26L18 6L15.74 10.91L22 12L15.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L8.26 13.09L2 12L8.26 10.91L6 6L10.91 8.26L12 2Z" />
+    </svg>
+)
+
+// Claude Code 스타일 테마
+const CLAUDE_THEME = {
+    dark: {
+        background: '#1a1a1a',
+        foreground: '#e4e4e7',
+        cursor: '#cc5500',
+        cursorAccent: '#1a1a1a',
+        selectionBackground: '#cc550040',
+        black: '#27272a',
+        red: '#f87171',
+        green: '#4ade80',
+        yellow: '#facc15',
+        blue: '#60a5fa',
+        magenta: '#c084fc',
+        cyan: '#22d3ee',
+        white: '#e4e4e7',
+        brightBlack: '#52525b',
+        brightRed: '#fca5a5',
+        brightGreen: '#86efac',
+        brightYellow: '#fde047',
+        brightBlue: '#93c5fd',
+        brightMagenta: '#d8b4fe',
+        brightCyan: '#67e8f9',
+        brightWhite: '#fafafa',
+    },
+    light: {
+        background: '#ffffff',
+        foreground: '#18181b',
+        cursor: '#cc5500',
+        cursorAccent: '#ffffff',
+        selectionBackground: '#cc550030',
+        black: '#18181b',
+        red: '#dc2626',
+        green: '#16a34a',
+        yellow: '#ca8a04',
+        blue: '#2563eb',
+        magenta: '#9333ea',
+        cyan: '#0891b2',
+        white: '#f4f4f5',
+        brightBlack: '#71717a',
+        brightRed: '#ef4444',
+        brightGreen: '#22c55e',
+        brightYellow: '#eab308',
+        brightBlue: '#3b82f6',
+        brightMagenta: '#a855f7',
+        brightCyan: '#06b6d4',
+        brightWhite: '#fafafa',
+    },
 }
 
 interface GlobalAgentSidebarProps {
@@ -28,287 +91,590 @@ interface GlobalAgentSidebarProps {
     onToggle: () => void
 }
 
-export function GlobalAgentSidebar({
-    isOpen,
-    onToggle
-}: GlobalAgentSidebarProps) {
-    const [messages, setMessages] = useState<Message[]>([])
-    const [input, setInput] = useState('')
-    const [isLoading, setIsLoading] = useState(false)
-    const messagesEndRef = useRef<HTMLDivElement>(null)
+export function GlobalAgentSidebar({ isOpen, onToggle }: GlobalAgentSidebarProps) {
+    const { resolvedTheme } = useTheme()
+    const router = useRouter()
+    const isDark = resolvedTheme === 'dark'
 
-    // Load history from localStorage on mount
-    useEffect(() => {
-        const saved = localStorage.getItem('glowus_agent_chat_history');
-        if (saved) {
+    const terminalRef = useRef<HTMLDivElement>(null)
+    const xtermRef = useRef<any>(null)
+    const fitAddonRef = useRef<any>(null)
+    const sendInputRef = useRef<(data: string) => void>(() => {})
+    const outputBufferRef = useRef<string[]>([])
+    const xtermInitializedRef = useRef(false)
+
+    const [projectPath, setProjectPath] = useState('')
+    const [isExpanded, setIsExpanded] = useState(false)
+    const [terminalReady, setTerminalReady] = useState(false)
+    const [mounted, setMounted] = useState(false)
+
+    // GlowUS 컨텍스트
+    const currentPageTitle = useGlowContextStore((s) => s.currentPageTitle)
+    const getContextForClaude = useGlowContextStore((s) => s.getContextForClaude)
+
+    // 워크플로우 스토어 - 액션만 가져오기 (상태 구독 안함, 액션은 안정적)
+    const workflowAddNode = useWorkflowStore((s) => s.addNode)
+    const workflowRemoveNode = useWorkflowStore((s) => s.removeNode)
+    const workflowUpdateNode = useWorkflowStore((s) => s.updateNode)
+    const workflowConnectNodes = useWorkflowStore((s) => s.connectNodes)
+    const workflowDisconnectNodes = useWorkflowStore((s) => s.disconnectNodes)
+    const workflowClearAll = useWorkflowStore((s) => s.clearAll)
+
+    // MCP에서 보낸 네비게이션 명령 처리
+    const handleNavigate = useCallback((route: string) => {
+        console.log('[Jarvis] Navigate command received:', route)
+        xtermRef.current?.writeln(`\r\n\x1b[36m[GlowUS] 페이지 이동: ${route}\x1b[0m`)
+        router.push(route)
+    }, [router])
+
+    // 워크플로우 빌더 제어 명령 처리
+    const handleWorkflowControl = useCallback((command: WorkflowControlCommand) => {
+        console.log('[Jarvis] Workflow control:', command.action, command)
+        xtermRef.current?.writeln(`\r\n\x1b[35m[워크플로우] ${command.action}\x1b[0m`)
+
+        switch (command.action) {
+            case 'add_node':
+                if (command.nodeType) {
+                    const nodeId = workflowAddNode(
+                        command.nodeType,
+                        command.position,
+                        command.data
+                    )
+                    xtermRef.current?.writeln(`\x1b[32m  ✓ 노드 추가됨: ${nodeId}\x1b[0m`)
+                }
+                break
+
+            case 'remove_node':
+                if (command.nodeId) {
+                    workflowRemoveNode(command.nodeId)
+                    xtermRef.current?.writeln(`\x1b[32m  ✓ 노드 삭제됨: ${command.nodeId}\x1b[0m`)
+                }
+                break
+
+            case 'update_node':
+                if (command.nodeId && command.data) {
+                    workflowUpdateNode(command.nodeId, command.data)
+                    xtermRef.current?.writeln(`\x1b[32m  ✓ 노드 수정됨: ${command.nodeId}\x1b[0m`)
+                }
+                break
+
+            case 'connect':
+                if (command.sourceId && command.targetId) {
+                    workflowConnectNodes(
+                        command.sourceId,
+                        command.targetId,
+                        command.sourceHandle,
+                        command.targetHandle
+                    )
+                    xtermRef.current?.writeln(`\x1b[32m  ✓ 연결됨: ${command.sourceId} → ${command.targetId}\x1b[0m`)
+                }
+                break
+
+            case 'disconnect':
+                if (command.sourceId && command.targetId) {
+                    workflowDisconnectNodes(command.sourceId, command.targetId)
+                    xtermRef.current?.writeln(`\x1b[32m  ✓ 연결 해제됨\x1b[0m`)
+                }
+                break
+
+            case 'clear':
+                workflowClearAll()
+                xtermRef.current?.writeln(`\x1b[32m  ✓ 워크플로우 초기화됨\x1b[0m`)
+                break
+
+            case 'execute':
+                // TODO: 실행은 WorkflowBuilder 컴포넌트의 handleExecute 호출 필요
+                xtermRef.current?.writeln(`\x1b[33m  ⚠ 실행은 워크플로우 빌더에서 직접 해주세요\x1b[0m`)
+                break
+
+            case 'get_state':
+                // 상태 조회 시에만 getState()로 직접 접근 (구독 안함)
+                const currentState = useWorkflowStore.getState()
+                const stateInfo = {
+                    nodes: currentState.nodes.length,
+                    edges: currentState.edges.length,
+                    nodeList: currentState.nodes.map(n => `${n.type}(${n.id})`),
+                }
+                xtermRef.current?.writeln(`\x1b[36m  상태: 노드 ${stateInfo.nodes}개, 연결 ${stateInfo.edges}개\x1b[0m`)
+                break
+        }
+    }, [workflowAddNode, workflowRemoveNode, workflowUpdateNode, workflowConnectNodes, workflowDisconnectNodes, workflowClearAll])
+
+    // 터미널에 출력하는 콜백
+    const writeToTerminal = useCallback((data: string) => {
+        console.log('[Jarvis] writeToTerminal called, data length:', data?.length, 'xterm ready:', !!xtermRef.current)
+        if (xtermRef.current) {
             try {
-                const parsed = JSON.parse(saved);
-                // Convert string dates back to Date objects
-                const restored = parsed.map((m: any) => ({
-                    ...m,
-                    timestamp: new Date(m.timestamp)
-                }));
-                setMessages(restored);
-            } catch (e) {
-                console.error('Failed to parse chat history', e);
+                xtermRef.current.write(data)
+                console.log('[Jarvis] Write to xterm successful')
+            } catch (err) {
+                console.error('[Jarvis] Failed to write to xterm:', err)
             }
         } else {
-            // Default first message if no history
-            setMessages([
-                {
-                    id: '1',
-                    role: 'assistant',
-                    content: '안녕하세요! GlowUS AI 어시스턴트입니다. 무엇을 도와드릴까요?',
-                    timestamp: new Date()
-                }
-            ]);
+            outputBufferRef.current.push(data)
+            console.log('[Jarvis] Buffered output, count:', outputBufferRef.current.length)
         }
-    }, []);
+    }, [])
 
-    // Save history to localStorage whenever messages change
+    // Jarvis 훅
+    const {
+        isConnected,
+        isRunning,
+        currentCwd,
+        error,
+        pendingPermissions,
+        isBrowserRegistered,
+        connect,
+        startSession,
+        sendInput,
+        stop,
+        closeSession,
+        resize,
+        registerAsBrowser,
+        approvePermission,
+        denyPermission,
+        approveAllPermissions,
+    } = useJarvis({
+        autoConnect: false,
+        cwd: projectPath,
+        onOutput: writeToTerminal,
+        onExit: (code) => {
+            xtermRef.current?.writeln(`\r\n\x1b[90m[세션 종료: ${code}]\x1b[0m`)
+        },
+        onNavigate: handleNavigate,
+        onControl: (action, data) => {
+            console.log('[Jarvis] Control action:', action, data)
+        },
+        onWorkflowControl: handleWorkflowControl,
+    })
+
+    // 브라우저 등록 상태 로그
     useEffect(() => {
-        if (messages.length > 0) {
-            localStorage.setItem('glowus_agent_chat_history', JSON.stringify(messages));
-        }
-    }, [messages]);
+        console.log('[Jarvis] Browser registered:', isBrowserRegistered)
+    }, [isBrowserRegistered])
 
-    // 자동 스크롤
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }
-
+    // sendInput ref 업데이트
     useEffect(() => {
-        if (isOpen) {
-            scrollToBottom()
+        sendInputRef.current = sendInput
+    }, [sendInput])
+
+    // 클라이언트 마운트 확인
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    // localStorage에서 프로젝트 경로 로드
+    useEffect(() => {
+        if (mounted) {
+            const savedPath = localStorage.getItem('jarvis_project_path')
+            // 경로 검증: /로 시작하거나 ~로 시작해야 함
+            if (savedPath && (savedPath.startsWith('/') || savedPath.startsWith('~'))) {
+                setProjectPath(savedPath)
+            } else if (savedPath) {
+                // 잘못된 값이면 삭제
+                localStorage.removeItem('jarvis_project_path')
+            }
         }
-    }, [messages, isOpen])
+    }, [mounted])
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return
-
-        const userMessage: Message = {
-            id: Date.now().toString(),
-            role: 'user',
-            content: input.trim(),
-            timestamp: new Date()
+    // 프로젝트 경로 저장
+    useEffect(() => {
+        // 경로 검증 후 저장
+        if (projectPath && mounted && (projectPath.startsWith('/') || projectPath.startsWith('~'))) {
+            localStorage.setItem('jarvis_project_path', projectPath)
         }
+    }, [projectPath, mounted])
 
-        setMessages(prev => [...prev, userMessage])
-        setInput('')
-        setIsLoading(true)
+    // xterm 초기화 - 동적 import 사용
+    useEffect(() => {
+        if (!mounted || !terminalRef.current || xtermInitializedRef.current) return
 
-        try {
-            // Super Agent API 사용 (browser_automation 등 도구 포함)
-            const response = await fetch('/api/agents/super/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: userMessage.content,
-                    chatHistory: messages.map(m => ({
-                        role: m.role,
-                        content: m.content
-                    }))
+        const initTerminal = async () => {
+            try {
+                // 동적 import
+                const { Terminal } = await import('@xterm/xterm')
+                const { FitAddon } = await import('@xterm/addon-fit')
+                const { WebLinksAddon } = await import('@xterm/addon-web-links')
+
+                // CSS import
+                await import('@xterm/xterm/css/xterm.css')
+
+                if (!terminalRef.current || xtermInitializedRef.current) return
+
+                const theme = isDark ? CLAUDE_THEME.dark : CLAUDE_THEME.light
+
+                const terminal = new Terminal({
+                    cursorBlink: true,
+                    cursorStyle: 'bar',
+                    fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Menlo, monospace',
+                    fontSize: 11,  // 사이드바 너비에 맞게 조금 줄임
+                    lineHeight: 1.2,
+                    theme,
+                    allowProposedApi: true,
+                    scrollback: 5000,
                 })
+
+                const fitAddon = new FitAddon()
+                const webLinksAddon = new WebLinksAddon()
+
+                terminal.loadAddon(fitAddon)
+                terminal.loadAddon(webLinksAddon)
+
+                terminal.open(terminalRef.current)
+
+                xtermRef.current = terminal
+                fitAddonRef.current = fitAddon
+                xtermInitializedRef.current = true
+
+                // 입력 처리 → Jarvis 서버로 전송
+                terminal.onData((data: string) => {
+                    sendInputRef.current(data)
+                })
+
+                // 초기 메시지
+                terminal.writeln('\x1b[1;38;2;217;119;87m╔══════════════════════════════════════╗\x1b[0m')
+                terminal.writeln('\x1b[1;38;2;217;119;87m║\x1b[0m    \x1b[1;33mJarvis\x1b[0m - GlowUS AI Assistant    \x1b[1;38;2;217;119;87m║\x1b[0m')
+                terminal.writeln('\x1b[1;38;2;217;119;87m╚══════════════════════════════════════╝\x1b[0m')
+                terminal.writeln('')
+                terminal.writeln('\x1b[90m  Play 버튼을 눌러 세션을 시작하세요.\x1b[0m')
+                terminal.writeln('')
+
+                setTerminalReady(true)
+
+                // 버퍼된 출력 플러시
+                if (outputBufferRef.current.length > 0) {
+                    console.log('[Jarvis] Flushing buffered output:', outputBufferRef.current.length, 'items')
+                    outputBufferRef.current.forEach(data => terminal.write(data))
+                    outputBufferRef.current = []
+                }
+
+                // fit 호출
+                setTimeout(() => {
+                    fitAddon.fit()
+                }, 100)
+
+                console.log('[Jarvis] xterm initialized successfully')
+            } catch (err) {
+                console.error('[Jarvis] Failed to initialize xterm:', err)
+            }
+        }
+
+        initTerminal()
+
+        return () => {
+            if (xtermRef.current) {
+                xtermRef.current.dispose()
+                xtermRef.current = null
+                fitAddonRef.current = null
+                xtermInitializedRef.current = false
+                setTerminalReady(false)
+            }
+        }
+    }, [mounted, isDark])
+
+    // 사이드바 열릴 때 터미널 fit
+    useEffect(() => {
+        if (isOpen && fitAddonRef.current && xtermRef.current) {
+            setTimeout(() => {
+                fitAddonRef.current?.fit()
+                if (xtermRef.current) {
+                    resize(xtermRef.current.cols, xtermRef.current.rows)
+                }
+            }, 300)
+        }
+    }, [isOpen, isExpanded, resize])
+
+    // 리사이즈 처리
+    useEffect(() => {
+        const handleResize = () => {
+            if (fitAddonRef.current && xtermRef.current && isOpen) {
+                fitAddonRef.current.fit()
+                resize(xtermRef.current.cols, xtermRef.current.rows)
+            }
+        }
+
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [isOpen, resize])
+
+    // 테마 변경 시 업데이트
+    useEffect(() => {
+        if (xtermRef.current && mounted) {
+            const theme = isDark ? CLAUDE_THEME.dark : CLAUDE_THEME.light
+            xtermRef.current.options.theme = theme
+        }
+    }, [isDark, mounted])
+
+    // 자동 연결 및 브라우저 등록
+    useEffect(() => {
+        if (isOpen && !isConnected && mounted) {
+            connect().then((connected) => {
+                if (connected) {
+                    // 연결 성공 시 브라우저로 등록 (MCP 제어 명령 수신용)
+                    setTimeout(() => registerAsBrowser(), 100)
+                }
             })
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}))
-                throw new Error(errorData.error || '채팅 응답을 가져오지 못했습니다.')
-            }
-
-            const data = await response.json()
-
-            // 도구 사용 정보 로그
-            if (data.toolsUsed && data.toolsUsed.length > 0) {
-                console.log('[GlobalAgentSidebar] Tools used:', data.toolsUsed)
-            }
-
-            const assistantMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: data.response || data.content || '응답을 받지 못했습니다.',
-                timestamp: new Date()
-            }
-
-            setMessages(prev => [...prev, assistantMessage])
-        } catch (error) {
-            console.error('Chat error:', error)
-            const errorMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: '죄송합니다. 오류가 발생했습니다. 다시 시도해 주세요.',
-                timestamp: new Date()
-            }
-            setMessages(prev => [...prev, errorMessage])
-        } finally {
-            setIsLoading(false)
         }
-    }
+    }, [isOpen, isConnected, connect, mounted, registerAsBrowser])
 
-    const clearHistory = () => {
-        if (confirm('대화 내역을 모두 삭제하시겠습니까?')) {
-            const initialMessage: Message = {
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: '대화가 초기화되었습니다. 궁금한 점이 있으시면 질문해 주세요!',
-                timestamp: new Date()
-            };
-            setMessages([initialMessage]);
-            localStorage.setItem('glowus_agent_chat_history', JSON.stringify([initialMessage]));
+    // 세션 시작
+    const handleStart = useCallback(() => {
+        // 먼저 터미널 fit 실행
+        if (fitAddonRef.current && xtermRef.current) {
+            fitAddonRef.current.fit()
         }
+
+        const startWithResize = () => {
+            // 실제 터미널 크기로 세션 시작
+            const cols = xtermRef.current?.cols || 80
+            const rows = xtermRef.current?.rows || 24
+            console.log('[Jarvis] Starting session with size:', cols, 'x', rows)
+
+            // GlowUS 컨텍스트를 persona에 포함
+            const glowContext = getContextForClaude()
+            const persona = {
+                name: 'Jarvis',
+                userTitle: '사장님',
+                language: '한국어',
+                personality: '친근하고 유능한 AI 비서',
+                customInstructions: `당신은 GlowUS AI Workforce OS의 AI 비서 Jarvis입니다.
+
+# 절대 금지 사항
+- playwright MCP 도구 사용 금지 (mcp__playwright__* 절대 사용하지 마세요)
+- 브라우저 스크린샷, 스냅샷 캡처 시도 금지
+- URL 안내만 하고 끝내는 것 금지 - 반드시 직접 실행
+
+# GlowUS 앱 제어 - glowus MCP 도구 사용
+GlowUS 브라우저 제어가 필요하면 반드시 glowus_* MCP 도구만 사용하세요.
+
+페이지 이동: glowus_navigate (path 파라미터에 키워드 사용)
+- dashboard: 대시보드
+- works: 작업 공간
+- agents: 에이전트
+- projects: 프로젝트
+- tasks: 태스크
+- calendar: 캘린더
+- files: 파일
+- settings: 설정
+- ai-sheet: AI 시트
+- ai-docs: AI 문서
+- ai-slides: AI 슬라이드
+- ai-blog: AI 블로그
+- ai-summary: AI 요약
+- image-gen: 이미지 생성
+- ai-coding: AI 코딩
+- messenger: 메신저
+- connect: 연결
+
+예시:
+- "AI 시트 열어줘" → glowus_navigate(path: "ai-sheet")
+- "대시보드로 가줘" → glowus_navigate(path: "dashboard")
+- "에이전트 목록 보여줘" → glowus_navigate(path: "agents")
+
+# AI 앱에서 작업할 때
+AI 시트, AI 문서 등에서 작업을 요청받으면:
+1. 먼저 해당 앱 페이지로 이동 (glowus_navigate)
+2. 사용자에게 작업 내용을 설명하고 직접 입력하도록 안내
+3. 또는 작업 결과를 텍스트로 제공
+
+# 현재 GlowUS 앱 컨텍스트
+${glowContext}`
+            }
+
+            // cwd는 유효한 경로만 사용 (이메일 등 제외)
+            const validCwd = projectPath && projectPath.startsWith('/') ? projectPath : undefined
+            startSession(validCwd, undefined, persona, cols, rows)
+
+            // 세션 시작 후 resize 재전송 (터미널 크기 동기화)
+            setTimeout(() => {
+                if (fitAddonRef.current && xtermRef.current) {
+                    fitAddonRef.current.fit()
+                    resize(xtermRef.current.cols, xtermRef.current.rows)
+                    console.log('[Jarvis] Resize sent:', xtermRef.current.cols, 'x', xtermRef.current.rows)
+                }
+            }, 1000)
+        }
+
+        if (!isConnected) {
+            connect()
+            setTimeout(startWithResize, 500)
+        } else {
+            startWithResize()
+        }
+        xtermRef.current?.writeln('\x1b[90m[Claude Code 세션 시작 중...]\x1b[0m')
+    }, [isConnected, connect, startSession, projectPath, resize, getContextForClaude])
+
+    // 중지
+    const handleStop = useCallback(() => {
+        stop()
+    }, [stop])
+
+    // 초기화
+    const handleClear = useCallback(() => {
+        xtermRef.current?.clear()
+        closeSession()
+    }, [closeSession])
+
+    // SSR에서는 렌더링하지 않음
+    if (!mounted) {
+        return null
     }
 
     return (
         <>
-            {/* 사이드바 패널 */}
             <div
                 className={cn(
-                    "fixed right-0 top-12 w-[400px] bg-zinc-950 border-l border-zinc-800 z-[90]",
-                    "transform transition-transform duration-300 ease-in-out shadow-[-10px_0_30px_rgba(0,0,0,0.5)]",
-                    "flex flex-col flex-1",
-                    isOpen ? "translate-x-0" : "translate-x-full"
+                    "fixed right-0 top-12 border-l z-[90]",
+                    "transform transition-all duration-300 ease-in-out",
+                    "flex flex-col",
+                    isDark
+                        ? "bg-[#1a1a1a] border-zinc-800 shadow-[-10px_0_30px_rgba(0,0,0,0.5)]"
+                        : "bg-white border-zinc-200 shadow-[-10px_0_30px_rgba(0,0,0,0.1)]",
+                    isOpen ? "translate-x-0" : "translate-x-full",
+                    isExpanded ? "w-[600px]" : "w-[420px]"
                 )}
                 style={{ height: 'calc(100vh - 48px)' }}
             >
                 {/* 헤더 */}
-                <div className="h-16 flex items-center justify-between px-5 border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-xl">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 bg-blue-600/20 rounded-lg">
-                            <Cpu className="w-5 h-5 text-blue-500" />
-                        </div>
+                <div className={cn(
+                    "h-12 flex items-center justify-between px-3 border-b flex-shrink-0",
+                    isDark ? "border-zinc-800 bg-[#1a1a1a]" : "border-zinc-200 bg-white"
+                )}>
+                    <div className="flex items-center gap-2">
+                        <SparkIcon className="w-5 h-5" style={{ color: CLAUDE_ORANGE }} />
                         <div>
-                            <h2 className="text-sm font-bold text-white leading-tight">Super Agent</h2>
-                            <p className="text-[10px] text-zinc-500 font-medium">ONLINE · CLAUDE + TOOLS</p>
+                            <h2 className={cn("text-sm font-semibold", isDark ? "text-white" : "text-zinc-900")}>
+                                Jarvis
+                            </h2>
+                            <div className="flex items-center gap-1.5">
+                                {isConnected ? (
+                                    <Wifi className="w-3 h-3 text-green-500" />
+                                ) : (
+                                    <WifiOff className="w-3 h-3 text-zinc-500" />
+                                )}
+                                <p className="text-[10px] text-zinc-500 truncate max-w-[120px]">
+                                    {currentPageTitle || (isConnected ? (isRunning ? 'Running' : 'Ready') : 'Disconnected')}
+                                </p>
+                            </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-0.5">
+                        {!isRunning ? (
+                            <button
+                                onClick={handleStart}
+                                className={cn(
+                                    "p-1.5 rounded-md transition-colors",
+                                    isDark ? "hover:bg-zinc-800 text-green-400" : "hover:bg-zinc-200 text-green-600"
+                                )}
+                                title="세션 시작"
+                            >
+                                <Play className="w-4 h-4" />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleStop}
+                                className={cn(
+                                    "p-1.5 rounded-md transition-colors",
+                                    isDark ? "hover:bg-zinc-800 text-red-400" : "hover:bg-zinc-200 text-red-600"
+                                )}
+                                title="중단 (Ctrl+C)"
+                            >
+                                <Square className="w-4 h-4" />
+                            </button>
+                        )}
                         <button
-                            onClick={clearHistory}
-                            className="p-2 hover:bg-zinc-900 rounded-lg transition-colors group"
-                            title="내역 삭제"
+                            onClick={handleClear}
+                            className={cn(
+                                "p-1.5 rounded-md transition-colors",
+                                isDark ? "hover:bg-zinc-800 text-zinc-400" : "hover:bg-zinc-200 text-zinc-600"
+                            )}
+                            title="초기화"
                         >
-                            <Trash2 className="w-4 h-4 text-zinc-500 group-hover:text-red-400" />
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setIsExpanded(!isExpanded)}
+                            className={cn(
+                                "p-1.5 rounded-md transition-colors",
+                                isDark ? "hover:bg-zinc-800 text-zinc-400" : "hover:bg-zinc-200 text-zinc-600"
+                            )}
+                            title={isExpanded ? "축소" : "확대"}
+                        >
+                            {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                         </button>
                         <button
                             onClick={onToggle}
-                            className="p-2 hover:bg-zinc-900 rounded-lg transition-colors group"
+                            className={cn(
+                                "p-1.5 rounded-md transition-colors",
+                                isDark ? "hover:bg-zinc-800" : "hover:bg-zinc-200"
+                            )}
                         >
-                            <X className="w-4 h-4 text-zinc-500 group-hover:text-white" />
+                            <X className={cn("w-4 h-4", isDark ? "text-zinc-500 hover:text-white" : "text-zinc-400 hover:text-zinc-900")} />
                         </button>
                     </div>
                 </div>
 
-                {/* 메시지 영역 */}
-                <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-6 custom-scrollbar scroll-smooth">
-                    {messages.map((msg) => (
-                        <div
-                            key={msg.id}
+                {/* 프로젝트 경로 */}
+                <div className={cn(
+                    "px-3 py-2 border-b flex-shrink-0",
+                    isDark ? "border-zinc-800/50 bg-zinc-900/30" : "border-zinc-100 bg-zinc-50"
+                )}>
+                    <div className="flex items-center gap-2">
+                        <FolderOpen className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+                        <input
+                            type="text"
+                            value={projectPath}
+                            onChange={(e) => setProjectPath(e.target.value)}
+                            placeholder="프로젝트 경로 (예: /Users/...)"
                             className={cn(
-                                "flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2",
-                                msg.role === 'user' ? "items-end" : "items-start"
+                                "flex-1 bg-transparent text-xs focus:outline-none min-w-0",
+                                isDark ? "text-zinc-400 placeholder:text-zinc-600" : "text-zinc-600 placeholder:text-zinc-400"
                             )}
-                        >
-                            <div className="flex items-center gap-2 px-1">
-                                {msg.role === 'assistant' ? (
-                                    <Sparkles className="w-3 h-3 text-blue-500" />
-                                ) : (
-                                    <User className="w-3 h-3 text-zinc-500" />
-                                )}
-                                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                    {msg.role === 'assistant' ? 'AI Assistant' : 'You'}
-                                </span>
-                            </div>
-                            <div
-                                className={cn(
-                                    "max-w-[90%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text",
-                                    msg.role === 'user'
-                                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/10"
-                                        : "bg-zinc-900 text-zinc-200 border border-zinc-800"
-                                )}
-                            >
-                                {msg.content}
-                            </div>
-                            <span className="text-[10px] text-zinc-600 px-1">
-                                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                        </div>
-                    ))}
-                    {isLoading && (
-                        <div className="flex flex-col gap-2 items-start animate-pulse">
-                            <div className="flex items-center gap-2 px-1">
-                                <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
-                                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                    AI is thinking...
-                                </span>
-                            </div>
-                            <div className="bg-zinc-900/50 border border-zinc-800 w-12 h-8 rounded-2xl flex items-center justify-center">
-                                <div className="flex gap-1">
-                                    <div className="w-1 h-1 bg-zinc-600 rounded-full animate-bounce" />
-                                    <div className="w-1 h-1 bg-zinc-600 rounded-full animate-bounce [animation-delay:0.2s]" />
-                                    <div className="w-1 h-1 bg-zinc-600 rounded-full animate-bounce [animation-delay:0.4s]" />
-                                </div>
-                            </div>
-                        </div>
+                        />
+                    </div>
+                    {currentCwd && currentCwd !== projectPath && (
+                        <p className="text-[10px] text-zinc-500 mt-1 truncate">현재: {currentCwd}</p>
                     )}
-                    <div ref={messagesEndRef} />
                 </div>
 
-                {/* 입력 영역 */}
-                <div className="p-4 bg-zinc-950 border-t border-zinc-900">
-                    <div className="relative group">
-                        <textarea
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault()
-                                    handleSend()
-                                }
-                            }}
-                            placeholder="메시지를 입력하세요 (Shift+Enter 줄바꿈)"
-                            rows={1}
-                            className={cn(
-                                "w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 pb-12 text-sm text-zinc-200",
-                                "placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50",
-                                "resize-none transition-all duration-200",
-                                "group-focus-within:border-blue-500/30"
-                            )}
-                            style={{ minHeight: '100px' }}
-                        />
-                        <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                            <button
-                                onClick={handleSend}
-                                disabled={!input.trim() || isLoading}
-                                className={cn(
-                                    "p-2 rounded-lg transition-all duration-200",
-                                    input.trim() && !isLoading
-                                        ? "bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20"
-                                        : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                                )}
-                            >
-                                <Send className="w-4 h-4" />
-                            </button>
-                        </div>
-                        <div className="absolute bottom-3 left-3">
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800/50 rounded-md">
-                                <Zap className="w-3 h-3 text-purple-500" />
-                                <span className="text-[10px] font-bold text-zinc-400">Claude + Browser</span>
-                            </div>
-                        </div>
+                {/* 에러 표시 */}
+                {error && (
+                    <div className="px-3 py-2 bg-red-500/10 border-b border-red-500/20 flex-shrink-0">
+                        <p className="text-xs text-red-500">{error}</p>
                     </div>
-                    <p className="text-[10px] text-zinc-600 text-center mt-3 font-medium">
-                        AI는 실수를 할 수 있습니다. 중요한 정보는 확인이 필요합니다.
-                    </p>
+                )}
+
+                {/* 터미널 */}
+                <div
+                    ref={terminalRef}
+                    className={cn(
+                        "flex-1 overflow-hidden",
+                        isDark ? "bg-[#1a1a1a]" : "bg-white"
+                    )}
+                    style={{ padding: '8px', minHeight: '200px' }}
+                />
+
+                {/* 하단 상태바 */}
+                <div className={cn(
+                    "h-6 flex items-center justify-between px-3 border-t text-[10px] flex-shrink-0",
+                    isDark ? "border-zinc-800 bg-zinc-900/50 text-zinc-500" : "border-zinc-200 bg-zinc-50 text-zinc-400"
+                )}>
+                    <span>
+                        {isRunning ? '● Running' : isConnected ? '○ Connected' : '○ Disconnected'}
+                    </span>
+                    <span>
+                        Jarvis powered by Claude Code
+                    </span>
                 </div>
             </div>
 
-            {/* 오버레이 (클릭 시 닫힘) */}
-            {isOpen && (
-                <div
-                    className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-80 transition-opacity duration-300"
-                    onClick={onToggle}
-                />
-            )}
+            {/* 권한 승인 모달 */}
+            <PermissionModal
+                requests={pendingPermissions}
+                onApprove={approvePermission}
+                onDeny={denyPermission}
+                onApproveAll={approveAllPermissions}
+            />
         </>
     )
 }

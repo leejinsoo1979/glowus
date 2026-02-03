@@ -8,30 +8,7 @@ import { useNeuralMapStore } from '@/lib/neural-map/store'
 import type { NeuralNode, NeuralEdge, NeuralFile } from '@/lib/neural-map/types'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { forceRadial, forceY, forceCollide } from 'd3-force-3d'
-import {
-  BsFiletypePdf,
-  BsFiletypeJs,
-  BsFiletypeTsx,
-  BsFiletypeJsx,
-  BsFiletypeHtml,
-  BsFiletypeCss,
-  BsFiletypeJson,
-  BsFiletypeMd,
-  BsFiletypePy,
-  BsFiletypeJava,
-  BsFiletypeRb,
-  BsFiletypeSh,
-  BsFiletypeYml,
-  BsFiletypeXml,
-  BsFiletypePng,
-  BsFiletypeJpg,
-  BsFiletypeGif,
-  BsFiletypeSvg,
-  BsFileEarmarkText,
-  BsFileEarmarkCode,
-  BsFolder,
-  BsFolderFill
-} from 'react-icons/bs'
+// 🔥 react-icons 완전 제거 - lucide-react로 통일 (번들 사이즈 대폭 절약)
 import {
   Rocket,
   Target,
@@ -41,8 +18,37 @@ import {
   Lightbulb,
   Bug,
   Star,
-  Circle
+  Circle,
+  FileCode,
+  FileJson,
+  FileImage,
+  Folder,
+  Terminal,
 } from 'lucide-react'
+
+// 🔥 react-icons → lucide-react 별칭 (기존 코드 호환성)
+const BsFiletypePdf = FileText
+const BsFiletypeJs = FileCode
+const BsFiletypeTsx = FileCode
+const BsFiletypeJsx = FileCode
+const BsFiletypeHtml = FileCode
+const BsFiletypeCss = FileCode
+const BsFiletypeJson = FileJson
+const BsFiletypeMd = FileText
+const BsFiletypePy = FileCode
+const BsFiletypeJava = FileCode
+const BsFiletypeRb = FileCode
+const BsFiletypeSh = Terminal
+const BsFiletypeYml = FileJson
+const BsFiletypeXml = FileJson
+const BsFiletypePng = FileImage
+const BsFiletypeJpg = FileImage
+const BsFiletypeGif = FileImage
+const BsFiletypeSvg = FileImage
+const BsFileEarmarkText = FileText
+const BsFileEarmarkCode = FileCode
+const BsFolder = Folder
+const BsFolderFill = FolderOpen
 
 // 노드 타입별 아이콘 컴포넌트
 const getNodeTypeIcon = (type: string) => {

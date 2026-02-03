@@ -457,6 +457,19 @@ type ReturnType<T extends (...args: any) => any> = T extends (...args: any) => i
   console.log('[Monaco] Language services initialized with comprehensive type definitions')
 }
 
+// 🔥 Claude Code Integration
+import {
+  registerClaudeActions,
+  syncSelectionToStore,
+  buildAskPrompt,
+  buildExplainPrompt,
+  buildRefactorPrompt,
+  buildFixPrompt,
+  buildOptimizePrompt,
+  buildDocumentPrompt,
+  type SelectionContext,
+} from '@/lib/monaco/claude-integration'
+
 interface MonacoCodeEditorProps {
   value: string
   onChange: (value: string) => void
@@ -467,7 +480,13 @@ interface MonacoCodeEditorProps {
   lineNumbers?: boolean
   className?: string
   fileName?: string
+  filePath?: string
   showProblemsPanel?: boolean
+  // 🔥 Claude Code Integration
+  enableClaudeIntegration?: boolean
+  onClaudeAsk?: (prompt: string, context: SelectionContext) => void
+  onClaudeAction?: (action: string, prompt: string, context: SelectionContext) => void
+  onSelectionChange?: (context: SelectionContext | null) => void
 }
 
 export function MonacoCodeEditor({
@@ -480,7 +499,13 @@ export function MonacoCodeEditor({
   lineNumbers = true,
   className = '',
   fileName = 'file.ts',
+  filePath,
   showProblemsPanel = true,
+  // 🔥 Claude Code Integration
+  enableClaudeIntegration = false,
+  onClaudeAsk,
+  onClaudeAction,
+  onSelectionChange,
 }: MonacoCodeEditorProps) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -534,10 +559,67 @@ export function MonacoCodeEditor({
     // 초기 마커 체크 (약간 딜레이 - 언어 서비스 초기화 대기)
     setTimeout(updateMarkers, 800)
 
+    // 🔥 Claude Code Integration
+    let claudeDisposable: (() => void) | undefined
+    let selectionDisposable: (() => void) | undefined
+
+    if (enableClaudeIntegration) {
+      // Register Claude actions (우클릭 메뉴 + 단축키)
+      claudeDisposable = registerClaudeActions(editor, monaco, {
+        filePath: filePath || fileName,
+        onAsk: (ctx) => {
+          const prompt = buildAskPrompt(ctx)
+          onClaudeAsk?.(prompt, ctx)
+          onClaudeAction?.('ask', prompt, ctx)
+        },
+        onExplain: (ctx) => {
+          const prompt = buildExplainPrompt(ctx)
+          onClaudeAction?.('explain', prompt, ctx)
+        },
+        onRefactor: (ctx) => {
+          const prompt = buildRefactorPrompt(ctx)
+          onClaudeAction?.('refactor', prompt, ctx)
+        },
+        onFix: (ctx) => {
+          const prompt = buildFixPrompt(ctx)
+          onClaudeAction?.('fix', prompt, ctx)
+        },
+        onOptimize: (ctx) => {
+          const prompt = buildOptimizePrompt(ctx)
+          onClaudeAction?.('optimize', prompt, ctx)
+        },
+        onDocument: (ctx) => {
+          const prompt = buildDocumentPrompt(ctx)
+          onClaudeAction?.('document', prompt, ctx)
+        },
+      })
+
+      // Sync selection to parent
+      if (onSelectionChange) {
+        selectionDisposable = syncSelectionToStore(
+          editor,
+          (ctx) => {
+            const context = ctx.selectedCode ? {
+              fileName: ctx.currentFile || fileName,
+              filePath: filePath || '',
+              language,
+              selectedCode: ctx.selectedCode,
+              lineRange: { start: 0, end: 0 },
+              lineCount: ctx.selectedCode.split('\n').length,
+            } : null
+            onSelectionChange(context)
+          },
+          filePath
+        )
+      }
+    }
+
     return () => {
       disposable.dispose()
+      claudeDisposable?.()
+      selectionDisposable?.()
     }
-  }, [problemsPanelOpen])
+  }, [problemsPanelOpen, enableClaudeIntegration, filePath, fileName, language, onClaudeAsk, onClaudeAction, onSelectionChange])
 
   // 에러 클릭시 해당 라인으로 이동
   const goToMarker = useCallback((marker: DiagnosticMarker) => {

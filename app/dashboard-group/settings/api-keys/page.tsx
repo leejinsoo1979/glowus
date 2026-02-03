@@ -4,21 +4,16 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import {
-  Key,
   Plus,
   Trash2,
   Eye,
   EyeOff,
-  Check,
   AlertCircle,
   Loader2,
-  Star,
   ExternalLink,
+  X,
   Copy,
-  CheckCircle,
-  Sparkles,
-  Bot,
-  Zap,
+  Check,
 } from 'lucide-react'
 
 interface LLMKey {
@@ -30,30 +25,13 @@ interface LLMKey {
   is_active: boolean
   last_used_at: string | null
   created_at: string
+  source?: 'user' | 'system'
 }
 
 interface LLMProvider {
   id: string
   name: string
   models: string[]
-}
-
-const PROVIDER_COLORS: Record<string, string> = {
-  openai: 'from-emerald-500 to-teal-600',
-  anthropic: 'from-orange-500 to-amber-600',
-  google: 'from-blue-500 to-indigo-600',
-  xai: 'from-gray-600 to-gray-800',
-  mistral: 'from-purple-500 to-violet-600',
-  groq: 'from-pink-500 to-rose-600',
-}
-
-const PROVIDER_ICONS: Record<string, string> = {
-  openai: '🤖',
-  anthropic: '🧠',
-  google: '✨',
-  xai: '⚡',
-  mistral: '🌀',
-  groq: '🚀',
 }
 
 const PROVIDER_DOCS: Record<string, string> = {
@@ -72,17 +50,15 @@ export default function APIKeysSettingsPage() {
   const [providers, setProviders] = useState<LLMProvider[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [editingKey, setEditingKey] = useState<LLMKey | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // Add form state
   const [newProvider, setNewProvider] = useState('')
   const [newApiKey, setNewApiKey] = useState('')
   const [newDisplayName, setNewDisplayName] = useState('')
-  const [isDefault, setIsDefault] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -123,8 +99,8 @@ export default function APIKeysSettingsPage() {
         body: JSON.stringify({
           provider: newProvider,
           api_key: newApiKey,
-          display_name: newDisplayName || `${newProvider} API Key`,
-          is_default: isDefault,
+          display_name: newDisplayName || `${providers.find(p => p.id === newProvider)?.name} Key`,
+          is_default: true,
         }),
       })
 
@@ -159,243 +135,206 @@ export default function APIKeysSettingsPage() {
     }
   }
 
-  const handleSetDefault = async (key: LLMKey) => {
-    try {
-      const res = await fetch('/api/user/llm-keys', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: key.id,
-          is_default: true,
-        }),
-      })
-
-      if (res.ok) {
-        await fetchKeys()
-      }
-    } catch (err) {
-      console.error('Failed to set default:', err)
-    }
-  }
-
-  const handleToggleActive = async (key: LLMKey) => {
-    try {
-      const res = await fetch('/api/user/llm-keys', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: key.id,
-          is_active: !key.is_active,
-        }),
-      })
-
-      if (res.ok) {
-        await fetchKeys()
-      }
-    } catch (err) {
-      console.error('Failed to toggle active:', err)
-    }
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   const resetForm = () => {
     setNewProvider('')
     setNewApiKey('')
     setNewDisplayName('')
-    setIsDefault(false)
     setShowApiKey(false)
     setError(null)
   }
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(id)
-    setTimeout(() => setCopied(null), 2000)
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
-  const groupedKeys = providers.reduce((acc, provider) => {
-    acc[provider.id] = keys.filter(k => k.provider === provider.id)
-    return acc
-  }, {} as Record<string, LLMKey[]>)
+  // All keys (user + system)
+  const allKeys = keys
 
   if (!mounted) return null
 
   return (
-    <div className={`min-h-screen p-6 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className={`text-2xl font-bold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
-            <Key className="w-6 h-6" />
-            AI API 키 관리
-          </h1>
-          <p className={`mt-1 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
-            에이전트가 사용할 LLM API 키를 관리합니다
-          </p>
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          API 키 추가
-        </button>
-      </div>
-
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!isLoading && keys.length === 0 && (
-        <div className={`text-center py-20 rounded-xl border-2 border-dashed ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-          <Bot className={`w-16 h-16 mx-auto mb-4 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`} />
-          <h2 className={`text-xl font-semibold mb-2 ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
-            API 키가 없습니다
-          </h2>
-          <p className={`mb-6 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
-            에이전트가 AI 모델을 사용하려면 API 키가 필요합니다
-          </p>
+    <div className={`min-h-screen p-8 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className={`text-xl font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+              API Keys
+            </h1>
+            <p className={`text-sm mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              에이전트가 사용할 LLM API 키를 관리합니다
+            </p>
+          </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium"
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              isDark
+                ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                : 'bg-zinc-900 text-white hover:bg-zinc-800'
+            }`}
           >
-            <Plus className="w-5 h-5" />
-            첫 번째 API 키 추가하기
+            <Plus className="w-4 h-4" />
+            API 키 추가
           </button>
         </div>
-      )}
 
-      {/* Provider Cards */}
-      {!isLoading && keys.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {providers.map((provider) => {
-            const providerKeys = groupedKeys[provider.id] || []
-            const hasKeys = providerKeys.length > 0
+        {/* Loading */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className={`w-6 h-6 animate-spin ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
+          </div>
+        )}
 
-            return (
-              <motion.div
-                key={provider.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`rounded-xl overflow-hidden border ${
-                  isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-                }`}
-              >
-                {/* Provider Header */}
-                <div className={`p-4 bg-gradient-to-r ${PROVIDER_COLORS[provider.id] || 'from-gray-500 to-gray-600'}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{PROVIDER_ICONS[provider.id] || '🔑'}</span>
-                      <div>
-                        <h3 className="font-semibold text-white">{provider.name}</h3>
-                        <p className="text-xs text-white/70">{provider.models.length}개 모델</p>
-                      </div>
-                    </div>
-                    {hasKeys && (
-                      <div className="flex items-center gap-1 px-2 py-1 bg-white/20 rounded-full">
-                        <CheckCircle className="w-3 h-3 text-white" />
-                        <span className="text-xs text-white">{providerKeys.length}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+        {/* Table */}
+        {!isLoading && (
+          <div className={`rounded-lg border overflow-hidden ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+            {/* Table Header */}
+            <div className={`grid grid-cols-12 gap-4 px-4 py-3 text-xs font-medium uppercase tracking-wider ${
+              isDark ? 'bg-zinc-900/80 text-zinc-500 border-b border-zinc-800' : 'bg-zinc-100 text-zinc-500 border-b border-zinc-200'
+            }`}>
+              <div className="col-span-2">제공자</div>
+              <div className="col-span-4">지원 모델</div>
+              <div className="col-span-3">키</div>
+              <div className="col-span-2">상태</div>
+              <div className="col-span-1 text-right">작업</div>
+            </div>
 
-                {/* Keys List */}
-                <div className="p-4">
-                  {hasKeys ? (
-                    <div className="space-y-3">
-                      {providerKeys.map((key) => (
-                        <div
-                          key={key.id}
-                          className={`p-3 rounded-lg ${isDark ? 'bg-zinc-800/50' : 'bg-zinc-50'} ${
-                            !key.is_active ? 'opacity-50' : ''
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
-                                {key.display_name}
-                              </span>
-                              {key.is_default && (
-                                <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/20 text-amber-500 rounded text-xs">
-                                  <Star className="w-3 h-3" />
-                                  기본
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {!key.is_default && (
-                                <button
-                                  onClick={() => handleSetDefault(key)}
-                                  className={`p-1.5 rounded hover:bg-zinc-700/50 transition-colors ${isDark ? 'text-zinc-400 hover:text-amber-400' : 'text-zinc-500 hover:text-amber-500'}`}
-                                  title="기본으로 설정"
-                                >
-                                  <Star className="w-4 h-4" />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleDeleteKey(key.id)}
-                                className={`p-1.5 rounded hover:bg-red-500/20 transition-colors ${isDark ? 'text-zinc-400 hover:text-red-400' : 'text-zinc-500 hover:text-red-500'}`}
-                                title="삭제"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <code className={`text-xs font-mono ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                              {key.api_key}
-                            </code>
-                          </div>
-                          {key.last_used_at && (
-                            <p className={`text-xs mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                              마지막 사용: {new Date(key.last_used_at).toLocaleDateString('ko-KR')}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className={`text-sm mb-3 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                        등록된 키가 없습니다
-                      </p>
-                      <button
-                        onClick={() => {
-                          setNewProvider(provider.id)
-                          setShowAddModal(true)
-                        }}
-                        className={`text-sm text-violet-500 hover:text-violet-400 flex items-center gap-1 mx-auto`}
-                      >
-                        <Plus className="w-4 h-4" />
-                        키 추가
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Get API Key Link */}
-                  <a
-                    href={PROVIDER_DOCS[provider.id] || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`flex items-center justify-center gap-2 mt-4 py-2 rounded-lg text-sm transition-colors ${
-                      isDark
-                        ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            {/* Table Body */}
+            {allKeys.length === 0 ? (
+              <div className={`px-4 py-12 text-center ${isDark ? 'bg-zinc-900/30' : 'bg-white'}`}>
+                <p className={`text-sm ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  등록된 API 키가 없습니다
+                </p>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className={`mt-3 text-sm font-medium ${isDark ? 'text-zinc-300 hover:text-white' : 'text-zinc-700 hover:text-zinc-900'}`}
+                >
+                  첫 번째 키 추가하기 →
+                </button>
+              </div>
+            ) : (
+              <div className={isDark ? 'bg-zinc-900/30' : 'bg-white'}>
+                {allKeys.map((key, index) => (
+                  <div
+                    key={key.id}
+                    className={`grid grid-cols-12 gap-4 px-4 py-3 items-center ${
+                      index !== allKeys.length - 1 ? (isDark ? 'border-b border-zinc-800/50' : 'border-b border-zinc-100') : ''
                     }`}
                   >
-                    <ExternalLink className="w-4 h-4" />
-                    API 키 발급받기
-                  </a>
-                </div>
-              </motion.div>
-            )
-          })}
+                    {/* Provider */}
+                    <div className="col-span-2">
+                      <span className={`text-sm font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                        {providers.find(p => p.id === key.provider)?.name || key.provider}
+                      </span>
+                    </div>
+
+                    {/* Models */}
+                    <div className="col-span-4">
+                      <div className="flex flex-wrap gap-1">
+                        {providers.find(p => p.id === key.provider)?.models.slice(0, 3).map((model) => (
+                          <span
+                            key={model}
+                            className={`text-[11px] px-1.5 py-0.5 rounded ${
+                              isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
+                            }`}
+                          >
+                            {model}
+                          </span>
+                        ))}
+                        {(providers.find(p => p.id === key.provider)?.models.length || 0) > 3 && (
+                          <span className={`text-[11px] ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                            +{(providers.find(p => p.id === key.provider)?.models.length || 0) - 3}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Key */}
+                    <div className="col-span-3 flex items-center gap-2">
+                      <code className={`text-xs font-mono ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        {key.api_key}
+                      </code>
+                    </div>
+
+                    {/* Status */}
+                    <div className="col-span-2">
+                      {key.source === 'system' ? (
+                        <span className={`inline-flex items-center text-xs px-2 py-1 rounded ${
+                          isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'
+                        }`}>
+                          시스템 (.env)
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center text-xs px-2 py-1 rounded ${
+                          isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
+                        }`}>
+                          사용자 등록
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="col-span-1 flex items-center justify-end gap-1">
+                      {key.source === 'user' && (
+                        <button
+                          onClick={() => handleDeleteKey(key.id)}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isDark
+                              ? 'text-zinc-600 hover:text-red-400 hover:bg-zinc-800'
+                              : 'text-zinc-400 hover:text-red-500 hover:bg-zinc-100'
+                          }`}
+                          title="삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Info Box */}
+        <div className={`mt-6 p-4 rounded-lg ${isDark ? 'bg-zinc-900/30 border border-zinc-800' : 'bg-zinc-100 border border-zinc-200'}`}>
+          <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>
+            본인의 API 키를 등록하면 크레딧 차감 없이 에이전트를 사용할 수 있습니다.
+          </p>
         </div>
-      )}
+
+        {/* Quick Links */}
+        <div className="mt-4">
+          <p className={`text-xs mb-2 ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+            API 키 발급
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {providers.map(p => (
+              <a
+                key={p.id}
+                href={PROVIDER_DOCS[p.id]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                  isDark
+                    ? 'text-zinc-500 hover:text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800'
+                    : 'text-zinc-500 hover:text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200'
+                }`}
+              >
+                {p.name}
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* Add Key Modal */}
       <AnimatePresence>
@@ -404,7 +343,7 @@ export default function APIKeysSettingsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
             onClick={() => {
               setShowAddModal(false)
               resetForm()
@@ -416,22 +355,34 @@ export default function APIKeysSettingsPage() {
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
               className={`w-full max-w-md rounded-xl overflow-hidden ${
-                isDark ? 'bg-zinc-900' : 'bg-white'
+                isDark ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-zinc-200'
               }`}
             >
               {/* Modal Header */}
-              <div className={`p-4 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                <h2 className={`text-lg font-semibold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                  <Sparkles className="w-5 h-5 text-violet-500" />
-                  새 API 키 추가
+              <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+                <h2 className={`text-base font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                  API 키 추가
                 </h2>
+                <button
+                  onClick={() => {
+                    setShowAddModal(false)
+                    resetForm()
+                  }}
+                  className={`p-1 rounded-lg transition-colors ${
+                    isDark ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800' : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'
+                  }`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
               {/* Modal Content */}
               <div className="p-4 space-y-4">
                 {error && (
-                  <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                    <AlertCircle className="w-4 h-4" />
+                  <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+                    isDark ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'
+                  }`}>
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     {error}
                   </div>
                 )}
@@ -439,7 +390,7 @@ export default function APIKeysSettingsPage() {
                 {/* Provider Select */}
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                    AI 제공자
+                    제공자
                   </label>
                   <select
                     value={newProvider}
@@ -448,12 +399,12 @@ export default function APIKeysSettingsPage() {
                       isDark
                         ? 'bg-zinc-800 border-zinc-700 text-zinc-100'
                         : 'bg-white border-zinc-300 text-zinc-900'
-                    } focus:outline-none focus:ring-2 focus:ring-violet-500/50`}
+                    } focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500`}
                   >
                     <option value="">선택하세요</option>
                     {providers.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {PROVIDER_ICONS[p.id]} {p.name}
+                        {p.name}
                       </option>
                     ))}
                   </select>
@@ -462,18 +413,18 @@ export default function APIKeysSettingsPage() {
                 {/* Display Name */}
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                    표시 이름 (선택)
+                    이름
                   </label>
                   <input
                     type="text"
                     value={newDisplayName}
                     onChange={(e) => setNewDisplayName(e.target.value)}
-                    placeholder="예: 개인 OpenAI, 회사 Claude"
+                    placeholder="예: Production Key, Test Key"
                     className={`w-full px-3 py-2.5 rounded-lg border text-sm ${
                       isDark
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500'
+                        ? 'bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600'
                         : 'bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
-                    } focus:outline-none focus:ring-2 focus:ring-violet-500/50`}
+                    } focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500`}
                   />
                 </div>
 
@@ -490,15 +441,15 @@ export default function APIKeysSettingsPage() {
                       placeholder="sk-..."
                       className={`w-full px-3 py-2.5 pr-10 rounded-lg border text-sm font-mono ${
                         isDark
-                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500'
+                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600'
                           : 'bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400'
-                      } focus:outline-none focus:ring-2 focus:ring-violet-500/50`}
+                      } focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded ${
-                        isDark ? 'text-zinc-400 hover:text-zinc-300' : 'text-zinc-500 hover:text-zinc-600'
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded ${
+                        isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'
                       }`}
                     >
                       {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -506,44 +457,33 @@ export default function APIKeysSettingsPage() {
                   </div>
                 </div>
 
-                {/* Set as Default */}
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isDefault}
-                    onChange={(e) => setIsDefault(e.target.checked)}
-                    className="w-4 h-4 rounded border-zinc-600 text-violet-600 focus:ring-violet-500/50"
-                  />
-                  <span className={`text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                    이 제공자의 기본 키로 설정
-                  </span>
-                </label>
-
                 {/* Provider Doc Link */}
                 {newProvider && PROVIDER_DOCS[newProvider] && (
                   <a
                     href={PROVIDER_DOCS[newProvider]}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-violet-500 hover:text-violet-400"
+                    className={`inline-flex items-center gap-1.5 text-xs ${
+                      isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'
+                    }`}
                   >
-                    <ExternalLink className="w-4 h-4" />
-                    {providers.find(p => p.id === newProvider)?.name} API 키 발급받기
+                    <ExternalLink className="w-3 h-3" />
+                    {providers.find(p => p.id === newProvider)?.name}에서 키 발급받기
                   </a>
                 )}
               </div>
 
               {/* Modal Footer */}
-              <div className={`p-4 border-t flex justify-end gap-3 ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
+              <div className={`flex justify-end gap-2 p-4 border-t ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                 <button
                   onClick={() => {
                     setShowAddModal(false)
                     resetForm()
                   }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isDark
-                      ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                      : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                      ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      : 'text-zinc-600 hover:text-zinc-800 hover:bg-zinc-100'
                   }`}
                 >
                   취소
@@ -551,7 +491,11 @@ export default function APIKeysSettingsPage() {
                 <button
                   onClick={handleAddKey}
                   disabled={isSaving || !newProvider || !newApiKey}
-                  className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isDark
+                      ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                      : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                  }`}
                 >
                   {isSaving ? (
                     <>
@@ -559,10 +503,7 @@ export default function APIKeysSettingsPage() {
                       저장 중...
                     </>
                   ) : (
-                    <>
-                      <Check className="w-4 h-4" />
-                      저장
-                    </>
+                    '저장'
                   )}
                 </button>
               </div>

@@ -11,7 +11,7 @@ const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY || '' })
 // MCP Tool Definitions for Agents
 // ============================================
 
-export type MCPToolName = 'web_search' | 'youtube_transcript' | 'web_fetch' | 'image_search'
+export type MCPToolName = 'web_search' | 'youtube_transcript' | 'web_fetch' | 'image_search' | 'capture_browser_screenshot' | 'get_latest_browser_screenshot'
 
 // Web Search Tool (Tavily)
 export const webSearchTool = new DynamicStructuredTool({
@@ -140,6 +140,80 @@ export const webFetchTool = new DynamicStructuredTool({
   },
 })
 
+// Browser Screenshot Tool (GlowUS Browser Tab 스크린샷 캡처)
+export const browserScreenshotTool = new DynamicStructuredTool({
+  name: 'capture_browser_screenshot',
+  description: 'GlowUS AI 코딩 화면의 Browser 탭에서 현재 보이는 웹페이지의 스크린샷을 캡처합니다. 웹 앱의 UI를 확인하거나 시각적 분석이 필요할 때 사용하세요.',
+  schema: z.object({
+    reason: z.string().optional().describe('스크린샷을 캡처하는 이유 (선택사항)'),
+  }),
+  func: async ({ reason }) => {
+    try {
+      // API를 통해 스크린샷 요청
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const response = await fetch(`${baseUrl}/api/browser/screenshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'capture' }),
+      })
+
+      if (!response.ok) {
+        return JSON.stringify({
+          error: '스크린샷 캡처 요청 실패',
+          suggestion: 'Browser 탭이 열려있는지 확인하세요.'
+        })
+      }
+
+      const result = await response.json()
+
+      return JSON.stringify({
+        success: true,
+        message: '스크린샷 캡처 요청이 생성되었습니다.',
+        requestId: result.requestId,
+        reason,
+        note: '클라이언트에서 실제 캡처가 수행됩니다. 결과는 /tmp/glowus-screenshots/ 에 저장됩니다.',
+      })
+    } catch (error) {
+      return JSON.stringify({ error: `스크린샷 캡처 실패: ${error}` })
+    }
+  },
+})
+
+// Get Latest Browser Screenshot (최신 스크린샷 경로 조회)
+export const getLatestScreenshotTool = new DynamicStructuredTool({
+  name: 'get_latest_browser_screenshot',
+  description: 'GlowUS Browser 탭에서 가장 최근에 캡처된 스크린샷의 경로를 가져옵니다. 이 경로를 Read 도구로 읽어 이미지를 분석할 수 있습니다.',
+  schema: z.object({}),
+  func: async () => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const response = await fetch(`${baseUrl}/api/browser/screenshot`)
+
+      if (!response.ok) {
+        return JSON.stringify({ error: '스크린샷 목록 조회 실패' })
+      }
+
+      const { screenshots } = await response.json()
+
+      if (!screenshots || screenshots.length === 0) {
+        return JSON.stringify({
+          error: '저장된 스크린샷이 없습니다.',
+          suggestion: 'capture_browser_screenshot 도구를 먼저 사용하세요.'
+        })
+      }
+
+      const latest = screenshots[0]
+      return JSON.stringify({
+        path: latest.path,
+        name: latest.name,
+        note: 'Read 도구로 이 경로의 이미지를 읽어 시각적 분석을 수행할 수 있습니다.',
+      })
+    } catch (error) {
+      return JSON.stringify({ error: `스크린샷 조회 실패: ${error}` })
+    }
+  },
+})
+
 // Image Search Tool (Tavily with images)
 export const imageSearchTool = new DynamicStructuredTool({
   name: 'image_search',
@@ -184,12 +258,80 @@ export const imageSearchTool = new DynamicStructuredTool({
   },
 })
 
-// Get all available tools
+// Terminal tools
+import {
+  createRunTerminalTool,
+  createDiagnosticsTool,
+  createGitTool,
+  createNpmTool,
+} from './terminal-tool'
+
+// Claude Code tool
+import { createClaudeCodeTool } from './claude-code-tool'
+
+// GlowUS App tools
+import { GLOWUS_APP_TOOLS, getGlowUSAppTools } from './glowus-app-tools'
+
+// Builder tools (Workflow & Agent Builder)
+import { BUILDER_TOOLS, getBuilderTools } from './builder-tools'
+
+// Get all available tools (basic - no terminal access)
 export const ALL_TOOLS = {
   web_search: webSearchTool,
   youtube_transcript: youtubeTranscriptTool,
   web_fetch: webFetchTool,
   image_search: imageSearchTool,
+  // Browser tools (GlowUS Browser Tab integration)
+  capture_browser_screenshot: browserScreenshotTool,
+  get_latest_browser_screenshot: getLatestScreenshotTool,
+  // GlowUS App tools
+  ...GLOWUS_APP_TOOLS,
+  // Builder tools
+  ...BUILDER_TOOLS,
+}
+
+// GlowUS App tool names
+export type GlowUSToolName =
+  | 'list_glowus_apps'
+  | 'open_glowus_app'
+  | 'generate_document'
+  | 'generate_slides'
+  | 'generate_image'
+  | 'generate_blog_post'
+  | 'summarize_youtube'
+  | 'develop_glowus_skill'
+
+// Builder tool names (Workflow & Agent Builder)
+export type BuilderToolName =
+  | 'list_workflows'
+  | 'create_workflow'
+  | 'add_workflow_node'
+  | 'execute_workflow'
+  | 'list_agents'
+  | 'create_agent'
+  | 'add_agent_capability'
+  | 'update_agent_prompt'
+  | 'deploy_agent'
+
+// Extended tool type names
+export type ExtendedToolName = MCPToolName | GlowUSToolName | BuilderToolName | 'run_terminal' | 'run_diagnostics' | 'git_operation' | 'npm_operation' | 'use_claude_code'
+
+// Get extended tools with terminal access (for specific agents)
+export function getExtendedTools(agentRole: string = 'jeremy') {
+  return {
+    ...ALL_TOOLS,
+    run_terminal: createRunTerminalTool(agentRole),
+    run_diagnostics: createDiagnosticsTool(),
+    git_operation: createGitTool(agentRole),
+    npm_operation: createNpmTool(agentRole),
+    use_claude_code: createClaudeCodeTool(),
+  }
+}
+
+// Get all tools for an agent by role
+export function getToolsForAgent(agentRole: string): DynamicStructuredTool[] {
+  const extended = getExtendedTools(agentRole)
+  return Object.values(extended)
 }
 
 // Get tools by names
@@ -203,3 +345,41 @@ export function getToolsByNames(names: MCPToolName[]): DynamicStructuredTool[] {
 export function getAllToolNames(): MCPToolName[] {
   return Object.keys(ALL_TOOLS) as MCPToolName[]
 }
+
+// Get all extended tool names
+export function getAllExtendedToolNames(): ExtendedToolName[] {
+  return [
+    ...getAllToolNames(),
+    // Terminal tools
+    'run_terminal',
+    'run_diagnostics',
+    'git_operation',
+    'npm_operation',
+    'use_claude_code',
+    // GlowUS App tools
+    'list_glowus_apps',
+    'open_glowus_app',
+    'generate_document',
+    'generate_slides',
+    'generate_image',
+    'generate_blog_post',
+    'summarize_youtube',
+    'develop_glowus_skill',
+    // Builder tools
+    'list_workflows',
+    'create_workflow',
+    'add_workflow_node',
+    'execute_workflow',
+    'list_agents',
+    'create_agent',
+    'add_agent_capability',
+    'update_agent_prompt',
+    'deploy_agent',
+  ]
+}
+
+// Get GlowUS app tools only
+export { getGlowUSAppTools } from './glowus-app-tools'
+
+// Get Builder tools only
+export { getBuilderTools } from './builder-tools'

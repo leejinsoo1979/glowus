@@ -151,11 +151,12 @@ export async function POST(request: NextRequest) {
         apiKey: process.env.GOOGLE_API_KEY,
       })
     } else if (selectedModel.provider === 'anthropic') {
-      // Claude (Sonnet, Opus)
-      model = new ChatAnthropic({
-        model: selectedModel.id,
+      // ⚠️ Anthropic API 사용 금지 - OpenAI로 fallback
+      console.warn('[TaskAnalyze] Anthropic API 사용 금지 - OpenAI로 fallback')
+      model = new ChatOpenAI({
+        modelName: 'gpt-4o',
         temperature: 0.3,
-        anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+        openAIApiKey: process.env.OPENAI_API_KEY,
       })
     } else {
       // OpenAI

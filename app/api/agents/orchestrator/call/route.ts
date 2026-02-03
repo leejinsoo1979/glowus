@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { targetAgent, task, context, priority, waitForResult = true } = body
+    const { targetAgent, task, context, priority, waitForResult = true, projectPath } = body
 
     if (!targetAgent || !AGENT_PROMPTS[targetAgent]) {
       return NextResponse.json(
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
       fullTask,
       [], // 새 대화
       {
-        projectPath: null,
+        projectPath: projectPath || null,  // 🔥 프론트엔드에서 받은 프로젝트 경로 사용
         userName,
         userRole: userProfile?.job_title,
         workContext: `Orchestrator로부터 위임받은 작업 (우선순위: ${priority || 'normal'})`,

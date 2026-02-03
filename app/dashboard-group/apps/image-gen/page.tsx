@@ -13,6 +13,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react'
+import { useAIAppSync } from "@/hooks/useAIAppSync"
 
 interface GeneratedImage {
   url: string
@@ -33,6 +34,12 @@ export default function ImageGenPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // 🔥 DB 동기화 훅
+  const { saveMessage: saveToDb, updateThreadTitle, updateThreadMetadata } = useAIAppSync({
+    appType: 'image',
+    autoCreateThread: true,
+  })
+
   const sizePresets = [
     { label: '1:1', width: 1024, height: 1024 },
     { label: '16:9', width: 1024, height: 576 },
@@ -49,6 +56,9 @@ export default function ImageGenPage() {
 
     setIsGenerating(true)
     setError(null)
+
+    // 🔥 사용자 프롬프트 DB에 저장
+    saveToDb({ role: 'user', content: prompt.trim() })
 
     try {
       const response = await fetch('/api/skills/z-image', {
@@ -68,16 +78,26 @@ export default function ImageGenPage() {
         throw new Error(result.error || '이미지 생성 실패')
       }
 
-      setGeneratedImages(prev => [{
+      const newImage = {
         url: result.image_url,
         prompt: prompt.trim(),
         width,
         height,
         timestamp: Date.now(),
-      }, ...prev])
+      }
+
+      setGeneratedImages(prev => [newImage, ...prev])
+
+      // 🔥 생성 완료 메시지 DB에 저장
+      saveToDb({ role: 'assistant', content: `이미지가 생성되었습니다: ${prompt.trim()}`, metadata: { imageUrl: result.image_url, width, height } })
+      // 🔥 첫 이미지 생성 시 스레드 제목 설정
+      updateThreadTitle(prompt.trim().slice(0, 50))
+      updateThreadMetadata({ images: [...generatedImages, newImage].slice(0, 10) }) // 최근 10개만 저장
 
     } catch (err: any) {
       setError(err.message || '이미지 생성 중 오류가 발생했습니다')
+      // 🔥 에러 메시지 DB에 저장
+      saveToDb({ role: 'assistant', content: `이미지 생성 실패: ${err.message}` })
     } finally {
       setIsGenerating(false)
     }

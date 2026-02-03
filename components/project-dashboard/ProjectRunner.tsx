@@ -12,8 +12,11 @@ import {
   Eye,
   X,
   ExternalLink,
+  Code2,
+  Globe,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
+import { useRouter } from "next/navigation"
 
 interface ProjectRunnerProps {
   projectId: string
@@ -39,7 +42,7 @@ interface DBFile {
   created_at: string
 }
 
-type RunStatus = "idle" | "starting" | "running" | "stopping" | "error" | "initializing" | "preview"
+type RunStatus = "idle" | "starting" | "running" | "stopping" | "error" | "initializing" | "preview" | "booting" | "installing"
 
 export function ProjectRunner({
   projectId,
@@ -47,6 +50,7 @@ export function ProjectRunner({
   projectName,
   onFolderLinked
 }: ProjectRunnerProps) {
+  const router = useRouter()
   const [isExpanded, setIsExpanded] = useState(false)
   const [config, setConfig] = useState<ProjectConfig | null>(null)
   const [status, setStatus] = useState<RunStatus>("idle")
@@ -63,6 +67,10 @@ export function ProjectRunner({
   const [dbFiles, setDbFiles] = useState<DBFile[]>([])
   const [showPreview, setShowPreview] = useState(false)
   const [previewContent, setPreviewContent] = useState<string>("")
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // 웹 환경 터미널 WebSocket
+  const webTerminalRef = useRef<WebSocket | null>(null)
 
   // Sync with prop changes
   useEffect(() => {
@@ -193,8 +201,13 @@ export function ProjectRunner({
       if (cleanupRef.current) {
         cleanupRef.current()
       }
-      if (status === "running" && isElectron) {
-        window.electron?.projectRunner?.stop?.(runnerId.current)
+      if (status === "running") {
+        if (isElectron) {
+          window.electron?.projectRunner?.stop?.(runnerId.current)
+        } else if (webTerminalRef.current) {
+          webTerminalRef.current.send('\x03')
+          webTerminalRef.current.close()
+        }
       }
     }
   }, [status, isElectron])
@@ -379,19 +392,102 @@ export function ProjectRunner({
     setOutput([])
   }
 
+  // 🔥 웹 환경에서 터미널 서버로 프로젝트 실행
+  const startWebProject = useCallback(async () => {
+    setIsExpanded(true)
+    setStatus('starting')
+    setOutput([`> Starting ${projectName}...`, '> Connecting to terminal server...'])
+
+    try {
+      // 터미널 서버에 WebSocket 연결
+      const ws = new WebSocket('ws://localhost:3001')
+      webTerminalRef.current = ws
+
+      ws.onopen = () => {
+        setOutput(prev => [...prev, '> Connected to terminal server'])
+
+        // 프로젝트 폴더로 이동하고 npm run dev 실행
+        // init 메시지로 cwd 설정
+        ws.send(JSON.stringify({
+          type: 'init',
+          cwd: folderPath || `/tmp/glowus-projects/${projectId}`
+        }))
+
+        // 명령어 실행
+        setTimeout(() => {
+          const command = `npm run ${selectedScript}\r`
+          ws.send(command)
+          setOutput(prev => [...prev, `> npm run ${selectedScript}`])
+          setStatus('running')
+        }, 500)
+      }
+
+      ws.onmessage = (event) => {
+        const data = event.data
+        // ANSI 코드 제거하고 출력
+        const cleanData = data.replace(/\x1b\[[0-9;]*m/g, '')
+        if (cleanData.trim()) {
+          setOutput(prev => [...prev.slice(-500), ...cleanData.split('\n').filter(Boolean)])
+        }
+
+        // 서버 URL 감지 (예: localhost:3000, localhost:5173 등)
+        const urlMatch = data.match(/https?:\/\/localhost:\d+/i) ||
+                         data.match(/Local:\s*(https?:\/\/[^\s]+)/i)
+        if (urlMatch) {
+          const url = urlMatch[1] || urlMatch[0]
+          setPreviewUrl(url)
+          setOutput(prev => [...prev, `> Server ready at ${url}`])
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('[ProjectRunner] WebSocket error:', error)
+        setOutput(prev => [...prev, '> Error: Failed to connect to terminal server'])
+        setOutput(prev => [...prev, '> Make sure terminal server is running: npm run mcp:neural-map-ws'])
+        setStatus('error')
+      }
+
+      ws.onclose = () => {
+        setOutput(prev => [...prev, '> Disconnected from terminal server'])
+        if (status === 'running') {
+          setStatus('idle')
+        }
+      }
+    } catch (err) {
+      console.error('[ProjectRunner] Terminal connection error:', err)
+      setOutput(prev => [...prev, `> Error: ${err}`])
+      setStatus('error')
+    }
+  }, [projectName, folderPath, projectId, selectedScript, status])
+
+  // 🔥 웹 환경에서 프로젝트 중지
+  const stopWebProject = useCallback(() => {
+    if (webTerminalRef.current) {
+      // Ctrl+C 전송
+      webTerminalRef.current.send('\x03')
+      setTimeout(() => {
+        webTerminalRef.current?.close()
+        webTerminalRef.current = null
+      }, 500)
+    }
+    setStatus('idle')
+    setPreviewUrl(null)
+    setOutput(prev => [...prev, '> Stopped'])
+  }, [])
+
   // DB 파일이 있는지 확인 (HTML)
   const hasDBHtmlFile = dbFiles.some((f) =>
     f.file_name.endsWith('.html') || f.file_name.endsWith('.htm')
   )
 
-  // Electron이 아니고 DB 파일도 없으면 렌더링 안함
-  if (!isElectron && !hasDBHtmlFile) {
-    return null
-  }
+  // 🔥 웹 환경에서도 AI 코딩 페이지로 이동 버튼 표시
+  // Electron이 아니고 DB 파일도 없어도 "AI 코딩에서 열기" 버튼은 표시
 
   const statusColors: Record<RunStatus, string> = {
     idle: "text-zinc-500",
     initializing: "text-blue-500 dark:text-blue-400",
+    booting: "text-blue-500 dark:text-blue-400",
+    installing: "text-cyan-500 dark:text-cyan-400",
     starting: "text-amber-500 dark:text-amber-400",
     running: "text-emerald-500 dark:text-emerald-400",
     stopping: "text-amber-500 dark:text-amber-400",
@@ -402,6 +498,8 @@ export function ProjectRunner({
   const statusLabels: Record<RunStatus, string> = {
     idle: "대기",
     initializing: "준비 중...",
+    booting: "부팅 중...",
+    installing: "설치 중...",
     starting: "시작 중...",
     preview: "미리보기",
     running: "실행 중",
@@ -426,10 +524,10 @@ export function ProjectRunner({
           <span className={`text-xs ${statusColors[status]}`}>({statusLabels[status]})</span>
         </div>
         <div className="flex items-center gap-2">
-          {status === "initializing" ? (
+          {status === "initializing" || status === "booting" || status === "installing" || status === "starting" ? (
             <Loader2 className="w-4 h-4 animate-spin text-blue-500 dark:text-blue-400" />
           ) : status === "idle" || status === "error" ? (
-            // Electron이 아니고 DB HTML 파일이 있으면 Preview 버튼
+            // 웹 환경에서 HTML 파일이 있으면 Preview 버튼
             !isElectron && hasDBHtmlFile ? (
               <Button
                 size="sm"
@@ -443,32 +541,73 @@ export function ProjectRunner({
                 Preview
               </Button>
             ) : (
-              <Button
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  startProject()
-                }}
-                disabled={!folderPath}
-                className="h-7 px-3 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
-              >
-                <Play className="w-3 h-3 mr-1.5" />
-                Run
-              </Button>
+              // 🔥 Electron이거나 웹 환경 (HTML 없음) → Run + 편집 버튼
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (isElectron) {
+                      startProject()
+                    } else {
+                      // 웹 환경에서는 터미널 서버로 실행
+                      startWebProject()
+                    }
+                  }}
+                  disabled={isElectron && !folderPath}
+                  className="h-7 px-3 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
+                >
+                  <Play className="w-3 h-3 mr-1.5" />
+                  Run
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    router.push(`/dashboard-group/ai-coding?projectId=${projectId}`)
+                  }}
+                  className="h-7 px-3 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <Code2 className="w-3 h-3 mr-1.5" />
+                  편집
+                </Button>
+              </div>
             )
           ) : status === "running" ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={(e) => {
-                e.stopPropagation()
-                stopProject()
-              }}
-              className="h-7 px-3 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10"
-            >
-              <Square className="w-3 h-3 mr-1.5" />
-              Stop
-            </Button>
+            <div className="flex items-center gap-1.5">
+              {/* Preview URL 링크 (웹 환경에서 WebContainer 실행 시) */}
+              {!isElectron && previewUrl && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.open(previewUrl, '_blank')
+                  }}
+                  className="h-7 px-3 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                >
+                  <Globe className="w-3 h-3 mr-1.5" />
+                  Open
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (isElectron) {
+                    stopProject()
+                  } else {
+                    stopWebProject()
+                  }
+                }}
+                className="h-7 px-3 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10"
+              >
+                <Square className="w-3 h-3 mr-1.5" />
+                Stop
+              </Button>
+            </div>
           ) : status === "preview" ? (
             <Button
               size="sm"
@@ -521,8 +660,8 @@ export function ProjectRunner({
               </div>
             )}
 
-            {/* Output Terminal - Electron 환경에서만 표시 */}
-            {isElectron && (
+            {/* Output Terminal - 모든 환경에서 표시 */}
+            {(isElectron || output.length > 0) && (
               <div className="border-t border-zinc-200 dark:border-zinc-800/50">
                 <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800/50">
                   <span className="text-xs text-zinc-500">Output</span>
@@ -539,7 +678,10 @@ export function ProjectRunner({
                 >
                   {output.length === 0 ? (
                     <div className="text-zinc-400 dark:text-zinc-600 py-4 text-center">
-                      {!folderPath ? "워크스페이스 생성 중..." : "Run 버튼을 눌러 프로젝트를 실행하세요"}
+                      {isElectron
+                        ? (!folderPath ? "워크스페이스 생성 중..." : "Run 버튼을 눌러 프로젝트를 실행하세요")
+                        : "Run 버튼을 눌러 프로젝트를 실행하세요"
+                      }
                     </div>
                   ) : (
                     output.map((line, idx) => (
@@ -580,6 +722,49 @@ export function ProjectRunner({
                       <p className="text-xs mt-1">{dbFiles.find(f => f.file_name.endsWith('.html'))?.file_name}</p>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* 🔥 웹 환경에서 WebContainer 실행 중 - Preview iframe */}
+            {!isElectron && previewUrl && status === "running" && (
+              <div className="border-t border-zinc-200 dark:border-zinc-800/50">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800/50">
+                  <span className="text-xs text-zinc-500 flex items-center gap-1.5">
+                    <Globe className="w-3 h-3 text-emerald-500" />
+                    Live Preview
+                  </span>
+                  <button
+                    onClick={() => window.open(previewUrl, '_blank')}
+                    className="text-xs text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300 px-2 py-0.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-500/10 flex items-center gap-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    새 창에서 열기
+                  </button>
+                </div>
+                <div className="p-2 bg-zinc-50 dark:bg-black/50">
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-80 bg-white rounded border border-zinc-200 dark:border-zinc-700"
+                    title={`${projectName} Preview`}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 🔥 웹 환경에서 HTML 파일이 없고 실행 중이 아닐 때 - Run 안내 */}
+            {!isElectron && !hasDBHtmlFile && status === "idle" && output.length === 0 && (
+              <div className="border-t border-zinc-200 dark:border-zinc-800/50 p-4">
+                <div className="text-center space-y-3">
+                  <Play className="w-10 h-10 mx-auto text-emerald-500 opacity-60" />
+                  <div>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                      Run 버튼을 눌러 브라우저에서 직접 프로젝트를 실행하세요
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
+                      WebContainer를 사용하여 Node.js 프로젝트를 실행합니다
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

@@ -67,6 +67,9 @@ function isElectron(): boolean {
 }
 
 export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWrapperProps) {
+  // 🔥 컴포넌트 마운트 시 projectPath 로그
+  console.log('[XTermWrapper] 🚀 MOUNT/RENDER - projectPath:', projectPath, 'tabId:', tabId)
+
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -77,7 +80,14 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
   const isMountedRef = useRef(false)
   const wsRef = useRef<WebSocket | null>(null) // WebSocket 참조 저장
   const lastSentCwdRef = useRef<string | null>(null) // 마지막으로 전송한 cwd
+  const projectPathRef = useRef<string | undefined>(projectPath) // 🔥 최신 projectPath 추적
   const { resolvedTheme } = useTheme()
+
+  // 🔥 projectPath가 변경될 때마다 ref 업데이트
+  useEffect(() => {
+    console.log('[XTermWrapper] 📝 projectPath ref updated:', projectPath)
+    projectPathRef.current = projectPath
+  }, [projectPath])
 
   // projectPath가 변경되면 터미널에 새 경로 전송 (cd 명령)
   useEffect(() => {
@@ -294,9 +304,10 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
     }
 
     try {
-      // 터미널 생성 - projectPath를 cwd로 전달
-      console.log('[Terminal] Calling electronApi.create with cwd:', projectPath)
-      const result = await electronApi.create(tabId, projectPath || undefined)
+      // 🔥 터미널 생성 - projectPathRef.current로 최신 값 사용
+      const currentPath = projectPathRef.current
+      console.log('[Terminal] Calling electronApi.create with cwd:', currentPath)
+      const result = await electronApi.create(tabId, currentPath || undefined)
       console.log('[Terminal] electronApi.create result:', result)
 
       if (!result.success) {
@@ -400,14 +411,38 @@ export default function XTermWrapper({ tabId, onExecute, projectPath }: XTermWra
       if (retryCount > 0) {
         terminal.write('\x1b[32m[Reconnected]\x1b[0m\r\n')
       }
-      // 터미널 크기와 프로젝트 경로 전송
+
+      // 🔥 최신 projectPath 값 사용 (ref에서 가져옴)
+      const currentProjectPath = projectPathRef.current
+
+      // 🔥 projectPath가 없으면 강력한 경고 메시지 표시
+      if (!currentProjectPath) {
+        terminal.write('\x1b[31m╔════════════════════════════════════════════════════════════╗\x1b[0m\r\n')
+        terminal.write('\x1b[31m║  ⚠️  프로젝트 폴더가 설정되지 않았습니다!                   ║\x1b[0m\r\n')
+        terminal.write('\x1b[31m╠════════════════════════════════════════════════════════════╣\x1b[0m\r\n')
+        terminal.write('\x1b[33m║  터미널은 프로젝트 폴더 내에서 실행되어야 합니다.          ║\x1b[0m\r\n')
+        terminal.write('\x1b[33m║                                                            ║\x1b[0m\r\n')
+        terminal.write('\x1b[33m║  👉 좌측 파일 트리에서 "Open Folder" 버튼을 클릭하거나     ║\x1b[0m\r\n')
+        terminal.write('\x1b[33m║  👉 프로젝트를 선택해서 폴더를 열어주세요.                  ║\x1b[0m\r\n')
+        terminal.write('\x1b[31m╚════════════════════════════════════════════════════════════╝\x1b[0m\r\n')
+        terminal.write('\r\n')
+        terminal.write('\x1b[90m현재 위치: 홈 디렉토리 (임시)\x1b[0m\r\n\r\n')
+      }
+
+      // 🔥 터미널 초기화 메시지: 크기 + 초기 cwd를 함께 전송
+      // 서버가 PTY 생성 시 바로 이 cwd를 사용하도록 함
       const { cols, rows } = terminal
-      ws.send(JSON.stringify({ type: 'resize', cols, rows }))
-      // 프로젝트 경로가 있으면 전송 (터미널 시작 디렉토리 설정)
-      if (projectPath) {
-        console.log('[Terminal] Setting initial cwd to:', projectPath)
-        ws.send(JSON.stringify({ type: 'set-cwd', cwd: projectPath }))
-        lastSentCwdRef.current = projectPath
+      const initMsg = {
+        type: 'init',
+        cols,
+        rows,
+        cwd: currentProjectPath || undefined
+      }
+      console.log('[Terminal] Sending init message:', initMsg)
+      ws.send(JSON.stringify(initMsg))
+
+      if (currentProjectPath) {
+        lastSentCwdRef.current = currentProjectPath
       }
     }
 

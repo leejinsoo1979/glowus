@@ -24,7 +24,7 @@ import {
   Settings,
 } from 'lucide-react'
 
-export type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'brainmap' | 'knowledge' | 'integrations' | 'apis' | 'workflow' | 'settings'
+export type TabType = 'about' | 'chat' | 'history' | 'workspace' | 'brainmap' | 'knowledge' | 'skills' | 'integrations' | 'apis' | 'workflow' | 'settings'
 
 export const tabs = [
   { id: 'about' as TabType, label: '소개', icon: User },
@@ -33,6 +33,7 @@ export const tabs = [
   { id: 'workspace' as TabType, label: '워크스페이스', icon: Briefcase },
   { id: 'brainmap' as TabType, label: 'Brain Map', icon: Brain },
   { id: 'knowledge' as TabType, label: '지식베이스', icon: BookOpen },
+  { id: 'skills' as TabType, label: '스킬', icon: Zap },
   { id: 'integrations' as TabType, label: '앱 연동', icon: Link2 },
   { id: 'apis' as TabType, label: 'API 연결', icon: Zap },
   { id: 'workflow' as TabType, label: '워크플로우', icon: Workflow },
@@ -106,6 +107,33 @@ export const PROMPT_SECTIONS = [
   { key: 'response_format', label: '응답 포맷', icon: ClipboardList, description: '응답 길이, 구조, 이모티콘 사용' },
   { key: 'messenger_rules', label: '메신저 규칙', icon: Send, description: '메신저 전용 채팅 규칙' },
 ] as const
+
+// 스킬 섹션 정의 (OpenClaw 호환 SKILL.md 형식)
+export const SKILL_SECTIONS = [
+  { key: 'custom_skills', label: '커스텀 스킬', icon: Zap, description: 'SKILL.md 형식으로 에이전트 전용 스킬 정의' },
+] as const
+
+// 스킬 MD 템플릿
+export const SKILL_MD_TEMPLATE = `---
+name: my-custom-skill
+description: 이 스킬에 대한 설명
+user-invocable: true
+---
+
+# 스킬 이름
+
+## 사용 방법
+/my-custom-skill [인자]
+
+## 기능
+- 기능 1
+- 기능 2
+
+## 예시
+\`\`\`
+/my-custom-skill "검색어"
+\`\`\`
+`
 
 // 기본 프롬프트 값 (8섹션)
 export const DEFAULT_PROMPT_VALUES: Record<string, string> = {

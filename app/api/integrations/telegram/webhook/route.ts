@@ -10,6 +10,7 @@ import {
   saveConversationMessage,
   analyzeAndLearn,
 } from '@/lib/memory/jarvis-memory-manager'
+import { saveAgentMemory } from '@/lib/memory/agent-memory-service'
 import {
   loadAgentWorkContext,
   formatContextForPrompt,
@@ -24,6 +25,26 @@ import { buildSkillsContext, type AgentSkill } from '@/lib/agent/shared-prompts'
  * true: 에이전트 시작, LLM 응답 등 내부 상태 표시 (개발용)
  */
 const SHOW_DEBUG_MESSAGES = false
+
+/**
+ * 🆕 사용자 호칭 변환 함수
+ * user_title ID를 실제 호칭 텍스트로 변환
+ */
+function getUserTitleText(userTitle: string | null, userName?: string): string {
+  const titleMap: Record<string, string> = {
+    boss: '사장님',
+    ceo: '대표님',
+    director: '이사님',
+    manager: '부장님',
+    team_leader: '팀장님',
+    senior: '선배님',
+    name: userName ? `${userName}님` : '님',
+  }
+
+  if (!userTitle) return '님'  // 기본값
+  if (titleMap[userTitle]) return titleMap[userTitle]
+  return userTitle  // custom 값이면 그대로 사용
+}
 
 /**
  * In-memory chat history storage (fallback when Supabase tables don't exist)
@@ -133,6 +154,19 @@ async function incrementSkillUsage(supabase: any, skillId: string): Promise<void
 
 // 스킬 개발 대기 상태 (chatId -> 원래 요청)
 const pendingSkillDevelopment = new Map<number, { instruction: string; timestamp: number }>()
+
+// 🆕 코딩 작업 대기 상태 (GlowUS 프로젝트 생성 질문 후 응답 대기)
+interface PendingCodingTask {
+  instruction: string
+  projectName: string
+  projectPath: string
+  isExistingProject: boolean
+  generatedPrompt: string
+  timestamp: number
+  telegramUserId: string
+  agentId: string
+}
+const pendingCodingTasks = new Map<number, PendingCodingTask>()
 
 /**
  * 마지막 사용한 프로젝트 - Supabase 영구 저장
@@ -289,6 +323,341 @@ async function updateWorkHistory(
  * - 서버 재시작해도 기억 유지
  * - 절대 삭제하지 않음
  */
+
+/**
+ * 텔레그램 대화 히스토리에서 최근 대화 로드
+ * telegram_chat_messages + telegram_chat_sessions 조인
+ */
+async function loadTelegramChatHistory(
+  supabase: any,
+  agentId: string,
+  chatId: number,
+  limit: number = 30
+): Promise<Array<{ role: string; content: string; timestamp: string }>> {
+  try {
+    // 1. 해당 agent의 세션 찾기
+    const { data: session } = await supabase
+      .from('telegram_chat_sessions')
+      .select('id')
+      .eq('agent_id', agentId)
+      .eq('chat_id', chatId)
+      .single()
+
+    if (!session) {
+      console.log(`[TelegramHistory] No session found for agent ${agentId}, chat ${chatId}`)
+      return []
+    }
+
+    // 2. 세션의 최근 메시지 조회
+    const { data: messages, error } = await supabase
+      .from('telegram_chat_messages')
+      .select('role, content, created_at')
+      .eq('session_id', session.id)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      console.error('[TelegramHistory] Error loading messages:', error)
+      return []
+    }
+
+    const history = (messages || [])
+      .reverse() // 시간순 정렬
+      .map((m: any) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.created_at
+      }))
+
+    console.log(`[TelegramHistory] Loaded ${history.length} messages for agent ${agentId}`)
+    return history
+  } catch (error) {
+    console.error('[TelegramHistory] Error:', error)
+    return []
+  }
+}
+
+/**
+ * 텔레그램 대화를 agent_memories 테이블에도 저장
+ * Long-term Memory 시스템과 통합
+ */
+async function saveTelegramToAgentMemory(
+  agentId: string,
+  userId: string,
+  role: 'user' | 'assistant',
+  content: string,
+  chatId: number
+): Promise<void> {
+  try {
+    await saveAgentMemory({
+      agentId,
+      memoryType: 'private',
+      content: `[${role.toUpperCase()}] ${content}`,
+      importance: role === 'user' ? 6 : 5, // 1-10 스케일, 사용자 메시지가 조금 더 중요
+      relationshipId: userId,
+      metadata: {
+        role,
+        source: 'telegram',
+        chatId,
+        originalContent: content,
+        timestamp: new Date().toISOString()
+      }
+    })
+    console.log(`[TelegramMemory] Saved ${role} message to agent_memories`)
+  } catch (error) {
+    console.warn('[TelegramMemory] Error saving to agent_memories:', error)
+    // 실패해도 대화는 계속 진행
+  }
+}
+
+/**
+ * GlowUS 워크스페이스에 프로젝트 생성
+ */
+async function createGlowUSProject(
+  supabase: any,
+  userId: string,
+  agentId: string,
+  projectName: string,
+  projectPath: string,
+  githubUrl?: string
+): Promise<{ success: boolean; projectId?: string; error?: string }> {
+  try {
+    // 1. 프로젝트 생성
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .insert({
+        name: projectName,
+        description: `텔레그램에서 생성된 프로젝트`,
+        owner_id: userId,
+        status: 'active',
+        local_path: projectPath,
+        github_url: githubUrl || null,
+        metadata: {
+          source: 'telegram',
+          created_by_agent: agentId,
+          created_at: new Date().toISOString()
+        }
+      })
+      .select('id')
+      .single()
+
+    if (projectError) {
+      console.error('[GlowUS Project] Error creating project:', projectError)
+      return { success: false, error: projectError.message }
+    }
+
+    console.log(`[GlowUS Project] ✅ Created project: ${projectName} (${project.id})`)
+
+    // 2. 에이전트 작업 로그 기록
+    await supabase
+      .from('agent_work_logs')
+      .insert({
+        agent_id: agentId,
+        user_id: userId,
+        work_type: 'project_create',
+        title: `프로젝트 생성: ${projectName}`,
+        description: `텔레그램을 통해 ${projectName} 프로젝트를 생성했습니다.`,
+        status: 'completed',
+        metadata: {
+          project_id: project.id,
+          project_path: projectPath,
+          github_url: githubUrl
+        }
+      })
+
+    return { success: true, projectId: project.id }
+  } catch (error: any) {
+    console.error('[GlowUS Project] Error:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * 코딩 작업 완료 후 GlowUS 프로젝트에 커밋 정보 동기화
+ */
+async function syncCodingResultToGlowUS(
+  supabase: any,
+  projectId: string,
+  agentId: string,
+  result: {
+    output?: string
+    filesCreated?: string[]
+    filesModified?: string[]
+    gitInfo?: { commitHash?: string; branch?: string; repoUrl?: string }
+  }
+): Promise<void> {
+  try {
+    // 1. 프로젝트 업데이트 (GitHub URL 등)
+    if (result.gitInfo?.repoUrl) {
+      await supabase
+        .from('projects')
+        .update({
+          github_url: result.gitInfo.repoUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectId)
+    }
+
+    // 2. 커밋 기록 저장 (agent_commits 테이블이 있으면)
+    if (result.gitInfo?.commitHash) {
+      try {
+        await supabase
+          .from('agent_commits')
+          .insert({
+            agent_id: agentId,
+            project_id: projectId,
+            commit_hash: result.gitInfo.commitHash,
+            branch: result.gitInfo.branch || 'main',
+            message: result.output?.substring(0, 500) || 'Coding task completed',
+            files_changed: [...(result.filesCreated || []), ...(result.filesModified || [])],
+            created_at: new Date().toISOString()
+          })
+      } catch (commitError) {
+        // 테이블이 없을 수 있음 - 무시
+        console.warn('[GlowUS Sync] agent_commits table might not exist:', commitError)
+      }
+    }
+
+    console.log(`[GlowUS Sync] ✅ Synced coding result to project ${projectId}`)
+  } catch (error) {
+    console.error('[GlowUS Sync] Error:', error)
+  }
+}
+
+/**
+ * 코딩 작업 실행 함수 (GlowUS 프로젝트 생성 여부 포함)
+ */
+async function executeCodingTask(
+  supabase: any,
+  chatId: number,
+  task: PendingCodingTask,
+  telegramUser: any,
+  createGlowUSProject: boolean,
+  agent: any
+): Promise<void> {
+  const automationServerUrl = process.env.CLAUDE_AUTOMATION_SERVER_URL || 'http://127.0.0.1:45680'
+  const startTime = Date.now()
+
+  // 마지막 프로젝트 저장
+  await setLastProject(supabase, task.telegramUserId, task.projectName, task.projectPath)
+
+  // 작업 기록 시작
+  const workId = await saveWorkHistory(supabase, task.telegramUserId, chatId,
+    task.isExistingProject ? 'project_modify' : 'project_create', {
+      projectName: task.projectName,
+      projectPath: task.projectPath,
+      instruction: task.instruction,
+      prompt: task.generatedPrompt,
+      status: 'pending'
+    })
+
+  let glowusProjectId: string | undefined
+
+  try {
+    // 1. GlowUS 프로젝트 생성 (요청한 경우)
+    if (createGlowUSProject && telegramUser.user_id) {
+      const projectResult = await createGlowUSProjectFn(
+        supabase,
+        telegramUser.user_id,
+        task.agentId,
+        task.projectName,
+        task.projectPath
+      )
+      if (projectResult.success) {
+        glowusProjectId = projectResult.projectId
+        await sendTelegramMessage(chatId, `✅ GlowUS 프로젝트 생성 완료! (ID: ${glowusProjectId?.substring(0, 8)}...)`)
+      } else {
+        await sendTelegramMessage(chatId, `⚠️ GlowUS 프로젝트 생성 실패: ${projectResult.error}\n\n코딩 작업은 계속 진행합니다.`)
+      }
+    }
+
+    // 2. 서버 health check
+    try {
+      const healthCheck = await fetch(`${automationServerUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      })
+      if (!healthCheck.ok) throw new Error('Health check failed')
+    } catch (healthError: any) {
+      if (workId) {
+        await updateWorkHistory(supabase, workId, {
+          status: 'failed',
+          errorMessage: `Automation server health check failed: ${healthError.message}`,
+          durationMs: Date.now() - startTime
+        })
+      }
+      await sendTelegramMessage(chatId, `⚠️ Claude Automation Server가 응답하지 않습니다.\n\n터미널에서 서버를 시작하세요:\nnode server/claude-automation-server.js`)
+      return
+    }
+
+    // 3. 작업 진행 중 상태 업데이트
+    if (workId) {
+      await updateWorkHistory(supabase, workId, { status: 'in_progress' })
+    }
+
+    // 4. 자동화 서버 호출
+    const automationResponse = await fetch(`${automationServerUrl}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectPath: task.projectPath,
+        repoName: task.projectName,
+        prompt: task.generatedPrompt,
+        chatId,
+        telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+        telegramUserId: task.telegramUserId,
+        glowusProjectId  // GlowUS 프로젝트 ID 전달
+      }),
+      signal: AbortSignal.timeout(600000)
+    })
+
+    const result = await automationResponse.json()
+
+    if (result.success) {
+      if (workId) {
+        await updateWorkHistory(supabase, workId, {
+          status: 'completed',
+          result: result.output?.substring(0, 5000),
+          durationMs: Date.now() - startTime
+        })
+      }
+
+      // 5. GlowUS 프로젝트 동기화
+      if (glowusProjectId && result.gitInfo) {
+        await syncCodingResultToGlowUS(supabase, glowusProjectId, task.agentId, result)
+      }
+
+      await sendTelegramMessage(chatId,
+        `🚀 코딩 작업 시작!\n\n` +
+        `요청: "${task.instruction}"\n` +
+        `프로젝트: ${task.projectName}\n` +
+        (glowusProjectId ? `📊 GlowUS 연동: 활성화\n` : '') +
+        `\n자세한 진행 상황은 곧 알림됩니다...`
+      )
+    } else {
+      if (workId) {
+        await updateWorkHistory(supabase, workId, {
+          status: 'failed',
+          errorMessage: result.error || '알 수 없는 오류',
+          durationMs: Date.now() - startTime
+        })
+      }
+      await sendTelegramMessage(chatId, `❌ 자동화 서버 오류\n\n${result.error || '알 수 없는 오류'}`)
+    }
+  } catch (error: any) {
+    if (workId) {
+      await updateWorkHistory(supabase, workId, {
+        status: 'failed',
+        errorMessage: error.message,
+        durationMs: Date.now() - startTime
+      })
+    }
+    await sendTelegramMessage(chatId, `⚠️ Claude Automation Server 연결 실패\n\n오류: ${error.message}`)
+  }
+}
+
+// createGlowUSProject 함수명 중복 방지를 위한 별칭
+const createGlowUSProjectFn = createGlowUSProject
 
 /**
  * Generate a detailed prompt based on Korean instruction
@@ -1733,32 +2102,84 @@ ${transcriptText}
       }
     }
 
-    // 코딩 작업 감지 - 더 넓은 키워드
-    const codingTaskKeywords = [
-      // 생성
-      '만들어', '코딩', '작성', '구현', '개발', '생성',
-      // 수정
-      '수정', '고쳐', '업데이트', '변경', '바꿔', '교체',
-      // 추가/삭제
-      '추가', '삭제', '제거', '넣어',
-      // 개선
-      '리팩토링', '개선', '최적화', '향상',
-      // 대상
-      '테트리스', '게임', '앱', '프로그램', '코드', '함수', '클래스', '컴포넌트', '페이지', '기능',
-      // 동작
-      '소리', '사운드', '애니메이션', '효과', '스타일'
-    ]
-    const shoppingKeywords = ['쇼핑', '구매', '주문', '장바구니', '쿠팡', '네이버쇼핑', '배송']
-    const isShoppingTask = shoppingKeywords.some(kw => instruction.includes(kw))
-    const isCodingTask = !isShoppingTask && codingTaskKeywords.some(kw => instruction.includes(kw))
+    // ========================================
+    // 🧠 LLM 기반 의도 분류 (Intent Classification)
+    // 하드코딩 대신 LLM이 메시지 의도를 판단
+    // ========================================
+    type MessageIntent = 'chat' | 'self_inquiry' | 'coding' | 'shopping' | 'mac_control' | 'file_task'
 
-    if (isCodingTask) {
+    async function classifyIntent(message: string, agentName: string): Promise<{ intent: MessageIntent; confidence: number; reason: string }> {
+      const classificationPrompt = `You are an intent classifier for an AI agent named "${agentName}".
+Analyze the user message and classify it into ONE of these categories:
+
+1. **self_inquiry** - Questions about the AI agent itself (${agentName}), its status, updates, capabilities, memory, or what it has done
+   Examples: "오늘 업데이트 뭐야?", "뭐 바뀌었어?", "최근 변경사항", "너 뭐했어?", "업데이트된거 알려줘", "${agentName} 뭐해?", "넌 뭐야?", "너 뭐할 수 있어?"
+   Key signals: 너, 뭐했어, 업데이트, 변경, 바뀐거, 할 수 있어, 기능, 상태
+
+2. **chat** - General conversation, greetings, questions about EXTERNAL things (news, weather, other people, products, world events)
+   Examples: "안녕", "날씨 어때?", "뉴스 알려줘", "BTS 뭐해?", "아이폰 16 나왔어?"
+
+3. **coding** - Requests to write, modify, create, or fix code/programs/apps
+   Examples: "테트리스 만들어줘", "버그 고쳐줘", "함수 추가해", "리팩토링해줘"
+
+4. **shopping** - Shopping, purchasing, orders, product search
+   Examples: "쿠팡에서 검색해줘", "장바구니에 담아", "주문해줘"
+
+5. **mac_control** - Control Mac apps, open programs, run scripts
+   Examples: "사파리 열어", "음악 틀어줘", "볼륨 올려"
+
+6. **file_task** - File operations, downloads, web scraping
+   Examples: "이미지 다운로드해", "크롤링해줘", "파일 저장해"
+
+IMPORTANT: If the question is about "updates", "changes", "what happened", "status" WITHOUT specifying an external subject, it's likely asking about the AI agent (self_inquiry).
+
+User message: "${message}"
+
+Respond in JSON format only:
+{"intent": "chat|self_inquiry|coding|shopping|mac_control|file_task", "confidence": 0.0-1.0, "reason": "brief explanation"}`;
+
+      try {
+        const { GoogleGenerativeAI } = await import('@google/generative-ai')
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '')
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+
+        const result = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: classificationPrompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 150 }
+        })
+
+        const responseText = result.response.text().trim()
+        // JSON 파싱 (```json 블록 제거)
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          console.log(`[Intent] Classified as "${parsed.intent}" (${(parsed.confidence * 100).toFixed(0)}%): ${parsed.reason}`)
+          return parsed
+        }
+      } catch (error) {
+        console.error('[Intent] Classification failed:', error)
+      }
+
+      // 분류 실패 시 기본값: chat
+      return { intent: 'chat', confidence: 0.5, reason: 'classification failed, defaulting to chat' }
+    }
+
+    const { intent: messageIntent, confidence: intentConfidence } = await classifyIntent(instruction, agent.name)
+
+    // 의도에 따른 도구 필터링
+    if (messageIntent === 'coding' && intentConfidence >= 0.7) {
       // 코딩 작업 시 Mac 제어 도구만 (Claude Code에 위임)
       const allowedTools = ['open_app', 'run_applescript', 'run_terminal']
       tools = tools.filter(t => allowedTools.includes(t.name))
       console.log(`[Telegram Chat] 🔥 CODING MODE: Only ${tools.length} Mac control tools`)
-    } else if (isShoppingTask) {
+    } else if (messageIntent === 'self_inquiry') {
+      // 자기 자신에 대한 질문 - 웹 검색 도구 제거, 메모리에서 답변하도록
+      tools = tools.filter(t => t.name !== 'web_search' && t.name !== 'tavily_search')
+      console.log(`[Telegram Chat] 🧠 SELF-INQUIRY MODE: Answer from memory, no web search`)
+    } else if (messageIntent === 'shopping') {
       console.log(`[Telegram Chat] 🛒 SHOPPING MODE: ${tools.length} tools available`)
+    } else if (messageIntent === 'chat') {
+      console.log(`[Telegram Chat] 💬 CHAT MODE: General conversation`)
     }
 
     console.log(`[Telegram Chat] Created ${tools.length} tools for agent ${agent.name}`)
@@ -1766,9 +2187,23 @@ ${transcriptText}
     // ========================================
     // 🧠 Long-term Memory Context Load (LLM 독립적)
     // GlowUS 계정 연결된 경우 롱텀 메모리 로드
+    // + 텔레그램 대화 히스토리도 함께 로드
     // ========================================
     let longTermMemoryContext = ''
     const glowusUserId = telegramUser.user_id
+
+    // 텔레그램 대화 히스토리 로드 (항상)
+    const telegramHistory = await loadTelegramChatHistory(supabase, agent.id, chatId, 30)
+    let telegramHistoryContext = ''
+    if (telegramHistory.length > 0) {
+      telegramHistoryContext = `## 📱 텔레그램 대화 기록 (최근 ${telegramHistory.length}개)
+${telegramHistory.map(m => {
+  const date = new Date(m.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+  const roleLabel = m.role === 'user' ? '사용자' : '나'
+  return `- [${date}] ${roleLabel}: ${m.content.substring(0, 200)}${m.content.length > 200 ? '...' : ''}`
+}).join('\n')}`
+      console.log(`[Telegram Chat] 📱 Telegram history loaded: ${telegramHistory.length} messages`)
+    }
 
     if (glowusUserId) {
       try {
@@ -1789,8 +2224,9 @@ ${transcriptText}
         const workContext = await loadAgentWorkContext(agent.id, glowusUserId)
         const workContextFormatted = formatContextForPrompt(workContext)
 
-        // 컨텍스트 병합
+        // 컨텍스트 병합 (텔레그램 히스토리 포함)
         longTermMemoryContext = [
+          telegramHistoryContext,  // 텔레그램 대화 기록 먼저
           agentOsContext,
           jarvisContext.formattedContext,
           workContextFormatted,
@@ -1801,8 +2237,12 @@ ${transcriptText}
         }
       } catch (memoryError) {
         console.error('[Telegram Chat] Memory load error:', memoryError)
-        // 메모리 로드 실패해도 대화는 계속
+        // 메모리 로드 실패해도 텔레그램 히스토리는 사용
+        longTermMemoryContext = telegramHistoryContext
       }
+    } else {
+      // GlowUS 계정 없어도 텔레그램 히스토리는 로드
+      longTermMemoryContext = telegramHistoryContext
     }
 
     // 🎯 에이전트 스킬 로드 (Supabase에서 장착된 스킬 가져오기)
@@ -1824,7 +2264,7 @@ ${transcriptText}
 
     // 디버그 모드에서만 시작 알림 표시
     if (SHOW_DEBUG_MESSAGES) {
-      const taskMode = isCodingTask ? ' [코딩 모드]' : isShoppingTask ? ' [쇼핑 모드]' : ''
+      const taskMode = messageIntent === 'coding' ? ' [코딩 모드]' : messageIntent === 'shopping' ? ' [쇼핑 모드]' : ` [${messageIntent}]`
       const memoryStatus = longTermMemoryContext ? ' [메모리 활성화]' : ''
       const skillsStatus = skillsContext ? ' [스킬 활성화]' : ''
       await sendTelegramMessage(chatId, `🤖 ${agent.name} 에이전트 시작 (도구 ${tools.length}개)${taskMode}${memoryStatus}${skillsStatus}`)
@@ -1896,8 +2336,45 @@ ${skillsContext}
 ---
 ` : ''
 
+    // 🆕 사용자 호칭 계산
+    const userTitle = getUserTitleText(agent.user_title, telegramUser.first_name || telegramUser.username)
+
     const systemPrompt = `You are ${agent.name}, a POWERFUL AUTONOMOUS AI AGENT with FULL SYSTEM ACCESS.
 ${identitySection}${memorySection}${skillsSection}
+
+# 📛 HOW TO ADDRESS THE USER
+**ALWAYS call the user "${userTitle}"**. This is their preferred title.
+Examples: "네, ${userTitle}!", "${userTitle}, 완료했습니다!", "${userTitle}께서 요청하신..."
+
+# 🧠 SELF-AWARENESS: QUESTIONS ABOUT YOURSELF
+**YOUR NAME IS "${agent.name}"**. When user asks about "${agent.name}" or "너", they are asking about YOU.
+
+${messageIntent === 'self_inquiry' ? `
+## 🚨 CURRENT MODE: SELF-INQUIRY (자기 자신에 대한 질문)
+The user is asking about YOU. DO NOT use any tools. Answer DIRECTLY from your memory above.
+
+**HOW TO ANSWER:**
+1. Look at your LONG-TERM MEMORY section above
+2. Summarize what you remember (recent conversations, tasks, requests)
+3. If memory is empty, say "최근 기억된 대화나 작업이 없습니다"
+4. NEVER say "업데이트가 없습니다" if you have memory content above
+
+**EXAMPLE GOOD ANSWER:**
+"최근 기억을 확인해보니:
+- [날짜] 유튜브 영상 분석 및 PPT 제작 요청을 받았습니다
+- [날짜] 텔레그램 지시 내용에 대해 대화했습니다
+- [날짜] 여러 번 인사를 나눴습니다"
+` : `
+## Questions about yourself - NEVER use web_search:
+- "${agent.name} 업데이트", "${agent.name} 뭐했어", "너 뭐 바뀌었어" → Answer from YOUR MEMORY above
+- "오늘 뭐했어?", "최근 변경사항", "업데이트된거" → Check your LONG-TERM MEMORY section
+- "넌 뭐야?", "너 누구야?" → Answer from YOUR IDENTITY section
+
+## When to use web_search:
+- Questions about external things (news, weather, other people, products)
+- NOT questions about yourself or your capabilities
+`}
+---
 
 # 🚨🚨🚨 CRITICAL: COMPLETE ALL STEPS - DO NOT STOP EARLY 🚨🚨🚨
 When a task requires multiple steps (e.g., "Pages 열고 가사 적어"):
@@ -1915,14 +2392,20 @@ When a task requires multiple steps (e.g., "Pages 열고 가사 적어"):
 
 **🚨 IF YOU STOP AFTER STEP 1 = TASK FAILED 🚨**
 
-# 🚨 ABSOLUTE RULES - NO EXCEPTIONS:
+# 🚨 ABSOLUTE RULES:
 
-## 1. TOOL USAGE IS MANDATORY
+## 1. TOOL USAGE RULES
+${messageIntent === 'self_inquiry' ? `
+**⚠️ SELF-INQUIRY MODE: DO NOT USE TOOLS**
+- This is a question about yourself - answer from memory ONLY
+- NO tool calls needed - just respond with text
+- Read your LONG-TERM MEMORY section and summarize it
+` : `
 - You have 54 powerful tools for Mac system control
-- EVERY request MUST result in tool calls
-- NEVER respond without calling tools
+- EVERY ACTION request MUST result in tool calls
 - If unsure which tool, try the most relevant one
 - NEVER say "완료했습니다" until ALL steps are executed
+`}
 
 ## 2. FORBIDDEN PHRASES (자동 해고 사유):
 ❌ "죄송하지만" (Sorry but)
@@ -2183,7 +2666,7 @@ Result: "✅ VS Code에서 Claude Code를 실행하고 '버튼 컴포넌트 만�
 - After executing tools, ALWAYS respond naturally in your personality
 - Use your identity/personality traits in your responses
 - Speak warmly and conversationally, not like a robot
-- Example: Instead of just "✅ 완료", say "네, 진수님! Pages를 열고 글을 작성했어요. 다른 도움이 필요하시면 말씀해주세요~ 😊"
+- Example: Instead of just "✅ 완료", say "네, ${userTitle}! Pages를 열고 글을 작성했어요. 다른 도움이 필요하시면 말씀해주세요~ 😊"
 - ALWAYS address the user by name if you know it
 - Show your personality in every response
 
@@ -2243,8 +2726,40 @@ START ACTING LIKE THE POWERFUL YET FRIENDLY AGENT YOU ARE.`
       }
     }
 
+    // 🆕 코딩 작업 대기 중인 응답 처리 (GlowUS 프로젝트 생성 여부)
+    const pendingTask = pendingCodingTasks.get(chatId)
+    if (pendingTask) {
+      const lowerInstruction = instruction.toLowerCase()
+      const affirmativeKeywords = ['응', '네', 'ㅇㅇ', '해줘', '만들어', '생성해', 'yes', 'ok', '좋아', '그래']
+      const negativeKeywords = ['아니', '노', 'ㄴㄴ', '안해', '필요없', 'no', '괜찮', '됐어']
+
+      const isAffirmative = affirmativeKeywords.some(kw => lowerInstruction.includes(kw))
+      const isNegative = negativeKeywords.some(kw => lowerInstruction.includes(kw))
+
+      if (isAffirmative || isNegative) {
+        // 대기 상태 제거
+        pendingCodingTasks.delete(chatId)
+
+        // 코딩 작업 실행 (GlowUS 프로젝트 생성 여부 전달)
+        await executeCodingTask(
+          supabase,
+          chatId,
+          pendingTask,
+          telegramUser,
+          isAffirmative, // createGlowUSProject
+          agent
+        )
+        return NextResponse.json({ ok: true })
+      }
+
+      // 10분 지났으면 대기 상태 제거
+      if (Date.now() - pendingTask.timestamp > 10 * 60 * 1000) {
+        pendingCodingTasks.delete(chatId)
+      }
+    }
+
     // 🔥 코딩 지시 감지 - Claude Automation Server로 직접 호출
-    if (isCodingTask) {
+    if (messageIntent === 'coding' && intentConfidence >= 0.7) {
       // 프로젝트 경로 파싱: @프로젝트명 또는 #프로젝트명 형식
       // 예: "@my-app 테트리스 만들어" → projectName = "my-app"
       const projectMatch = instruction.match(/^[@#]([^\s]+)\s+/)
@@ -2281,134 +2796,47 @@ START ACTING LIKE THE POWERFUL YET FRIENDLY AGENT YOU ARE.`
       const generatedEnglishPrompt = generateDetailedPromptExample(codingInstruction, isExistingProject)
       console.log(`[Telegram Webhook] isExistingProject: ${isExistingProject}, prompt: ${generatedEnglishPrompt.substring(0, 100)}...`)
 
-      // Claude Automation Server 호출 (127.0.0.1 사용 - localhost IPv6 이슈 방지)
-      const automationServerUrl = process.env.CLAUDE_AUTOMATION_SERVER_URL || 'http://127.0.0.1:45680'
-      const baseProjectDir = process.env.PROJECTS_BASE_DIR || '/Users/jinsoolee/Documents'
-
       // 프로젝트 경로 결정
+      const baseProjectDir = process.env.PROJECTS_BASE_DIR || '/Users/jinsoolee/Documents'
       let projectPath: string
       if (projectName) {
         projectPath = `${baseProjectDir}/${projectName}`
-        // 마지막 프로젝트 Supabase에 영구 저장
-        await setLastProject(supabase, telegramUser.id, projectName, projectPath)
       } else {
-        // 프로젝트명 없으면 새 폴더 생성 (타임스탬프)
         const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
         projectName = `claude-${timestamp}-${Date.now().toString(36)}`
         projectPath = `${baseProjectDir}/${projectName}`
-        // 새 프로젝트도 Supabase에 영구 저장
-        await setLastProject(supabase, telegramUser.id, projectName, projectPath)
       }
 
-      // 🚀 직접 자동화 서버 호출 (에이전트 통하지 않음)
-      const startTime = Date.now()
+      // 🆕 코딩 작업 실행 처리
+      const pendingTask: PendingCodingTask = {
+        instruction: codingInstruction,
+        projectName,
+        projectPath,
+        isExistingProject,
+        generatedPrompt: generatedEnglishPrompt,
+        timestamp: Date.now(),
+        telegramUserId: telegramUser.id,
+        agentId: agent.id
+      }
 
-      // 📝 작업 시작 기록 (Supabase 영구 저장)
-      const workId = await saveWorkHistory(supabase, telegramUser.id, chatId,
-        isExistingProject ? 'project_modify' : 'project_create', {
-          projectName,
-          projectPath,
-          instruction: codingInstruction,
-          prompt: generatedEnglishPrompt,
-          status: 'pending'
-        })
+      // 새 프로젝트이고 GlowUS 계정이 연동된 경우: 사용자에게 질문
+      if (!isExistingProject && glowusUserId) {
+        pendingCodingTasks.set(chatId, pendingTask)
 
-      try {
-        console.log(`[Telegram Webhook] 🔥 Calling Claude Automation Server directly...`)
-        console.log(`[Telegram Webhook] Project: ${projectName}, Path: ${projectPath}`)
-
-        // 먼저 서버 health check
-        try {
-          const healthCheck = await fetch(`${automationServerUrl}/health`, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000)
-          })
-          if (!healthCheck.ok) {
-            throw new Error('Health check failed')
-          }
-          console.log(`[Telegram Webhook] ✅ Automation server is healthy`)
-        } catch (healthError: any) {
-          console.error(`[Telegram Webhook] ❌ Automation server health check failed:`, healthError.message)
-
-          // 📝 작업 실패 기록
-          if (workId) {
-            await updateWorkHistory(supabase, workId, {
-              status: 'failed',
-              errorMessage: `Automation server health check failed: ${healthError.message}`,
-              durationMs: Date.now() - startTime
-            })
-          }
-
-          await sendTelegramMessage(chatId, `⚠️ Claude Automation Server가 응답하지 않습니다.\n\n터미널에서 다음 명령으로 서버를 시작하세요:\nnode server/claude-automation-server.js\n\n또는 LaunchAgent를 확인하세요.`)
-          return NextResponse.json({ ok: true })
-        }
-
-        // 📝 작업 진행 중 상태 업데이트
-        if (workId) {
-          await updateWorkHistory(supabase, workId, { status: 'in_progress' })
-        }
-
-        const automationResponse = await fetch(`${automationServerUrl}/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectPath,
-            repoName: projectName,
-            prompt: generatedEnglishPrompt,
-            chatId: chatId,  // 텔레그램 chatId 전달
-            telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,  // 봇 토큰도 전달
-            telegramUserId: telegramUser.id  // 🔥 GlowUS 프로젝트 연동용
-          }),
-          // 실행은 오래 걸릴 수 있으므로 타임아웃 길게 (10분)
-          signal: AbortSignal.timeout(600000)
-        })
-
-        const result = await automationResponse.json()
-        console.log(`[Telegram Webhook] Automation server response:`, result)
-
-        if (result.success) {
-          // 📝 작업 완료 기록
-          if (workId) {
-            await updateWorkHistory(supabase, workId, {
-              status: 'completed',
-              result: result.output?.substring(0, 5000),
-              durationMs: Date.now() - startTime
-            })
-          }
-
-          // 성공 메시지는 자동화 서버에서 텔레그램으로 직접 전송됨
-          // 여기서는 간단한 확인 메시지만
-          await sendTelegramMessage(chatId, `🚀 코딩 작업 시작!\n\n요청: "${codingInstruction}"\n프로젝트: ${projectName}\n\n자세한 진행 상황은 곧 알림됩니다...`)
-        } else {
-          // 📝 작업 실패 기록
-          if (workId) {
-            await updateWorkHistory(supabase, workId, {
-              status: 'failed',
-              errorMessage: result.error || '알 수 없는 오류',
-              durationMs: Date.now() - startTime
-            })
-          }
-
-          await sendTelegramMessage(chatId, `❌ 자동화 서버 오류\n\n${result.error || '알 수 없는 오류'}`)
-        }
-
-        // 코딩 작업은 자동화 서버가 처리하므로 여기서 반환
-        return NextResponse.json({ ok: true })
-      } catch (automationError: any) {
-        console.error(`[Telegram Webhook] Automation server error:`, automationError)
-
-        // 📝 작업 실패 기록
-        if (workId) {
-          await updateWorkHistory(supabase, workId, {
-            status: 'failed',
-            errorMessage: automationError.message,
-            durationMs: Date.now() - startTime
-          })
-        }
-
-        await sendTelegramMessage(chatId, `⚠️ Claude Automation Server 연결 실패\n\n서버가 실행 중인지 확인하세요.\n\n오류: ${automationError.message}`)
+        await sendTelegramMessage(chatId,
+          `📁 "${projectName}" 프로젝트를 만들게요.\n\n` +
+          `GlowUS 워크스페이스에도 프로젝트를 생성할까요?\n\n` +
+          `✅ 생성하면: 대시보드에서 보기, 커밋 기록 추적, Neural Map 연동\n` +
+          `❌ 안하면: GitHub에만 저장\n\n` +
+          `(응/아니)`
+        )
         return NextResponse.json({ ok: true })
       }
+
+      // 기존 프로젝트 수정이거나 GlowUS 미연동: 바로 실행 (GlowUS 프로젝트 생성 안함)
+      console.log(`[Telegram Webhook] 🔥 Executing coding task directly (isExisting: ${isExistingProject}, glowusLinked: ${!!glowusUserId})`)
+      await executeCodingTask(supabase, chatId, pendingTask, telegramUser, false, agent)
+      return NextResponse.json({ ok: true })
     }
 
     messages.push(new HumanMessage(userMessage))
@@ -2835,14 +3263,26 @@ DO NOT respond with text. Call the next tool NOW!`
         }),
         // 4. JARVIS: 대화에서 자동 학습 (사용자 정보 추출)
         analyzeAndLearn(agent.id, glowusUserId, instruction, finalResponseStr),
+        // 5. agent_memories 테이블에도 저장 (user 메시지)
+        saveTelegramToAgentMemory(agent.id, glowusUserId, 'user', instruction, chatId),
+        // 6. agent_memories 테이블에도 저장 (assistant 응답)
+        saveTelegramToAgentMemory(agent.id, glowusUserId, 'assistant', finalResponseStr, chatId),
       ]).then(() => {
-        console.log(`[Telegram Chat] 🧠 Long-term Memory saved (cross-platform)`)
+        console.log(`[Telegram Chat] 🧠 Long-term Memory saved (cross-platform + agent_memories)`)
       }).catch(err => {
         console.error('[Telegram Chat] Long-term Memory error:', err)
       })
     } else {
-      console.log(`[Telegram Chat] ⚠️ No GlowUS user linked - Long-term Memory skipped`)
-      console.log(`[Telegram Chat] 💡 Tip: Link Telegram to GlowUS for cross-platform memory`)
+      // GlowUS 연결 없어도 agent_memories에는 저장 (telegram_user.id 사용)
+      Promise.all([
+        saveTelegramToAgentMemory(agent.id, telegramUser.id, 'user', instruction, chatId),
+        saveTelegramToAgentMemory(agent.id, telegramUser.id, 'assistant', finalResponseStr, chatId),
+      ]).then(() => {
+        console.log(`[Telegram Chat] 🧠 agent_memories saved (telegram user only)`)
+      }).catch(err => {
+        console.error('[Telegram Chat] agent_memories error:', err)
+      })
+      console.log(`[Telegram Chat] ⚠️ No GlowUS user linked - using telegram user ID for memory`)
     }
 
     // Send final response

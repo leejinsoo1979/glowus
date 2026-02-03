@@ -16,12 +16,24 @@ import {
     Wrench,
     Download,
     Upload,
-    LayoutGrid
+    LayoutGrid,
+    // 🔥 react-icons 완전 제거 - lucide-react로 통일 (번들 사이즈 대폭 절약)
+    Presentation,   // BsFiletypePpt
+    FileCode,       // BsFiletypeDoc, FaRegFileCode
+    Table2,         // BsFileEarmarkSpreadsheet
+    Image,          // BsFileEarmarkImage
+    AppWindow,      // AiOutlineAppstoreAdd
+    Sparkles,       // RiSparkling2Fill
 } from "lucide-react"
-import { BsFiletypePpt, BsFiletypeDoc, BsFileEarmarkSpreadsheet, BsFileEarmarkImage } from "react-icons/bs"
-import { AiOutlineAppstoreAdd } from "react-icons/ai"
-import { RiSparkling2Fill } from "react-icons/ri"
-import { FaRegFileCode } from "react-icons/fa6"
+
+// 🔥 react-icons → lucide-react 별칭 (기존 코드 호환성)
+const BsFiletypePpt = Presentation
+const BsFiletypeDoc = FileCode
+const BsFileEarmarkSpreadsheet = Table2
+const BsFileEarmarkImage = Image
+const AiOutlineAppstoreAdd = AppWindow
+const RiSparkling2Fill = Sparkles
+const FaRegFileCode = FileCode
 import { useThemeStore } from "@/stores/themeStore"
 import { cn } from "@/lib/utils"
 import { ToolsView } from "./tools-view"
@@ -130,7 +142,7 @@ function WorksHome({
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
             {/* Title */}
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-16">
-                GlowUS AI 워크스페이스
+                Welcome to GlowUS
             </h1>
 
             {/* Main Input */}

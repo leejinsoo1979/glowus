@@ -401,12 +401,14 @@ ${AGENT_TOOLS.map(t => `- **${t.name}**: ${t.description}`).join('\n')}
         break
 
       case 'anthropic':
-        result = await runAnthropicAgent(
+        // ⚠️ Anthropic API 사용 금지 - OpenAI로 fallback
+        console.warn('[Agent] Anthropic API 사용 금지 - OpenAI로 fallback')
+        result = await runOpenAIAgent(
           finalMessages,
-          apiModel,
+          'gpt-4o',
           tools,
           executor,
-          process.env.ANTHROPIC_API_KEY!
+          process.env.OPENAI_API_KEY!
         )
         break
 

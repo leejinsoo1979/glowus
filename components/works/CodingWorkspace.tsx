@@ -25,11 +25,30 @@ import {
     Paperclip,
     FileUp,
     GripVertical,
-    Bot
+    Bot,
+    Sparkles,
+    Wifi,
+    WifiOff,
+    MessageCircle,
+    Copy,
+    Check
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useThemeStore, accentColors } from '@/stores/themeStore'
 import Editor from '@monaco-editor/react'
+import type { Monaco } from '@monaco-editor/react'
+import type { editor } from 'monaco-editor'
+// Claude Bridge 연동 (선택적 - 코드 도우미용)
+// 왼쪽 AI 채팅: 코드 생성 (Planner → Coder → Reviewer → Fixer)
+// 오른쪽 Claude 탭: 코드 분석/설명 (Claude CLI를 통한 빠른 Q&A)
+import {
+    initMonacoClaudePlugin,
+    injectClaudeStyles,
+    useClaudeBridgeStatus,
+    type MonacoClaudePlugin,
+    type StreamChunk,
+    type ClaudeActionType
+} from '@/lib/claude-bridge'
 
 // 파일 타입 정의
 interface FileNode {
@@ -79,7 +98,7 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
 
     // UI 상태
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-    const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview'>('code')
+    const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview' | 'claude'>('code')
     const [chatPanelWidth, setChatPanelWidth] = useState(380)
     const [sidebarWidth, setSidebarWidth] = useState(200)
     const [isResizing, setIsResizing] = useState(false)
@@ -116,6 +135,38 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
     const startXRef = useRef<number>(0)
     const startWidthRef = useRef<number>(380)
     const startSidebarWidthRef = useRef<number>(200)
+
+    // Claude Bridge 상태
+    const claudePluginRef = useRef<MonacoClaudePlugin | null>(null)
+    const monacoRef = useRef<Monaco | null>(null)
+    const [claudeResponse, setClaudeResponse] = useState<string>('')
+    const [claudeLoading, setClaudeLoading] = useState(false)
+    const [claudePanelOpen, setClaudePanelOpen] = useState(false)
+    const [claudeActionType, setClaudeActionType] = useState<ClaudeActionType | null>(null)
+    const [copiedCode, setCopiedCode] = useState(false)
+
+    // Claude Bridge 연결 상태 (훅 사용)
+    const {
+        connected: claudeConnected,
+        checking: claudeChecking,
+        version: claudeVersion,
+        recheck: recheckClaude
+    } = useClaudeBridgeStatus('http://localhost:3333', true, 30000) // 30초마다 자동 재확인
+
+    // Claude CSS 스타일 주입 (한 번만)
+    useEffect(() => {
+        injectClaudeStyles()
+    }, [])
+
+    // Claude 플러그인 정리 (컴포넌트 언마운트 시)
+    useEffect(() => {
+        return () => {
+            if (claudePluginRef.current) {
+                claudePluginRef.current.dispose()
+                claudePluginRef.current = null
+            }
+        }
+    }, [])
 
     // 채팅 패널 리사이즈 핸들러
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -1166,6 +1217,46 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
                                     <Eye className="w-4 h-4" />
                                     미리보기
                                 </button>
+                                <button
+                                    onClick={() => setRightPanelTab('claude')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors relative",
+                                        rightPanelTab === 'claude'
+                                            ? "bg-zinc-800 text-orange-400"
+                                            : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                                    )}
+                                >
+                                    <Sparkles className="w-4 h-4" />
+                                    Claude
+                                    {claudeLoading && (
+                                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* Claude 연결 상태 */}
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={recheckClaude}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors",
+                                        claudeConnected
+                                            ? "text-green-400 hover:bg-green-500/10"
+                                            : "text-red-400 hover:bg-red-500/10"
+                                    )}
+                                    title={claudeConnected ? `Claude Bridge 연결됨 (${claudeVersion || 'unknown'})` : '연결 끊김 - 클릭하여 재연결'}
+                                >
+                                    {claudeChecking ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : claudeConnected ? (
+                                        <Wifi className="w-3 h-3" />
+                                    ) : (
+                                        <WifiOff className="w-3 h-3" />
+                                    )}
+                                    <span className="hidden sm:inline">
+                                        {claudeChecking ? '확인 중' : claudeConnected ? 'Claude' : '연결 끊김'}
+                                    </span>
+                                </button>
                             </div>
                         </div>
 
@@ -1215,8 +1306,38 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
                                                     lineNumbers: 'on',
                                                     automaticLayout: true,
                                                 }}
-                                                onMount={(editor) => {
+                                                onMount={(editor, monaco) => {
                                                     editorRef.current = editor
+                                                    monacoRef.current = monaco
+
+                                                    // Claude 플러그인 초기화 (연결 여부와 관계없이)
+                                                    if (!claudePluginRef.current) {
+                                                        claudePluginRef.current = initMonacoClaudePlugin(editor, {
+                                                            bridgeUrl: 'http://localhost:3333',
+                                                            onStart: (type) => {
+                                                                setClaudeLoading(true)
+                                                                setClaudeActionType(type)
+                                                                setClaudeResponse('')
+                                                                setClaudePanelOpen(true)
+                                                            },
+                                                            onStreaming: (chunk) => {
+                                                                if (chunk.type === 'text' && chunk.content) {
+                                                                    setClaudeResponse(chunk.content)
+                                                                }
+                                                            },
+                                                            onResponse: (response, type) => {
+                                                                setClaudeResponse(response)
+                                                                setClaudeActionType(type)
+                                                            },
+                                                            onEnd: () => {
+                                                                setClaudeLoading(false)
+                                                            },
+                                                            onError: (error) => {
+                                                                setClaudeLoading(false)
+                                                                setClaudeResponse(`❌ 오류: ${error.message}`)
+                                                            },
+                                                        })
+                                                    }
                                                 }}
                                             />
                                         ) : (
@@ -1229,7 +1350,7 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
                                         )}
                                     </div>
                                 </div>
-                            ) : (
+                            ) : rightPanelTab === 'preview' ? (
                                 <div className="h-full bg-zinc-950">
                                     {files.length > 0 ? (
                                         <iframe
@@ -1244,6 +1365,136 @@ export function CodingWorkspace({ onBack, projectType, projectTitle }: CodingWor
                                             <Eye className="w-16 h-16 text-zinc-700 mb-4" />
                                             <p className="text-zinc-500">
                                                 코드가 생성되면<br/>미리보기가 표시됩니다
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* Claude 응답 패널 */
+                                <div className="h-full flex flex-col bg-zinc-950">
+                                    {/* Claude 패널 헤더 */}
+                                    <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4 text-orange-400" />
+                                            <span className="text-sm font-medium text-zinc-300">
+                                                {claudeActionType ? `Claude: ${claudeActionType}` : 'Claude 응답'}
+                                            </span>
+                                            {claudeLoading && (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
+                                            )}
+                                        </div>
+                                        {claudeResponse && (
+                                            <button
+                                                onClick={async () => {
+                                                    // 코드 블록만 추출하여 복사
+                                                    const codeMatch = claudeResponse.match(/```[\s\S]*?\n([\s\S]*?)```/)
+                                                    const textToCopy = codeMatch ? codeMatch[1].trim() : claudeResponse
+                                                    await navigator.clipboard.writeText(textToCopy)
+                                                    setCopiedCode(true)
+                                                    setTimeout(() => setCopiedCode(false), 2000)
+                                                }}
+                                                className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+                                            >
+                                                {copiedCode ? (
+                                                    <>
+                                                        <Check className="w-3 h-3 text-green-400" />
+                                                        복사됨
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy className="w-3 h-3" />
+                                                        코드 복사
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Claude 응답 내용 */}
+                                    <div className="flex-1 overflow-auto p-4">
+                                        {claudeResponse ? (
+                                            <div className="prose prose-invert prose-sm max-w-none">
+                                                <pre className="whitespace-pre-wrap text-sm text-zinc-300 font-mono leading-relaxed">
+                                                    {claudeResponse}
+                                                </pre>
+                                            </div>
+                                        ) : (
+                                            <div className="h-full flex flex-col items-center justify-center text-center">
+                                                <Sparkles className="w-16 h-16 text-zinc-700 mb-4" />
+                                                <h3 className="text-lg font-medium text-zinc-400 mb-2">
+                                                    Claude Code 도우미
+                                                </h3>
+                                                <p className="text-sm text-zinc-500 mb-4 max-w-md">
+                                                    코드를 선택하고 단축키를 사용하세요
+                                                </p>
+                                                <div className="grid grid-cols-2 gap-2 text-xs text-zinc-600">
+                                                    <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2 rounded-lg">
+                                                        <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">⌘⇧C</kbd>
+                                                        <span>질문하기</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2 rounded-lg">
+                                                        <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">⌘⇧E</kbd>
+                                                        <span>코드 설명</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2 rounded-lg">
+                                                        <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">⌘⇧R</kbd>
+                                                        <span>리팩토링</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 bg-zinc-900 px-3 py-2 rounded-lg">
+                                                        <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">⌘⇧B</kbd>
+                                                        <span>버그 찾기</span>
+                                                    </div>
+                                                </div>
+                                                {!claudeConnected && (
+                                                    <div className="mt-6 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                                                        <p className="font-medium mb-1">브릿지 서버 연결 필요</p>
+                                                        <p className="text-xs text-red-400/70">
+                                                            터미널에서 <code className="px-1 py-0.5 bg-red-500/20 rounded">node claude-bridge/bridge-server.js</code> 실행
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Claude 입력 영역 (선택적) */}
+                                    {claudeConnected && (
+                                        <div className="border-t border-zinc-800 p-3 bg-zinc-900/50">
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Claude에게 직접 질문하기..."
+                                                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-orange-500/50"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' && !e.shiftKey && claudePluginRef.current) {
+                                                            const input = e.currentTarget.value.trim()
+                                                            if (input) {
+                                                                claudePluginRef.current.ask(input)
+                                                                e.currentTarget.value = ''
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        const input = document.querySelector<HTMLInputElement>('[placeholder="Claude에게 직접 질문하기..."]')
+                                                        if (input && input.value.trim() && claudePluginRef.current) {
+                                                            claudePluginRef.current.ask(input.value.trim())
+                                                            input.value = ''
+                                                        }
+                                                    }}
+                                                    disabled={claudeLoading}
+                                                    className="p-2 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-700 rounded-lg transition-colors"
+                                                >
+                                                    {claudeLoading ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                                    ) : (
+                                                        <Send className="w-4 h-4 text-white" />
+                                                    )}
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-zinc-600 mt-1.5 text-center">
+                                                코드 선택 후 질문하면 해당 코드에 대해 답변합니다
                                             </p>
                                         </div>
                                     )}

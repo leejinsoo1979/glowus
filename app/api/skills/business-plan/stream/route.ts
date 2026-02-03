@@ -3,10 +3,52 @@ import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDevMode, DEV_USER } from '@/lib/dev-user'
 import { createClient } from '@/lib/supabase/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { repoRun } from '@/lib/neural-map/tools/terminal-tools'
+import { randomUUID } from 'crypto'
+import { writeFileSync, readFileSync, existsSync, unlinkSync } from 'fs'
+import { join } from 'path'
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
-const getGeminiModel = () => genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+// Claude Code CLI로 LLM 호출
+async function callClaudeCLI(prompt: string): Promise<string> {
+  const tempDir = '/tmp'
+  const tempId = randomUUID()
+  const promptFile = join(tempDir, `bp-prompt-${tempId}.txt`)
+  const outputFile = join(tempDir, `bp-output-${tempId}.txt`)
+
+  try {
+    writeFileSync(promptFile, prompt, 'utf-8')
+
+    const result = await repoRun({
+      command: `claude --model claude-opus-4-5-20251101 --print "$(cat ${promptFile})" > ${outputFile}`,
+      timeout: 300000,
+      cwd: tempDir,
+    })
+
+    if (existsSync(outputFile)) {
+      const output = readFileSync(outputFile, 'utf-8')
+      cleanup(promptFile, outputFile)
+      return output
+    }
+
+    if (result.stdout) {
+      cleanup(promptFile, outputFile)
+      return result.stdout
+    }
+
+    throw new Error('Claude Code CLI 응답 없음')
+  } catch (error) {
+    cleanup(promptFile, outputFile)
+    throw error
+  }
+}
+
+function cleanup(...files: string[]) {
+  for (const file of files) {
+    try {
+      if (existsSync(file)) unlinkSync(file)
+    } catch { /* ignore */ }
+  }
+}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -638,10 +680,9 @@ export async function POST(request: NextRequest) {
         send({ type: 'plan_created', business_plan_id: businessPlan.id })
 
         const sections: Record<string, any> = {}
-        const model = getGeminiModel()
         const totalSections = templateSections.length
 
-        // 각 섹션별 스트리밍 생성
+        // 각 섹션별 생성 (Claude Code CLI 사용)
         for (let i = 0; i < templateSections.length; i++) {
           const sectionDef = templateSections[i]
 
@@ -654,7 +695,7 @@ export async function POST(request: NextRequest) {
             progress: Math.round(((i) / totalSections) * 100)
           })
 
-          // 지식베이스 기반 프롬프트 생성 (generate API와 동일)
+          // 지식베이스 기반 프롬프트 생성
           const sectionPrompt = buildSectionPrompt(
             sectionDef.key,
             companyContext,
@@ -666,22 +707,8 @@ export async function POST(request: NextRequest) {
           const fullPrompt = `${BUSINESS_PLAN_SYSTEM_PROMPT}\n\n${sectionPrompt}`
 
           try {
-            // 스트리밍으로 생성
-            const result = await model.generateContentStream(fullPrompt)
-            let fullContent = ''
-
-            for await (const chunk of result.stream) {
-              const text = chunk.text()
-              if (text) {
-                fullContent += text
-                send({
-                  type: 'section_chunk',
-                  section_key: sectionDef.key,
-                  chunk: text,
-                  full_content: fullContent
-                })
-              }
-            }
+            // Claude Code CLI로 생성
+            const fullContent = await callClaudeCLI(fullPrompt)
 
             // 데이터 부족 경고 추출
             const dataNeededMatches = fullContent.match(/\[.*?필요\]/g) || []

@@ -2,11 +2,27 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Settings, Link2, Palette, Bell, Shield, Loader2, Key, MessageSquareText } from 'lucide-react'
+import { Settings, Link2, Palette, Bell, Shield, Loader2, Key, MessageSquareText, BarChart3, Bot } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 
 const settingsSections = [
+  {
+    id: 'jarvis',
+    name: 'Jarvis 페르소나',
+    description: '자비스가 당신을 어떻게 부를지, 성격과 말투를 설정',
+    icon: Bot,
+    href: '/dashboard-group/settings/jarvis',
+    color: 'bg-blue-500/10 text-blue-500'
+  },
+  {
+    id: 'usage',
+    name: 'API 사용량',
+    description: '실시간 API 사용량 및 비용 모니터링',
+    icon: BarChart3,
+    href: '/dashboard-group/settings/usage',
+    color: 'bg-emerald-500/10 text-emerald-500'
+  },
   {
     id: 'api-keys',
     name: 'API 키 관리',

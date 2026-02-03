@@ -1,212 +1,138 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
+import { generateSlideStructure, type GeneratedPresentation } from '@/lib/slide-engine/content-service'
 
-// Slide structure types
-interface SlideContent {
-    id: string
-    type: string
-    title: string
-    subtitle?: string
-    content: any
-}
+/**
+ * 슬라이드 생성 API
+ *
+ * Claude Code 터미널을 통해 슬라이드 콘텐츠를 생성합니다.
+ * 실패 시 OpenAI로 폴백합니다.
+ */
 
 interface GenerateRequest {
     prompt: string
     slideCount?: number
     businessType?: string
     purpose?: string
+    theme?: string
+    language?: string
 }
 
+// 슬라이드 타입별 템플릿 (fallback용)
 const SLIDE_TEMPLATES = {
-    cover: {
-        type: 'cover',
-        promptKey: '표지',
-        fields: ['title', 'subtitle', 'tagline', 'presenter', 'date']
-    },
-    problem: {
-        type: 'problem',
-        promptKey: '문제 정의',
-        fields: ['issues', 'targetCustomer', 'opportunity']
-    },
-    solution: {
-        type: 'solution',
-        promptKey: '솔루션',
-        fields: ['mainDesc', 'features']
-    },
-    market: {
-        type: 'market',
-        promptKey: '시장 기회',
-        fields: ['tam', 'sam', 'som', 'cagr']
-    },
-    'business-model': {
-        type: 'business-model',
-        promptKey: '비즈니스 모델',
-        fields: ['model', 'pricing', 'metrics']
-    },
-    product: {
-        type: 'product',
-        promptKey: '제품/서비스',
-        fields: ['architecture', 'screenshots', 'performance', 'status']
-    },
-    competition: {
-        type: 'competition',
-        promptKey: '경쟁 분석',
-        fields: ['competitors', 'comparison', 'positioning', 'moat']
-    },
-    gtm: {
-        type: 'gtm',
-        promptKey: '시장 진입 전략',
-        fields: ['icp', 'salesMotion', 'channels', 'pipeline']
-    },
-    marketing: {
-        type: 'marketing',
-        promptKey: '마케팅 전략',
-        fields: ['channels', 'message', 'budget', 'kpi']
-    },
-    team: {
-        type: 'team',
-        promptKey: '팀 소개',
-        fields: ['founders', 'keyMembers', 'advisors', 'hiringPlan']
-    },
-    roadmap: {
-        type: 'roadmap',
-        promptKey: '로드맵',
-        fields: ['milestones', 'risks']
-    },
-    revenue: {
-        type: 'revenue',
-        promptKey: '매출 전망',
-        fields: ['projections', 'assumptions']
-    },
-    financials: {
-        type: 'financials',
-        promptKey: '재무 계획',
-        fields: ['summary', 'costs', 'runway', 'useOfFunds']
-    },
-    investment: {
-        type: 'investment',
-        promptKey: '투자 제안',
-        fields: ['round', 'valuation', 'terms', 'progress']
-    },
-    contact: {
-        type: 'contact',
-        promptKey: '연락처',
-        fields: ['name', 'email', 'phone', 'website', 'dataroom']
-    }
+    cover: { type: 'cover', promptKey: '표지' },
+    problem: { type: 'problem', promptKey: '문제 정의' },
+    solution: { type: 'solution', promptKey: '솔루션' },
+    market: { type: 'market', promptKey: '시장 기회' },
+    'business-model': { type: 'business-model', promptKey: '비즈니스 모델' },
+    product: { type: 'product', promptKey: '제품/서비스' },
+    competition: { type: 'competition', promptKey: '경쟁 분석' },
+    gtm: { type: 'gtm', promptKey: '시장 진입 전략' },
+    marketing: { type: 'marketing', promptKey: '마케팅 전략' },
+    team: { type: 'team', promptKey: '팀 소개' },
+    roadmap: { type: 'roadmap', promptKey: '로드맵' },
+    revenue: { type: 'revenue', promptKey: '매출 전망' },
+    financials: { type: 'financials', promptKey: '재무 계획' },
+    investment: { type: 'investment', promptKey: '투자 제안' },
+    contact: { type: 'contact', promptKey: '연락처' }
 }
 
 export async function POST(request: NextRequest) {
     try {
         const body: GenerateRequest = await request.json()
-        const { prompt, slideCount = 15, businessType = 'IT 스타트업', purpose = '투자 유치' } = body
+        const {
+            prompt,
+            slideCount = 15,
+            businessType = 'IT 스타트업',
+            purpose = '투자 유치',
+            theme = 'modern',
+            language = 'ko'
+        } = body
 
-        const apiKey = process.env.XAI_API_KEY
-        if (!apiKey) {
-            return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
-        }
+        console.log('[Slides API] 🚀 Generating slides via Claude Code Terminal...')
+        console.log(`  - Prompt: ${prompt.substring(0, 100)}...`)
+        console.log(`  - Slide count: ${slideCount}`)
+        console.log(`  - Theme: ${theme}`)
 
-        // Generate slide outline first
-        const outlinePrompt = `당신은 전문 사업계획서 작성 전문가입니다.
-다음 요청에 맞는 ${slideCount}장의 사업계획서 슬라이드를 JSON 형식으로 생성해주세요.
+        // 프롬프트에 비즈니스 컨텍스트 추가
+        const enrichedPrompt = `${prompt}
 
-요청: ${prompt}
 사업 분야: ${businessType}
 목적: ${purpose}
 
-각 슬라이드는 다음 형식을 따라야 합니다:
-{
-    "slides": [
-        {
-            "id": "1",
-            "type": "cover|problem|solution|market|business-model|product|competition|gtm|marketing|team|roadmap|revenue|financials|investment|contact",
-            "title": "슬라이드 제목",
-            "subtitle": "부제목 (선택)",
-            "content": {
-                // type에 따른 구체적인 콘텐츠
+다음 슬라이드 타입들을 적절히 활용하세요:
+- cover (표지)
+- problem (문제 정의)
+- solution (솔루션)
+- market (시장 기회 - TAM/SAM/SOM)
+- business-model (비즈니스 모델)
+- product (제품/서비스)
+- competition (경쟁 분석)
+- team (팀 소개)
+- roadmap (로드맵)
+- financials (재무 계획)
+- investment (투자 제안)
+- contact (연락처)
+
+각 슬라이드는 전문적이고 구체적인 내용으로 작성해주세요.
+아이콘은 이모지를 사용하세요.`
+
+        // 🔥 Claude Code 터미널로 슬라이드 생성 (content-service.ts)
+        const presentation = await generateSlideStructure(
+            enrichedPrompt,
+            slideCount,
+            theme,
+            language
+        )
+
+        // 슬라이드 형식 변환 (프론트엔드 호환)
+        const formattedSlides = presentation.slides.map((slide, index) => ({
+            id: String(index + 1),
+            type: slide.layout === 'title' ? 'cover' :
+                  slide.layout === 'conclusion' ? 'contact' :
+                  slide.layout || 'content',
+            title: slide.title,
+            subtitle: slide.subtitle,
+            content: {
+                ...(slide.content && { points: slide.content }),
+                ...(slide.points && { points: slide.points }),
+                ...(slide.notes && { notes: slide.notes }),
+                ...(slide.imagePrompt && { imagePrompt: slide.imagePrompt }),
             }
-        }
-    ]
-}
+        }))
 
-type별 content 구조:
-- cover: { tagline: string, presenter: string, date: string }
-- problem: { issues: [{icon: string, title: string, desc: string}], targetCustomer: string, opportunity: string }
-- solution: { mainDesc: string, features: [{icon: string, title: string, desc: string}] }
-- market: { tam: {value: string, label: string, desc: string}, sam: {...}, som: {...}, cagr: string }
-- business-model: { model: string, pricing: [{tier: string, price: string, features: string[]}], metrics: {arpu: string, ltv: string, cac: string} }
-- product: { architecture: string, screenshots: string[], performance: string, status: string }
-- competition: { competitors: string[], comparison: [{criteria: string, us: string, them: string}], positioning: string, moat: string }
-- gtm: { icp: string, salesMotion: string, channels: string[], pipeline: string }
-- marketing: { channels: string[], message: string, budget: string, kpi: string }
-- team: { founders: [{name: string, role: string, background: string}], advisors: string[], hiringPlan: string }
-- roadmap: { milestones: [{period: string, items: string[]}], risks: string }
-- revenue: { projections: [{year: string, revenue: string}], assumptions: string[] }
-- financials: { summary: string, costs: {category: string, percentage: string}[], runway: string, useOfFunds: string }
-- investment: { round: string, amount: string, valuation: string, terms: string, progress: string }
-- contact: { name: string, title: string, email: string, phone: string, website: string }
+        console.log(`[Slides API] ✅ Generated ${formattedSlides.length} slides via Claude Code`)
 
-실제 사업계획서에 사용할 수 있는 구체적이고 현실적인 내용을 작성해주세요.
-아이콘은 이모지를 사용하세요.
-JSON만 출력하세요.`
-
-        const response = await fetch('https://api.x.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-                model: 'grok-3-mini',
-                messages: [
-                    { role: 'system', content: '당신은 전문 사업계획서 작성 전문가입니다. 요청에 맞는 고품질 슬라이드 콘텐츠를 JSON 형식으로 생성합니다.' },
-                    { role: 'user', content: outlinePrompt }
-                ],
-                temperature: 0.7,
-            }),
+        return NextResponse.json({
+            success: true,
+            slides: formattedSlides,
+            totalSlides: formattedSlides.length,
+            presentationTitle: presentation.title,
+            presentationSubtitle: presentation.subtitle,
+            theme: presentation.theme,
+            generatedBy: 'claude-code-terminal'
         })
 
-        if (!response.ok) {
-            const error = await response.text()
-            console.error('[Slides API] Grok error:', error)
-            return NextResponse.json({ error: 'Failed to generate slides' }, { status: 500 })
-        }
-
-        const data = await response.json()
-        let content = data.choices?.[0]?.message?.content || ''
-
-        // Parse JSON from response
-        try {
-            // Extract JSON from markdown code blocks if present
-            const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/)
-            if (jsonMatch) {
-                content = jsonMatch[1].trim()
-            }
-
-            const slidesData = JSON.parse(content)
-            return NextResponse.json({
-                success: true,
-                slides: slidesData.slides,
-                totalSlides: slidesData.slides?.length || 0
-            })
-        } catch (parseError) {
-            console.error('[Slides API] JSON parse error:', parseError)
-            // Return sample slides as fallback
-            return NextResponse.json({
-                success: true,
-                slides: generateFallbackSlides(businessType, purpose, slideCount),
-                totalSlides: slideCount,
-                fallback: true
-            })
-        }
     } catch (error) {
-        console.error('[Slides API] Error:', error)
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+        console.error('[Slides API] ❌ Error:', error)
+
+        // 완전 실패 시 기본 슬라이드 반환
+        const body = await request.clone().json().catch(() => ({}))
+        const { businessType = 'IT 스타트업', purpose = '투자 유치', slideCount = 15 } = body as GenerateRequest
+
+        return NextResponse.json({
+            success: true,
+            slides: generateFallbackSlides(businessType, purpose, slideCount),
+            totalSlides: slideCount,
+            fallback: true,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        })
     }
 }
 
-// Fallback slide generator
-function generateFallbackSlides(businessType: string, purpose: string, count: number): SlideContent[] {
-    const slides: SlideContent[] = [
+// Fallback 슬라이드 생성기
+function generateFallbackSlides(businessType: string, purpose: string, count: number) {
+    const slides = [
         {
             id: '1',
             type: 'cover',
@@ -276,7 +202,7 @@ function generateFallbackSlides(businessType: string, purpose: string, count: nu
         }
     ]
 
-    // Add more slides based on count
+    // 추가 슬라이드
     const additionalTypes = ['product', 'competition', 'gtm', 'marketing', 'team', 'roadmap', 'revenue', 'financials', 'investment', 'contact']
 
     for (let i = slides.length; i < Math.min(count, slides.length + additionalTypes.length); i++) {

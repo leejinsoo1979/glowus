@@ -8,6 +8,7 @@ import {
   FileOutput,
   Settings,
   GitBranch,
+  GitFork,
   Code,
   Brain,
   Clock,
@@ -15,6 +16,28 @@ import {
   Bell,
   ChevronDown,
   Search,
+  Webhook,
+  Calendar,
+  CalendarDays,
+  Sparkles,
+  Braces,
+  Type,
+  Calculator,
+  List,
+  PenLine,
+  Repeat,
+  Hourglass,
+  AlertTriangle,
+  Merge,
+  Split,
+  Layers,
+  Sheet,
+  File,
+  MessageSquare,
+  MessageCircle,
+  Send,
+  Mail,
+  Reply,
 } from "lucide-react"
 import { NODE_CONFIGS } from "@/lib/workflow"
 
@@ -24,22 +47,47 @@ const iconMap: Record<string, React.ReactNode> = {
   FileOutput: <FileOutput className="w-4 h-4" />,
   Settings: <Settings className="w-4 h-4" />,
   GitBranch: <GitBranch className="w-4 h-4" />,
+  GitFork: <GitFork className="w-4 h-4" />,
   Code: <Code className="w-4 h-4" />,
   Brain: <Brain className="w-4 h-4" />,
   Clock: <Clock className="w-4 h-4" />,
   Globe: <Globe className="w-4 h-4" />,
   Bell: <Bell className="w-4 h-4" />,
+  Webhook: <Webhook className="w-4 h-4" />,
+  Calendar: <Calendar className="w-4 h-4" />,
+  CalendarDays: <CalendarDays className="w-4 h-4" />,
+  Sparkles: <Sparkles className="w-4 h-4" />,
+  Braces: <Braces className="w-4 h-4" />,
+  Type: <Type className="w-4 h-4" />,
+  Calculator: <Calculator className="w-4 h-4" />,
+  List: <List className="w-4 h-4" />,
+  PenLine: <PenLine className="w-4 h-4" />,
+  Repeat: <Repeat className="w-4 h-4" />,
+  Hourglass: <Hourglass className="w-4 h-4" />,
+  AlertTriangle: <AlertTriangle className="w-4 h-4" />,
+  Merge: <Merge className="w-4 h-4" />,
+  Split: <Split className="w-4 h-4" />,
+  Layers: <Layers className="w-4 h-4" />,
+  Sheet: <Sheet className="w-4 h-4" />,
+  File: <File className="w-4 h-4" />,
+  MessageSquare: <MessageSquare className="w-4 h-4" />,
+  MessageCircle: <MessageCircle className="w-4 h-4" />,
+  Send: <Send className="w-4 h-4" />,
+  Mail: <Mail className="w-4 h-4" />,
+  Reply: <Reply className="w-4 h-4" />,
 }
 
 const categoryLabels: Record<string, string> = {
   input: "입력",
+  ai: "AI",
+  data: "데이터 변환",
   process: "처리",
-  output: "출력",
-  control: "제어",
+  control: "제어 흐름",
   integration: "통합",
+  output: "출력",
 }
 
-const categoryOrder = ["input", "process", "control", "integration", "output"]
+const categoryOrder = ["input", "ai", "data", "process", "control", "integration", "output"]
 
 interface NodeLibraryProps {
   onDragStart: (event: React.DragEvent, nodeType: string) => void
@@ -70,11 +118,18 @@ function NodeLibraryComponent({ onDragStart }: NodeLibraryProps) {
     }))
   }
 
+  const totalNodes = NODE_CONFIGS.length
+
   return (
     <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-100 mb-3">노드 라이브러리</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-zinc-100">노드 라이브러리</h2>
+          <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
+            {totalNodes}개
+          </span>
+        </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
@@ -96,7 +151,12 @@ function NodeLibraryComponent({ onDragStart }: NodeLibraryProps) {
               onClick={() => toggleCategory(category)}
               className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700/50 transition-colors"
             >
-              <span>{label}</span>
+              <div className="flex items-center gap-2">
+                <span>{label}</span>
+                <span className="text-[10px] text-zinc-500">
+                  {nodes.length}
+                </span>
+              </div>
               <ChevronDown
                 className={`w-4 h-4 transition-transform ${
                   expandedCategories[category] ? "" : "-rotate-90"
@@ -133,12 +193,17 @@ function NodeLibraryComponent({ onDragStart }: NodeLibraryProps) {
                       style={{ backgroundColor: `${config.color}20` }}
                     >
                       <div style={{ color: config.color }}>
-                        {iconMap[config.icon]}
+                        {iconMap[config.icon] || <Settings className="w-4 h-4" />}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-zinc-200">
+                      <div className="text-xs font-medium text-zinc-200 flex items-center gap-1">
                         {config.label}
+                        {config.beta && (
+                          <span className="text-[8px] text-yellow-500 bg-yellow-500/10 px-1 rounded">
+                            BETA
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-zinc-500 truncate">
                         {config.description}

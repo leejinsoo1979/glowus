@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import Anthropic from '@anthropic-ai/sdk'
+// ⚠️ Anthropic API 사용 금지 - Claude Code CLI (Max 플랜 OAuth)로만 사용
+// import Anthropic from '@anthropic-ai/sdk'
 
 /**
  * AI Vision Analysis API
@@ -97,34 +98,18 @@ export async function POST(request: NextRequest) {
                 }
               }
             } else if (model.startsWith('claude')) {
-              // Anthropic Claude Vision
-              const anthropic = new Anthropic({
-                apiKey: process.env.ANTHROPIC_API_KEY
-              })
+              // ⚠️ Anthropic API 사용 금지 - GPT-4o로 fallback
+              console.warn('[Vision] Anthropic API 사용 금지 - GPT-4o로 fallback')
 
-              // Base64 데이터 추출
-              const base64Match = imageDataUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/)
-              if (!base64Match) {
-                throw new Error('Invalid image data URL format')
-              }
-
-              const mediaType = `image/${base64Match[1]}` as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
-              const base64Data = base64Match[2]
-
-              const response = await anthropic.messages.stream({
-                model: 'claude-3-5-sonnet-20241022',
-                max_tokens: 2048,
+              const stream = await openai.chat.completions.create({
+                model: 'gpt-4o',
                 messages: [
                   {
                     role: 'user',
                     content: [
                       {
-                        type: 'image',
-                        source: {
-                          type: 'base64',
-                          media_type: mediaType,
-                          data: base64Data
-                        }
+                        type: 'image_url',
+                        image_url: { url: imageDataUrl }
                       },
                       {
                         type: 'text',
@@ -132,12 +117,15 @@ export async function POST(request: NextRequest) {
                       }
                     ]
                   }
-                ]
+                ],
+                max_tokens: 2048,
+                stream: true,
               })
 
-              for await (const event of response) {
-                if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-                  controller.enqueue(encoder.encode(event.delta.text))
+              for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content
+                if (content) {
+                  controller.enqueue(encoder.encode(content))
                 }
               }
             }
@@ -190,32 +178,18 @@ export async function POST(request: NextRequest) {
 
       analysisResult = response.choices[0]?.message?.content || ''
     } else if (model.startsWith('claude')) {
-      const anthropic = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY
-      })
+      // ⚠️ Anthropic API 사용 금지 - GPT-4o로 fallback
+      console.warn('[Vision] Anthropic API 사용 금지 - GPT-4o로 fallback')
 
-      const base64Match = imageDataUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/)
-      if (!base64Match) {
-        throw new Error('Invalid image data URL format')
-      }
-
-      const mediaType = `image/${base64Match[1]}` as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
-      const base64Data = base64Match[2]
-
-      const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2048,
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
         messages: [
           {
             role: 'user',
             content: [
               {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: base64Data
-                }
+                type: 'image_url',
+                image_url: { url: imageDataUrl }
               },
               {
                 type: 'text',
@@ -223,11 +197,11 @@ export async function POST(request: NextRequest) {
               }
             ]
           }
-        ]
+        ],
+        max_tokens: 2048,
       })
 
-      const textContent = response.content.find(c => c.type === 'text')
-      analysisResult = textContent && 'text' in textContent ? textContent.text : ''
+      analysisResult = completion.choices[0]?.message?.content || ''
     }
 
     return NextResponse.json({

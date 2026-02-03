@@ -1,40 +1,35 @@
 /**
- * Jarvis Server - 완전한 대화형 Claude Code + PC 제어
+ * Jarvis Server - Claude Code CLI PTY 대화형 모드
  *
- * 기능:
- * 1. PTY 기반 실시간 대화형 Claude Code 세션
- * 2. 도구 실행 전 권한 승인 요청 → 웹 UI
- * 3. GlowUS 앱 제어
- * 4. PC 제어 (앱 실행, 파일, 시스템)
+ * 도구 사용 가능 (파일 읽기/쓰기, 웹 검색 등)
+ * Max 플랜 OAuth 사용
  */
 
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
-const os = require('os');
-const { spawn, exec } = require('child_process');
 
 const PORT = process.env.JARVIS_PORT || 3098;
 const CLAUDE_PATH = process.env.CLAUDE_PATH || '/opt/homebrew/bin/claude';
 
 const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
 
-console.log(`[Jarvis] Starting on port ${PORT}...`);
+console.log(`[Jarvis] Starting PTY mode server on port ${PORT}...`);
 
-// 연결된 클라이언트
-const clients = new Map(); // ws -> { type, ptyProcess, pendingPermissions }
-
-// 권한 요청 대기열
-const pendingPermissions = new Map(); // requestId -> { ws, resolve, reject, timeout }
+const clients = new Map();
 
 wss.on('connection', (ws) => {
-  console.log('[Jarvis] New connection');
+  console.log('[Jarvis] Client connected');
 
   const client = {
-    type: 'unknown',
-    ptyProcess: null,
-    sessionId: null,
+    pty: null,
+    persona: null,
+    userName: null,
     cwd: process.env.HOME,
-    pendingPermissions: new Map(),
+    initialized: false,
+    waitingForResponse: false,
+    responseBuffer: '',
+    initBuffer: '',
+    lastActivity: Date.now(),
   };
 
   clients.set(ws, client);
@@ -49,294 +44,340 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log('[Jarvis] Connection closed');
-    cleanup(ws, client);
+    console.log('[Jarvis] Client disconnected');
+    if (client.pty) {
+      client.pty.kill();
+    }
+    clients.delete(ws);
   });
 
   ws.on('error', (err) => {
     console.error('[Jarvis] WebSocket error:', err);
-    cleanup(ws, client);
   });
 });
 
-/**
- * 메시지 핸들러
- */
 function handleMessage(ws, client, msg) {
   console.log('[Jarvis] Received:', msg.type);
 
   switch (msg.type) {
-    // ===== Claude Code 세션 =====
     case 'start':
-      startClaudeSession(ws, client, msg);
+      startSession(ws, client, msg);
+      break;
+
+    case 'message':
+      // 완성된 메시지 전송 (엔터 포함)
+      if (msg.content && client.pty) {
+        sendMessage(ws, client, msg.content);
+      }
       break;
 
     case 'input':
-      // 사용자 입력을 PTY에 전송
-      if (client.ptyProcess) {
-        client.ptyProcess.write(msg.data);
+      // raw 키보드 입력 (그대로 PTY에 전달)
+      console.log('[Jarvis] Input received, hasPTY:', !!client.pty, 'data:', msg.data?.substring(0, 50));
+      if (msg.data && client.pty) {
+        // 엔터(\r)가 포함되면 메시지 전송으로 처리
+        if (msg.data.includes('\r') || msg.data.includes('\n')) {
+          const content = msg.data.replace(/[\r\n]+$/, '');
+          console.log('[Jarvis] Has newline, content:', content.substring(0, 50));
+          if (content.trim()) {
+            sendMessage(ws, client, content);
+          } else {
+            client.pty.write(msg.data);
+          }
+        } else {
+          client.pty.write(msg.data);
+        }
+      } else if (!client.pty) {
+        console.log('[Jarvis] No PTY for input');
+        safeSend(ws, { type: 'error', error: 'PTY가 없습니다.' });
       }
       break;
 
     case 'resize':
-      if (client.ptyProcess) {
-        client.ptyProcess.resize(msg.cols || 120, msg.rows || 30);
+      if (client.pty && msg.cols && msg.rows) {
+        client.pty.resize(msg.cols, msg.rows);
+        console.log('[Jarvis] Resized:', msg.cols, 'x', msg.rows);
       }
       break;
 
     case 'stop':
-      // Ctrl+C 전송
-      if (client.ptyProcess) {
-        client.ptyProcess.write('\x03');
+      if (client.pty) {
+        client.pty.write('\x03'); // Ctrl+C
+        client.waitingForResponse = false;
+        safeSend(ws, { type: 'stopped' });
       }
       break;
 
     case 'close':
-      cleanup(ws, client);
+      if (client.pty) {
+        client.pty.kill();
+        client.pty = null;
+        client.initialized = false;
+      }
       safeSend(ws, { type: 'closed' });
       break;
 
-    // ===== 권한 응답 =====
-    case 'permission-response':
-      handlePermissionResponse(ws, client, msg);
+    case 'register_browser':
+      console.log('[Jarvis] Browser registered! Total browsers:', Array.from(clients.values()).filter(c => c.isBrowser).length + 1);
+      client.isBrowser = true;
+      safeSend(ws, { type: 'registered' });
       break;
 
-    // ===== GlowUS 제어 =====
-    case 'glowus-navigate':
-      // GlowUS 페이지 이동 요청 (프론트엔드에서 처리)
-      safeSend(ws, { type: 'glowus-action', action: 'navigate', path: msg.path });
+    case 'browser_control':
+      // MCP에서 보낸 브라우저 제어 명령 → 등록된 브라우저들에게 전달
+      console.log('[Jarvis] Browser control:', msg.action, msg.route || msg.data);
+      const browserCount = Array.from(clients.values()).filter(c => c.isBrowser).length;
+      console.log('[Jarvis] Registered browsers:', browserCount);
+      broadcastToBrowsers({
+        type: 'control',
+        action: msg.action,
+        route: msg.route,
+        data: msg.data,
+      });
       break;
 
-    // ===== PC 제어 =====
-    case 'pc-command':
-      executePCCommand(ws, client, msg);
+    case 'workflow_control':
+      // 워크플로우 빌더 제어 명령
+      console.log('[Jarvis] Workflow control:', msg.action, msg.nodeType || msg.nodeId);
+      broadcastToBrowsers({
+        type: 'workflow_control',
+        action: msg.action,
+        nodeType: msg.nodeType,
+        nodeId: msg.nodeId,
+        position: msg.position,
+        data: msg.data,
+        sourceId: msg.sourceId,
+        targetId: msg.targetId,
+        sourceHandle: msg.sourceHandle,
+        targetHandle: msg.targetHandle,
+      });
       break;
   }
 }
 
-/**
- * Claude Code 대화형 세션 시작 (PTY)
- */
-function startClaudeSession(ws, client, options) {
-  if (client.ptyProcess) {
-    client.ptyProcess.kill();
-  }
-
-  // cwd 처리: '~'는 홈 디렉토리로 변환, 없으면 홈 디렉토리 사용
-  let cwd = options.cwd || process.env.HOME;
-  if (cwd === '~' || cwd.startsWith('~/')) {
-    cwd = cwd.replace(/^~/, process.env.HOME);
-  }
-  client.cwd = cwd;
-
-  console.log('[Jarvis] Starting Claude session in:', cwd);
-
-  // Claude Code를 PTY로 실행 (대화형 모드)
-  const args = [];
-
-  // 세션 재개
-  if (options.sessionId) {
-    args.push('--resume', options.sessionId);
-  }
-
-  // 권한 모드: 도구 실행 전 확인 요청
-  // bypassPermissions로 시작하고, 권한 요청은 출력 파싱으로 처리
-
-  // 환경변수 설정 (ANTHROPIC_API_KEY 제거 - Max 플랜 OAuth 사용)
-  const env = { ...process.env };
-  delete env.ANTHROPIC_API_KEY;
-  env.TERM = 'xterm-256color';
-  env.COLORTERM = 'truecolor';
-
-  client.ptyProcess = pty.spawn(CLAUDE_PATH, args, {
-    name: 'xterm-256color',
-    cols: options.cols || 120,
-    rows: options.rows || 30,
-    cwd: cwd,
-    env: env,
-  });
-
-  console.log('[Jarvis] Claude PID:', client.ptyProcess.pid);
-
-  // 출력 버퍼 (권한 요청 감지용)
-  let outputBuffer = '';
-
-  // PTY 출력 → WebSocket + 권한 요청 감지
-  client.ptyProcess.onData((data) => {
-    // 디버그: 출력 내용 로깅
-    console.log('[Jarvis] PTY Output:', JSON.stringify(data.substring(0, 200)));
-
-    // 클라이언트에 출력 전송
-    safeSend(ws, { type: 'output', data });
-
-    // 권한 요청 감지
-    outputBuffer += data;
-
-    // 권한 요청 패턴 감지 (Claude Code의 도구 승인 프롬프트)
-    detectPermissionRequest(ws, client, outputBuffer);
-
-    // 버퍼 크기 제한 (최근 2000자만 유지)
-    if (outputBuffer.length > 2000) {
-      outputBuffer = outputBuffer.slice(-2000);
-    }
-  });
-
-  client.ptyProcess.onExit(({ exitCode, signal }) => {
-    console.log('[Jarvis] Claude exited:', exitCode, signal);
-    safeSend(ws, { type: 'exit', exitCode, signal });
-    client.ptyProcess = null;
-  });
-
-  safeSend(ws, {
-    type: 'started',
-    pid: client.ptyProcess.pid,
-    cwd: cwd
-  });
-}
-
-/**
- * 권한 요청 감지 (Claude Code 출력에서)
- */
-function detectPermissionRequest(ws, client, buffer) {
-  // Claude Code의 권한 요청 패턴들
-  const patterns = [
-    // Bash 명령 실행 요청
-    /Allow\s+(.*?)\s+to run\s+`(.*?)`\?/i,
-    // 파일 쓰기 요청
-    /Allow\s+(.*?)\s+to write to\s+(.*?)\?/i,
-    // 파일 읽기 요청
-    /Allow\s+(.*?)\s+to read\s+(.*?)\?/i,
-    // 일반적인 Yes/No 프롬프트
-    /\[Y\/n\]/i,
-    /\[y\/N\]/i,
-    // 도구 실행 요청 (stream-json의 경우)
-    /"type":\s*"tool_use"/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = buffer.match(pattern);
-    if (match) {
-      const requestId = Date.now().toString();
-
-      // 권한 요청을 웹 UI에 전송
-      safeSend(ws, {
-        type: 'permission-request',
-        requestId,
-        tool: match[1] || 'Claude',
-        action: match[2] || match[0],
-        fullText: buffer.slice(-500), // 최근 500자 컨텍스트
-      });
-
-      // 대기열에 추가
-      client.pendingPermissions.set(requestId, {
-        timestamp: Date.now(),
-      });
-
-      break;
+// 등록된 브라우저들에게 메시지 브로드캐스트
+function broadcastToBrowsers(message) {
+  let sent = 0;
+  for (const [clientWs, clientData] of clients) {
+    if (clientData.isBrowser && clientWs.readyState === 1) {
+      clientWs.send(JSON.stringify(message));
+      sent++;
     }
   }
+  console.log('[Jarvis] Broadcast to', sent, 'browsers');
 }
 
-/**
- * 권한 응답 처리
- */
-function handlePermissionResponse(ws, client, msg) {
-  const { requestId, approved } = msg;
-
-  if (!client.pendingPermissions.has(requestId)) {
-    console.log('[Jarvis] Unknown permission request:', requestId);
+function startSession(ws, client, options) {
+  // 이미 세션이 있고 초기화됨 → 재사용
+  if (client.pty && client.initialized) {
+    client.persona = options.persona || client.persona;
+    client.userName = options.userName || client.userName;
+    console.log('[Jarvis] Session reused, already initialized');
+    safeSend(ws, { type: 'started', cwd: client.cwd, reused: true });
+    // 이미 ready 상태이므로 즉시 ready도 보냄
+    safeSend(ws, { type: 'ready' });
     return;
   }
 
-  client.pendingPermissions.delete(requestId);
-
-  // PTY에 응답 전송
-  if (client.ptyProcess) {
-    if (approved) {
-      // Yes 입력
-      client.ptyProcess.write('y\r');
-    } else {
-      // No 입력
-      client.ptyProcess.write('n\r');
-    }
+  // 기존 PTY 정리
+  if (client.pty) {
+    console.log('[Jarvis] Killing existing PTY');
+    client.pty.kill();
+    client.pty = null;
   }
 
-  console.log('[Jarvis] Permission', approved ? 'granted' : 'denied', 'for', requestId);
-}
+  let cwd = options.cwd || process.env.HOME;
+  if (cwd === '~') cwd = process.env.HOME;
 
-/**
- * PC 명령 실행
- */
-function executePCCommand(ws, client, msg) {
-  const { command, args, requirePermission } = msg;
+  client.cwd = cwd;
+  client.userName = options.userName || 'User';
+  client.persona = options.persona || {};
+  client.initialized = false;
+  client.waitingForResponse = false;
+  client.responseBuffer = '';
+  client.initBuffer = '';
 
-  // 위험한 명령 차단
-  const dangerousPatterns = [
-    /rm\s+-rf\s+\//,
-    /mkfs/,
-    /dd\s+if=/,
-    />\s*\/dev\/sd/,
-    /shutdown/,
-    /reboot/,
-  ];
+  const persona = client.persona;
+  const aiName = persona.name || 'Jarvis';
+  const userTitle = persona.userTitle || '사용자님';
+  const language = persona.language || '한국어';
+  const personality = persona.personality || '';
+  const customInstructions = persona.customInstructions || '';
 
-  const fullCommand = `${command} ${(args || []).join(' ')}`;
+  // 시스템 프롬프트 생성
+  let systemPrompt = `당신의 이름은 "${aiName}"입니다. Claude나 AI라고 하지 마세요.
+사용자를 "${userTitle}"라고 부르세요.
+${language}로 응답하세요.
+친근하고 도움이 되게 대화하세요.
 
-  for (const pattern of dangerousPatterns) {
-    if (pattern.test(fullCommand)) {
-      safeSend(ws, {
-        type: 'pc-command-result',
-        success: false,
-        error: '위험한 명령은 실행할 수 없습니다.',
-      });
-      return;
-    }
+# GlowUS 앱 제어
+GlowUS MCP 도구를 사용하여 앱을 제어하세요:
+
+## 페이지 이동
+glowus_navigate 도구로 페이지 이동:
+- dashboard: 대시보드
+- agent-builder: 워크플로우 빌더
+- agents: 에이전트 목록
+- ai-sheet: AI 시트
+- ai-docs: AI 문서
+- ai-slides: AI 슬라이드
+
+## 워크플로우 빌더 제어
+- workflow_add_node: 노드 추가 (nodeType: trigger, ai, http, code, conditional, output 등)
+- workflow_connect_nodes: 노드 연결 (sourceId, targetId)
+- workflow_remove_node: 노드 삭제
+- workflow_clear: 전체 삭제
+
+## AI 시트 제어
+- glowus_ai_sheet: 스프레드시트 액션 실행 (actions 배열)`;
+
+  if (personality) systemPrompt += `\n성격: ${personality}`;
+
+  if (customInstructions) {
+    const maxLen = 2000;
+    const truncated = customInstructions.length > maxLen
+      ? customInstructions.substring(0, maxLen) + '...'
+      : customInstructions;
+    systemPrompt += `\n${truncated}`;
   }
 
-  // 명령 실행
-  exec(fullCommand, { cwd: client.cwd }, (error, stdout, stderr) => {
-    safeSend(ws, {
-      type: 'pc-command-result',
-      success: !error,
-      stdout,
-      stderr,
-      error: error?.message,
+  console.log('[Jarvis] System prompt length:', systemPrompt.length);
+
+  const cols = options.cols || 120;
+  const rows = options.rows || 30;
+
+  console.log('[Jarvis] Starting PTY:', { cwd, aiName, userTitle, cols, rows });
+
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+
+  const args = ['--system-prompt', systemPrompt];
+
+  let ptyProcess;
+  try {
+    ptyProcess = pty.spawn(CLAUDE_PATH, args, {
+      name: 'xterm-256color',
+      cols: cols,
+      rows: rows,
+      cwd: cwd,
+      env: env,
     });
-  });
-}
-
-/**
- * 정리
- */
-function cleanup(ws, client) {
-  if (client.ptyProcess) {
-    client.ptyProcess.kill();
-    client.ptyProcess = null;
+    console.log('[Jarvis] PTY spawned, pid:', ptyProcess.pid);
+  } catch (err) {
+    console.error('[Jarvis] PTY spawn error:', err);
+    safeSend(ws, { type: 'error', error: 'PTY 스폰 실패: ' + err.message });
+    return;
   }
-  clients.delete(ws);
+
+  client.pty = ptyProcess;
+
+  // 즉시 started 전송
+  safeSend(ws, { type: 'started', cwd: cwd });
+
+  ptyProcess.onData((data) => {
+    client.lastActivity = Date.now();
+    console.log('[Jarvis] PTY data:', data.length, 'bytes');
+
+    // 항상 output 전송
+    safeSend(ws, { type: 'output', data: data });
+
+    // 초기화 체크
+    if (!client.initialized) {
+      client.initBuffer += data;
+
+      // Claude Code 프롬프트 패턴 감지
+      if (client.initBuffer.includes('>') ||
+          client.initBuffer.includes('╭') ||
+          client.initBuffer.includes('?')) {
+        client.initialized = true;
+        console.log('[Jarvis] CLI initialized');
+        safeSend(ws, { type: 'ready' });
+      }
+    }
+
+    // 응답 대기 중일 때 완료 체크
+    if (client.waitingForResponse) {
+      client.responseBuffer += data;
+
+      // 응답 완료 감지: 새 프롬프트 또는 입력 대기 상태
+      const hasNewPrompt =
+        data.includes('\n>') ||
+        data.includes('\n╭') ||
+        data.includes('╭─') ||
+        data.includes('ctrl+g') ||  // Claude Code 입력 대기
+        data.includes('Ctrl+C') ||  // 중단 가능 상태
+        /\n\s*>/.test(data);
+
+      if (hasNewPrompt) {
+        console.log('[Jarvis] Response complete');
+        client.waitingForResponse = false;
+        safeSend(ws, { type: 'done', exitCode: 0 });
+      }
+    }
+  });
+
+  ptyProcess.onExit(({ exitCode, signal }) => {
+    console.log('[Jarvis] PTY exited:', exitCode, signal);
+    client.pty = null;
+    client.initialized = false;
+    safeSend(ws, { type: 'exit', exitCode, signal });
+  });
+
+  // 초기화 타임아웃 (10초)
+  setTimeout(() => {
+    if (!client.initialized && client.pty) {
+      client.initialized = true;
+      console.log('[Jarvis] CLI initialized (timeout fallback)');
+      safeSend(ws, { type: 'ready' });
+    }
+  }, 10000);
 }
 
-/**
- * 안전한 전송
- */
+function sendMessage(ws, client, content) {
+  if (!client.pty) {
+    safeSend(ws, { type: 'error', error: 'CLI not running' });
+    return;
+  }
+
+  console.log('[Jarvis] Sending message:', content.substring(0, 100));
+
+  client.waitingForResponse = true;
+  client.responseBuffer = '';
+
+  // 메시지 전송 + 엔터
+  client.pty.write(content + '\r');
+
+  // 응답 타임아웃 (2분) - 긴 작업을 위해
+  setTimeout(() => {
+    if (client.waitingForResponse) {
+      console.log('[Jarvis] Response timeout (2min)');
+      client.waitingForResponse = false;
+      safeSend(ws, { type: 'done', exitCode: 0, timeout: true });
+    }
+  }, 120000);
+}
+
 function safeSend(ws, data) {
-  if (ws.readyState === 1) { // WebSocket.OPEN
+  if (ws.readyState === 1) {
     ws.send(JSON.stringify(data));
   }
 }
 
 console.log(`[Jarvis] Ready on ws://localhost:${PORT}`);
 
-// 종료 처리
 process.on('SIGINT', () => {
   console.log('\n[Jarvis] Shutting down...');
-  clients.forEach((client, ws) => cleanup(ws, client));
+  for (const [, client] of clients) {
+    if (client.pty) client.pty.kill();
+  }
   wss.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  clients.forEach((client, ws) => cleanup(ws, client));
+  for (const [, client] of clients) {
+    if (client.pty) client.pty.kill();
+  }
   wss.close();
   process.exit(0);
 });

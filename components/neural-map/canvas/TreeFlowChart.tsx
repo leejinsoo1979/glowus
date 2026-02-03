@@ -18,14 +18,40 @@ import {
   ArrowDown,
   ArrowRight,
 } from 'lucide-react'
+// 🔥 react-icons 완전 제거 - lucide-react로 통일 (번들 사이즈 대폭 절약)
 import {
-  BsFiletypePdf, BsFiletypeJsx, BsFiletypeTsx, BsFiletypeJs,
-  BsFiletypeHtml, BsFiletypeCss, BsFiletypeScss, BsFiletypeJson, BsFiletypeMd,
-  BsFiletypePy, BsFiletypeJava, BsFiletypeRb, BsFiletypePhp,
-  BsFiletypeXml, BsFiletypeYml, BsFiletypeSql,
-  BsFileEarmarkCode, BsFileEarmarkText, BsFileEarmarkImage, BsFileEarmarkPlay,
-  BsFileEarmarkZip, BsFileEarmark
-} from 'react-icons/bs'
+  FileText,
+  FileCode,
+  FileJson,
+  FileImage,
+  FileVideo,
+  FileArchive,
+  File,
+} from 'lucide-react'
+
+// 🔥 react-icons → lucide-react 별칭 (기존 코드 호환성)
+const BsFiletypePdf = FileText
+const BsFiletypeJsx = FileCode
+const BsFiletypeTsx = FileCode
+const BsFiletypeJs = FileCode
+const BsFiletypeHtml = FileCode
+const BsFiletypeCss = FileCode
+const BsFiletypeScss = FileCode
+const BsFiletypeJson = FileJson
+const BsFiletypeMd = FileText
+const BsFiletypePy = FileCode
+const BsFiletypeJava = FileCode
+const BsFiletypeRb = FileCode
+const BsFiletypePhp = FileCode
+const BsFiletypeXml = FileJson
+const BsFiletypeYml = FileJson
+const BsFiletypeSql = FileCode
+const BsFileEarmarkCode = FileCode
+const BsFileEarmarkText = FileText
+const BsFileEarmarkImage = FileImage
+const BsFileEarmarkPlay = FileVideo
+const BsFileEarmarkZip = FileArchive
+const BsFileEarmark = File
 
 // Layout direction type
 type LayoutDirection = 'top-down' | 'left-right'

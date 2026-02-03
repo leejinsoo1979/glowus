@@ -25,6 +25,14 @@ import {
   scheduleWorkflowTool,
 } from './workflow-tools'
 
+// n8n/Make 스타일 노드 기반 워크플로우 도구 임포트
+import {
+  buildWorkflowTool,
+  runWorkflowTool,
+  getWorkflowTemplateTool,
+  listNodeTypesTool,
+} from './workflow-builder-tools'
+
 // Claude Code 도구 임포트
 import { createClaudeCodeTool } from '@/lib/agent/claude-code-tool'
 
@@ -92,6 +100,11 @@ export type SuperAgentToolName =
   | 'get_workflow_history'
   | 'use_workflow_template'
   | 'schedule_workflow'
+  // 🔥 n8n/Make 스타일 노드 기반 워크플로우 도구
+  | 'build_workflow'
+  | 'run_workflow'
+  | 'get_workflow_template'
+  | 'list_workflow_nodes'
   // 🔥 브라우저 자동화 도구
   | 'browser_automation'
   // 🔥 Claude Code 위임 도구
@@ -2473,6 +2486,11 @@ export const SUPER_AGENT_TOOLS = {
   get_workflow_history: getWorkflowHistoryTool,
   use_workflow_template: useWorkflowTemplateTool,
   schedule_workflow: scheduleWorkflowTool,
+  // 🔥 n8n/Make 스타일 노드 기반 워크플로우 도구
+  build_workflow: buildWorkflowTool,
+  run_workflow: runWorkflowTool,
+  get_workflow_template: getWorkflowTemplateTool,
+  list_workflow_nodes: listNodeTypesTool,
   // 🔥 브라우저 자동화 도구
   browser_automation: browserAutomationTool,
   // 🔥 Claude Code 위임 도구

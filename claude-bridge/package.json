@@ -1,0 +1,17 @@
+{
+  "name": "claude-bridge",
+  "version": "1.0.0",
+  "description": "Claude Code CLI를 웹에서 사용하기 위한 브릿지 서버",
+  "main": "bridge-server.js",
+  "scripts": {
+    "start": "node bridge-server.js",
+    "dev": "nodemon bridge-server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}

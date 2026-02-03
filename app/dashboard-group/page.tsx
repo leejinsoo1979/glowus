@@ -24,7 +24,9 @@ import {
   Bot,
   Loader2
 } from 'lucide-react'
-import { BsRobot } from 'react-icons/bs'
+
+// 🔥 react-icons 제거 - lucide-react로 통일
+const BsRobot = Bot
 import { useRouter } from 'next/navigation'
 import {
   TiltCard,
@@ -534,33 +536,36 @@ export default function DashboardPage() {
         </motion.div>
 
         {/* Row 4: Git Commits */}
-        <motion.div variants={item} className="col-span-12 md:col-span-6 h-[400px]">
-          <GitCommitsWidget />
+        <motion.div variants={item} className="col-span-12 md:col-span-6 h-[400px] relative z-0 overflow-hidden">
+          <div className="h-full overflow-y-auto rounded-2xl">
+            <GitCommitsWidget />
+          </div>
         </motion.div>
 
-        <motion.div variants={item} className="col-span-12 md:col-span-6 h-[400px]">
+        <motion.div variants={item} className="col-span-12 md:col-span-6 h-[400px] relative z-0">
           <TiltCard className="h-full p-5">
             <TasksChart />
           </TiltCard>
         </motion.div>
 
-        {/* Row 5: Proactive AI Suggestions */}
-        <motion.div variants={item} className="col-span-12 md:col-span-4 h-[400px]">
+        {/* Row 5: Proactive AI Suggestions + Telegram Activity Feed */}
+        <motion.div variants={item} className="col-span-12 md:col-span-4 h-[450px] relative z-0">
           <TiltCard className="h-full overflow-hidden">
             <ProactiveSuggestionPanel maxItems={5} sortBy="priority" />
           </TiltCard>
         </motion.div>
 
-        {/* Row 5 continued: Telegram Work Activity Feed */}
-        <motion.div variants={item} className="col-span-12 md:col-span-8">
-          <TiltCard className="p-5">
-            <div className="mb-4 flex items-center justify-between">
+        <motion.div variants={item} className="col-span-12 md:col-span-8 h-[450px] relative z-0">
+          <TiltCard className="h-full p-5 flex flex-col overflow-hidden">
+            <div className="mb-4 flex items-center justify-between flex-shrink-0">
               <h3 className="text-lg font-medium tracking-tight text-zinc-800 dark:text-white">
                 텔레그램 작업 기록
               </h3>
               <span className="text-xs text-zinc-400 font-mono">ACTIVITY FEED</span>
             </div>
-            <ActivityFeed limit={10} />
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <ActivityFeed limit={10} />
+            </div>
           </TiltCard>
         </motion.div>
 

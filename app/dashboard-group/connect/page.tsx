@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { GrConnect } from 'react-icons/gr'
-import { Plus, Key, CheckCircle, XCircle, ExternalLink } from 'lucide-react'
+import { Plus, Key, CheckCircle, XCircle, ExternalLink, Link2 } from 'lucide-react'
+
+// 🔥 react-icons 제거 - lucide-react로 통일
+const GrConnect = Link2
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 

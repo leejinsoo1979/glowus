@@ -92,7 +92,8 @@ export function isProviderAvailable(provider: LLMProvider): boolean {
 
   switch (provider) {
     case 'anthropic':
-      return !!process.env.ANTHROPIC_API_KEY
+      // ⚠️ Anthropic API 사용 금지 - Claude Code CLI (Max 플랜 OAuth)로만 사용
+      return false
     case 'openai':
       return !!process.env.OPENAI_API_KEY
     case 'grok':

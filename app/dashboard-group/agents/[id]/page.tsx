@@ -110,6 +110,7 @@ import { AgentProfileSidebar } from '@/components/agent-detail/AgentProfileSideb
 
 // 🔧 Tab Components - Lazy loaded (탭 전환 시에만 로드)
 const KnowledgeBaseTab = dynamic(() => import('@/components/agent-detail/tabs/KnowledgeBaseTab').then(m => ({ default: m.KnowledgeBaseTab })), { ssr: false })
+const SkillsTab = dynamic(() => import('@/components/agent-detail/tabs/SkillsTab').then(m => ({ default: m.SkillsTab })), { ssr: false })
 const IntegrationsTab = dynamic(() => import('@/components/agent-detail/tabs/IntegrationsTab').then(m => ({ default: m.IntegrationsTab })), { ssr: false })
 const ApiConnectionsTab = dynamic(() => import('@/components/agent-detail/tabs/ApiConnectionsTab').then(m => ({ default: m.ApiConnectionsTab })), { ssr: false })
 const ChatHistoryView = dynamic(() => import('@/components/agent-detail/tabs/ChatHistoryView').then(m => ({ default: m.ChatHistoryView })), { ssr: false })
@@ -2129,6 +2130,15 @@ export default function AgentProfilePage() {
             },
           }
           break
+        case 'custom_skills':
+          // 커스텀 스킬을 prompt_sections에 추가 저장
+          updateData = {
+            prompt_sections: {
+              ...(agent.prompt_sections || {}),
+              custom_skills: editForm.custom_skills || '',
+            },
+          }
+          break
       }
 
       const res = await fetch(`/api/agents/${agent.id}`, {
@@ -2372,6 +2382,11 @@ export default function AgentProfilePage() {
           {/* Knowledge Base Tab */}
           {activeTab === 'knowledge' && (
             <KnowledgeBaseTab agentId={agentId} isDark={isDark} mounted={mounted} />
+          )}
+
+          {/* Skills Tab */}
+          {activeTab === 'skills' && (
+            <SkillsTab agent={agent} isDark={isDark} />
           )}
 
           {/* Integrations Tab */}

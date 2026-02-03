@@ -27,6 +27,10 @@ import {
   Users2,
   Zap,
   Award,
+  Shield,
+  Lock,
+  Folder,
+  Terminal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { AgentProfile, type AgentProfileData } from '@/components/agent/AgentProfile'
@@ -38,7 +42,7 @@ import { createClient } from '@/lib/supabase/client'
 // Types
 // ============================================
 
-type ProfileTab = 'overview' | 'stats' | 'brain' | 'relations' | 'activities'
+type ProfileTab = 'overview' | 'stats' | 'brain' | 'relations' | 'activities' | 'permissions'
 
 interface TabConfig {
   id: ProfileTab
@@ -69,6 +73,12 @@ const TABS: TabConfig[] = [
     label: '개요',
     icon: User,
     description: '기본 정보 및 통계',
+  },
+  {
+    id: 'permissions',
+    label: '권한',
+    icon: Shield,
+    description: '시스템 접근 권한 관리',
   },
   {
     id: 'activities',
@@ -755,6 +765,385 @@ function RelationsTab({
 }
 
 // ============================================
+// Permissions Tab Content
+// ============================================
+
+function PermissionsTab({
+  agentId,
+  isDark,
+}: {
+  agentId: string
+  isDark: boolean
+}) {
+  const [permissions, setPermissions] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [newDirectory, setNewDirectory] = useState('')
+  const [newApp, setNewApp] = useState('')
+  const [agentRole, setAgentRole] = useState<'jeremy' | 'rachel' | 'amy' | 'antigravity'>('jeremy')
+
+  // Load agent data to get role
+  useEffect(() => {
+    loadAgentData()
+  }, [agentId])
+
+  // Load permissions when role changes
+  useEffect(() => {
+    if (agentRole) {
+      loadPermissions()
+    }
+  }, [agentRole])
+
+  async function loadAgentData() {
+    try {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('agents')
+        .select('name, role')
+        .eq('id', agentId)
+        .single()
+
+      if (data) {
+        // Map agent name to role (you can customize this mapping)
+        const roleMap: Record<string, 'jeremy' | 'rachel' | 'amy' | 'antigravity'> = {
+          'Jeremy': 'jeremy',
+          'Rachel': 'rachel',
+          'Amy': 'amy',
+          'Antigravity': 'antigravity',
+        }
+        const agentData = data as { name: string; role?: string }
+        setAgentRole(roleMap[agentData.name] || 'jeremy')
+      }
+    } catch (error) {
+      console.error('Failed to load agent:', error)
+    }
+  }
+
+  async function loadPermissions() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/agent-permissions?role=${agentRole}`)
+      const data = await res.json()
+      if (data.success) {
+        setPermissions(data.permissions)
+      }
+    } catch (error) {
+      console.error('Failed to load permissions:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function addDirectory() {
+    if (!newDirectory) return
+    try {
+      const res = await fetch('/api/agent-permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: agentRole,
+          type: 'directory',
+          value: newDirectory,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPermissions(data.permissions)
+        setNewDirectory('')
+      }
+    } catch (error) {
+      console.error('Failed to add directory:', error)
+    }
+  }
+
+  async function removeDirectory(dir: string) {
+    try {
+      const res = await fetch('/api/agent-permissions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: agentRole,
+          type: 'directory',
+          value: dir,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPermissions(data.permissions)
+      }
+    } catch (error) {
+      console.error('Failed to remove directory:', error)
+    }
+  }
+
+  async function addApplication() {
+    if (!newApp) return
+    try {
+      const res = await fetch('/api/agent-permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: agentRole,
+          type: 'application',
+          value: newApp,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPermissions(data.permissions)
+        setNewApp('')
+      }
+    } catch (error) {
+      console.error('Failed to add application:', error)
+    }
+  }
+
+  async function removeApplication(app: string) {
+    try {
+      const res = await fetch('/api/agent-permissions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: agentRole,
+          type: 'application',
+          value: app,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPermissions(data.permissions)
+      }
+    } catch (error) {
+      console.error('Failed to remove application:', error)
+    }
+  }
+
+  async function toggleBrowserControl(enabled: boolean) {
+    try {
+      const res = await fetch('/api/agent-permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: agentRole,
+          permissions: { allowBrowserControl: enabled },
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPermissions(data.permissions)
+      }
+    } catch (error) {
+      console.error('Failed to toggle browser control:', error)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    )
+  }
+
+  if (!permissions) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        권한 정보를 불러올 수 없습니다
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Role Info */}
+      <div className={cn(
+        'p-4 rounded-lg border',
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'
+      )}>
+        <div className="flex items-center gap-2 mb-2">
+          <Shield className="w-5 h-5 text-blue-500" />
+          <h3 className="font-semibold">에이전트 역할: {agentRole}</h3>
+        </div>
+        <p className="text-sm opacity-75">
+          이 에이전트의 시스템 접근 권한을 관리합니다
+        </p>
+      </div>
+
+      {/* Directories */}
+      <div className={cn(
+        'p-6 rounded-lg border',
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      )}>
+        <div className="flex items-center gap-2 mb-4">
+          <Folder className="w-5 h-5" />
+          <h3 className="text-lg font-semibold">📁 폴더 접근</h3>
+        </div>
+        <p className="text-sm opacity-75 mb-4">
+          접근 가능한 폴더 목록
+        </p>
+
+        <div className="space-y-2 mb-4">
+          {permissions.allowedDirectories.map((dir: string) => (
+            <div
+              key={dir}
+              className={cn(
+                'flex items-center justify-between p-3 rounded transition',
+                isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              )}
+            >
+              <code className="text-sm flex-1">{dir}</code>
+              <button
+                onClick={() => removeDirectory(dir)}
+                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition text-sm font-medium"
+              >
+                ❌ 제거
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newDirectory}
+            onChange={e => setNewDirectory(e.target.value)}
+            onKeyPress={e => e.key === 'Enter' && addDirectory()}
+            placeholder="/Users/username/Documents"
+            className={cn(
+              'flex-1 px-3 py-2 border rounded',
+              isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'
+            )}
+          />
+          <button
+            onClick={addDirectory}
+            className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition font-medium"
+          >
+            ✅ 추가
+          </button>
+        </div>
+      </div>
+
+      {/* Applications */}
+      <div className={cn(
+        'p-6 rounded-lg border',
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      )}>
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-5 h-5" />
+          <h3 className="text-lg font-semibold">🚀 앱 제어</h3>
+        </div>
+        <p className="text-sm opacity-75 mb-4">
+          실행 가능한 프로그램
+        </p>
+
+        <div className="space-y-2 mb-4">
+          {permissions.allowedApplications.map((app: string) => (
+            <div
+              key={app}
+              className={cn(
+                'flex items-center justify-between p-3 rounded transition',
+                isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              )}
+            >
+              <code className="text-sm flex-1">{app}</code>
+              <button
+                onClick={() => removeApplication(app)}
+                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition text-sm font-medium"
+              >
+                ❌ 제거
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newApp}
+            onChange={e => setNewApp(e.target.value)}
+            onKeyPress={e => e.key === 'Enter' && addApplication()}
+            placeholder="/Applications/Visual Studio Code.app"
+            className={cn(
+              'flex-1 px-3 py-2 border rounded',
+              isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'
+            )}
+          />
+          <button
+            onClick={addApplication}
+            className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition font-medium"
+          >
+            ✅ 추가
+          </button>
+        </div>
+      </div>
+
+      {/* Browser Control */}
+      <div className={cn(
+        'p-6 rounded-lg border',
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      )}>
+        <div className="flex items-center gap-2 mb-4">
+          <Lock className="w-5 h-5" />
+          <h3 className="text-lg font-semibold">🌐 브라우저 제어</h3>
+        </div>
+
+        <div className="flex items-center gap-4 mb-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={permissions.allowBrowserControl}
+              onChange={e => toggleBrowserControl(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span>브라우저 자동화 허용</span>
+          </label>
+        </div>
+
+        {permissions.allowBrowserControl && (
+          <div className="space-y-2">
+            <p className="text-sm opacity-75">허용된 브라우저:</p>
+            <div className="flex gap-2">
+              {permissions.allowedBrowsers.map((browser: string) => (
+                <div
+                  key={browser}
+                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900 rounded capitalize"
+                >
+                  {browser}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Commands */}
+      <div className={cn(
+        'p-6 rounded-lg border',
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      )}>
+        <div className="flex items-center gap-2 mb-4">
+          <Terminal className="w-5 h-5" />
+          <h3 className="text-lg font-semibold">⌨️ 허용된 명령어</h3>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {permissions.allowedCommands.map((cmd: string) => (
+            <div
+              key={cmd}
+              className={cn(
+                'px-3 py-1 rounded font-mono text-sm',
+                isDark ? 'bg-gray-700' : 'bg-gray-100'
+              )}
+            >
+              {cmd}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
 // Stats Tab Content
 // ============================================
 
@@ -1036,6 +1425,10 @@ export default function AgentProfilePage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'overview' && (
           <AgentProfile agentId={agentId} isDark={isDark} />
+        )}
+
+        {activeTab === 'permissions' && (
+          <PermissionsTab agentId={agentId} isDark={isDark} />
         )}
 
         {activeTab === 'stats' && (

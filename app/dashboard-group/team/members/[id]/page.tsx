@@ -20,9 +20,12 @@ import {
   Clock,
   Flame,
   Activity,
-  Wand2
+  Wand2,
+  Plug,  // 🔥 react-icons 제거
 } from 'lucide-react'
-import { PiPlugs } from 'react-icons/pi'
+
+// 🔥 react-icons → lucide-react 별칭
+const PiPlugs = Plug
 import { cn } from '@/lib/utils'
 import { MemberProfileSidebar, MemberProfileData } from '@/components/team/MemberProfileSidebar'
 import { MemberAboutSection, MemberAboutData } from '@/components/team/MemberAboutSection'

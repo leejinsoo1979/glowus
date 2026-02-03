@@ -17,7 +17,9 @@ import {
 import { getDefaultModel, LLMProvider } from '@/lib/llm/client'
 import {
   buildDynamicAgentSystemPrompt,
+  buildSkillsContext,
   AGENT_ROLE_PROMPTS,
+  type AgentSkill,
 } from '@/lib/agent/shared-prompts'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -32,6 +34,22 @@ import {
   getOrCreateRelationship,
   generateGreeting,
 } from '@/lib/memory/agent-relationship-service'
+
+// 🔌 커스텀 API 도구 (에이전트별 연결된 외부 API)
+import {
+  loadAgentApiConnections,
+  createAllApiTools,
+  generateApiToolsDescription,
+} from '@/lib/agent/api-tool'
+
+// 🦞 OpenClaw 스킬 도구 (OpenClaw Gateway 연동)
+import {
+  createOpenClawTools,
+  createDynamicSkillTools,
+} from '@/lib/openclaw'
+
+// 📊 API 사용량 추적
+import { logApiUsage } from '@/lib/usage/tracker'
 
 // ============================================
 // 타입 정의
@@ -144,10 +162,13 @@ async function logAgentActivity(
 function createLLM(provider: LLMProvider, model: string, apiKey?: string, temperature = 0.7) {
   switch (provider) {
     case 'anthropic':
-      return new ChatAnthropic({
-        model,
+      // ⚠️ Anthropic API 사용 금지 - Claude Code CLI (Max 플랜 OAuth)로만 사용
+      // anthropic 선택 시 openai로 fallback
+      console.warn('[createLLM] Anthropic API 사용 금지 - OpenAI로 fallback')
+      return new ChatOpenAI({
+        model: 'gpt-4o',
         temperature,
-        apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
+        apiKey: process.env.OPENAI_API_KEY,
       })
 
     case 'openai':
@@ -569,19 +590,69 @@ export async function generateSuperAgentResponse(
     }
   }
 
-  // 도구 바인딩 (기본 도구 + 비즈니스 도구)
+  // 도구 바인딩 (기본 도구 + 비즈니스 도구 + 커스텀 API 도구)
   const superTools = getSuperAgentTools()
   const businessTools = getAgentBusinessTools()
+
+  // 🔌 커스텀 API 도구 로드 (에이전트에 연결된 외부 API)
+  let customApiTools: any[] = []
+  let apiToolsDescription = ''
+  try {
+    const apiConnections = await loadAgentApiConnections(agent.id)
+    if (apiConnections.length > 0) {
+      customApiTools = createAllApiTools(apiConnections)
+      apiToolsDescription = generateApiToolsDescription(apiConnections)
+      console.log(`[SuperAgent] 🔌 Custom API tools loaded: ${customApiTools.length} tools from ${apiConnections.length} connections`)
+    }
+  } catch (apiError) {
+    console.warn('[SuperAgent] Failed to load custom API tools:', apiError)
+  }
+
+  // 🎯 에이전트 스킬 로드 (Supabase에서 장착된 스킬 가져오기)
+  let skillsContext = ''
+  try {
+    const adminClient = createAdminClient()
+    const { data: skills } = await adminClient
+      .from('agent_skills')
+      .select('id, name, description, content, enabled, files, metadata')
+      .eq('agent_id', agent.id)
+      .eq('enabled', true)
+
+    if (skills && skills.length > 0) {
+      skillsContext = buildSkillsContext(skills as AgentSkill[])
+      console.log(`[SuperAgent] 🎯 Skills loaded: ${skills.length} enabled skills for ${agent.name}`)
+    }
+  } catch (skillError) {
+    console.warn('[SuperAgent] Failed to load agent skills:', skillError)
+  }
+
+  // 🦞 OpenClaw 스킬 도구 로드
+  let openClawTools: any[] = []
+  try {
+    // 기본 OpenClaw 도구 (스킬 조회, 실행)
+    openClawTools = createOpenClawTools(context.userId, agent.id)
+
+    // 동적 스킬 도구 (각 스킬을 개별 도구로 변환)
+    const dynamicSkillTools = await createDynamicSkillTools(context.userId, agent.id)
+    openClawTools = [...openClawTools, ...dynamicSkillTools]
+
+    if (openClawTools.length > 0) {
+      console.log(`[SuperAgent] 🦞 OpenClaw tools loaded: ${openClawTools.length} tools for ${agent.name}`)
+    }
+  } catch (openClawError) {
+    console.warn('[SuperAgent] Failed to load OpenClaw tools:', openClawError)
+  }
 
   // 중복 도구 제거 (businessTools 우선)
   const businessToolNames = new Set(businessTools.map(t => t.name))
   const filteredSuperTools = superTools.filter(t => !businessToolNames.has(t.name))
-  let tools = [...filteredSuperTools, ...businessTools]
+  let tools = [...filteredSuperTools, ...businessTools, ...customApiTools, ...openClawTools]
 
   // Gemini 모델은 도구가 많으면 느려지므로 핵심 도구만 사용
   const isGemini = (agent as any).provider === 'gemini' || agent.model?.includes('gemini')
   if (isGemini) {
     // Gemini용 핵심 도구 (20개 이하 - 균형있는 선택)
+    // 커스텀 API 도구는 항상 포함
     const essentialTools = [
       // 유틸리티
       'search_web',
@@ -619,7 +690,8 @@ export async function generateSuperAgentResponse(
       'match_government_programs',
       'query_government_programs',
     ]
-    tools = tools.filter(t => essentialTools.includes(t.name))
+    // 커스텀 API 도구 (api_로 시작)는 항상 포함
+    tools = tools.filter(t => essentialTools.includes(t.name) || t.name.startsWith('api_'))
     console.log(`[SuperAgent] Gemini detected - using ${tools.length} essential tools (optimized for speed)`)
   }
 
@@ -647,7 +719,9 @@ export async function generateSuperAgentResponse(
     basePersonality,
     identityStr,
     '',
-    false
+    false,
+    undefined,
+    skillsContext
   )
 
   // 프로젝트 컨텍스트
@@ -918,6 +992,25 @@ Brain State와 충돌하는 제안을 하지 마세요!
 
       // LLM 호출
       const response = await llmWithTools.invoke(messages)
+
+      // 📊 API 사용량 추적
+      if (context?.userId) {
+        const usage = (response as any).response_metadata?.usage ||
+                      (response as any).usage_metadata ||
+                      (response as any).response_metadata?.tokenUsage
+        if (usage) {
+          logApiUsage({
+            userId: context.userId,
+            provider,
+            model,
+            inputTokens: usage.input_tokens || usage.prompt_tokens || usage.promptTokens || 0,
+            outputTokens: usage.output_tokens || usage.completion_tokens || usage.completionTokens || 0,
+            requestType: 'agent',
+            agentId: agent.id,
+            metadata: { iteration: iterations },
+          }).catch(() => {}) // 비동기 실행, 에러 무시
+        }
+      }
 
       // Tool Call 확인
       const toolCalls = response.tool_calls || []
@@ -1269,10 +1362,55 @@ export async function* generateSuperAgentResponseStream(
   const superTools = getSuperAgentTools()
   const businessTools = getAgentBusinessTools()
 
+  // 🔌 커스텀 API 도구 로드 (에이전트에 연결된 외부 API)
+  let customApiTools: any[] = []
+  let apiToolsDescription = ''
+  try {
+    const apiConnections = await loadAgentApiConnections(agent.id)
+    if (apiConnections.length > 0) {
+      customApiTools = createAllApiTools(apiConnections)
+      apiToolsDescription = generateApiToolsDescription(apiConnections)
+      console.log(`[SuperAgentStream] 🔌 Custom API tools loaded: ${customApiTools.length} tools from ${apiConnections.length} connections`)
+    }
+  } catch (apiError) {
+    console.warn('[SuperAgentStream] Failed to load custom API tools:', apiError)
+  }
+
+  // 🎯 에이전트 스킬 로드 (Supabase에서 장착된 스킬 가져오기)
+  let skillsContext = ''
+  try {
+    const adminClient = createAdminClient()
+    const { data: skills } = await adminClient
+      .from('agent_skills')
+      .select('id, name, description, content, enabled, files, metadata')
+      .eq('agent_id', agent.id)
+      .eq('enabled', true)
+
+    if (skills && skills.length > 0) {
+      skillsContext = buildSkillsContext(skills as AgentSkill[])
+      console.log(`[SuperAgentStream] 🎯 Skills loaded: ${skills.length} enabled skills for ${agent.name}`)
+    }
+  } catch (skillError) {
+    console.warn('[SuperAgentStream] Failed to load agent skills:', skillError)
+  }
+
+  // 🦞 OpenClaw 스킬 도구 로드
+  let openClawTools: any[] = []
+  try {
+    openClawTools = createOpenClawTools(context.userId, agent.id)
+    const dynamicSkillTools = await createDynamicSkillTools(context.userId, agent.id)
+    openClawTools = [...openClawTools, ...dynamicSkillTools]
+    if (openClawTools.length > 0) {
+      console.log(`[SuperAgentStream] 🦞 OpenClaw tools loaded: ${openClawTools.length} tools`)
+    }
+  } catch (openClawError) {
+    console.warn('[SuperAgentStream] Failed to load OpenClaw tools:', openClawError)
+  }
+
   // 중복 도구 제거 (businessTools 우선)
   const businessToolNames = new Set(businessTools.map(t => t.name))
   const filteredSuperTools = superTools.filter(t => !businessToolNames.has(t.name))
-  let tools = [...filteredSuperTools, ...businessTools]
+  let tools = [...filteredSuperTools, ...businessTools, ...customApiTools, ...openClawTools]
 
   // Gemini 모델은 도구가 많으면 느려지므로 핵심 도구만 사용
   const isGemini = (agent as any).provider === 'gemini' || agent.model?.includes('gemini')
@@ -1285,11 +1423,18 @@ export async function* generateSuperAgentResponseStream(
       'run_terminal', 'generate_image', 'call_agent', 'get_agent_status',
       'browser_automation', 'generate_business_plan', 'match_government_programs', 'query_government_programs',
     ]
-    tools = tools.filter(t => essentialTools.includes(t.name))
+    // 커스텀 API 도구 (api_로 시작), OpenClaw 도구 (openclaw_, agent_skill, skill_로 시작)는 항상 포함
+    tools = tools.filter(t =>
+      essentialTools.includes(t.name) ||
+      t.name.startsWith('api_') ||
+      t.name.startsWith('openclaw_') ||
+      t.name.startsWith('agent_skill') ||
+      t.name.startsWith('skill_')
+    )
     console.log(`[SuperAgentStream] Gemini detected - using ${tools.length} essential tools`)
   }
 
-  console.log(`[SuperAgentStream] Tools loaded: ${tools.length} total`)
+  console.log(`[SuperAgentStream] Tools loaded: ${tools.length} total (including ${customApiTools.length} custom API tools, ${openClawTools.length} OpenClaw tools)`)
   const llmWithTools = llm.bindTools(tools)
 
   // 🧠 작업 복잡도 기반 동적 반복 횟수 설정
@@ -1346,7 +1491,9 @@ export async function* generateSuperAgentResponseStream(
     basePersonality,
     identityStr,
     '',
-    false
+    false,
+    undefined,
+    skillsContext
   )
 
   // 프로젝트 컨텍스트
@@ -1593,6 +1740,26 @@ Brain State와 충돌하는 제안을 하지 마세요!
       }
 
       const response = await llmWithTools.invoke(messages)
+
+      // 📊 API 사용량 추적
+      if (context?.userId) {
+        const usage = (response as any).response_metadata?.usage ||
+                      (response as any).usage_metadata ||
+                      (response as any).response_metadata?.tokenUsage
+        if (usage) {
+          logApiUsage({
+            userId: context.userId,
+            provider,
+            model,
+            inputTokens: usage.input_tokens || usage.prompt_tokens || usage.promptTokens || 0,
+            outputTokens: usage.output_tokens || usage.completion_tokens || usage.completionTokens || 0,
+            requestType: 'agent_stream',
+            agentId: agent.id,
+            metadata: { iteration: iterations },
+          }).catch(() => {})
+        }
+      }
+
       const toolCalls = response.tool_calls || []
 
       if (toolCalls.length === 0) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, FolderKanban, Users, ChevronDown, Calendar, Code, FileText, Palette, Briefcase, Github, HardDrive, FolderGit } from 'lucide-react'
+import { X, FolderKanban, Users, ChevronDown, Calendar, Code, FileText, Palette, Briefcase, Github, HardDrive, FolderGit, Folder } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/stores/themeStore'
 import type { User } from '@/types/database'
@@ -39,6 +39,7 @@ export interface ProjectFormData {
   deadline: string
   project_type: 'code' | 'document' | 'design' | 'work'
   git_mode: 'separate_repo' | 'workspace_repo' | 'local_only'
+  local_path: string
 }
 
 export function ProjectCreateModal({
@@ -60,7 +61,9 @@ export function ProjectCreateModal({
     deadline: '',
     project_type: 'code',
     git_mode: 'local_only',
+    local_path: '~/GlowUS-projects',
   })
+  const [useCustomPath, setUseCustomPath] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
 
   // 팀은 선택사항이므로 자동 선택하지 않음
@@ -105,8 +108,10 @@ export function ProjectCreateModal({
       deadline: '',
       project_type: 'code',
       git_mode: 'local_only',
+      local_path: '~/GlowUS-projects',
     })
     setSelectedMembers([])
+    setUseCustomPath(false)
     onClose()
   }
 
@@ -249,6 +254,44 @@ export function ProjectCreateModal({
                       )
                     })}
                   </div>
+                </div>
+
+                {/* Local Path */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-zinc-900 dark:text-white flex items-center gap-1.5">
+                      <Folder className="w-4 h-4" />
+                      로컬 저장 경로
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setUseCustomPath(!useCustomPath)}
+                      className={cn(
+                        "text-xs px-2 py-1 rounded-md transition-colors",
+                        useCustomPath
+                          ? cn(accent.light, accent.text)
+                          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      )}
+                    >
+                      {useCustomPath ? '기본값 사용' : '직접 지정'}
+                    </button>
+                  </div>
+                  {useCustomPath ? (
+                    <input
+                      type="text"
+                      value={formData.local_path}
+                      onChange={(e) => setFormData({ ...formData, local_path: e.target.value })}
+                      placeholder="~/GlowUS-projects"
+                      className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border-0 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-zinc-300 dark:focus:ring-zinc-600 transition-all font-mono text-sm"
+                    />
+                  ) : (
+                    <div className="px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-mono text-sm">
+                      ~/GlowUS-projects/{formData.name || '{프로젝트명}'}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                    프로젝트 파일이 저장될 로컬 폴더 경로
+                  </p>
                 </div>
 
                 {/* Team & Deadline - 2 Column */}

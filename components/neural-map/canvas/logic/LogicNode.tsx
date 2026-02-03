@@ -1,14 +1,39 @@
 import React, { memo } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
-import { Folder, GitBranch } from 'lucide-react'
+// 🔥 react-icons 완전 제거 - lucide-react로 통일 (번들 사이즈 대폭 절약)
 import {
-    BsFiletypePdf, BsFiletypeJsx, BsFiletypeTsx, BsFiletypeJs,
-    BsFiletypeHtml, BsFiletypeCss, BsFiletypeScss, BsFiletypeJson, BsFiletypeMd,
-    BsFiletypePy, BsFiletypeJava, BsFiletypeRb, BsFiletypePhp,
-    BsFiletypeXml, BsFiletypeYml, BsFiletypeSql,
-    BsFileEarmarkCode, BsFileEarmarkText, BsFileEarmarkImage, BsFileEarmarkPlay,
-    BsFileEarmarkZip,
-} from 'react-icons/bs'
+    Folder,
+    GitBranch,
+    FileText,
+    FileCode,
+    FileJson,
+    FileImage,
+    FileVideo,
+    FileArchive,
+} from 'lucide-react'
+
+// 🔥 react-icons → lucide-react 별칭 (기존 코드 호환성)
+const BsFiletypePdf = FileText
+const BsFiletypeJsx = FileCode
+const BsFiletypeTsx = FileCode
+const BsFiletypeJs = FileCode
+const BsFiletypeHtml = FileCode
+const BsFiletypeCss = FileCode
+const BsFiletypeScss = FileCode
+const BsFiletypeJson = FileJson
+const BsFiletypeMd = FileText
+const BsFiletypePy = FileCode
+const BsFiletypeJava = FileCode
+const BsFiletypeRb = FileCode
+const BsFiletypePhp = FileCode
+const BsFiletypeXml = FileJson
+const BsFiletypeYml = FileJson
+const BsFiletypeSql = FileCode
+const BsFileEarmarkCode = FileCode
+const BsFileEarmarkText = FileText
+const BsFileEarmarkImage = FileImage
+const BsFileEarmarkPlay = FileVideo
+const BsFileEarmarkZip = FileArchive
 import { cn } from '@/lib/utils'
 
 export interface LogicNodeData {
